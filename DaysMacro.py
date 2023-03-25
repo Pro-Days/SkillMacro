@@ -16,13 +16,11 @@ def version_check():
     response = get(
         "https://api.github.com/repos/pro-days/skillmacro/releases/latest")
     checked_version = response.json()["name"]
-    global lastest
     if version == checked_version:
-        lastest = True
+        update_label.config(text="최신버전 O", fg="green")
     else:
-        lastest = False
-        global update_url
         update_url = response.json()["assets"][0]["browser_download_url"]
+        update_label.bind("<Button-1>", lambda event: open_new(update_url))
 
 
 def store_all(preset):
@@ -317,7 +315,8 @@ thread_key = Thread(target=keyboard_clicked, daemon=True)
 thread_key.start()
 
 
-version_check()
+thread_version = Thread(target=version_check, daemon=True)
+thread_version.start()
 
 
 window = Tk()
@@ -337,12 +336,9 @@ frame_update = Frame(window, width=270, height=45)
 frame_update.pack_propagate(0)
 frame_update.place(x=0, y=0)
 
-update_label = Label(frame_update, text="최신버전 X (클릭)", fg="red", borderwidth=1.5, relief="solid",
+update_label = Label(frame_update, text="업데이트 확인중...", fg="gray", borderwidth=1.5, relief="solid",
                      font=("맑은 고딕", 12, "bold"), width=20, height=10)
 update_label.pack()
-update_label.bind("<Button-1>", lambda event: open_new(update_url))
-if lastest:
-    update_label.config(text="최신버전 O", fg="green")
 
 
 # 설명 링크
