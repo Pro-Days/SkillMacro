@@ -326,7 +326,10 @@ window = Tk()
 window.title("데이즈매크로 v7.0")
 window.geometry("540x375+100+100")
 window.resizable(False, False)
-window.iconbitmap("icon.ico")
+
+path = os.path.join(os.path.dirname(__file__), 'icon.ico')
+if os.path.isfile(path):
+    window.iconbitmap(path)
 
 
 # 업데이트 체크
