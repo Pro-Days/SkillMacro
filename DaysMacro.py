@@ -19,8 +19,9 @@ def version_check():
     if version == checked_version:
         update_label.config(text="최신버전 O", fg="green")
     else:
-        update_url = response.json()["assets"][0]["browser_download_url"]
+        update_url = response.json()["html_url"]
         update_label.bind("<Button-1>", lambda event: open_new(update_url))
+        update_label.config(text="최신버전 X", fg="red")
 
 
 def store_all(preset):
