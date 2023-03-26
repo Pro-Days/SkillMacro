@@ -1,10 +1,8 @@
 # SkillMacro
 데이즈매크로
-<img width="273" alt="image" src="https://user-images.githubusercontent.com/57057173/227762063-7cc05bbc-d2c0-4f56-827a-af292e18ddc7.png">
-
+<img width="181" alt="image" src="https://user-images.githubusercontent.com/57057173/227762091-54f9ad93-5c51-47ed-a0a9-e53ab664f5de.png">
 
 마인크래프트 투다이스 서버들을 위해 만든 스킬매크로
-
 
 ## 사용방법
 1. 딜레이: 서로 다른 키를 입력할 때 그 사이의 시간 간격 (기본값 15, 정수)
@@ -21,6 +19,5 @@
   * 쿨타임 0으로 설정시 해당 스킬 사용 X => 일월과 같이 스킬 4 or 5개 사용하는 서버에서는 나머지 쿨타임 0으로 설정
 9. 좌측 최상단 최신버전: 최신버전 유무에 따라 O/X 출력, 클릭하여 최신버전 다운로드 가능
 10. 우측 최상단 설명확인: 클릭하여 매크로 사용방법 확인 가능
-
 
 - 2023.01.13 ~ 2023.03.26 + ~
