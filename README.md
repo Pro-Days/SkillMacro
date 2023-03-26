@@ -1,6 +1,6 @@
 # SkillMacro
 데이즈매크로
-<img width="181" alt="image" src="https://user-images.githubusercontent.com/57057173/227762091-54f9ad93-5c51-47ed-a0a9-e53ab664f5de.png">
+![설명](https://user-images.githubusercontent.com/57057173/227768359-e884f5aa-3dd7-4f71-9392-fab0631adbe7.png)
 
 마인크래프트 투다이스 서버들을 위해 만든 스킬매크로
 
