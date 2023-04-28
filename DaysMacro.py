@@ -8,6 +8,7 @@ from tkinter import Tk, Label, DoubleVar, IntVar, StringVar, Entry, ttk, Button,
 from keyboard import read_key, is_pressed, read_hotkey
 from pyautogui import press, click
 from webbrowser import open_new
+import json
 
 
 # 함수 선언
@@ -30,44 +31,40 @@ def version_check():
         update_label.config(text="업데이트 확인 실패", fg="red")
 
 
-def store_all(preset):
+def store_all(preset, setup=False):
     global Skill_timeData, HotbarKeys, start_key, clicknums, reduce_skill_cooltime
-    if "nums_DV" in globals():
+    if not setup:
+        Skill_timeData = [i.get() for i in nums_DV]
+        Skill_timeData.append(reduce_skill_cooltime.get())
 
-        # 프리셋 바꿀 때 에러
+        HotbarKeys = [i.get() for i in keys_SV]
+        clicknums = [i.get() for i in clicks_IV]
 
-        Skill_timeData = [str(i.get()) for i in nums_DV]
-        Skill_timeData.append(str(reduce_skill_cooltime.get()))
-        # Skill_timeData, delaytime = [str(i.get()) for i in nums_DV].append(
-        #     str(reduce_skill_cooltime.get())), delay.get()
-        # print(Skill_timeData)
+    with open(f"C:\\ProDays\\DaysMacro.json", "r") as f:
+        json_object = json.load(f)
 
-        HotbarKeys = [str(i.get()) for i in keys_SV]
-        clicknums = [str(i.get()) for i in clicks_IV]
-    else:
-        Skill_timeData = [str(i) for i in Skill_timeData]
-        Skill_timeData.append(str(reduce_skill_cooltime.get()))
-        # print(Skill_timeData)
-        clicknums = [str(i) for i in clicknums]
-    if preset == "1":
-        with open(f"C:\\ProDays\\PD_SkillMacro{preset}.txt", "w") as f:
-            f.write(" ".join(HotbarKeys) + "\n" + " ".join(Skill_timeData) + "\n" +
-                    str(start_key) + "\n" + str(delay.get()) + "\n" + " ".join(clicknums))
-    else:
-        with open(f"C:\\ProDays\\PD_SkillMacro{preset}.txt", "w") as f:
-            f.write(" ".join(Skill_timeData) + "\n" + " ".join(clicknums))
+    json_object['HotbarKeys'] = HotbarKeys
+    json_object['Skill_timeData'][str(preset)] = Skill_timeData[:-1]
+    json_object['reduce_skill_cooltime'][str(preset)] = Skill_timeData[-1]
+    json_object['delaytime'] = delay.get()
+    json_object['clicknums'][str(preset)] = clicknums
+
+    with open('C:\\ProDays\\DaysMacro.json', 'w') as f:
+        json.dump(json_object, f, indent=2)
 
 
 def store_startkey():
     global start_key, startkey_stored
     startkey_stored = False
     start_key = read_key()
-    with open(f"C:\\ProDays\\PD_SkillMacro1.txt", "r") as f:
-        text = f.readlines()
-    text[2] = str(start_key) + "\n"
 
-    with open(f"C:\\ProDays\\PD_SkillMacro1.txt", "w") as f:
-        f.writelines(text)
+    with open(f"C:\\ProDays\\DaysMacro.json", "r") as f:
+        json_object = json.load(f)
+    json_object['start_key'] = start_key
+
+    with open('C:\\ProDays\\DaysMacro.json', 'w') as f:
+        json.dump(json_object, f, indent=2)
+
     sleep(0.2)
     startkey_stored = True
     thread_key = Thread(target=keyboard_clicked, daemon=True)
@@ -143,133 +140,42 @@ def macro(n):
             sleep(delay.get()/100)
 
 
-def dataload(event):
+def dataload(event, setup=False):
     global HotbarKeys, Skill_timeData, start_key, delaytime, clicknums
     preset = combobox_preset.get() if "combobox_preset" in globals() else "1"
 
-    if os.path.isfile(f"C:\\ProDays\\PD_SkillMacro{preset}.txt"):
+    if os.path.isfile(f"C:\\ProDays\\DaysMacro.json"):
         try:
-            with open(f"C:\\ProDays\\PD_SkillMacro{preset}.txt", "r") as f:
-                text = f.readlines()
-                if preset == "1":
-                    if len(text) == 5:
-                        SkillData = text[0].replace("\n", "")
-                        HotbarKeys = SkillData.split(" ")
-                        if len(HotbarKeys) != 6:
-                            HotbarKeys = ["2", "3", "4", "5", "6", "7"]
-                        Skill_timeData = text[1].replace("\n", "")
-                        Skill_timeData = Skill_timeData.split(" ")
+            with open(f"C:\\ProDays\\DaysMacro.json", "r") as f:
+                json_object = json.load(f)
 
-                        if len(Skill_timeData) != 7:
-                            Skill_timeData = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0]
-                        start_key = text[2].replace("\n", "")
-                        delaytime = int(text[3].replace("\n", ""))
-                        clicknums = text[4].replace("\n", "").split(" ")
-                        if len(clicknums) != 6:
-                            clicknums = [1, 1, 1, 1, 1, 1]
+                HotbarKeys = json_object['HotbarKeys']
+                Skill_timeData = json_object['Skill_timeData'][str(preset)]
+                Skill_timeData.append(json_object['reduce_skill_cooltime'][str(preset)])
+                start_key = json_object['start_key']
+                delaytime = json_object['delaytime']
+                clicknums = json_object['clicknums'][str(preset)]
 
-                        if "nums_DV" in globals():
-                            for i, j in enumerate(nums_DV):
-                                j.set(float(Skill_timeData[i]))
-
-                            reduce_skill_cooltime.set(int(Skill_timeData[6]))
-                            delay.set(delaytime)
-
-                            for i, j in enumerate(clicks_IV):
-                                j.set(int(clicknums[i]))
-                    else:
-                        clicknums = [1, 1, 1, 1, 1, 1]
-                        HotbarKeys = ["2", "3", "4", "5", "6", "7"]
-                        Skill_timeData = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0]
-                        start_key = "f9"
-                        delaytime = 15
-                        store_all(preset)
-                else:
-                    if len(text) == 2:
-                        Skill_timeData = text[0].replace("\n", "")
-                        Skill_timeData = Skill_timeData.split(" ")
-
-                        if len(Skill_timeData) != 7:
-                            Skill_timeData = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0]
-
-                        clicknums = text[1].replace("\n", "").split(" ")
-                        if len(clicknums) != 6:
-                            clicknums = [1, 1, 1, 1, 1, 1]
-
-                        if "nums_DV" in globals():
-
-                            for i, j in enumerate(nums_DV):
-                                j.set(float(Skill_timeData[i]))
-
-                            reduce_skill_cooltime.set(int(Skill_timeData[6]))
-
-                            for i, j in enumerate(clicks_IV):
-                                j.set(int(clicknums[i]))
-                    else:
-                        Skill_timeData = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0]
-                        clicknums = [1, 1, 1, 1, 1, 1]
-                        store_all(preset)
-        except:
-            if preset == "1":
-                if not os.path.exists("C:\\ProDays"):
-                    os.makedirs("C:\\ProDays")
-                HotbarKeys = ["2", "3", "4", "5", "6", "7"]
-                Skill_timeData = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0]
-                clicknums = [1, 1, 1, 1, 1, 1]
-                start_key = "f9"
-                delaytime = 15
-                if "nums_DV" in globals():
+                if not setup:
                     for i, j in enumerate(nums_DV):
                         j.set(float(Skill_timeData[i]))
-
-                    reduce_skill_cooltime.set(Skill_timeData[6])
-                    delay.set(delaytime)
-
+                    reduce_skill_cooltime.set(int(Skill_timeData[-1]))
                     for i, j in enumerate(clicks_IV):
                         j.set(int(clicknums[i]))
-            else:
-                Skill_timeData = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0]
-                clicknums = [1, 1, 1, 1, 1, 1]
-
-                for i, j in enumerate(nums_DV):
-                    j.set(float(Skill_timeData[i]))
-
-                reduce_skill_cooltime.set(Skill_timeData[6])
-
-                for i, j in enumerate(clicks_IV):
-                    j.set(int(clicknums[i]))
-            store_all(preset)
-
+        except:
+            os.remove(f"C:\\ProDays\\PD_SkillMacro{preset}.json")
+            dataload()
+            return
     else:
-        if preset == "1":
-            if not os.path.exists("C:\\ProDays"):
-                os.makedirs("C:\\ProDays")
-            HotbarKeys = ["2", "3", "4", "5", "6", "7"]
-            Skill_timeData = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0]
-            clicknums = [1, 1, 1, 1, 1, 1]
-            start_key = "f9"
-            delaytime = 15
-            if "nums_DV" in globals():
-                for i, j in enumerate(nums_DV):
-                    j.set(float(Skill_timeData[i]))
+        if not os.path.exists("C:\\ProDays"):
+            os.makedirs("C:\\ProDays")
 
-                reduce_skill_cooltime.set(Skill_timeData[6])
-                delay.set(delaytime)
-
-                for i, j in enumerate(clicks_IV):
-                    j.set(int(clicknums[i]))
-        else:
-            Skill_timeData = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0]
-            clicknums = [1, 1, 1, 1, 1, 1]
-
-            for i, j in enumerate(nums_DV):
-                j.set(float(Skill_timeData[i]))
-
-            reduce_skill_cooltime.set(Skill_timeData[6])
-
-            for i, j in enumerate(clicks_IV):
-                j.set(int(clicknums[i]))
-        store_all(preset)
+        HotbarKeys = ["2", "3", "4", "5", "6", "7"]
+        Skill_timeData = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0]
+        start_key = "f9"
+        delaytime = 15
+        clicknums = [1, 1, 1, 1, 1, 1]
+        store_all(preset, setup=True)
 
 
 def start_macro():
@@ -279,7 +185,7 @@ def start_macro():
 
 def keyboard_clicked():
     while startkey_stored:
-        if is_pressed(start_key):
+        if is_pressed(start_key) and not error:
             if len(looping) != 0:
                 if looping[-1]:
                     looping[-1] = False
@@ -316,9 +222,10 @@ def check_error():
             error_label.config(text="오류: O", fg="red")
         else:
             if 0 <= reduce_skill_cooltime.get() <= 99:
-                error = True
+                error = False
                 error_label.config(text="오류: X", fg="green")
             else:
+                error = True
                 error_label.config(text="오류: O", fg="red")
 
         sleep(0.5)
@@ -349,14 +256,14 @@ def modechange(event):
 
 # 변수 선언, main
 
-version = "v8.0"
+version = "v8.1"
 looping = []
 startkey_stored = True
 press_key = []
 error = False
 
 
-dataload(None)
+dataload(None, setup=True)
 
 
 thread_key = Thread(target=keyboard_clicked, daemon=True)
