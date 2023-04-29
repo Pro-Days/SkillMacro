@@ -299,7 +299,7 @@ def modechange(event):
 
 # 변수 선언, main
 
-version = "v8.1"
+version = "v2.1.3"
 looping = []
 startkey_stored = True
 press_key = []
@@ -340,8 +340,8 @@ frame_update = Frame(window, width=270, height=45)
 frame_update.pack_propagate(False)
 frame_update.place(x=0, y=0)
 
-update_label = Label(frame_update, text="업데이트 확인중...", fg="gray", borderwidth=1.5, relief="solid",
-                     font=("맑은 고딕", 12, "bold"), width=20, height=10)
+update_label = Label(frame_update, text="업데이트 확인중...", fg="gray", relief="solid",
+                     font=("맑은 고딕", 14, "bold"), width=30, height=20, borderwidth=1.5)
 update_label.pack()
 
 thread_version = Thread(target=version_check, daemon=True)
@@ -354,7 +354,7 @@ frame_descr.pack_propagate(False)
 frame_descr.place(x=270, y=0)
 
 descr_label = Label(frame_descr, text="설명 확인하기", fg="blue", borderwidth=1.5, relief="solid",
-                    font=("맑은 고딕", 12, "bold"), width=20, height=10)
+                    font=("맑은 고딕", 14, "bold"), width=30, height=20)
 descr_label.pack()
 descr_label.bind(
     "<Button-1>", lambda event: open_new("https://github.com/Pro-Days/SkillMacro#readme"))
@@ -419,7 +419,7 @@ frame_startkeyK.place(x=142.5, y=120)
 
 startkey_button = Button(frame_startkeyK, text=start_key, width=10, borderwidth=1, relief="solid",
                          font=("맑은 고딕", 10), bg="white", anchor="center", command=store_startkey)
-startkey_button.pack()
+startkey_button.place(width=112.5, height=37.5)
 
 
 # 프리셋
@@ -449,8 +449,10 @@ frame_store = Frame(frame_settings, width=112.5, height=37.5)
 frame_store.pack_propagate(False)
 frame_store.place(x=15, y=225)
 
-Button(frame_store, text="저장", width=10, borderwidth=1, relief="solid", font=("맑은 고딕", 10),
-       bg="white", anchor="center", command=lambda: store_all(combobox_preset.get())).pack()
+Button(
+    frame_store, text="저장", width=10, borderwidth=1, relief="solid", font=("맑은 고딕", 10),
+    bg="white", anchor="center", command=lambda: store_all(combobox_preset.get())).place(
+    width=112.5, height=37.5)
 
 
 frame_mode = Frame(frame_settings, width=112.5, height=37.5)
