@@ -31,16 +31,16 @@ def version_check():
         update_label.config(text="업데이트 확인 실패", fg="red")
 
 
-def store_all(preset, setup=False):
+def store_all(preset):
     global Skill_timeData, HotbarKeys, start_key, clicknums, reduce_skill_cooltime
-    if not setup:
-        Skill_timeData = [i.get() for i in nums_DV]
-        Skill_timeData.append(reduce_skill_cooltime.get())
 
-        HotbarKeys = [i.get() for i in keys_SV]
-        clicknums = [i.get() for i in clicks_IV]
+    Skill_timeData = [i.get() for i in nums_DV]
+    Skill_timeData.append(reduce_skill_cooltime.get())
 
-    with open(f"C:\\ProDays\\DaysMacro.json", "r") as f:
+    HotbarKeys = [i.get() for i in keys_SV]
+    clicknums = [i.get() for i in clicks_IV]
+
+    with open("C:\\ProDays\\DaysMacro.json", "r") as f:
         json_object = json.load(f)
 
     json_object['HotbarKeys'] = HotbarKeys
@@ -50,7 +50,7 @@ def store_all(preset, setup=False):
     json_object['clicknums'][str(preset)] = clicknums
 
     with open('C:\\ProDays\\DaysMacro.json', 'w') as f:
-        json.dump(json_object, f, indent=2)
+        json.dump(json_object, f)
 
 
 def store_startkey():
@@ -58,12 +58,12 @@ def store_startkey():
     startkey_stored = False
     start_key = read_key()
 
-    with open(f"C:\\ProDays\\DaysMacro.json", "r") as f:
+    with open("C:\\ProDays\\DaysMacro.json", "r") as f:
         json_object = json.load(f)
     json_object['start_key'] = start_key
 
     with open('C:\\ProDays\\DaysMacro.json', 'w') as f:
-        json.dump(json_object, f, indent=2)
+        json.dump(json_object, f)
 
     sleep(0.2)
     startkey_stored = True
@@ -144,9 +144,11 @@ def dataload(event, setup=False):
     global HotbarKeys, Skill_timeData, start_key, delaytime, clicknums
     preset = combobox_preset.get() if "combobox_preset" in globals() else "1"
 
-    if os.path.isfile(f"C:\\ProDays\\DaysMacro.json"):
+    error = False
+
+    if os.path.isfile("C:\\ProDays\\DaysMacro.json"):
         try:
-            with open(f"C:\\ProDays\\DaysMacro.json", "r") as f:
+            with open("C:\\ProDays\\DaysMacro.json", "r") as f:
                 json_object = json.load(f)
 
                 HotbarKeys = json_object['HotbarKeys']
@@ -156,6 +158,18 @@ def dataload(event, setup=False):
                 delaytime = json_object['delaytime']
                 clicknums = json_object['clicknums'][str(preset)]
 
+                if len(HotbarKeys) != 6:
+                    error = True
+                if len(Skill_timeData) != 7:
+                    error = True
+                if len(clicknums) != 6:
+                    error = True
+
+                if error:
+                    os.remove("C:\\ProDays\\DaysMacro.json")
+                    dataload(None)
+                    return
+
                 if not setup:
                     for i, j in enumerate(nums_DV):
                         j.set(float(Skill_timeData[i]))
@@ -163,19 +177,48 @@ def dataload(event, setup=False):
                     for i, j in enumerate(clicks_IV):
                         j.set(int(clicknums[i]))
         except:
-            os.remove(f"C:\\ProDays\\PD_SkillMacro{preset}.json")
-            dataload()
+            os.remove("C:\\ProDays\\DaysMacro.json")
+            dataload(None)
             return
     else:
         if not os.path.exists("C:\\ProDays"):
             os.makedirs("C:\\ProDays")
+
+        json_object = {
+            "HotbarKeys": ["2", "3", "4", "5", "6", "7"],
+            "Skill_timeData": {
+                "1": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                "2": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                "3": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                "4": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                "5": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            },
+            "reduce_skill_cooltime": {
+                "1": 0,
+                "2": 0,
+                "3": 0,
+                "4": 0,
+                "5": 0
+            },
+            "start_key": "f9",
+            "delaytime": 15,
+            "clicknums": {
+                "1": [1, 1, 1, 1, 1, 1],
+                "2": [1, 1, 1, 1, 1, 1],
+                "3": [1, 1, 1, 1, 1, 1],
+                "4": [1, 1, 1, 1, 1, 1],
+                "5": [1, 1, 1, 1, 1, 1]
+            }
+        }
+
+        with open('C:\\ProDays\\DaysMacro.json', 'w') as f:
+            json.dump(json_object, f)
 
         HotbarKeys = ["2", "3", "4", "5", "6", "7"]
         Skill_timeData = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0]
         start_key = "f9"
         delaytime = 15
         clicknums = [1, 1, 1, 1, 1, 1]
-        store_all(preset, setup=True)
 
 
 def start_macro():
