@@ -80,6 +80,11 @@ class MainWindow(QWidget):
         while True:
             key = kb.read_key()
             convertedKey = self.key_dict[key] if key in self.key_dict else key
+
+            linkKeys = []
+            for i in self.linkSkillList:
+                linkKeys.append(i[1])
+
             if self.isActivated:
                 self.afkTime0 = time.time()
             # print(key, convertedKey)
@@ -93,9 +98,15 @@ class MainWindow(QWidget):
                     self.loopNum += 1
                     self.selectedItemSlot = -1
                     Thread(target=self.runMacro, args=[self.loopNum]).start()
+
                 time.sleep(0.5)
-            elif convertedKey == "":
-                time.sleep(0.5)
+            elif convertedKey in linkKeys and not self.isActivated:
+                for i in range(len(linkKeys)):
+                    if convertedKey == linkKeys[i]:
+                        # use linkSkill[i]
+                        Thread(target=self.useLinkSkill, args=[i, self.loopNum]).start()
+
+                time.sleep(0.25)
             else:
                 pass
 
@@ -120,8 +131,18 @@ class MainWindow(QWidget):
         self.afkTime0 = time.time()
 
         self.preparedSkillList = [
-            [i for i in range(6) if not self.ifUseSkill[self.selectedSkillList[i]]],
-            [i for i in range(6) if self.ifUseSkill[self.selectedSkillList[i]]],
+            [
+                i
+                for i in range(6)
+                if not self.ifUseSkill[self.selectedSkillList[i]]
+                and self.selectedSkillList[i] != -1
+            ],
+            [
+                i
+                for i in range(6)
+                if self.ifUseSkill[self.selectedSkillList[i]]
+                and self.selectedSkillList[i] != -1
+            ],
             [],  # append 대기
         ]  # 0~5
         self.preparedSkillCountList = [
@@ -131,6 +152,7 @@ class MainWindow(QWidget):
                 ]
                 for i in range(6)
                 if not self.ifUseSkill[self.selectedSkillList[i]]
+                and self.selectedSkillList[i] != -1
             ],
             [
                 self.skillComboCountList[self.serverID][self.jobID][
@@ -138,13 +160,12 @@ class MainWindow(QWidget):
                 ]
                 for i in range(6)
                 if self.ifUseSkill[self.selectedSkillList[i]]
+                and self.selectedSkillList[i] != -1
             ],
         ]  # 0~5
         self.preparedSkillComboList = [
             self.comboCount[self.selectedSkillList[i]] for i in range(6)
         ]  # 0~5
-
-        self.coolingSkillList = [[], []]  # 쿨타임중
 
         # 개별 우선순위 -> 등록 순서
         self.skillSequences = []  # 0~5 in self.selectedSkillList
@@ -161,7 +182,7 @@ class MainWindow(QWidget):
                     x = self.convert7to5(j)
                     if (
                         not (x in self.skillSequences)
-                        and x in self.preparedSkillList[1]
+                        # and x in self.preparedSkillList[1]
                     ):
                         self.skillSequences.append(x)
                     # print(f"i: {i}, j: {j}, k: {k}")
@@ -232,11 +253,13 @@ class MainWindow(QWidget):
                     time.sleep(self.delay * 0.001)
                     click()
                     Thread(target=self.waitCooltime, args=[self.loopNum, skill]).start()
+                    self.selectedItemSlot = skill
                     # time.sleep(self.delay * 0.001)
                 else:
                     press(key)
                     click(self.activeMouseClickSlot)
                     Thread(target=self.waitCooltime, args=[self.loopNum, skill]).start()
+                    self.selectedItemSlot = skill
                     # time.sleep(self.delay * 0.001)
             else:
                 if clickTF:
@@ -253,6 +276,57 @@ class MainWindow(QWidget):
         else:
             click(self.activeMouseClickSlot)
 
+    def useLinkSkill(self, num, loopNum):
+        def press(key):
+            if self.loopNum == loopNum:
+                kb.press(key)
+
+        def click():
+            if self.loopNum == loopNum:
+                pag.click()
+
+        def useSkill(slot):
+            skill = taskList[0][0]  # skill = slot
+            clickTF = taskList[0][1]  # T, F
+            key = self.skillKeys[skill]
+            key = self.key_dict[key] if key in self.key_dict else key
+
+            if slot != skill:
+                if clickTF:
+                    press(key)
+                    time.sleep(self.delay * 0.001)
+                    click()
+                    slot = skill
+                    # time.sleep(self.delay * 0.001)
+                else:
+                    press(key)
+                    slot = skill
+                    # time.sleep(self.delay * 0.001)
+            else:
+                if clickTF:
+                    click()
+                    # time.sleep(self.delay * 0.001)
+                else:
+                    press(key)
+                    # time.sleep(self.delay * 0.001)
+
+            taskList.pop(0)
+
+            return slot
+
+        slot = -1
+        taskList = []
+        for i in self.linkSkillList[num][2]:
+            for _ in range(i[1]):
+                taskList.append(
+                    [
+                        self.convert7to5(i[0]),
+                        self.isSkillCasting[self.serverID][self.jobID][i[0]],
+                    ]
+                )
+        for i in range(len(taskList)):
+            slot = useSkill(slot)
+
     def waitCooltime(self, loopNum, skill):
         sTime = time.time()
         while (
@@ -262,6 +336,7 @@ class MainWindow(QWidget):
             < self.skillCooltimeList[self.serverID][self.jobID][
                 self.selectedSkillList[skill]
             ]
+            * (1 - self.cooltime * 0.01)
         ):
             time.sleep(self.delay * 0.001)
 
@@ -309,6 +384,110 @@ class MainWindow(QWidget):
         del self.preparedSkillList[2][: len(lCopy[2])]
 
         # 준비된 연계스킬 리스트
+        self.checkIsLinkReady()
+        # print("준비된 연계스킬리스트:", self.preparedLinkSkillList)
+
+        # 연계스킬 사용
+        while len(self.preparedLinkSkillList) != 0:
+            for j in range(len(self.usingLinkSkillList[self.preparedLinkSkillList[0]])):
+                skill = self.usingLinkSkillList[self.preparedLinkSkillList[0]][j]
+                count = self.usingLinkSkillComboList[self.preparedLinkSkillList[0]][j]
+
+                for k in [0, 1]:
+                    # print(
+                    #     "i:",
+                    #     i,
+                    #     "skill:",
+                    #     skill,
+                    #     "self.preparedSkillList[k]:",
+                    #     self.preparedSkillList[k],
+                    # )
+                    if skill in self.preparedSkillList[k]:
+                        for idx in range(len(self.preparedSkillList[k])):
+                            if skill == self.preparedSkillList[k][idx]:
+                                for _ in range(count):
+                                    if self.isSkillCasting[self.serverID][self.jobID][
+                                        self.selectedSkillList[skill]
+                                    ]:
+                                        self.taskList.append(
+                                            [skill, True]
+                                        )  # skill: k, click: True
+                                    else:
+                                        self.taskList.append(
+                                            [skill, False]
+                                        )  # skill: k, click: False
+                                    self.preparedSkillCountList[k][idx] -= 1
+                                    # print(
+                                    #     "count: ",
+                                    #     count,
+                                    #     "1준비된 스킬 개수 리스트:",
+                                    #     self.preparedSkillCountList,
+                                    # )
+            self.checkIsLinkReady()
+        self.preparedLinkSkillList = []
+        self.reloadPreparedSkillList()
+
+        # 준비된 스킬 정렬순서대로 사용
+        for i in self.skillSequences:
+            tempL = []
+            for x in range(len(self.linkSkillRequirementList)):
+                for y in self.linkSkillRequirementList[x]:
+                    tempL.append(y)  # 연계스킬 사용중인 스킬 전부 모으기
+
+            if (
+                (i in self.preparedSkillList[0] or i in self.preparedSkillList[1])
+                and i in tempL
+                and self.ifUseSole[self.selectedSkillList[i]]
+            ):
+                for x in [0, 1]:
+                    for j, k in enumerate(self.preparedSkillList[x]):
+                        if i == k:
+                            while self.preparedSkillCountList[x][j] >= 1:
+                                if self.isSkillCasting[self.serverID][self.jobID][
+                                    self.selectedSkillList[k]
+                                ]:
+                                    self.taskList.append(
+                                        [k, True]
+                                    )  # skill: k, click: True
+                                else:
+                                    self.taskList.append(
+                                        [k, False]
+                                    )  # skill: k, click: False
+                                self.preparedSkillCountList[x][j] -= 1
+                                # print(
+                                #     "2준비된 스킬 개수 리스트:",
+                                #     self.preparedSkillCountList,
+                                # )
+            if (
+                i in self.preparedSkillList[1]
+                and not (i in tempL)
+                and self.ifUseSkill[self.selectedSkillList[i]]
+            ):
+                for j, k in enumerate(self.preparedSkillList[1]):
+                    if i == k:
+                        while (
+                            self.preparedSkillCountList[1][j]
+                            >= self.preparedSkillComboList[i]
+                        ):
+                            for _ in range(self.preparedSkillComboList[i]):
+                                if self.isSkillCasting[self.serverID][self.jobID][
+                                    self.selectedSkillList[k]
+                                ]:
+                                    self.taskList.append(
+                                        [k, True]
+                                    )  # skill: k, click: True
+                                else:
+                                    self.taskList.append(
+                                        [k, False]
+                                    )  # skill: k, click: False
+                                self.preparedSkillCountList[1][j] -= 1
+                                # print(
+                                #     "2준비된 스킬 개수 리스트:",
+                                #     self.preparedSkillCountList,
+                                # )
+        self.reloadPreparedSkillList()
+
+    def checkIsLinkReady(self):
         self.preparedLinkSkillList = []
         for x in range(len(self.linkSkillRequirementList)):
             ready = [False] * len(self.linkSkillRequirementList[x])
@@ -325,83 +504,6 @@ class MainWindow(QWidget):
 
             if not False in ready:
                 self.preparedLinkSkillList.append(x)
-        # print("준비된 연계스킬리스트:", self.preparedLinkSkillList)
-
-        # 연계스킬 사용
-        for i in self.preparedLinkSkillList:
-            for j in range(len(self.usingLinkSkillList[i])):
-                skill = self.usingLinkSkillList[i][j]
-                count = self.usingLinkSkillComboList[i][j]
-
-                for k in [0, 1]:
-                    # print(
-                    #     "i:",
-                    #     i,
-                    #     "skill:",
-                    #     skill,
-                    #     "self.preparedSkillList[k]:",
-                    #     self.preparedSkillList[k],
-                    # )
-                    if skill in self.preparedSkillList[k]:
-                        for idx in range(len(self.preparedSkillList[k])):
-                            if skill == self.preparedSkillList[k][idx]:
-                                for _ in range(count):
-                                    if self.isSkillCasting[self.serverID][self.jobID][
-                                        skill
-                                    ]:
-                                        self.taskList.append(
-                                            [skill, True]
-                                        )  # skill: k, click: True
-                                    else:
-                                        self.taskList.append(
-                                            [skill, False]
-                                        )  # skill: k, click: False
-                                    self.preparedSkillCountList[k][idx] -= 1
-                                    # print(
-                                    #     "count: ",
-                                    #     count,
-                                    #     "1준비된 스킬 개수 리스트:",
-                                    #     self.preparedSkillCountList,
-                                    # )
-        self.preparedLinkSkillList = []
-        self.reloadPreparedSkillList()
-
-        # 준비된 스킬 정렬순서대로 사용
-        for i in self.skillSequences:
-            tempL = []
-            for x in range(len(self.linkSkillRequirementList)):
-                for y in self.linkSkillRequirementList[x]:
-                    tempL.append(y)  # 연계스킬 사용중인 스킬 전부 모으기
-            if (
-                i in self.preparedSkillList[1]
-                and i in tempL
-                and self.ifUseSole[self.selectedSkillList[i]]
-            ) or (
-                i in self.preparedSkillList[1]
-                and not (i in tempL)
-                and self.ifUseSkill[self.selectedSkillList[i]]
-            ):
-                for j, k in enumerate(self.preparedSkillList[1]):
-                    if i == k:
-                        while (
-                            self.preparedSkillCountList[1][j]
-                            >= self.preparedSkillComboList[i]
-                        ):
-                            for _ in range(self.preparedSkillComboList[i]):
-                                if self.isSkillCasting[self.serverID][self.jobID][k]:
-                                    self.taskList.append(
-                                        [k, True]
-                                    )  # skill: k, click: True
-                                else:
-                                    self.taskList.append(
-                                        [k, False]
-                                    )  # skill: k, click: False
-                                self.preparedSkillCountList[1][j] -= 1
-                                # print(
-                                #     "2준비된 스킬 개수 리스트:",
-                                #     self.preparedSkillCountList,
-                                # )
-        self.reloadPreparedSkillList()
 
     def reloadPreparedSkillList(self):
         # self.printMacroInfo()
@@ -456,8 +558,15 @@ class MainWindow(QWidget):
         elif e.modifiers() & Qt.KeyboardModifier.ControlModifier:
             if e.key() == Qt.Key.Key_W:
                 self.onTabRemoveClick(self.recentPreset)
+        elif e.key() == Qt.Key.Key_Return:
+            if self.activePopup == "settingDelay":
+                self.onInputPopupClick("delay")
+            elif self.activePopup == "settingCooltime":
+                self.onInputPopupClick("cooltime")
+            elif self.activePopup == "changeTabName":
+                self.onInputPopupClick(("tabName", self.recentPreset))
         else:
-            print((e.key()))
+            pass
 
     ## 버전 확인을 위한 함수
     def checkVersion(self):
@@ -488,6 +597,10 @@ class MainWindow(QWidget):
         self.isActivated = False
         self.loopNum = 0
         self.defaultDelay = 150
+        self.minDelay = 50
+        self.maxDelay = 1000
+        self.minCooltime = 0
+        self.maxCooltime = 50
         self.selectedItemSlot = -1
         self.isSkillSelecting = -1
         self.settingType = -1
@@ -565,88 +678,88 @@ class MainWindow(QWidget):
         self.skillNameList = [
             [
                 [
-                    "스킬이름1",
-                    "스킬이름2",
-                    "스킬이름3",
-                    "스킬이름4",
-                    "스킬이름5",
-                    "스킬이름6",
-                    "스킬이름7",
-                    "스킬이름8",
+                    "월성검법",
+                    "수류검법",
+                    "섬광베기",
+                    "월성경공",
+                    "월광검법",
+                    "기합",
+                    "청무흑검",
+                    "섬극난무",
                 ],
                 [
-                    "스킬이름2",
-                    "스킬이름1",
-                    "스킬이름3",
-                    "스킬이름4",
-                    "스킬이름5",
-                    "스킬이름6",
-                    "스킬이름7",
-                    "스킬이름8",
+                    "매화노방",
+                    "매개이도",
+                    "매화낙섬",
+                    "매화낙락",
+                    "매화분분",
+                    "매인설한",
+                    "운기",
+                    "매화만리향",
                 ],
                 [
-                    "스킬이름3",
-                    "스킬이름2",
-                    "스킬이름1",
-                    "스킬이름4",
-                    "스킬이름5",
-                    "스킬이름6",
-                    "스킬이름7",
-                    "스킬이름8",
+                    "급마살",
+                    "겁속살투",
+                    "극독무격",
+                    "암행술",
+                    "회극살투",
+                    "혈마검법",
+                    "삼천극",
+                    "적월혈무",
                 ],
                 [
-                    "스킬이름4",
-                    "스킬이름2",
-                    "스킬이름3",
-                    "스킬이름1",
-                    "스킬이름5",
-                    "스킬이름6",
-                    "스킬이름7",
-                    "스킬이름8",
+                    "흑무참",
+                    "암자영참",
+                    "비연참",
+                    "음영천유",
+                    "천강격류",
+                    "천지극참",
+                    "유성격참",
+                    "검우무진",
                 ],
                 [
-                    "스킬이름5",
-                    "스킬이름2",
-                    "스킬이름3",
-                    "스킬이름4",
-                    "스킬이름1",
-                    "스킬이름6",
-                    "스킬이름7",
-                    "스킬이름8",
+                    "열화주",
+                    "낙뢰",
+                    "회복진",
+                    "이형환위",
+                    "격뢰성진",
+                    "삼매진화",
+                    "열화지옥",
+                    "협성마공",
                 ],
                 [
-                    "스킬이름6",
-                    "스킬이름2",
-                    "스킬이름3",
-                    "스킬이름4",
-                    "스킬이름5",
-                    "스킬이름1",
-                    "스킬이름7",
-                    "스킬이름8",
+                    "파광부적",
+                    "환공홍매",
+                    "영기회생",
+                    "천상제",
+                    "부폭지술",
+                    "무혼절기",
+                    "연공지폭",
+                    "선무회생",
                 ],
                 [
-                    "스킬이름7",
-                    "스킬이름2",
-                    "스킬이름3",
-                    "스킬이름4",
-                    "스킬이름5",
-                    "스킬이름6",
-                    "스킬이름1",
-                    "스킬이름8",
+                    "빙정관사",
+                    "삼로빙사",
+                    "빙화연사",
+                    "발궁순행",
+                    "빙옥수렴",
+                    "빙설극각",
+                    "순행빙결",
+                    "혹한비조",
                 ],
                 [
-                    "스킬이름8",
-                    "스킬이름2",
-                    "스킬이름3",
-                    "스킬이름4",
-                    "스킬이름5",
-                    "스킬이름6",
-                    "스킬이름7",
-                    "스킬이름1",
+                    "이중연섬",
+                    "풍력격퇴",
+                    "명환진궁",
+                    "일보퇴격",
+                    "둔속사화",
+                    "유선속발",
+                    "연공신촉",
+                    "극력일사",
                 ],
             ]
         ]
-        self.skillCooltimeList = [[[3.0] * 8] * 8]
+        self.skillCooltimeList = [[[4.5] * 8] * 8]
         # self.skillCooltimeList = [
         #     [
         #         [6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0],
@@ -661,26 +774,26 @@ class MainWindow(QWidget):
         # ]
         self.skillComboCountList = [
             [
-                [3, 3, 1, 1, 3, 1, 2, 2],
-                [3, 3, 1, 1, 3, 1, 2, 2],
-                [1, 3, 3, 1, 3, 1, 2, 2],
-                [1, 3, 1, 3, 3, 1, 2, 2],
-                [3, 3, 1, 1, 3, 1, 2, 2],
-                [1, 3, 1, 1, 3, 3, 2, 2],
-                [2, 3, 1, 1, 3, 1, 3, 2],
-                [2, 3, 1, 1, 3, 1, 2, 3],
+                [3, 2, 2, 1, 3, 1, 1, 3],
+                [2, 3, 2, 1, 1, 2, 1, 1],
+                [2, 2, 1, 1, 2, 3, 3, 1],
+                [1, 3, 1, 1, 1, 3, 1, 1],
+                [3, 2, 2, 1, 1, 3, 1, 1],
+                [3, 1, 1, 1, 2, 1, 1, 1],
+                [2, 2, 1, 1, 1, 1, 1, 1],
+                [2, 2, 1, 1, 2, 2, 1, 1],
             ]
         ]
         self.isSkillCasting = [
             [
                 [True, True, False, False, True, False, False, True],
-                [True, True, False, False, True, False, False, True],
-                [False, True, True, False, True, False, False, True],
-                [False, True, False, True, True, False, False, True],
-                [True, True, False, False, True, False, False, True],
+                [True, True, True, False, False, True, False, True],
+                [True, True, False, False, True, True, True, True],
+                [True, True, False, False, True, True, False, True],
+                [True, True, False, False, True, False, True, False],
                 [False, True, False, False, True, True, False, True],
-                [False, True, False, False, True, False, True, True],
-                [True, True, False, False, True, False, False, True],
+                [True, True, False, False, True, True, False, True],
+                [True, True, False, False, True, True, True, True],
             ]
         ]
 
@@ -781,6 +894,14 @@ class MainWindow(QWidget):
         self.labelCreator.move(2, self.height() - 25)
 
         # 위젯 배치
+        self.skillBackground = QFrame(self)
+        self.skillBackground.setStyleSheet(
+            """QFrame { background-color: #eeeeff; border-top-left-radius :0px; border-top-right-radius : 30px; border-bottom-left-radius : 30px; border-bottom-right-radius : 30px }"""
+        )
+        self.skillBackground.setFixedSize(560, 450)
+        self.skillBackground.move(360, 69)
+        self.skillBackground.setGraphicsEffect(self.getShadow(0, 5, 20, 100))
+
         self.tabButtonList = []
         self.tabList = []
         self.tabRemoveList = []
@@ -792,7 +913,7 @@ class MainWindow(QWidget):
                 )
             else:
                 tabBackground.setStyleSheet(
-                    """background-color: #cccccc; border-top-left-radius :20px; border-top-right-radius : 20px; border-bottom-left-radius : 0px; border-bottom-right-radius : 0px"""
+                    """background-color: #dddddd; border-top-left-radius :20px; border-top-right-radius : 20px; border-bottom-left-radius : 0px; border-bottom-right-radius : 0px"""
                 )
             tabBackground.setFixedSize(250, 50)
             tabBackground.move(360 + 250 * tabNum, 20)
@@ -818,10 +939,10 @@ class MainWindow(QWidget):
                 tabButton.setStyleSheet(
                     """
                     QPushButton {
-                        background-color: #cccccc; border-radius: 15px; text-align: left;
+                        background-color: #dddddd; border-radius: 15px; text-align: left;
                     }
                     QPushButton:hover {
-                        background-color: #dddddd;
+                        background-color: #eeeeee;
                     }
                 """
                 )
@@ -832,16 +953,28 @@ class MainWindow(QWidget):
                 partial(lambda x: self.onTabRemoveClick(x), tabNum)
             )
             tabRemoveButton.setFont(self.font16)
-            tabRemoveButton.setStyleSheet(
+            if tabNum == self.recentPreset:
+                tabRemoveButton.setStyleSheet(
+                    """
+                    QPushButton {
+                        background-color: transparent; border-radius: 20px;
+                    }
+                    QPushButton:hover {
+                        background-color: #fafaff;
+                    }
                 """
-                QPushButton {
-                    background-color: transparent; border-radius: 20px;
-                }
-                QPushButton:hover {
-                    background-color: #dddddd;
-                }
-            """
-            )
+                )
+            else:
+                tabRemoveButton.setStyleSheet(
+                    """
+                    QPushButton {
+                        background-color: transparent; border-radius: 20px;
+                    }
+                    QPushButton:hover {
+                        background-color: #eeeeee;
+                    }
+                """
+                )
             pixmap = QPixmap(convertResourcePath("resource\\x.png"))
             tabRemoveButton.setIcon(QIcon(pixmap))
             tabRemoveButton.setFixedSize(40, 40)
@@ -860,7 +993,7 @@ class MainWindow(QWidget):
                 background-color: transparent; border-radius: 20px;
             }
             QPushButton:hover {
-                background-color: #dddddd;
+                background-color: #eeeeee;
             }
         """
         )
@@ -868,14 +1001,6 @@ class MainWindow(QWidget):
         self.tabAddButton.setIcon(QIcon(pixmap))
         self.tabAddButton.setFixedSize(40, 40)
         self.tabAddButton.move(370 + 250 * len(self.tabNames), 25)
-
-        self.skillBackground = QFrame(self)
-        self.skillBackground.setStyleSheet(
-            """QFrame { background-color: #eeeeff; border-top-left-radius :0px; border-top-right-radius : 30px; border-bottom-left-radius : 30px; border-bottom-right-radius : 30px }"""
-        )
-        self.skillBackground.setFixedSize(560, 450)
-        self.skillBackground.move(360, 69)
-        self.skillBackground.setGraphicsEffect(self.getShadow(0, 5, 20, 100))
 
         self.skillPreviewFrame = QFrame(self.skillBackground)
         self.skillPreviewFrame.setStyleSheet(
@@ -1047,7 +1172,7 @@ class MainWindow(QWidget):
                     QIcon(pixmap)
                 )
                 self.settingSkillSequences[self.selectedSkillList[num]].setText("-")
-                print(self.selectedSkillList)
+                # print(self.selectedSkillList)
 
             self.selectedSkillList[num] = -1
             self.cancelSkillSelection()
@@ -1140,6 +1265,7 @@ class MainWindow(QWidget):
             self.initMacro()
             self.addTaskList()
             # self.printMacroInfo(True)
+            # print(self.taskList)
 
         for i in self.skillPreviewList:
             i.deleteLater()
@@ -1154,7 +1280,9 @@ class MainWindow(QWidget):
             skill = QPushButton("", self.skillPreviewFrame)
             # self.tabAddButton.clicked.connect(self.onTabAddClick)
             skill.setStyleSheet("background-color: transparent;")
-            pixmap = QPixmap(self.getSkillImage(self.taskList[i][0], 1))
+            pixmap = QPixmap(
+                self.getSkillImage(self.selectedSkillList[self.taskList[i][0]], 1)
+            )
             skill.setIcon(QIcon(pixmap))
             skill.setIconSize(QSize(min(width, height), min(width, height)))
             skill.setFixedSize(width, height)
@@ -1281,6 +1409,8 @@ class MainWindow(QWidget):
         for i in self.settingSkillKey:
             i.deleteLater()
         for i in self.settingSkillRemove:
+            i.deleteLater()
+        for i in self.settingAMDP:
             i.deleteLater()
 
         self.sidebarButton2.setStyleSheet(
@@ -1650,6 +1780,7 @@ class MainWindow(QWidget):
         self.settingSkillBackground = []
         self.settingSkillKey = []
         self.settingSkillRemove = []
+        self.settingAMDP = []
         for i, j in enumerate(self.linkSkillList):
             line = QFrame(self.sidebarFrame)
             line.setStyleSheet("QFrame { background-color: #b4b4b4;}")
@@ -1657,6 +1788,20 @@ class MainWindow(QWidget):
             line.move(18, 251 + 51 * i)
             line.show()
             self.settingLines.append(line)
+
+            am_dp = QFrame(self.sidebarFrame)  # auto, manual 표시 프레임
+            if j[0]:
+                am_dp.setStyleSheet(
+                    "QFrame { background-color: #ff0000; border: 0px solid black; border-radius: 2px; }"
+                )
+            else:
+                am_dp.setStyleSheet(
+                    "QFrame { background-color: #0000ff; border: 0px solid black; border-radius: 2px; }"
+                )
+            am_dp.setFixedSize(4, 4)
+            am_dp.move(280, 224 + 51 * i)
+            am_dp.show()
+            self.settingAMDP.append(am_dp)
 
             imageCount = min(len(j[2]), 12)
             if imageCount <= 3:
@@ -1951,22 +2096,28 @@ class MainWindow(QWidget):
         self.settingPopupFrame.setStyleSheet(
             "QFrame { background-color: white; border-radius: 10px; }"
         )
-        self.settingPopupFrame.setFixedSize(145, 75)
+        self.settingPopupFrame.setFixedSize(185, 95)
         self.settingPopupFrame.move(100, 285 + 51 * num)
         self.settingPopupFrame.setGraphicsEffect(self.getShadow(0, 5, 30, 150))
         self.settingPopupFrame.show()
 
         for i in range(8):
             button = QPushButton("", self.settingPopupFrame)
-            pixmap = QPixmap(self.getSkillImage(i))
+            pixmap = QPixmap(
+                self.getSkillImage(i)
+                if i in self.selectedSkillList
+                else convertResourcePath(
+                    f"resource\\skill\\{self.serverID}\\{self.jobID}\\{i}\\off.png"
+                )
+            )
             button.setIcon(QIcon(pixmap))
-            button.setIconSize(QSize(30, 30))
+            button.setIconSize(QSize(40, 40))
             button.clicked.connect(
                 partial(lambda x: self.oneLinkSkillTypePopupClick(x), (data, num, i))
             )
-            button.setFixedSize(30, 30)
+            button.setFixedSize(40, 40)
             # button.setStyleSheet("background-color: transparent;")
-            button.move(35 * (i % 4) + 5, 5 + (i // 4) * 35)
+            button.move(45 * (i % 4) + 5, 5 + (i // 4) * 45)
 
             button.show()
 
@@ -1990,6 +2141,7 @@ class MainWindow(QWidget):
         if len(data[2]) == 1:
             return
         del data[2][num]
+        data[0] = 1
         self.reloadSetting3(data)
 
     ## 링크스킬 저장
@@ -2035,6 +2187,7 @@ class MainWindow(QWidget):
         if remainSkill == -1:
             self.makeNoticePopup("exceedMaxLinkSkill")
         data[2].append([0, 1])
+        data[0] = 1
         self.reloadSetting3(data)
 
     ## 링크스킬 사용 횟수 설정
@@ -2089,6 +2242,7 @@ class MainWindow(QWidget):
         data[2][num][1] = i
         if checkRemain() == -1:
             self.makeNoticePopup("exceedMaxLinkSkill")
+        data[0] = 1
         self.reloadSetting3(data)
 
     ## 링크스킬 키 설정
@@ -2112,20 +2266,20 @@ class MainWindow(QWidget):
         #     if not self.useSkill[i[0]]:
         #         self.makeNoticePopup("skillNotUsing")
         #         return
+        if len(self.linkSkillList) != 0:
+            prevData = copy.deepcopy(self.linkSkillList[data[3]])
+            self.linkSkillList[data[3]] = data[:3]
+            autoSkillList = []
+            for i in self.linkSkillList:
+                if i[0] == 0:
+                    for j in range(len(i[2])):
+                        autoSkillList.append(i[2][j][0])
+            self.linkSkillList[data[3]] = prevData
 
-        prevData = copy.deepcopy(self.linkSkillList[data[3]])
-        self.linkSkillList[data[3]] = data[:3]
-        autoSkillList = []
-        for i in self.linkSkillList:
-            if i[0] == 0:
-                for j in range(len(i[2])):
-                    autoSkillList.append(i[2][j][0])
-        self.linkSkillList[data[3]] = prevData
-
-        for i in range(len(data[2])):
-            if data[2][i][0] in autoSkillList:
-                self.makeNoticePopup("autoAlreadyExist")
-                return
+            for i in range(len(data[2])):
+                if data[2][i][0] in autoSkillList:
+                    self.makeNoticePopup("autoAlreadyExist")
+                    return
 
         data[0] = 0
         self.reloadSetting3(data)
@@ -2332,18 +2486,18 @@ class MainWindow(QWidget):
         for tabNum in range(len(self.tabNames)):
             if tabNum == self.recentPreset:
                 self.tabList[tabNum].setStyleSheet(
-                    """background-color: #eeeef5; border-top-left-radius :20px; border-top-right-radius : 20px; border-bottom-left-radius : 0px; border-bottom-right-radius : 0px"""
+                    """background-color: #eeeeff; border-top-left-radius :20px; border-top-right-radius : 20px; border-bottom-left-radius : 0px; border-bottom-right-radius : 0px"""
                 )
             else:
                 self.tabList[tabNum].setStyleSheet(
-                    """background-color: #cccccc; border-top-left-radius :20px; border-top-right-radius : 20px; border-bottom-left-radius : 0px; border-bottom-right-radius : 0px"""
+                    """background-color: #dddddd; border-top-left-radius :20px; border-top-right-radius : 20px; border-bottom-left-radius : 0px; border-bottom-right-radius : 0px"""
                 )
 
             if tabNum == self.recentPreset:
                 self.tabButtonList[tabNum].setStyleSheet(
                     """
                     QPushButton {
-                        background-color: #eeeef5; border-radius: 15px; text-align: left;
+                        background-color: #eeeeff; border-radius: 15px; text-align: left;
                     }
                     QPushButton:hover {
                         background-color: #fafaff;
@@ -2354,25 +2508,43 @@ class MainWindow(QWidget):
                 self.tabButtonList[tabNum].setStyleSheet(
                     """
                     QPushButton {
-                        background-color: #cccccc; border-radius: 15px; text-align: left;
+                        background-color: #dddddd; border-radius: 15px; text-align: left;
                     }
                     QPushButton:hover {
-                        background-color: #dddddd;
+                        background-color: #eeeeee;
                     }
                 """
                 )
-            self.tabRemoveList[tabNum].setStyleSheet(
+            if tabNum == self.recentPreset:
+                self.tabRemoveList[tabNum].setStyleSheet(
+                    """
+                    QPushButton {
+                        background-color: transparent; border-radius: 20px;
+                    }
+                    QPushButton:hover {
+                        background-color: #fafaff;
+                    }
                 """
-                QPushButton {
-                    background-color: transparent; border-radius: 20px;
-                }
-                QPushButton:hover {
-                    background-color: #dddddd;
-                }
-            """
-            )
+                )
+            else:
+                self.tabRemoveList[tabNum].setStyleSheet(
+                    """
+                    QPushButton {
+                        background-color: transparent; border-radius: 20px;
+                    }
+                    QPushButton:hover {
+                        background-color: #eeeeee;
+                    }
+                """
+                )
 
         self.cancelSkillSelection()
+        for i in range(8):
+            pixmap = QPixmap(self.getSkillImage(i))
+            self.selectableSkillImageButton[i].setIcon(QIcon(pixmap))
+            self.selectableSkillImageName[i].setText(
+                self.skillNameList[self.serverID][self.jobID][i]
+            )
         for i in range(6):
             if self.selectedSkillList[i] != -1:
                 pixmap = QPixmap(self.getSkillImage(self.selectedSkillList[i]))
@@ -2491,16 +2663,16 @@ class MainWindow(QWidget):
                 text = "해당 스킬이 너무 많이 사용되어 연계가 정상적으로 작동하지 않을 수 있습니다."
                 icon = "warning"
             case "delayInputError":
-                text = "딜레이는 1~200까지의 수를 입력해야 합니다."
+                text = f"딜레이는 {self.minDelay}~{self.maxDelay}까지의 수를 입력해야 합니다."
                 icon = "error"
             case "cooltimeInputError":
-                text = "쿨타임은 0~50까지의 수를 입력해야 합니다."
+                text = f"쿨타임은 {self.minCooltime}~{self.maxCooltime}까지의 수를 입력해야 합니다."
                 icon = "error"
             case "StartKeyChangeError":
                 text = "해당 키는 이미 사용중입니다."
                 icon = "error"
             case "RequireUpdate":
-                text = f"프로그램 업데이트가 필요합니다.\n현재 버전: {version}, 최신버전: {self.recentVersion}"
+                text = f"프로그램이 최신버전이 아닙니다.\n현재 버전: {version}, 최신버전: {self.recentVersion}"
                 icon = "warning"
 
                 button = QPushButton("다운로드 링크", noticePopup)
@@ -2516,11 +2688,11 @@ class MainWindow(QWidget):
                             """
                 )
                 button.setFixedSize(150, 32)
-                button.move(48, 66)
+                button.move(48, 86)
                 button.clicked.connect(lambda: open_new(self.update_url))
                 button.show()
 
-                frameHeight = 110
+                frameHeight = 134
             case "FailedUpdateCheck":
                 text = f"프로그램 업데이트 확인에 실패하였습니다."
                 icon = "warning"
@@ -2550,9 +2722,11 @@ class MainWindow(QWidget):
         )
         noticePopupLabel.setFont(self.font12)
         noticePopupLabel.setStyleSheet("background-color: white; border-radius: 10px;")
-        noticePopupLabel.setFixedSize(304, 54)
+        noticePopupLabel.setFixedSize(304, frameHeight - 24)
         noticePopupLabel.move(48, 12)
         noticePopupLabel.show()
+        if e == "RequireUpdate":
+            button.raise_()
 
         noticePopupRemove = QPushButton(noticePopup)
         noticePopupRemove.setStyleSheet(
@@ -2640,6 +2814,7 @@ class MainWindow(QWidget):
         )
         self.settingPopupInput.setFixedSize(width - 70, 30)
         self.settingPopupInput.move(5, 5)
+        self.settingPopupInput.setFocus()
 
         self.settingPopupButton = QPushButton("적용", self.settingPopupFrame)
         self.settingPopupButton.setFont(self.font12)
@@ -2680,7 +2855,7 @@ class MainWindow(QWidget):
 
         match type:
             case "delay":
-                if not (1 <= text <= 200):
+                if not (self.minDelay <= text <= self.maxDelay):
                     self.disablePopup()
                     self.makeNoticePopup("delayInputError")
                     return
@@ -2688,7 +2863,7 @@ class MainWindow(QWidget):
                 self.inputDelay = text
                 self.delay = text
             case "cooltime":
-                if not (0 <= text <= 50):
+                if not (self.minCooltime <= text <= self.maxCooltime):
                     self.disablePopup()
                     self.makeNoticePopup("cooltimeInputError")
                     return
@@ -2816,10 +2991,14 @@ class MainWindow(QWidget):
         if self.jobID != num:
             self.jobID = num
             self.selectedSkillList = [-1, -1, -1, -1, -1, -1]
+            self.linkSkillList = []
 
             self.buttonJobList.setText(self.jobList[self.serverID][num])
 
-            # self.showSkillPreview()
+            for i in range(8):
+                self.comboCount[i] = self.skillComboCountList[self.serverID][
+                    self.jobID
+                ][i]
 
             for i in range(8):
                 pixmap = QPixmap(self.getSkillImage(i))
@@ -3915,7 +4094,7 @@ class MainWindow(QWidget):
                 {
                     "name": "스킬 매크로",
                     "skills": {
-                        "activeSkills": [0, 1, 2, 3, 4, 5],
+                        "activeSkills": [-1, -1, -1, -1, -1, -1],
                         "skillKeys": ["2", "3", "4", "5", "6", "7"],
                     },
                     "settings": {
@@ -4004,7 +4183,7 @@ class MainWindow(QWidget):
             {
                 "name": "스킬 매크로",
                 "skills": {
-                    "activeSkills": [0, 1, 2, 3, 4, 5],
+                    "activeSkills": [-1, -1, -1, -1, -1, -1],
                     "skillKeys": ["2", "3", "4", "5", "6", "7"],
                 },
                 "settings": {
@@ -4034,7 +4213,7 @@ class MainWindow(QWidget):
 
 
 if __name__ == "__main__":
-    version = "3.0.0-beta.1"
+    version = "v3.0.0-beta.2"
     fileDir = "C:\\PDFiles\\PDSkillMacro.json"
     app = QApplication(sys.argv)
     window = MainWindow()
