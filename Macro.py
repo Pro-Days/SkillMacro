@@ -551,7 +551,10 @@ class MainWindow(QWidget):
 
     def keyPressEvent(self, e):  # 키가 눌러졌을 때 실행됨
         if e.key() == Qt.Key.Key_Escape:
-            if self.activeErrorPopupCount >= 1:
+            if self.isTabRemovePopupActivated:
+                self.tabRemoveBackground.deleteLater()
+                self.isTabRemovePopupActivated = False
+            elif self.activeErrorPopupCount >= 1:
                 self.removeNoticePopup()
             elif self.activePopup != "":
                 self.disablePopup()
@@ -559,7 +562,9 @@ class MainWindow(QWidget):
             if e.key() == Qt.Key.Key_W:
                 self.onTabRemoveClick(self.recentPreset)
         elif e.key() == Qt.Key.Key_Return:
-            if self.activePopup == "settingDelay":
+            if self.isTabRemovePopupActivated:
+                self.onTabRemovePopupClick(self.recentPreset)
+            elif self.activePopup == "settingDelay":
                 self.onInputPopupClick("delay")
             elif self.activePopup == "settingCooltime":
                 self.onInputPopupClick("cooltime")
@@ -594,6 +599,8 @@ class MainWindow(QWidget):
 
     ## 초기 변수 설정
     def resetVar(self):
+        self.activeErrorPopupNumber = 0
+        self.isTabRemovePopupActivated = False
         self.isActivated = False
         self.loopNum = 0
         self.defaultDelay = 150
@@ -2645,6 +2652,9 @@ class MainWindow(QWidget):
     def makeNoticePopup(self, e):
         noticePopup = QFrame(self)
 
+        if self.isTabRemovePopupActivated:
+            self.tabRemoveBackground.raise_()
+
         frameHeight = 78
         match e:
             case "MacroIsRunning":
@@ -2741,20 +2751,34 @@ class MainWindow(QWidget):
         )
         noticePopupRemove.setFixedSize(32, 32)
         noticePopupRemove.move(355, 12)
-        noticePopupRemove.clicked.connect(self.removeNoticePopup)
+        noticePopupRemove.clicked.connect(
+            partial(lambda x: self.removeNoticePopup(x), self.activeErrorPopupNumber)
+        )
         pixmap = QPixmap(convertResourcePath("resource\\x.png"))
         noticePopupRemove.setIcon(QIcon(pixmap))
         noticePopupRemove.setIconSize(QSize(24, 24))
         noticePopupRemove.show()
 
-        self.activeErrorPopup.append([noticePopup, frameHeight])
+        self.activeErrorPopup.append(
+            [noticePopup, frameHeight, self.activeErrorPopupNumber]
+        )
         self.activeErrorPopupCount += 1
+        self.activeErrorPopupNumber += 1
 
     ## 알림 창 제거
-    def removeNoticePopup(self):
-        self.activeErrorPopup[-1][0].deleteLater()
-        self.activeErrorPopup.pop()
+    def removeNoticePopup(self, num=-1):
+        if num != -1:
+            for i, j in enumerate(self.activeErrorPopup):
+                if num == j[2]:
+                    j[0].deleteLater()
+                    self.activeErrorPopup.pop(i)
+        else:
+            self.activeErrorPopup[-1][0].deleteLater()
+            self.activeErrorPopup.pop()
+        # self.activeErrorPopup[num][0].deleteLater()
+        # self.activeErrorPopup.pop(0)
         self.activeErrorPopupCount -= 1
+        self.updatePosition()
 
     ## 모든 팝업창 제거
     def disablePopup(self):
@@ -3705,16 +3729,78 @@ class MainWindow(QWidget):
 
     ## 탭 제거버튼 클릭
     def onTabRemoveClick(self, num):
+        self.isTabRemovePopupActivated = True
+        self.tabRemoveBackground = QFrame(self)
+        self.tabRemoveBackground.setStyleSheet("background-color: rgba(0, 0, 0, 100);")
+        self.tabRemoveBackground.setFixedSize(self.width(), self.height())
+        self.tabRemoveBackground.show()
+
+        self.tabRemoveFrame = QFrame(self.tabRemoveBackground)
+        self.tabRemoveFrame.setStyleSheet(
+            "QFrame { background-color: white; border-radius: 20px; }"
+        )
+        self.tabRemoveFrame.setFixedSize(340, 120)
+        self.tabRemoveFrame.move(
+            round(self.width() * 0.5 - 170), round(self.height() * 0.5 - 60)
+        )
+        self.tabRemoveFrame.show()
+
+        self.tabRemoveLabel = QLabel(
+            f'정말 "{self.tabNames[num]}" 탭을 삭제하시겠습니까?', self.tabRemoveFrame
+        )
+        self.tabRemoveLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.tabRemoveLabel.setFont(self.font12)
+        self.tabRemoveLabel.setFixedSize(320, 40)
+        self.tabRemoveLabel.move(10, 10)
+        self.tabRemoveLabel.show()
+
+        self.settingJobButton = QPushButton("예", self.tabRemoveFrame)
+        self.settingJobButton.setFont(self.font12)
+        self.settingJobButton.clicked.connect(lambda: self.onTabRemovePopupClick(num))
+        self.settingJobButton.setStyleSheet(
+            """
+                        QPushButton {
+                            background-color: #86A7FC; border-radius: 10px;
+                        }
+                        QPushButton:hover {
+                            background-color: #6498f0;
+                        }
+                    """
+        )
+        self.settingJobButton.setFixedSize(100, 40)
+        self.settingJobButton.move(50, 60)
+        self.settingJobButton.setGraphicsEffect(self.getShadow(2, 2, 20))
+        self.settingJobButton.show()
+
+        self.settingJobButton = QPushButton("아니오", self.tabRemoveFrame)
+        self.settingJobButton.setFont(self.font12)
+        self.settingJobButton.clicked.connect(lambda: self.onTabRemovePopupClick(num))
+        self.settingJobButton.setStyleSheet(
+            """
+                        QPushButton {
+                            background-color: #ffffff; border-radius: 10px;
+                        }
+                        QPushButton:hover {
+                            background-color: #eeeeee;
+                        }
+                    """
+        )
+        self.settingJobButton.setFixedSize(100, 40)
+        self.settingJobButton.move(170, 60)
+        self.settingJobButton.setGraphicsEffect(self.getShadow(2, 2, 20))
+        self.settingJobButton.show()
+
+    def onTabRemovePopupClick(self, num):
         if self.isActivated:
             self.disablePopup()
             self.makeNoticePopup("MacroIsRunning")
             return
 
-        # print("act")
         self.disablePopup()
+        self.tabRemoveBackground.deleteLater()
+        self.isTabRemovePopupActivated = False
 
         tabCount = len(self.tabNames)
-        # print(tabCount)
 
         if tabCount != 1:
             if self.recentPreset == num:
@@ -4018,6 +4104,13 @@ class MainWindow(QWidget):
         for i in self.activeErrorPopup:
             i[0].raise_()
 
+        if self.isTabRemovePopupActivated:
+            self.tabRemoveBackground.setFixedSize(self.width(), self.height())
+            self.tabRemoveFrame.move(
+                round(self.width() * 0.5 - 170), round(self.height() * 0.5 - 60)
+            )
+            self.tabRemoveBackground.raise_()
+
     ## 실행, 탭 변경 시 데이터 로드
     def dataLoad(self, num=-1):
         try:
@@ -4213,8 +4306,8 @@ class MainWindow(QWidget):
 
 
 if __name__ == "__main__":
-    version = "v3.0.0-beta.2"
-    fileDir = "C:\\PDFiles\\PDSkillMacro.json"
+    version = "v3.0.0-beta.3"
+    fileDir = convertResourcePath("PDSkillMacro.json")
     app = QApplication(sys.argv)
     window = MainWindow()
     sys.exit(app.exec())
