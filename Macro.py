@@ -38,7 +38,7 @@ def convertResourcePath(relative_path) -> str:
     return os.path.join(base_path, relative_path)
 
 
-## 최신버전 확인 클래스
+## 최신버전 확인용 클래스
 class VersionChecker(QObject):
     versionChecked = pyqtSignal(str)
 
@@ -63,7 +63,7 @@ class MainWindow(QWidget):
         super().__init__()
         self.setFont()
         self.resetVar()
-        self.setWindowIcon(QIcon(convertResourcePath("resource\\icon.png")))
+        self.setWindowIcon(self.icon)
         self.dataLoad()
         self.initUI()
 
@@ -85,16 +85,28 @@ class MainWindow(QWidget):
             for i in self.linkSkillList:
                 linkKeys.append(i[1])
 
+            # print(convertedKey)
+            # print(linkKeys)
+
             if self.isActivated:
                 self.afkTime0 = time.time()
             # print(key, convertedKey)
+
             if convertedKey == self.startKey:
                 if self.isActivated:  # On -> Off
                     # print("Off")
                     self.isActivated = False
+
+                    # 윈도우 아이콘 변경
+                    # self.setWindowIcon(self.icon)
+
                 else:  # Off -> On
                     # print("On")
                     self.isActivated = True
+
+                    # 윈도우 아이콘 변경
+                    # self.setWindowIcon(self.icon_on)
+
                     self.loopNum += 1
                     self.selectedItemSlot = -1
                     Thread(target=self.runMacro, args=[self.loopNum]).start()
@@ -120,10 +132,8 @@ class MainWindow(QWidget):
             # self.showSkillPreview()
 
             ## Away From Keyboard ##
-            # afkTime1 = time.time()
-            # afk = afkTime1 - self.afkTime0
-            # if afk >= 10:
-            #     self.isActivated = False
+            if time.time() - self.afkTime0 >= 10:
+                self.isActivated = False
 
             time.sleep(self.delay * 0.001)
 
@@ -552,8 +562,7 @@ class MainWindow(QWidget):
     def keyPressEvent(self, e):  # 키가 눌러졌을 때 실행됨
         if e.key() == Qt.Key.Key_Escape:
             if self.isTabRemovePopupActivated:
-                self.tabRemoveBackground.deleteLater()
-                self.isTabRemovePopupActivated = False
+                self.onTabRemovePopupClick(0, False)
             elif self.activeErrorPopupCount >= 1:
                 self.removeNoticePopup()
             elif self.activePopup != "":
@@ -599,6 +608,10 @@ class MainWindow(QWidget):
 
     ## 초기 변수 설정
     def resetVar(self):
+
+        self.icon = QIcon(QPixmap(convertResourcePath("resource\\icon.ico")))
+        self.icon_on = QIcon(QPixmap(convertResourcePath("resource\\icon_on.ico")))
+
         self.activeErrorPopupNumber = 0
         self.isTabRemovePopupActivated = False
         self.isActivated = False
@@ -655,11 +668,12 @@ class MainWindow(QWidget):
             "y": "Y",
             "z": "Z",
             "tab": "Tab",
+            "space": "Space",
             "enter": "Enter",
             "shift": "Shift",
             "right shift": "Shift",
-            "crtl": "Crtl",
-            "right crtl": "Crtl",
+            "ctrl": "Ctrl",
+            "right ctrl": "Ctrl",
             "alt": "Alt",
             "right alt": "Alt",
             "up": "Up",
@@ -851,9 +865,9 @@ class MainWindow(QWidget):
         label.setFont(font)
 
     ## 위젯 크기에 맞게 텍스트 자름
-    def limitText(self, text, widget) -> str:
+    def limitText(self, text, widget, margin=40) -> str:
         font_metrics = widget.fontMetrics()
-        max_width = widget.width() - 40
+        max_width = widget.width() - margin
 
         for i in range(len(text), 0, -1):
             if font_metrics.boundingRect(text[:i]).width() < max_width:
@@ -876,13 +890,15 @@ class MainWindow(QWidget):
         for i in self.linkSkillList:
             usingKey.append(i[1])
 
+        # print(usingKey, key)
+
         return True if key in usingKey else False
 
     ## 프로그램 초기 UI 설정
     def initUI(self):
         self.setWindowTitle("데이즈 스킬매크로 " + version)
         self.setMinimumSize(960, 540)
-        self.setGeometry(0, 0, 960, 540)
+        # self.setGeometry(0, 0, 960, 540)
         palette = self.palette()
         palette.setColor(QPalette.ColorRole.Window, QColor(255, 255, 255))
         self.setPalette(palette)
@@ -1147,6 +1163,7 @@ class MainWindow(QWidget):
 
     ## 장착 스킬 아이콘 클릭
     def onSelectedSkillClick(self, num):
+        # print(self.selectedSkillList[num])
         if self.settingType == 3:
             self.cancelSkillSelection()
             self.makeNoticePopup("editingLinkSkill")
@@ -1160,6 +1177,11 @@ class MainWindow(QWidget):
                     if k[0] == self.selectedSkillList[self.isSkillSelecting]:
                         self.linkSkillList[i][0] = 1
 
+            if self.settingType == 2:
+                self.removeSetting2()
+                self.settingType = -1
+                self.changeSettingTo2()
+
             self.skillSequence[self.selectedSkillList[num]] = None
             for i in range(1, 7):
                 if not (i in self.skillSequence):
@@ -1170,11 +1192,7 @@ class MainWindow(QWidget):
                                 if self.settingType == 1:
                                     self.settingSkillSequences[j].setText(str(k - 1))
             if self.settingType == 1 and self.selectedSkillList[num] != -1:
-                pixmap = QPixmap(
-                    convertResourcePath(
-                        f"resource\\skill\\{self.serverID}\\{self.jobID}\\{self.selectedSkillList[num]}\\off.png"
-                    )
-                )
+                pixmap = QPixmap(self.getSkillImage(self.selectedSkillList[num], "off"))
                 self.settingSkillImages[self.selectedSkillList[num]].setIcon(
                     QIcon(pixmap)
                 )
@@ -1223,8 +1241,8 @@ class MainWindow(QWidget):
         if self.selectedSkillList[self.isSkillSelecting] != -1:
             if self.settingType == 1:
                 pixmap = QPixmap(
-                    convertResourcePath(
-                        f"resource\\skill\\{self.serverID}\\{self.jobID}\\{self.selectedSkillList[self.isSkillSelecting]}\\off.png"
+                    self.getSkillImage(
+                        self.selectedSkillList[self.isSkillSelecting], "off"
                     )
                 )
                 self.settingSkillImages[
@@ -1287,9 +1305,16 @@ class MainWindow(QWidget):
             skill = QPushButton("", self.skillPreviewFrame)
             # self.tabAddButton.clicked.connect(self.onTabAddClick)
             skill.setStyleSheet("background-color: transparent;")
-            pixmap = QPixmap(
-                self.getSkillImage(self.selectedSkillList[self.taskList[i][0]], 1)
-            )
+            if not self.isActivated:
+                pixmap = QPixmap(
+                    self.getSkillImage(
+                        self.selectedSkillList[self.taskList[i][0]], "off"
+                    )
+                )
+            else:
+                pixmap = QPixmap(
+                    self.getSkillImage(self.selectedSkillList[self.taskList[i][0]], 1)
+                )
             skill.setIcon(QIcon(pixmap))
             skill.setIconSize(QSize(min(width, height), min(width, height)))
             skill.setFixedSize(width, height)
@@ -1505,7 +1530,9 @@ class MainWindow(QWidget):
 
         # 서버 - 직업
         self.labelServerJob = self.getSettingName("서버 - 직업", 60, 150)
-        self.labelServerJob.setToolTip("투다이스 서버의 서버와 직업을 선택합니다.")
+        self.labelServerJob.setToolTip(
+            "투다이스 서버의 서버와 직업을 선택합니다.\n새로운 서버가 오픈될 경우 새 항목이 추가될 수 있습니다."
+        )
         self.buttonServerList = self.getSettingButton(
             self.serverList[self.serverID], 40, 200, self.onServerClick
         )
@@ -1516,7 +1543,7 @@ class MainWindow(QWidget):
         # 딜레이
         self.labelDelay = self.getSettingName("딜레이", 60, 150 + 130)
         self.labelDelay.setToolTip(
-            "스킬을 사용하기 위한 키보드, 마우스 클릭과 같은 동작 사이의 간격을 설정합니다.\n단위는 밀리초(millisecond, 0.001초)를 사용합니다.\n입력 가능한 딜레이의 범위는 1~200입니다."
+            "스킬을 사용하기 위한 키보드 입력, 마우스 클릭과 같은 동작 사이의 간격을 설정합니다.\n단위는 밀리초(millisecond, 0.001초)를 사용합니다.\n입력 가능한 딜레이의 범위는 50~1000입니다.\n딜레이를 계속해서 조절하며 1분간 매크로를 실행했을 때 놓치는 스킬이 없도록 설정해주세요."
         )
         if self.activeDelaySlot == 0:
             temp = [False, True]
@@ -1580,7 +1607,7 @@ class MainWindow(QWidget):
         # 마우스 클릭
         self.labelMouse = self.getSettingName("마우스 클릭", 60, 150 + 130 * 4)
         self.labelMouse.setToolTip(
-            "캐스팅 방식\n스킬 사용시: 스킬을 사용하기 위해 마우스를 클릭합니다. 평타를 사용하기 위한 클릭은 하지 않습니다.\n평타 포함: 스킬과 평타를 사용하기 위해 마우스를 클릭합니다."
+            "스킬 사용시: 스킬을 사용하기 위해 마우스를 클릭합니다. 평타를 사용하기 위한 클릭은 하지 않습니다.\n평타 포함: 스킬과 평타를 사용하기 위해 마우스를 클릭합니다."
         )
         if self.activeMouseClickSlot == 0:
             temp = [False, True]
@@ -1630,10 +1657,10 @@ class MainWindow(QWidget):
         self.skillSettingTexts = []
         texts = ["사용\n여부", "단독\n사용", "콤보\n횟수", "우선\n순위"]
         tooltips = [
-            "매크로가 작동 중일 때 자동으로 스킬을 사용합니다.\n이동기와 같은 스킬에 사용하는 것을 추천합니다.\n\n * 연계스킬에는 적용되지 않습니다.",
-            "연계스킬을 대기할 때 모든 스킬이 준비되는 것을 기다리지 않고 우선적으로 사용합니다.\n연계스킬 내에서 다른 스킬에 비해 준비 시간이 짧은 스킬에 사용하는 것을 추천합니다.\n\n * 사용여부가 활성화되지 않았다면 단독으로 사용되지 않습니다.",
-            "매크로가 작동 중일 때 한 번에 스킬을 사용하는 횟수를 결정합니다.\n콤보가 존재하는 스킬에 사용하는 것을 추천합니다.\n\n * 연계스킬에는 적용되지 않습니다.",
-            "매크로가 작동 중일 때 여러 스킬이 준비되었더라도 우선순위가 더 높은 스킬을 먼저 사용합니다.\n우선순위를 설정하지 않은 스킬들은 준비된 시간 순서대로 사용합니다.\n버프스킬의 우선순위를 높이는 것을 추천합니다.\n\n * 연계스킬은 모든 스킬보다 우선순위가 높습니다.",
+            "매크로가 작동 중일 때 자동으로 스킬을 사용할지 결정합니다.\n이동기같이 자신이 직접 사용해야 하는 스킬만 사용을 해제하시는 것을 추천드립니다.\n연계스킬에는 적용되지 않습니다.",
+            "연계스킬을 대기할 때 다른 스킬들이 준비되는 것을 기다리지 않고 우선적으로 사용할 지 결정합니다.\n연계스킬 내에서 다른 스킬보다 너무 빠르게 준비되는 스킬은 사용을 해제하시는 것을 추천드립니다.\n사용여부가 활성화되지 않았다면 단독으로 사용되지 않습니다.",
+            "매크로가 작동 중일 때 한 번에 스킬을 몇 번 사용할 지를 결정합니다.\n콤보가 존재하는 스킬에 사용하는 것을 추천합니다.\n연계스킬에는 적용되지 않습니다.",
+            "매크로가 작동 중일 때 여러 스킬이 준비되었더라도 우선순위가 더 높은(숫자가 낮은) 스킬을 먼저 사용합니다.\n우선순위를 설정하지 않은 스킬들은 준비된 시간 순서대로 사용합니다.\n버프스킬의 우선순위를 높이는 것을 추천합니다.\n연계스킬은 우선순위가 적용되지 않습니다.",
         ]
         for i in range(4):
             label = QLabel(texts[i], self.sidebarFrame)
@@ -1664,11 +1691,8 @@ class MainWindow(QWidget):
             if i in self.selectedSkillList:
                 pixmap = QPixmap(self.getSkillImage(i))
             else:
-                pixmap = QPixmap(
-                    convertResourcePath(
-                        f"resource\\skill\\{self.serverID}\\{self.jobID}\\{i}\\off.png"
-                    )
-                )
+                pixmap = QPixmap(self.getSkillImage(i, "off"))
+
             skill.setIcon(QIcon(pixmap))
             skill.setIconSize(QSize(50, 50))
             skill.setStyleSheet("QPushButton { background-color: transparent;}")
@@ -1799,11 +1823,11 @@ class MainWindow(QWidget):
             am_dp = QFrame(self.sidebarFrame)  # auto, manual 표시 프레임
             if j[0]:
                 am_dp.setStyleSheet(
-                    "QFrame { background-color: #ff0000; border: 0px solid black; border-radius: 2px; }"
+                    "QFrame { background-color: #0000ff; border: 0px solid black; border-radius: 2px; }"
                 )
             else:
                 am_dp.setStyleSheet(
-                    "QFrame { background-color: #0000ff; border: 0px solid black; border-radius: 2px; }"
+                    "QFrame { background-color: #ff0000; border: 0px solid black; border-radius: 2px; }"
                 )
             am_dp.setFixedSize(4, 4)
             am_dp.move(280, 224 + 51 * i)
@@ -1942,7 +1966,7 @@ class MainWindow(QWidget):
 
         self.labelLinkType = QLabel("연계 유형", self.sidebarFrame)
         self.labelLinkType.setToolTip(
-            "매크로가 실행 중일 때 자동으로 작동시킬 지,\n매크로가 실행 중이지 않을 때 수동으로 작동시킬 지를 결정합니다."
+            "자동: 매크로가 실행 중일 때 자동으로 연계 스킬을 사용합니다. 자동 연계스킬에 사용되는 스킬은 다른 자동 연계스킬에 사용될 수 없습니다.\n연계스킬은 매크로 작동 여부와 관계 없이 단축키를 입력해서 작동시킬 수 있습니다."
         )
         self.labelLinkType.setFont(self.font12)
         self.labelLinkType.setFixedSize(80, 30)
@@ -2008,6 +2032,9 @@ class MainWindow(QWidget):
             skill.setIconSize(QSize(50, 50))
             skill.setFixedSize(50, 50)
             skill.move(40, 281 + 51 * i)
+            skill.setToolTip(
+                "연계스킬을 구성하는 스킬의 목록과 사용 횟수를 설정할 수 있습니다.\n하나의 스킬이 너무 많이 사용되면 연계가 정상적으로 작동하지 않을 수 있습니다."
+            )
             skill.show()
             self.linkSkillImageList.append(skill)
 
@@ -2113,9 +2140,7 @@ class MainWindow(QWidget):
             pixmap = QPixmap(
                 self.getSkillImage(i)
                 if i in self.selectedSkillList
-                else convertResourcePath(
-                    f"resource\\skill\\{self.serverID}\\{self.jobID}\\{i}\\off.png"
-                )
+                else self.getSkillImage(i, "off")
             )
             button.setIcon(QIcon(pixmap))
             button.setIconSize(QSize(40, 40))
@@ -2719,7 +2744,7 @@ class MainWindow(QWidget):
         noticePopupIcon = QPushButton(noticePopup)
         noticePopupIcon.setStyleSheet("background-color: transparent;")
         noticePopupIcon.setFixedSize(24, 24)
-        noticePopupIcon.move(15, 15)
+        noticePopupIcon.move(13, 15)
         pixmap = QPixmap(convertResourcePath(f"resource\\{icon}.png"))
         noticePopupIcon.setIcon(QIcon(pixmap))
         noticePopupIcon.setIconSize(QSize(24, 24))
@@ -3397,12 +3422,12 @@ class MainWindow(QWidget):
         )
 
         makeKey(
-            "Crtl",
+            "Ctrl",
             round(5 * xSizeMultiple),
             round(180 * ySizeMultiple),
             round(45 * xSizeMultiple),
             round(30 * ySizeMultiple),
-            self.isKeyUsing("Crtl"),
+            self.isKeyUsing("Ctrl"),
         )
         makeImageKey(
             "Window",
@@ -3459,12 +3484,12 @@ class MainWindow(QWidget):
             True,
         )
         makeKey(
-            "Crtl",
+            "Ctrl",
             round(455 * xSizeMultiple),
             round(180 * ySizeMultiple),
             round(45 * xSizeMultiple),
             round(30 * ySizeMultiple),
-            self.isKeyUsing("Crtl"),
+            self.isKeyUsing("Ctrl"),
         )
 
         k5 = [
@@ -3536,10 +3561,6 @@ class MainWindow(QWidget):
             return
 
         match key:
-            case "PrtSc":
-                key = "Print"
-            case "ScrLk":
-                key = "Scroll"
             case "Page\nUp":
                 key = "Page_Up"
             case "Page\nDown":
@@ -3596,6 +3617,9 @@ class MainWindow(QWidget):
 
             self.makeKeyboardPopup("StartKey")
         else:
+            if self.isKeyUsing(self.inputStartKey) and not (self.inputStartKey == "F9"):
+                self.makeNoticePopup("StartKeyChangeError")
+                return
             self.activeStartKeySlot = 1
             self.startKey = self.inputStartKey
 
@@ -3739,19 +3763,31 @@ class MainWindow(QWidget):
         self.tabRemoveFrame.setStyleSheet(
             "QFrame { background-color: white; border-radius: 20px; }"
         )
-        self.tabRemoveFrame.setFixedSize(340, 120)
+        self.tabRemoveFrame.setFixedSize(340, 140)
         self.tabRemoveFrame.move(
             round(self.width() * 0.5 - 170), round(self.height() * 0.5 - 60)
         )
+        self.tabRemoveFrame.setGraphicsEffect(self.getShadow(2, 2, 20))
         self.tabRemoveFrame.show()
 
-        self.tabRemoveLabel = QLabel(
-            f'정말 "{self.tabNames[num]}" 탭을 삭제하시겠습니까?', self.tabRemoveFrame
+        self.tabRemoveNameLabel = QLabel("", self.tabRemoveFrame)
+        self.tabRemoveNameLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.tabRemoveNameLabel.setFont(self.font12)
+        self.tabRemoveNameLabel.setFixedSize(330, 30)
+        self.tabRemoveNameLabel.setText(
+            self.limitText(
+                f'정말 "{self.tabNames[num]}', self.tabRemoveNameLabel, margin=5
+            )
+            + '"'
         )
+        self.tabRemoveNameLabel.move(5, 10)
+        self.tabRemoveNameLabel.show()
+
+        self.tabRemoveLabel = QLabel("탭을 삭제하시겠습니까?", self.tabRemoveFrame)
         self.tabRemoveLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.tabRemoveLabel.setFont(self.font12)
-        self.tabRemoveLabel.setFixedSize(320, 40)
-        self.tabRemoveLabel.move(10, 10)
+        self.tabRemoveLabel.setFixedSize(330, 30)
+        self.tabRemoveLabel.move(5, 40)
         self.tabRemoveLabel.show()
 
         self.settingJobButton = QPushButton("예", self.tabRemoveFrame)
@@ -3768,13 +3804,15 @@ class MainWindow(QWidget):
                     """
         )
         self.settingJobButton.setFixedSize(100, 40)
-        self.settingJobButton.move(50, 60)
+        self.settingJobButton.move(50, 80)
         self.settingJobButton.setGraphicsEffect(self.getShadow(2, 2, 20))
         self.settingJobButton.show()
 
         self.settingJobButton = QPushButton("아니오", self.tabRemoveFrame)
         self.settingJobButton.setFont(self.font12)
-        self.settingJobButton.clicked.connect(lambda: self.onTabRemovePopupClick(num))
+        self.settingJobButton.clicked.connect(
+            lambda: self.onTabRemovePopupClick(num, False)
+        )
         self.settingJobButton.setStyleSheet(
             """
                         QPushButton {
@@ -3786,11 +3824,11 @@ class MainWindow(QWidget):
                     """
         )
         self.settingJobButton.setFixedSize(100, 40)
-        self.settingJobButton.move(170, 60)
+        self.settingJobButton.move(170, 80)
         self.settingJobButton.setGraphicsEffect(self.getShadow(2, 2, 20))
         self.settingJobButton.show()
 
-    def onTabRemovePopupClick(self, num):
+    def onTabRemovePopupClick(self, num=0, remove=True):
         if self.isActivated:
             self.disablePopup()
             self.makeNoticePopup("MacroIsRunning")
@@ -3799,6 +3837,9 @@ class MainWindow(QWidget):
         self.disablePopup()
         self.tabRemoveBackground.deleteLater()
         self.isTabRemovePopupActivated = False
+
+        if not remove:
+            return
 
         tabCount = len(self.tabNames)
 
@@ -3910,10 +3951,6 @@ class MainWindow(QWidget):
             return
 
         match key:
-            case "PrtSc":
-                key = "Print"
-            case "ScrLk":
-                key = "Scroll"
             case "Page\nUp":
                 key = "Page_Up"
             case "Page\nDown":
@@ -3935,10 +3972,6 @@ class MainWindow(QWidget):
             return
 
         match key:
-            case "PrtSc":
-                key = "Print"
-            case "ScrLk":
-                key = "Scroll"
             case "Page\nUp":
                 key = "Page_Up"
             case "Page\nDown":
@@ -4306,7 +4339,7 @@ class MainWindow(QWidget):
 
 
 if __name__ == "__main__":
-    version = "v3.0.0-beta.3"
+    version = "v3.0.0"
     fileDir = "C:\\PDFiles\\PDSkillMacro.json"
     app = QApplication(sys.argv)
     window = MainWindow()

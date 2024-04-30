@@ -1,0 +1,14 @@
+프로그램 이름: 데이즈 스킬매크로
+프로그램 버전: v3.0.0
+프로그램 배포자: ProDays
+프로그램 웹사이트: https://github.com/Pro-Days
+
+설치 파일: 데이즈 스킬매크로 v3.0.0 Setup.exe
+
+프로그램 기본 디렉토리: $PROGRAMFILES\ProDays\SkillMacro
+
+EditDirectory: Macro Folder
+
+프로그램 시작 메뉴: 데이즈 스킬매크로
+
+언인스톨러 아이콘: icon_on
