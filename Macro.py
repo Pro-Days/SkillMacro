@@ -38,7 +38,7 @@ def convertResourcePath(relative_path) -> str:
     return os.path.join(base_path, relative_path)
 
 
-## 최신버전 확인용 클래스
+## 버전 확인 클래스
 class VersionChecker(QObject):
     versionChecked = pyqtSignal(str)
 
