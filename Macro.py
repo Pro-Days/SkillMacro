@@ -4309,5 +4309,5 @@ if __name__ == "__main__":
     version = "v3.0.0-beta.3"  # Beta Version
     fileDir = "C:\\PDFiles\\PDSkillMacro.json"
     app = QApplication(sys.argv)
-    window = MainWindow()
+    window = MainWindow()  # 분기 테스트
     sys.exit(app.exec())
