@@ -4339,7 +4339,7 @@ class MainWindow(QWidget):
 
 
 if __name__ == "__main__":
-    version = "v3.0.0"
+    version = "v3.0.1"
     fileDir = "C:\\PDFiles\\PDSkillMacro.json"
     app = QApplication(sys.argv)
     window = MainWindow()
