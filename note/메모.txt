@@ -1,5 +1,5 @@
-pyinstaller -F -w --clean -i="./resource/icon.ico" --add-data "resource;resource" Macro.py
-pyinstaller -w --clean -i="./resource/icon.ico" --add-data "resource;resource" Macro.py
+pyinstaller -F -w --clean -i="./resource/icon.ico" --add-data "resource;resource" SkillMacro.py
+pyinstaller -w --clean -i="./resource/icon.ico" --add-data "resource;resource" SkillMacro.py
 
 python==3.12.0
 pyinstaller==6.5.0

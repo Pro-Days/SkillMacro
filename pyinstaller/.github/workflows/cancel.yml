@@ -1,0 +1,16 @@
+name: Cancel Previous Runs
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - requested
+permissions: {}
+jobs:
+  cancel:
+    permissions:
+      actions: write # to cancel/stop running workflows (styfle/cancel-workflow-action)
+    runs-on: ubuntu-latest
+    steps:
+    - uses: styfle/cancel-workflow-action@0.11.0
+      with:
+        workflow_id: ${{ github.event.workflow.id }}

@@ -1,0 +1,100 @@
+# This is the pip requirements file for extensive
+# PyInstaller testing.
+#
+# Example (assuming current dir is PyInstaller's top-level source dir)::
+#
+#   python -m pip install -r tests/requirements-libraries.txt  # extensive
+
+# include requirements for base testing
+-r requirements-tools.txt
+
+# Backport of importlib.resources for python 3.8 and earlier.
+importlib_resources==6.4.0; python_version < '3.9'
+
+
+# Working
+# -------
+# These packages work with no (known) issues.
+babel==2.14.0
+Django==5.0.4; python_version >= '3.10'
+future==1.0.0
+gevent==24.2.1
+ipython==8.23.0; python_version >= '3.10'
+# keyring >= 23.1 requires python >= 3.8.7 on macOS 11 and later (with dyld shared cache support)
+keyring==23.0.1; sys_platform == 'darwin' and python_version < '3.8.7'  # pyup: ignore
+keyring==25.1.0; sys_platform != 'darwin' or python_version >= '3.8.7'
+matplotlib==3.8.4; python_version >= '3.9'
+numpy==1.26.4; python_version >= '3.9'
+pandas==2.2.1; python_version >= '3.9'
+pygments==2.17.2
+PyGObject==3.48.2; sys_platform == 'linux'
+# Official PySide2 wheels do not support python 3.11 or newer
+PySide2==5.15.2.1; python_version < '3.11'
+# PySide6 is a metapackage that depends on PySide6-Essentials and PySide6-Addons. Their versions are
+# usually kept in sync.
+PySide6==6.7.0; python_version >= '3.9'
+PySide6-Addons==6.7.0; python_version >= '3.9'
+PySide6-Essentials==6.7.0; python_version >= '3.9'
+# PyQt5 and add-on packages
+# We do not pin *-Qt5 packages (which contain Qt shared libraries), as Qt5 is not actively developed
+# anymore, and thus 5.15.x has a stable ABI. Plus, it seems that *-Qt5 5.15.2 wheels are available for
+# all platforms, while 5.15.11 are available only for macOS (and some of them only for arm64).
+PyQt5==5.15.10
+PyQt3D==5.15.6
+PyQtChart==5.15.6
+PyQtDataVisualization==5.15.5
+PyQtNetworkAuth==5.15.5
+PyQtPurchasing==5.15.5
+QScintilla==2.14.1
+PyQtWebEngine==5.15.6
+# PyQt6 and add-on packages
+# The *-Qt6 packages contain Qt shared libraries; their version is therefore the version of Qt release,
+# but in contrast to Qt5 and PyQt5 bindings, the versions here must usually be kept in sync with the
+# version of corresponding PyQt bindings packages. That is because Qt6 is under active development, and
+# thus the ABI is still changing.
+PyQt6==6.6.1
+PyQt6-Qt6==6.6.2
+PyQt6-3D==6.6.0
+PyQt6-3D-Qt6==6.6.2
+PyQt6-Charts==6.6.0
+PyQt6-Charts-Qt6==6.6.2
+PyQt6-DataVisualization==6.6.0
+PyQt6-DataVisualization-Qt6==6.6.2
+PyQt6-NetworkAuth==6.6.0
+PyQt6-NetworkAuth-Qt6==6.6.2
+PyQt6-QScintilla==2.14.1  # Does not have a corresponding -Qt6 package
+PyQt6-WebEngine==6.6.0
+PyQt6-WebEngine-Qt6==6.6.2
+python-dateutil==2.9.0.post0
+pytz==2024.1
+requests==2.31.0
+scipy==1.13.0; python_version >= '3.9'
+# simplejson is used for text_c_extension
+simplejson==3.19.2
+sphinx==7.2.6; python_version >= '3.9'
+# Required for test_namespace_package
+sqlalchemy==2.0.29
+zope.interface==6.2
+Pillow==10.3.0
+
+
+# Python versions not supported / supported for older package versions
+# -------------------------------------------------------
+
+numpy==1.24.3; python_version == '3.8'  # pyup: ignore
+pandas==2.0.3; python_version == '3.8'  # pyup: ignore
+scipy==1.10.1; python_version == '3.8'  # pyup: ignore
+matplotlib==3.7.3; python_version == '3.8'  # pyup: ignore
+
+ipython==8.12.1; python_version == '3.8'  # pyup: ignore
+ipython==8.18.1; python_version == '3.9'  # pyup: ignore
+
+sphinx==7.1.2; python_version == '3.8'  # pyup: ignore
+
+# Django dropped support for python < 3.10 in v5.0
+Django==4.2.8; python_version < '3.10'  # pyup: ignore
+
+# PySide6 dropped support for python < 3.9 in v6.7.0
+PySide6==6.6.3.1; python_version == '3.8'  # pyup: ignore
+PySide6-Addons==6.6.3.1; python_version == '3.8'  # pyup: ignore
+PySide6-Essentials==6.6.3.1; python_version == '3.8'  # pyup: ignore

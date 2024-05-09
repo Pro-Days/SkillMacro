@@ -1,0 +1,28 @@
+# This is the pip requirements file for running the
+# PyInstaller test-suite.
+#
+# For extensive testing you will also need to install what is defined in
+# requirements-libraries.txt.
+#
+# Example (assuming current dir is PyInstaller's top-level source dir)::
+#
+#   python -m pip install -r tests/requirements-tools.txt
+#   python -m pip install -r tests/requirements-libraries.txt  # extensive
+
+# Base test requirements
+-r requirements-base.txt
+
+# Check new linter violations on pull requests
+ruff
+
+# The following libraries are required by some basic tests, but their
+# binary PyPI wheels may be available only for released python versions
+# (i.e., they might be unavailable for pre-release versions).
+
+pywin32; sys_platform == 'win32'
+
+lxml
+xmldiff
+
+# Used for strict validation of generated macOS .app bundles
+xattr; sys_platform == 'darwin'
