@@ -81,37 +81,31 @@ class MainWindow(QWidget):
             key = kb.read_key()
             convertedKey = self.key_dict[key] if key in self.key_dict else key
 
+            # 링크스킬에 사용되는 키 리스트
             linkKeys = []
             for i in self.linkSkillList:
                 linkKeys.append(i[1])
 
-            # print(convertedKey)
-            # print(linkKeys)
-
             if self.isActivated:
                 self.afkTime0 = time.time()
-            # print(key, convertedKey)
 
             if convertedKey == self.startKey:
                 if self.isActivated:  # On -> Off
-                    # print("Off")
                     self.isActivated = False
 
-                    # 윈도우 아이콘 변경
-                    # self.setWindowIcon(self.icon)
+                    # self.setWindowIcon(self.icon)  # 윈도우 아이콘 변경 (자주 변경하면 중지됨)
 
                 else:  # Off -> On
-                    # print("On")
                     self.isActivated = True
 
-                    # 윈도우 아이콘 변경
-                    # self.setWindowIcon(self.icon_on)
+                    # self.setWindowIcon(self.icon_on)  # 윈도우 아이콘 변경 (자주 변경하면 중지됨)
 
                     self.loopNum += 1
                     self.selectedItemSlot = -1
                     Thread(target=self.runMacro, args=[self.loopNum]).start()
 
                 time.sleep(0.5)
+
             elif convertedKey in linkKeys and not self.isActivated:
                 for i in range(len(linkKeys)):
                     if convertedKey == linkKeys[i]:
@@ -132,8 +126,9 @@ class MainWindow(QWidget):
             # self.showSkillPreview()
 
             ## Away From Keyboard ##
-            if time.time() - self.afkTime0 >= 10:
-                self.isActivated = False
+            if self.isAFKEnabled:
+                if time.time() - self.afkTime0 >= 10:
+                    self.isActivated = False
 
             time.sleep(self.delay * 0.001)
 
@@ -612,6 +607,7 @@ class MainWindow(QWidget):
         self.icon = QIcon(QPixmap(convertResourcePath("resource\\icon.ico")))
         self.icon_on = QIcon(QPixmap(convertResourcePath("resource\\icon_on.ico")))
 
+        self.isAFKEnabled = False
         self.activeErrorPopupNumber = 0
         self.isTabRemovePopupActivated = False
         self.isActivated = False
@@ -780,7 +776,7 @@ class MainWindow(QWidget):
                 ],
             ]
         ]
-        self.skillCooltimeList = [[[4.5] * 8] * 8]
+        self.skillCooltimeList = [[[8] * 8] * 8]
         # self.skillCooltimeList = [
         #     [
         #         [6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0],
@@ -4339,7 +4335,7 @@ class MainWindow(QWidget):
 
 
 if __name__ == "__main__":
-    version = "v3.0.1"
+    version = "v3.0.2"
     fileDir = "C:\\PDFiles\\PDSkillMacro.json"
     app = QApplication(sys.argv)
     window = MainWindow()
