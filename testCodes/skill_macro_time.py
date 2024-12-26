@@ -11,9 +11,9 @@ from pyautogui import press
 
 # 함수 선언
 
+
 def version_check():
-    response = get(
-        "https://api.github.com/repos/pro-days/skillmacro/releases/latest")
+    response = get("https://api.github.com/repos/pro-days/skillmacro/releases/latest")
     checked_version = response.json()["name"]
     global lastest
     if version == checked_version:
@@ -26,16 +26,36 @@ def version_check():
 
 def store_all(preset):
     if "num1" in globals():
-        Skill_timeData[0], Skill_timeData[1], Skill_timeData[2], Skill_timeData[3], Skill_timeData[4], Skill_timeData[5], Skill_timeData[6] = num1.get(
-        ), num2.get(), num3.get(), num4.get(), num5.get(), num6.get(), reduce_skill_cooltime.get()
+        (
+            Skill_timeData[0],
+            Skill_timeData[1],
+            Skill_timeData[2],
+            Skill_timeData[3],
+            Skill_timeData[4],
+            Skill_timeData[5],
+            Skill_timeData[6],
+        ) = (
+            num1.get(),
+            num2.get(),
+            num3.get(),
+            num4.get(),
+            num5.get(),
+            num6.get(),
+            reduce_skill_cooltime.get(),
+        )
     if preset == "1":
         with open(f"C:\ProDays\PD_SkillMacro{preset}.txt", "w") as f:
-            f.write(" ".join(HotbarKeys) + "\n" +
-                    f"{Skill_timeData[0]} {Skill_timeData[1]} {Skill_timeData[2]} {Skill_timeData[3]} {Skill_timeData[4]} {Skill_timeData[5]} {Skill_timeData[6]}\n" + start_key)
+            f.write(
+                " ".join(HotbarKeys)
+                + "\n"
+                + f"{Skill_timeData[0]} {Skill_timeData[1]} {Skill_timeData[2]} {Skill_timeData[3]} {Skill_timeData[4]} {Skill_timeData[5]} {Skill_timeData[6]}\n"
+                + start_key
+            )
     else:
         with open(f"C:\ProDays\PD_SkillMacro{preset}.txt", "w") as f:
             f.write(
-                f"{Skill_timeData[0]} {Skill_timeData[1]} {Skill_timeData[2]} {Skill_timeData[3]} {Skill_timeData[4]} {Skill_timeData[5]} {Skill_timeData[6]}")
+                f"{Skill_timeData[0]} {Skill_timeData[1]} {Skill_timeData[2]} {Skill_timeData[3]} {Skill_timeData[4]} {Skill_timeData[5]} {Skill_timeData[6]}"
+            )
 
 
 def store_key():
@@ -52,12 +72,17 @@ def store_key():
 
     if preset == "1":
         with open(f"C:\ProDays\PD_SkillMacro{preset}.txt", "w") as f:
-            f.write(" ".join(HotbarKeys) + "\n" +
-                    f"{Skill_timeData[0]} {Skill_timeData[1]} {Skill_timeData[2]} {Skill_timeData[3]} {Skill_timeData[4]} {Skill_timeData[5]} {Skill_timeData[6]}\n" + start_key)
+            f.write(
+                " ".join(HotbarKeys)
+                + "\n"
+                + f"{Skill_timeData[0]} {Skill_timeData[1]} {Skill_timeData[2]} {Skill_timeData[3]} {Skill_timeData[4]} {Skill_timeData[5]} {Skill_timeData[6]}\n"
+                + start_key
+            )
     else:
         with open(f"C:\ProDays\PD_SkillMacro{preset}.txt", "w") as f:
             f.write(
-                f"{Skill_timeData[0]} {Skill_timeData[1]} {Skill_timeData[2]} {Skill_timeData[3]} {Skill_timeData[4]} {Skill_timeData[5]} {Skill_timeData[6]}")
+                f"{Skill_timeData[0]} {Skill_timeData[1]} {Skill_timeData[2]} {Skill_timeData[3]} {Skill_timeData[4]} {Skill_timeData[5]} {Skill_timeData[6]}"
+            )
 
 
 def store_startkey():
@@ -65,16 +90,22 @@ def store_startkey():
     startkey_stored = False
     start_key = read_key()
     outtext.config(
-        text=f"1~6번 입력칸: 스킬 6개 쿨타임 입력 (0이면 사용안함)\n7번 입력칸: 스킬쿨타임감소 스텟 입력\n키보드 입력 -> 스킬 사용 순서대로 키 천천히 입력\n시작 설정 -> 매크로 시작 키 설정\n{start_key}키 -> 매크로 on/off")
+        text=f"1~6번 입력칸: 스킬 6개 쿨타임 입력 (0이면 사용안함)\n7번 입력칸: 스킬쿨타임감소 스탯 입력\n키보드 입력 -> 스킬 사용 순서대로 키 천천히 입력\n시작 설정 -> 매크로 시작 키 설정\n{start_key}키 -> 매크로 on/off"
+    )
 
     if preset == "1":
         with open(f"C:\ProDays\PD_SkillMacro{preset}.txt", "w") as f:
-            f.write(" ".join(HotbarKeys) + "\n" +
-                    f"{Skill_timeData[0]} {Skill_timeData[1]} {Skill_timeData[2]} {Skill_timeData[3]} {Skill_timeData[4]} {Skill_timeData[5]} {Skill_timeData[6]}\n" + start_key)
+            f.write(
+                " ".join(HotbarKeys)
+                + "\n"
+                + f"{Skill_timeData[0]} {Skill_timeData[1]} {Skill_timeData[2]} {Skill_timeData[3]} {Skill_timeData[4]} {Skill_timeData[5]} {Skill_timeData[6]}\n"
+                + start_key
+            )
     else:
         with open(f"C:\ProDays\PD_SkillMacro{preset}.txt", "w") as f:
             f.write(
-                f"{Skill_timeData[0]} {Skill_timeData[1]} {Skill_timeData[2]} {Skill_timeData[3]} {Skill_timeData[4]} {Skill_timeData[5]} {Skill_timeData[6]}")
+                f"{Skill_timeData[0]} {Skill_timeData[1]} {Skill_timeData[2]} {Skill_timeData[3]} {Skill_timeData[4]} {Skill_timeData[5]} {Skill_timeData[6]}"
+            )
     sleep(0.2)
     startkey_stored = True
     thread_key = Thread(target=keyboard_clicked, daemon=True)
@@ -82,32 +113,32 @@ def store_startkey():
 
 
 def loop1(n):
-    sleep(num1.get() * (100-reduce_skill_cooltime.get())/100 + 0.075)
+    sleep(num1.get() * (100 - reduce_skill_cooltime.get()) / 100 + 0.075)
     press_key[n].append(0)
 
 
 def loop2(n):
-    sleep(num2.get() * (100-reduce_skill_cooltime.get())/100 + 0.075)
+    sleep(num2.get() * (100 - reduce_skill_cooltime.get()) / 100 + 0.075)
     press_key[n].append(1)
 
 
 def loop3(n):
-    sleep(num3.get() * (100-reduce_skill_cooltime.get())/100 + 0.075)
+    sleep(num3.get() * (100 - reduce_skill_cooltime.get()) / 100 + 0.075)
     press_key[n].append(2)
 
 
 def loop4(n):
-    sleep(num4.get() * (100-reduce_skill_cooltime.get())/100 + 0.075)
+    sleep(num4.get() * (100 - reduce_skill_cooltime.get()) / 100 + 0.075)
     press_key[n].append(3)
 
 
 def loop5(n):
-    sleep(num5.get() * (100-reduce_skill_cooltime.get())/100 + 0.075)
+    sleep(num5.get() * (100 - reduce_skill_cooltime.get()) / 100 + 0.075)
     press_key[n].append(4)
 
 
 def loop6(n):
-    sleep(num6.get() * (100-reduce_skill_cooltime.get())/100 + 0.075)
+    sleep(num6.get() * (100 - reduce_skill_cooltime.get()) / 100 + 0.075)
     press_key[n].append(5)
 
 
@@ -268,8 +299,7 @@ def keyboard_clicked():
                     looping[-1] = False
                 else:
                     looping.append(True)
-                    thread_macro = Thread(
-                        target=macro, args=[len(looping)-1])
+                    thread_macro = Thread(target=macro, args=[len(looping) - 1])
                     thread_macro.start()
             else:
                 looping.append(True)
@@ -302,12 +332,13 @@ window.resizable(False, False)
 
 
 outtext = Label(
-    window, text=f"1~6번 입력칸: 스킬 6개 쿨타임 입력 (0이면 사용안함)\n7번 입력칸: 스킬쿨타임감소 스텟 입력\n키보드 입력 -> 스킬 사용 순서대로 키 천천히 입력\n시작 설정 -> 매크로 시작 키 설정\n{start_key}키 -> 매크로 on/off")
+    window,
+    text=f"1~6번 입력칸: 스킬 6개 쿨타임 입력 (0이면 사용안함)\n7번 입력칸: 스킬쿨타임감소 스탯 입력\n키보드 입력 -> 스킬 사용 순서대로 키 천천히 입력\n시작 설정 -> 매크로 시작 키 설정\n{start_key}키 -> 매크로 on/off",
+)
 outtext.pack()
 
 
-keys = Label(
-    window, text=", ".join(HotbarKeys))
+keys = Label(window, text=", ".join(HotbarKeys))
 keys.pack()
 
 
@@ -344,25 +375,33 @@ entry_num6.pack()
 entry_num7.pack()
 
 
-combobox = ttk.Combobox(window, height=5, width=8, values=[
-    1, 2, 3, 4, 5], state="readonly")
+combobox = ttk.Combobox(
+    window, height=5, width=8, values=[1, 2, 3, 4, 5], state="readonly"
+)
 combobox.current(0)
 combobox.place(x=380, y=225)
 combobox.bind("<<ComboboxSelected>>", run_dataload)
 
 
-btn1 = Button(window, text="키보드 입력", width=10,
-              command=lambda: Thread(target=store_key).start())
+btn1 = Button(
+    window,
+    text="키보드 입력",
+    width=10,
+    command=lambda: Thread(target=store_key).start(),
+)
 btn1.place(x=10, y=325)
 
 
-btn2 = Button(window, text="저장", width=10,
-              command=lambda: store_all(combobox.get()))
+btn2 = Button(window, text="저장", width=10, command=lambda: store_all(combobox.get()))
 btn2.place(x=380, y=325)
 
 
-btn3 = Button(window, text="시작 설정", width=10,
-              command=lambda: Thread(target=store_startkey).start())
+btn3 = Button(
+    window,
+    text="시작 설정",
+    width=10,
+    command=lambda: Thread(target=store_startkey).start(),
+)
 btn3.place(x=10, y=225)
 
 
