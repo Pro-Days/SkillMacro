@@ -998,10 +998,10 @@ class MainWindow(QWidget):
     def runMacro(self, loopNum):
         self.initMacro()
 
-        # 스킬 남은 쿨타임 : [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-        self.skillCoolTimers = [0.0] * self.usableSkillCount[
+        # 스킬 남은 쿨타임 : [0, 0, 0, 0, 0, 0]  # 초 100배
+        self.skillCoolTimers = [0] * self.usableSkillCount[
             self.serverID
-        ]  # isUsed이면 self.unitTime씩 증가, 쿨타임이 지나면 0으로 초기화
+        ]  # isUsed이면 self.unitTime(x100)씩 증가, 쿨타임이 지나면 0으로 초기화
 
         # 스킬 사용 가능 횟수 : [3, 2, 2, 1, 3, 3]
         self.availableSkillCount = [
@@ -1010,6 +1010,9 @@ class MainWindow(QWidget):
             ]
             for i in range(self.usableSkillCount[self.serverID])
         ]
+
+        # 스킬 쿨타임 쓰레드
+        Thread(target=self.updateSkillCooltime, args=[loopNum], daemon=True).start()
 
         while self.isActivated and self.loopNum == loopNum:  # 매크로 작동중일 때
             self.addTaskList()  # taskList에 사용 가능한 스킬 추가
@@ -1026,6 +1029,18 @@ class MainWindow(QWidget):
             if usedSkill == None:
                 time.sleep(self.unitTime * self.sleepCoefficient)
 
+            # if usedSkill != None:
+            #     print(f"{usedSkill} 사용")
+            #     for i in range(6):
+            #         print(
+            #             f"{self.availableSkillCount[i]} / {self.skillComboCountList[self.serverID][self.jobID][
+            #             self.selectedSkillList[i]
+            #         ]} : {self.skillCoolTimers[i]} / {int(self.skillCooltimeList[self.serverID][self.jobID][self.selectedSkillList[i]] * (100 - self.cooltimeReduce))}"
+            #         )
+            #     print()
+
+    def updateSkillCooltime(self, loopNum):
+        while self.isActivated and self.loopNum == loopNum:
             for skill in range(self.usableSkillCount[self.serverID]):  # 0~6
                 if (
                     self.availableSkillCount[skill]
@@ -1033,27 +1048,20 @@ class MainWindow(QWidget):
                         self.selectedSkillList[skill]
                     ]
                 ):  # 스킬 사용해서 쿨타임 기다리는 중이면
-                    if usedSkill == None:
-                        self.skillCoolTimers[skill] += self.unitTime
-                    self.skillCoolTimers[skill] += passedTime
+                    self.skillCoolTimers[skill] += int(self.unitTime * 100)
 
-                    if round(self.skillCoolTimers[skill], 3) >= self.skillCooltimeList[
-                        self.serverID
-                    ][self.jobID][self.selectedSkillList[skill]] * (
-                        1 - self.cooltimeReduce * 0.01
+                    if self.skillCoolTimers[skill] >= int(
+                        self.skillCooltimeList[self.serverID][self.jobID][
+                            self.selectedSkillList[skill]
+                        ]
+                        * (100 - self.cooltimeReduce)
                     ):  # 쿨타임이 지나면
-                        self.preparedSkillList[2].append(skill)
-                        self.availableSkillCount[skill] += 1
-                        self.skillCoolTimers[skill] = 0.0
+                        self.preparedSkillList[2].append(skill)  # 대기열에 추가
+                        self.availableSkillCount[skill] += 1  # 사용 가능 횟수 증가
 
-            # print(f"{usedSkill} 사용")
-            # for i in range(6):
-            #     print(
-            #         f"{self.availableSkillCount[i]} / {self.skillComboCountList[self.serverID][self.jobID][
-            #         self.selectedSkillList[i]
-            #     ]} : {self.skillCoolTimers[i]} / {self.skillCooltimeList[self.serverID][self.jobID][self.selectedSkillList[i]] * (1 - self.cooltimeReduce * 0.01)}"
-            #     )
-            # print()
+                        self.skillCoolTimers[skill] = 0  # 쿨타임 초기화
+
+            time.sleep(self.unitTime)
 
     def initMacro(self):
         self.selectedItemSlot = -1
