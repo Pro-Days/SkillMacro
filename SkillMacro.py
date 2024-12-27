@@ -1156,9 +1156,9 @@ class MainWindow(QWidget):
 
         def click(b=True):
             if b:
-                self.usedSkillList.append(
-                    [-1, round(self.elapsedTime + self.passedTime, 2)]
-                )
+                # self.usedSkillList.append(
+                #     [-1, round(self.elapsedTime + self.passedTime, 2)]
+                # )
 
                 self.passedTime += pag.PAUSE
                 if (
@@ -1169,9 +1169,9 @@ class MainWindow(QWidget):
                     pag.click()
 
         def use():
-            self.usedSkillList.append(
-                [skill, round(self.elapsedTime + self.passedTime, 2)]
-            )
+            # self.usedSkillList.append(
+            #     [skill, round(self.elapsedTime + self.passedTime, 2)]
+            # )
 
             for i in range(len(self.isUsed[skill])):
                 if not self.isUsed[skill][i]:
@@ -1691,19 +1691,19 @@ class MainWindow(QWidget):
                 ],
             ]
         ]
-        self.skillCooltimeList = [[[8] * 8] * 8]
-        # self.skillCooltimeList = [
-        #     [
-        #         [6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0],
-        #         [6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0],
-        #         [6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0],
-        #         [6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0],
-        #         [6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0],
-        #         [6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0],
-        #         [6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0],
-        #         [6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0],
-        #     ]
-        # ]
+        # self.skillCooltimeList = [[[8] * 8] * 8]
+        self.skillCooltimeList = [
+            [
+                [3.0, 5.0, 6.0, 4.0, 4.0, 3.0, 5.0, 7.0],
+                [6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0],
+                [6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0],
+                [6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0],
+                [6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0],
+                [6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0],
+                [6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0],
+                [6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0],
+            ]
+        ]
         self.skillComboCountList = [
             [
                 [3, 2, 2, 1, 3, 1, 1, 3],
@@ -2219,7 +2219,7 @@ class MainWindow(QWidget):
 
     def tick(self):
         self.previewTimer.singleShot(100, self.tick)
-        # self.showSkillPreview()
+        self.showSkillPreview()
 
     ## 스킬 미리보기 프레임에 스킬 아이콘 설정
     def showSkillPreview(self):
