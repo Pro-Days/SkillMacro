@@ -4,7 +4,6 @@ import os
 import sys
 import time
 from functools import partial
-import matplotlib.patches as patches
 from threading import Thread
 from webbrowser import open_new
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
@@ -111,14 +110,14 @@ class MainWindow(QWidget):
                     self.selectedItemSlot = -1
                     Thread(target=self.runMacro, args=[self.loopNum]).start()
 
-                time.sleep(0.5 * self.sleepCoefficient)
+                time.sleep(0.5 * self.sleepCoefficient_normal)
 
             elif convertedKey in linkKeys and not self.isActivated:
                 for i in range(len(linkKeys)):
                     if convertedKey == linkKeys[i]:
                         Thread(target=self.useLinkSkill, args=[i, self.loopNum]).start()
 
-                time.sleep(0.25 * self.sleepCoefficient)
+                time.sleep(0.25 * self.sleepCoefficient_normal)
             else:
                 pass
 
@@ -938,70 +937,32 @@ class MainWindow(QWidget):
             )
             self.sim_stat_inputs.append(lineEdit)
 
+    # 매크로 시뮬레이션 => 스킬 리스트
     def getSimulatedSKillList(self):
+        # 실제와 다른 경우가 있어서 시뮬레이션 진행할 때 옵션 추가해야함
+        def use(skill, additionalTime=0):
+            self.usedSkillList.append(
+                [skill, (self.elapsedTime + additionalTime) * 0.001]
+            )
+
+            self.minusSkillCount = [skill, additionalTime]
+            # self.availableSkillCount[skill] -= 1
+
+            print(f"{(self.elapsedTime + additionalTime) * 0.001:.3f} - {skill}")
+
         self.initMacro()
-        self.elapsedTime = 0.0
+        self.elapsedTime = 0  # 1000배
+        self.simWaitTime = 0  # 다음 테스크 실행까지 대기 시간 (1000배)
+        self.minusSkillCount = [
+            None,
+            None,
+        ]  # availableSkillCount -1까지 남은 시간: [skill, time]
         self.usedSkillList = []
-        self.skillCoolTimers = [  # size: 사용 가능 스킬 개수 * 콤보개수
-            [self.delay * 0.001]
-            * self.skillComboCountList[self.serverID][self.jobID][
-                self.selectedSkillList[i]
-            ]
-            for i in range(self.usableSkillCount[self.serverID])
-        ]  # isUsed이면 self.unitTime씩 증가, 쿨타임이 지나면 0으로 초기화
 
-        self.availableSkillCount = [
-            [False]
-            * self.skillComboCountList[self.serverID][self.jobID][
-                self.selectedSkillList[i]
-            ]
-            for i in range(self.usableSkillCount[self.serverID])
-        ]  # 스킬을 사용해서 쿨타임을 기다림
-
-        while self.elapsedTime <= 65.0:
-            self.addTaskList()
-            passedTime, usedSkill = self.useSkill(self.loopNum, True)  # skill: slot
-            self.elapsedTime += passedTime
-
-            if usedSkill != None:
-                # self.usedSkillList.append(
-                #     [usedSkill, round(self.elapsedTime - self.delay * 0.001, 2)]
-                # )
-                pass
-            else:
-                self.elapsedTime += self.unitTime
-
-            for skill in range(self.usableSkillCount[self.serverID]):
-                for count in range(
-                    self.skillComboCountList[self.serverID][self.jobID][
-                        self.selectedSkillList[skill]
-                    ]
-                ):
-                    if self.availableSkillCount[skill][count]:
-                        if usedSkill == None:
-                            self.skillCoolTimers[skill][count] += self.unitTime
-                        self.skillCoolTimers[skill][count] += passedTime
-
-                        if self.skillCoolTimers[skill][count] >= self.skillCooltimeList[
-                            self.serverID
-                        ][self.jobID][self.selectedSkillList[skill]] * (
-                            1 - self.cooltimeReduce * 0.01
-                        ):
-                            self.preparedSkillList[2].append(skill)
-                            self.availableSkillCount[skill][count] = False
-                            self.skillCoolTimers[skill][count] = 0.0
-
-        self.usedSkillList = [i for i in self.usedSkillList if i[1] <= 60.0]
-        return self.usedSkillList
-
-    ## 매크로 메인 쓰레드
-    def runMacro(self, loopNum):
-        self.initMacro()
-
-        # 스킬 남은 쿨타임 : [0, 0, 0, 0, 0, 0]  # 초 100배
+        # 스킬 남은 쿨타임 : [0, 0, 0, 0, 0, 0]  # 초 1000배
         self.skillCoolTimers = [0] * self.usableSkillCount[
             self.serverID
-        ]  # isUsed이면 self.unitTime(x100)씩 증가, 쿨타임이 지나면 0으로 초기화
+        ]  # isUsed이면 self.unitTime(x1000)씩 증가, 쿨타임이 지나면 0으로 초기화
 
         # 스킬 사용 가능 횟수 : [3, 2, 2, 1, 3, 3]
         self.availableSkillCount = [
@@ -1011,36 +972,37 @@ class MainWindow(QWidget):
             for i in range(self.usableSkillCount[self.serverID])
         ]
 
-        # 스킬 쿨타임 쓰레드
-        Thread(target=self.updateSkillCooltime, args=[loopNum], daemon=True).start()
+        while self.elapsedTime <= 61000:  # 65000
+            self.addTaskList()
 
-        while self.isActivated and self.loopNum == loopNum:  # 매크로 작동중일 때
-            self.addTaskList()  # taskList에 사용 가능한 스킬 추가
-            passedTime, usedSkill = self.useSkill(
-                loopNum
-            )  # 스킬 사용하고 시간, 사용한 스킬 리턴. skill: slot
+            # 스킬 사용
+            if len(self.taskList) != 0 and self.simWaitTime == 0:
+                skill = self.taskList[0][0]  # skill = slot
+                doClick = self.taskList[0][1]  # T, F
 
-            # 잠수면 매크로 중지
-            if self.isAFKEnabled:
-                if time.time() - self.afkTime0 >= 10:
-                    self.isActivated = False
+                if self.selectedItemSlot != skill:
+                    if doClick:  # press -> delay -> click => use
+                        use(skill, self.delay)
+                        self.selectedItemSlot = skill
 
-            # 스킬 사용 안했으면 슬립
-            if usedSkill == None:
-                time.sleep(self.unitTime * self.sleepCoefficient)
+                        self.simWaitTime = self.delay * 2
+                    else:  # press => use
+                        use(skill)
+                        self.selectedItemSlot = skill
 
-            # if usedSkill != None:
-            #     print(f"{usedSkill} 사용")
-            #     for i in range(6):
-            #         print(
-            #             f"{self.availableSkillCount[i]} / {self.skillComboCountList[self.serverID][self.jobID][
-            #             self.selectedSkillList[i]
-            #         ]} : {self.skillCoolTimers[i]} / {int(self.skillCooltimeList[self.serverID][self.jobID][self.selectedSkillList[i]] * (100 - self.cooltimeReduce))}"
-            #         )
-            #     print()
+                        self.simWaitTime = self.delay
+                else:
+                    if doClick:  # click => use
+                        use(skill)
 
-    def updateSkillCooltime(self, loopNum):
-        while self.isActivated and self.loopNum == loopNum:
+                        self.simWaitTime = self.delay
+                    else:  # press => use
+                        use(skill)
+
+                        self.simWaitTime = self.delay
+
+                self.taskList.pop(0)
+
             for skill in range(self.usableSkillCount[self.serverID]):  # 0~6
                 if (
                     self.availableSkillCount[skill]
@@ -1060,6 +1022,96 @@ class MainWindow(QWidget):
                         self.availableSkillCount[skill] += 1  # 사용 가능 횟수 증가
 
                         self.skillCoolTimers[skill] = 0  # 쿨타임 초기화
+                        # print(f"{(self.elapsedTime) * 0.001:.3f} - {skill} 쿨타임")
+
+            if self.minusSkillCount[1] == 0:
+                self.availableSkillCount[self.minusSkillCount[0]] -= 1
+                self.minusSkillCount = [None, None]
+
+            if self.minusSkillCount[1] != None:
+                self.minusSkillCount[1] = max(
+                    0, self.minusSkillCount[1] - int(self.unitTime * 1000)
+                )
+            self.simWaitTime = max(0, self.simWaitTime - int(self.unitTime * 1000))
+            self.elapsedTime += int(self.unitTime * 1000)
+
+        self.usedSkillList = [i for i in self.usedSkillList if i[1] <= 60.5]
+        # 1초마다 평타도 추가시켜야함 => 데미지 계산 할 때 추가시키기
+        return self.usedSkillList
+
+    ## 매크로 메인 쓰레드
+    def runMacro(self, loopNum):
+        self.initMacro()
+
+        # 스킬 쿨타임 타이머 : [time] * 6  # 사용한 시간
+        self.skillCoolTimers = [None] * self.usableSkillCount[self.serverID]
+
+        # 스킬 사용 가능 횟수 : [3, 2, 2, 1, 3, 3]
+        self.availableSkillCount = [
+            self.skillComboCountList[self.serverID][self.jobID][
+                self.selectedSkillList[i]
+            ]
+            for i in range(self.usableSkillCount[self.serverID])
+        ]
+
+        # 스킬 쿨타임 쓰레드
+        Thread(target=self.updateSkillCooltime, args=[loopNum], daemon=True).start()
+        # 매크로 클릭 쓰레드
+        # if self.activeMouseClickSlot:
+        #     Thread(target=self.macroClick, args=[loopNum], daemon=True).start()
+        self.startTime = time.time()
+
+        while self.isActivated and self.loopNum == loopNum:  # 매크로 작동중일 때
+            self.addTaskList()  # taskList에 사용 가능한 스킬 추가
+            usedSkill = self.useSkill(
+                loopNum
+            )  # 스킬 사용하고 시간, 사용한 스킬 리턴. skill: slot
+
+            # 잠수면 매크로 중지
+            if self.isAFKEnabled:
+                if time.time() - self.afkTime0 >= 10:
+                    self.isActivated = False
+
+            # 스킬 사용 안했으면 슬립 (useSkill에서 슬립을 안함)
+            if usedSkill == None:
+                time.sleep(self.unitTime * self.sleepCoefficient_unit)
+
+            # 디버깅용
+            # if usedSkill != None:
+            #     print(f"{time.time() - self.startTime:.3f} - {usedSkill} 사용")
+            # for i in range(6):
+            #     print(
+            #         f"{self.availableSkillCount[i]} / {self.skillComboCountList[self.serverID][self.jobID][
+            #         self.selectedSkillList[i]
+            #     ]} : {self.skillCoolTimers[i]} / {int(self.skillCooltimeList[self.serverID][self.jobID][self.selectedSkillList[i]] * (100 - self.cooltimeReduce))}"
+            #     )
+            # print()
+
+    def updateSkillCooltime(self, loopNum):
+        while self.isActivated and self.loopNum == loopNum:
+            for skill in range(self.usableSkillCount[self.serverID]):  # 0~6
+                if (
+                    self.availableSkillCount[skill]
+                    < self.skillComboCountList[self.serverID][self.jobID][
+                        self.selectedSkillList[skill]
+                    ]
+                ) and (  # 스킬 사용해서 쿨타임 기다리는 중이면
+                    ((time.time() - self.skillCoolTimers[skill]) * 100)
+                    >= int(
+                        self.skillCooltimeList[self.serverID][self.jobID][
+                            self.selectedSkillList[skill]
+                        ]
+                        * (100 - self.cooltimeReduce)
+                    )
+                ):  # 쿨타임이 지나면
+                    self.preparedSkillList[2].append(skill)  # 대기열에 추가
+                    self.availableSkillCount[skill] += 1  # 사용 가능 횟수 증가
+
+                    # print(
+                    #     f"{time.time() - self.startTime:.3f} - {skill} {time.time() - self.skillCoolTimers[skill]}"
+                    # )
+
+                    self.skillCoolTimers[skill] = time.time()  # 쿨타임 초기화
 
             time.sleep(self.unitTime)
 
@@ -1168,35 +1220,28 @@ class MainWindow(QWidget):
         self.taskList = []
         # self.printMacroInfo(brief=False)
 
-    def useSkill(self, loopNum, returnSkillOrder=False):
-        """taskList에 있는 스킬 사용"""
+    def useSkill(self, loopNum):
 
         def press(key):
-            if self.isActivated and self.loopNum == loopNum and not returnSkillOrder:
+            if self.isActivated and self.loopNum == loopNum:
                 kb.press(key)
 
-        def click(b=True):
-            if b:
-                # self.usedSkillList.append(
-                #     [-1, round(self.elapsedTime + self.passedTime, 2)]
-                # )
+        def click():
+            if self.isActivated and self.loopNum == loopNum:
+                pag.click()
 
-                self.passedTime += pag.PAUSE
-                if (
-                    self.isActivated
-                    and self.loopNum == loopNum
-                    and not returnSkillOrder
-                ):
-                    pag.click()
-
-        def use():
-            # self.usedSkillList.append(
-            #     [skill, round(self.elapsedTime + self.passedTime, 2)]
-            # )
+        def use(skill):
+            if (
+                self.availableSkillCount[skill]
+                == self.skillComboCountList[self.serverID][self.jobID][
+                    self.selectedSkillList[skill]
+                ]
+            ):
+                self.skillCoolTimers[skill] = (
+                    time.time()
+                )  # 스킬 스택이 모두 찬 상태일 때
 
             self.availableSkillCount[skill] -= 1
-
-        self.passedTime = 0.0
 
         if len(self.taskList) != 0:
             skill = self.taskList[0][0]  # skill = slot
@@ -1205,37 +1250,39 @@ class MainWindow(QWidget):
             key = self.key_dict[key] if key in self.key_dict else key
 
             if self.selectedItemSlot != skill:
-                if doClick:
+                if doClick:  # press -> delay -> click => use
                     press(key)
-                    click(self.activeMouseClickSlot)
-                    if not returnSkillOrder:
-                        time.sleep(self.delay * 0.001 * self.sleepCoefficient)
-                    self.passedTime += self.delay * 0.001
+                    time.sleep(self.delay * 0.001 * self.sleepCoefficient_normal)
+                    use(skill)
                     click()
-                    use()
                     self.selectedItemSlot = skill
-                else:
+                else:  # press => use
+                    use(skill)
                     press(key)
-                    click(self.activeMouseClickSlot)
-                    use()
                     self.selectedItemSlot = skill
             else:
-                if doClick:
+                if doClick:  # click => use
+                    use(skill)
                     click()
-                    use()
-                else:
+                else:  # press => use
+                    use(skill)
                     press(key)
-                    click(self.activeMouseClickSlot)
-                    use()
 
             self.taskList.pop(0)
-            if not returnSkillOrder:
-                time.sleep(self.delay * 0.001 * self.sleepCoefficient)
-            self.passedTime += self.delay * 0.001
-            return self.passedTime, skill
+
+            print(
+                f"{time.time() - self.startTime - pag.PAUSE if doClick else time.time() - self.startTime:.3f} - {skill}"
+            )
+
+            sleepTime = (
+                self.delay * 0.001 * self.sleepCoefficient_normal - pag.PAUSE
+                if doClick
+                else self.delay * 0.001 * self.sleepCoefficient_normal
+            )
+            time.sleep(sleepTime)
+            return skill
         else:
-            click(self.activeMouseClickSlot)
-            return self.passedTime, None
+            return None
 
     def useLinkSkill(self, num, loopNum):
         def press(key):
@@ -1255,7 +1302,7 @@ class MainWindow(QWidget):
             if slot != skill:
                 if clickTF:
                     press(key)
-                    time.sleep(self.delay * 0.001 * self.sleepCoefficient)
+                    time.sleep(self.delay * 0.001 * self.sleepCoefficient_normal)
                     click()
                     slot = skill
                     # time.sleep(self.delay * 0.001)
@@ -1477,6 +1524,8 @@ class MainWindow(QWidget):
                 return x
 
     def keyPressEvent(self, e):  # 키가 눌러졌을 때 실행됨
+
+        # ESC
         if e.key() == Qt.Key.Key_Escape:
             if self.isTabRemovePopupActivated:
                 self.onTabRemovePopupClick(0, False)
@@ -1484,9 +1533,13 @@ class MainWindow(QWidget):
                 self.removeNoticePopup()
             elif self.activePopup != "":
                 self.disablePopup()
+
+        # Ctrl
         elif e.modifiers() & Qt.KeyboardModifier.ControlModifier:
             if e.key() == Qt.Key.Key_W and not self.isTabRemovePopupActivated:
                 self.onTabRemoveClick(self.recentPreset)
+
+        # Enter
         elif e.key() == Qt.Key.Key_Return:
             if self.isTabRemovePopupActivated:
                 self.onTabRemovePopupClick(self.recentPreset)
@@ -1496,6 +1549,11 @@ class MainWindow(QWidget):
                 self.onInputPopupClick("cooltime")
             elif self.activePopup == "changeTabName":
                 self.onInputPopupClick(("tabName", self.recentPreset))
+
+        # # Temp
+        # elif e.key() == Qt.Key.Key_L:
+        #     print(self.getSimulatedSKillList())
+
         else:
             pass
 
@@ -1532,9 +1590,11 @@ class MainWindow(QWidget):
         self.icon_on = QIcon(QPixmap(convertResourcePath("resource\\icon_on.ico")))
 
         # pag.PAUSE = 0.01  # pag click delay 설정
-        self.sleepCoefficient = (
-            0.97  # 이 계수를 조정하여 time.sleep과 실제 시간 간의 괴리를 조정
-        )
+
+        # 이 계수를 조정하여 time.sleep과 실제 시간 간의 괴리를 조정
+        self.sleepCoefficient_normal = 0.975
+        self.sleepCoefficient_unit = 0.97
+
         self.simType = 0
         self.unitTime = 0.05  # 1tick
         self.isAFKEnabled = False  # AFK 모드 활성화 여부
@@ -1708,19 +1768,19 @@ class MainWindow(QWidget):
                 ],
             ]
         ]
-        self.skillCooltimeList = [[[8] * 8] * 8]
-        # self.skillCooltimeList = [
-        #     [
-        #         [3.0, 5.0, 6.0, 4.0, 4.0, 3.0, 5.0, 7.0],
-        #         [6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0],
-        #         [6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0],
-        #         [6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0],
-        #         [6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0],
-        #         [6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0],
-        #         [6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0],
-        #         [6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0, 6.0],
-        #     ]
-        # ]
+        # self.skillCooltimeList = [[[8] * 8] * 8]
+        self.skillCooltimeList = [
+            [
+                [3.0, 5.0, 6.0, 4.0, 4.0, 3.0, 5.0, 7.0],
+                [3.0, 5.0, 6.0, 4.0, 4.0, 3.0, 5.0, 7.0],
+                [3.0, 5.0, 6.0, 4.0, 4.0, 3.0, 5.0, 7.0],
+                [3.0, 5.0, 6.0, 4.0, 4.0, 3.0, 5.0, 7.0],
+                [3.0, 5.0, 6.0, 4.0, 4.0, 3.0, 5.0, 7.0],
+                [3.0, 5.0, 6.0, 4.0, 4.0, 3.0, 5.0, 7.0],
+                [3.0, 5.0, 6.0, 4.0, 4.0, 3.0, 5.0, 7.0],
+                [3.0, 5.0, 6.0, 4.0, 4.0, 3.0, 5.0, 7.0],
+            ]
+        ]
         self.skillComboCountList = [
             [
                 [3, 2, 2, 1, 3, 1, 1, 3],
@@ -5893,7 +5953,7 @@ class SkillContributionCanvas(FigureCanvas):
 
 
 if __name__ == "__main__":
-    version = "v3.1.0-alpha.1"
+    version = "v3.1.0-alpha"
     fileDir = "C:\\PDFiles\\PDSkillMacro.json"
     app = QApplication(sys.argv)
     window = MainWindow()
