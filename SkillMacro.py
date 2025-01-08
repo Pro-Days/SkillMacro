@@ -1057,8 +1057,8 @@ class MainWindow(QWidget):
         # 스킬 쿨타임 쓰레드
         Thread(target=self.updateSkillCooltime, args=[loopNum], daemon=True).start()
         # 매크로 클릭 쓰레드
-        # if self.activeMouseClickSlot:
-        #     Thread(target=self.macroClick, args=[loopNum], daemon=True).start()
+        if self.activeMouseClickSlot:
+            Thread(target=self.macroClick, args=[loopNum], daemon=True).start()
         self.startTime = time.time()
 
         while self.isActivated and self.loopNum == loopNum:  # 매크로 작동중일 때
@@ -1086,6 +1086,12 @@ class MainWindow(QWidget):
             #     ]} : {self.skillCoolTimers[i]} / {int(self.skillCooltimeList[self.serverID][self.jobID][self.selectedSkillList[i]] * (100 - self.cooltimeReduce))}"
             #     )
             # print()
+
+    def macroClick(self, loopNum):
+        while self.isActivated and self.loopNum == loopNum:
+            pag.click()
+
+            time.sleep(self.delay * 0.001)
 
     def updateSkillCooltime(self, loopNum):
         while self.isActivated and self.loopNum == loopNum:
