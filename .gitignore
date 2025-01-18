@@ -1,0 +1,11 @@
+.venv/
+.vscode/
+build/
+dist/
+exe/
+installer/
+note/
+prototype/
+pyinstaller/
+v2/
+SkillMacro.spec/
