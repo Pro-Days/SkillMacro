@@ -3,13 +3,16 @@ import json
 import os
 import sys
 import time
+import random
+import requests
+from pprint import pprint
 from functools import partial
 from threading import Thread
 from webbrowser import open_new
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 import matplotlib.pyplot as plt
 from matplotlib import font_manager as fm
-import numpy as np
+import matplotlib.ticker as mtick
 import keyboard as kb
 import pyautogui as pag
 from PyQt6.QtCore import QObject, QSize, Qt, QThread, QTimer, pyqtSignal, pyqtSlot
@@ -35,7 +38,6 @@ from PyQt6.QtWidgets import (
     QStackedLayout,
     QGraphicsDropShadowEffect,
 )
-from requests import get
 
 
 ## 리소스 경로 변경
@@ -51,9 +53,7 @@ class VersionChecker(QObject):
     @pyqtSlot()
     def checkVersion(self):
         try:
-            response = get(
-                "https://api.github.com/repos/pro-days/skillmacro/releases/latest"
-            )
+            response = requests.get("https://api.github.com/repos/pro-days/skillmacro/releases/latest")
             if response.status_code == 200:
                 recentVersion = response.json()["name"]
                 self.updateUrl = response.json()["html_url"]
@@ -68,8 +68,10 @@ class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setDefaultFont()
-        self.resetVar()
+        self.defineVar()
         self.setWindowIcon(self.icon)
+
+        self.dataUpdate()
         self.dataLoad()
         self.initUI()
 
@@ -133,15 +135,17 @@ class MainWindow(QWidget):
 
     def makePage2(self):
         self.sim_colors4 = [
-            "255, 130, 130",
-            "255, 230, 140",
-            "170, 230, 255",
-            "150, 225, 210",
+            "255, 130, 130",  # #FF8282
+            "255, 230, 140",  # #FFE68C
+            "170, 230, 255",  # #AAE6FF
+            "150, 225, 210",  # #96E1D2
         ]
         self.sim_input_colors = ["#f0f0f0", "#D9D9D9"]  # [background, border]
+        self.sim_input_colorsRed = "#FF6060"
         self.sim_labelFrame_color = "#bbbbbb"
         self.scrollBarWidth = 12
         self.sim_margin = 10
+        self.sim_mainFrameMargin = 20
 
         self.sim_navHeight = 50
         self.sim_navBWidth = 200
@@ -170,6 +174,12 @@ class MainWindow(QWidget):
         self.sim_skill_level_H = 24
         self.sim_skill_input_H = 24
 
+        self.sim_simInfo_margin = 224
+        self.sim_simInfo_frame_H = self.sim_stat_frame_H
+        self.sim_simInfo_label_H = self.sim_stat_label_H
+        self.sim_simInfo_input_H = self.sim_stat_input_H
+        self.sim_simInfo_width = self.sim_stat_width
+
         self.sim_powerL_margin = 25
         self.sim_powerL_D = 20
         self.sim_powerL_width = 205
@@ -177,20 +187,21 @@ class MainWindow(QWidget):
         self.sim_powerL_title_H = 50
         self.sim_powerL_number_H = 90
 
+        # sim_powerL_width = color + sim_analysis_details_W * 3 + sim_analysis_details_margin * 4
         self.sim_analysis_margin = self.sim_powerL_margin
         self.sim_analysis_D = self.sim_powerL_D
         self.sim_analysis_width = self.sim_powerL_width
-        self.sim_analysis_color_W = 5
+        self.sim_analysis_color_W = 4
         self.sim_analysis_widthXC = self.sim_analysis_width - self.sim_analysis_color_W
         self.sim_analysis_frame_H = 140
         self.sim_analysis_title_H = 40
         self.sim_analysis_number_H = 55
         self.sim_analysis_number_marginH = 5
         self.sim_analysis_details_H = 20
-        self.sim_analysis_details_W = 60
-        self.sim_analysis_detailsT_W = 23
-        self.sim_analysis_detailsN_W = 37
-        self.sim_analysis_details_margin = 5
+        self.sim_analysis_details_W = 63
+        self.sim_analysis_detailsT_W = 22
+        self.sim_analysis_detailsN_W = 41
+        self.sim_analysis_details_margin = 3
 
         self.sim_dps_margin = 25
         self.sim_dps_width = 430
@@ -212,17 +223,13 @@ class MainWindow(QWidget):
             self.width() - self.sim_margin * 2,
             self.sim_navHeight,
         )
-        self.sim_navFrame.setStyleSheet(
-            "QFrame { background-color: rgb(255, 255, 255); }"
-        )
+        self.sim_navFrame.setStyleSheet("QFrame { background-color: rgb(255, 255, 255); }")
 
         self.sim_navButtons = []
-        texts = ["캐릭터 정보", "시뮬레이터", "스탯 계산기", "캐릭터 카드"]
+        texts = ["정보 입력", "시뮬레이터", "스탯 계산기", "캐릭터 카드"]
         for i in [0, 1, 2, 3]:
             button = QPushButton(texts[i], self.sim_navFrame)
-            button.setGeometry(
-                self.sim_navBWidth * i, 0, self.sim_navBWidth, self.sim_navHeight
-            )
+            button.setGeometry(self.sim_navBWidth * i, 0, self.sim_navBWidth, self.sim_navHeight)
             button.setStyleSheet(
                 f"""
                 QPushButton {{ background-color: rgb(255, 255, 255); border: none; border-bottom: {"2" if i == 0 else "0"}px solid #9180F7; }}
@@ -244,7 +251,7 @@ class MainWindow(QWidget):
             QPushButton:hover { background-color: rgb(234, 234, 234); }
             """
         )
-        pixmap = QPixmap(convertResourcePath("resource\\x.png"))
+        pixmap = QPixmap(convertResourcePath("resource\\image\\x.png"))
         button.setIcon(QIcon(pixmap))
         button.setIconSize(QSize(15, 15))
         self.sim_navButtons.append(button)
@@ -284,15 +291,11 @@ class MainWindow(QWidget):
             - self.sim_main1_D,
         )
         self.sim_mainScrollArea.setStyleSheet(
-            "QScrollArea { border: 0px solid black; border-radius: 10px; }"
+            "QScrollArea { background-color: #FFFFFF; border: 0px solid black; border-radius: 10px; }"
         )
-        self.sim_mainScrollArea.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOn
-        )
-        self.sim_mainScrollArea.setHorizontalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
-        self.sim_mainScrollArea.setPalette(self.backPalette)
+        self.sim_mainScrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        self.sim_mainScrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        # self.sim_mainScrollArea.setPalette(self.backPalette)
 
         self.makeSimulType1()
 
@@ -308,10 +311,17 @@ class MainWindow(QWidget):
         pass
 
     def makeSimulType2(self):
+        if not (self.sim_stat_inputCheck and self.sim_skill_inputCheck and self.sim_simInfo_inputCheck):
+            self.makeNoticePopup("SimInputError")
+            return
+
         self.removeSimulWidgets()
         self.sim_updateNavButton(1)
 
         self.simType = 2
+
+        self.sim_powers, analysis, resultDet, results = self.simulateMacro(self.info_stats)
+        self.sim_powers_calculated = True
 
         # 전투력
         self.sim2_frame1 = QFrame(self.sim_mainFrame)
@@ -321,22 +331,18 @@ class MainWindow(QWidget):
             928,
             self.sim_title_H + (self.sim_widget_D + self.sim_powerL_frame_H),
         )
-        self.sim2_frame1.setStyleSheet(
-            "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
-        )
+        self.sim2_frame1.setStyleSheet("QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }")
 
-        self.sim2_frame1_labelFrame, self.sim2_frame1_label = self.sim_makeTitleFrame(
+        self.sim2_frame1_labelFrame, self.sim2_frame1_label = self.sim_returnTitleFrame(
             self.sim2_frame1, "전투력"
         )
-        text = ["12345", "12345", "12345", "12345"]
-        self.sim_power_list = self.sim_make_PowerLabels(
-            self.sim2_frame1, text
+        self.sim_power_list = self.sim_makePowerLabels(
+            self.sim2_frame1, self.sim_powers
         )  # [[f, t, n], [f, t, n], [f, t, n], [f, t, n]]
 
         for i, (f, t, n) in enumerate(self.sim_power_list):
             f.setGeometry(
-                self.sim_powerL_margin
-                + (self.sim_powerL_width + self.sim_powerL_D) * i,
+                self.sim_powerL_margin + (self.sim_powerL_width + self.sim_powerL_D) * i,
                 self.sim_label_H + self.sim_widget_D,
                 self.sim_powerL_width,
                 self.sim_powerL_frame_H,
@@ -368,56 +374,12 @@ class MainWindow(QWidget):
                 + self.sim_dmg_height * 3
             ),
         )
-        self.sim2_frame2.setStyleSheet(
-            "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
-        )
+        self.sim2_frame2.setStyleSheet("QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }")
 
-        self.sim2_frame2_labelFrame, self.sim2_frame2_label = self.sim_makeTitleFrame(
+        self.sim2_frame2_labelFrame, self.sim2_frame2_label = self.sim_returnTitleFrame(
             self.sim2_frame2, "분석"
         )
 
-        text = [
-            {
-                "title": "초당 피해량",
-                "number": "12345",
-                "min": "12345",
-                "max": "12345",
-                "std": "12345",
-                "p25": "12345",
-                "p50": "12345",
-                "p75": "12345",
-            },
-            {
-                "title": "총 피해량",
-                "number": "12345",
-                "min": "12345",
-                "max": "12345",
-                "std": "12345",
-                "p25": "12345",
-                "p50": "12345",
-                "p75": "12345",
-            },
-            {
-                "title": "초당 회복량",
-                "number": "12345",
-                "min": "12345",
-                "max": "12345",
-                "std": "12345",
-                "p25": "12345",
-                "p50": "12345",
-                "p75": "12345",
-            },
-            {
-                "title": "총 회복량",
-                "number": "12345",
-                "min": "12345",
-                "max": "12345",
-                "std": "12345",
-                "p25": "12345",
-                "p50": "12345",
-                "p75": "12345",
-            },
-        ]
         details = ["min", "max", "std", "p25", "p50", "p75"]
 
         self.sim_analysis_list = [
@@ -429,8 +391,7 @@ class MainWindow(QWidget):
         for i in range(4):
             frame = QFrame(self.sim2_frame2)
             frame.setGeometry(
-                self.sim_analysis_margin
-                + (self.sim_analysis_width + self.sim_analysis_D) * i,
+                self.sim_analysis_margin + (self.sim_analysis_width + self.sim_analysis_D) * i,
                 self.sim_label_H + self.sim_widget_D,
                 self.sim_analysis_width,
                 self.sim_analysis_frame_H,
@@ -452,30 +413,26 @@ class MainWindow(QWidget):
             )
             self.sim_analysis_list[i].append(color)
 
-            title = QLabel(text[i]["title"], frame)
+            title = QLabel(analysis[i]["title"], frame)
             title.setGeometry(
                 self.sim_analysis_color_W,
                 0,
                 self.sim_analysis_widthXC,
                 self.sim_analysis_title_H,
             )
-            title.setStyleSheet(
-                "QLabel { background-color: transparent; border: 0px solid; }"
-            )
+            title.setStyleSheet("QLabel { background-color: transparent; border: 0px solid; }")
             title.setFont(QFont("나눔스퀘어라운드 Bold", 14))
             title.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.sim_analysis_list[i].append(title)
 
-            number = QLabel(text[i]["number"], frame)
+            number = QLabel(analysis[i]["number"], frame)
             number.setGeometry(
                 self.sim_analysis_color_W,
                 self.sim_analysis_title_H,
                 self.sim_analysis_widthXC,
                 self.sim_analysis_number_H,
             )
-            number.setStyleSheet(
-                "QLabel { background-color: transparent; border: 0px solid; }"
-            )
+            number.setStyleSheet("QLabel { background-color: transparent; border: 0px solid; }")
             number.setFont(QFont("나눔스퀘어라운드 ExtraBold", 18))
             number.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.sim_analysis_list[i].append(number)
@@ -487,8 +444,7 @@ class MainWindow(QWidget):
                 detail_frame.setGeometry(
                     self.sim_analysis_color_W
                     + self.sim_analysis_details_margin
-                    + (self.sim_analysis_details_W + self.sim_analysis_details_margin)
-                    * (j % 3)
+                    + (self.sim_analysis_details_W + self.sim_analysis_details_margin) * (j % 3)
                     - 1,
                     self.sim_analysis_title_H
                     + self.sim_analysis_number_H
@@ -497,9 +453,7 @@ class MainWindow(QWidget):
                     self.sim_analysis_details_W,
                     self.sim_analysis_details_H,
                 )
-                detail_frame.setStyleSheet(
-                    "QFrame { background-color: transparent; border: 0px solid; }"
-                )
+                detail_frame.setStyleSheet("QFrame { background-color: transparent; border: 0px solid; }")
                 self.sim_analysis_list[i][4][j].append(detail_frame)
 
                 detail_title = QLabel(details[j], detail_frame)
@@ -516,20 +470,19 @@ class MainWindow(QWidget):
                 detail_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.sim_analysis_list[i][4][j].append(detail_title)
 
-                detail_number = QLabel(text[i][details[j]], detail_frame)
+                detail_number = QLabel(analysis[i][details[j]], detail_frame)
                 detail_number.setGeometry(
                     self.sim_analysis_detailsT_W,
                     0,
                     self.sim_analysis_detailsN_W,
                     self.sim_analysis_details_H,
                 )
-                detail_number.setStyleSheet(
-                    "QLabel { background-color: transparent; border: 0px solid; }"
-                )
-                detail_number.setFont(QFont("나눔스퀘어라운드 ExtraBold", 9))
+                detail_number.setStyleSheet("QLabel { background-color: transparent; border: 0px solid; }")
+                detail_number.setFont(QFont("나눔스퀘어라운드 ExtraBold", 8))
                 detail_number.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.sim_analysis_list[i][4][j].append(detail_number)
 
+        ## DPS 분포
         self.sim_dpsGraph_frame = QFrame(self.sim2_frame2)
         self.sim_dpsGraph_frame.setGeometry(
             self.sim_dps_margin,
@@ -540,12 +493,12 @@ class MainWindow(QWidget):
         self.sim_dpsGraph_frame.setStyleSheet(
             "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
         )
-        self.sim_dpsGraph = DpsDistributionCanvas(
-            self.sim_dpsGraph_frame, np.random.normal(12000, 1000, 1000)
-        )  # 시뮬레이션 결과
+        data = [sum([i[2] for i in j]) for j in results]
+        self.sim_dpsGraph = DpsDistributionCanvas(self.sim_dpsGraph_frame, data)  # 시뮬레이션 결과
         self.sim_dpsGraph.move(5, 5)
         self.sim_dpsGraph.resize(self.sim_dps_width - 10, self.sim_dps_height - 10)
 
+        ## 스킬 DPS
         self.sim_skillDpsGraph_frame = QFrame(self.sim2_frame2)
         self.sim_skillDpsGraph_frame.setGeometry(
             self.sim_dps_margin + self.sim_dps_width + self.sim_skillDps_margin,
@@ -556,38 +509,49 @@ class MainWindow(QWidget):
         self.sim_skillDpsGraph_frame.setStyleSheet(
             "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
         )
-        self.sim_skillDpsGraph = SkillDpsDistributionCanvas(
-            self.sim_skillDpsGraph_frame, [30.0, 20.0, 15.0, 12.5, 12.5, 10.0]
-        )
+        data = [sum([i[2] for i in resultDet if i[0] == num]) for num in list(range(6)) + [-1]]
+        # data = [round(total_dmgs[i] / sum(total_dmgs) * 100, 1) for i in range(7)]
+        names = []
+        for i in range(6):
+            if i != -1:
+                names.append(self.skillNameList[self.serverID][self.jobID][self.selectedSkillList[i]])
+            else:
+                names.append(None)
+        self.sim_skillDpsGraph = SkillDpsDistributionCanvas(self.sim_skillDpsGraph_frame, data, names)
         self.sim_skillDpsGraph.move(10, 10)
-        self.sim_skillDpsGraph.resize(
-            self.sim_skillDps_width - 20, self.sim_skillDps_height - 20
-        )
+        self.sim_skillDpsGraph.resize(self.sim_skillDps_width - 20, self.sim_skillDps_height - 20)
 
         ## 시간 경과에 따른 피해량
         self.sim_dmgTime_frame = QFrame(self.sim2_frame2)
         self.sim_dmgTime_frame.setGeometry(
             self.sim_dps_margin,
-            self.sim_label_H
-            + self.sim_analysis_frame_H
-            + self.sim_dps_height
-            + self.sim_widget_D * 3,
+            self.sim_label_H + self.sim_analysis_frame_H + self.sim_dps_height + self.sim_widget_D * 3,
             self.sim_dmg_width,
             self.sim_dmg_height,
         )
         self.sim_dmgTime_frame.setStyleSheet(
             "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
         )
-        time = np.linspace(0, 60, 121)
+
+        timeStep, timeStepCount = 1, 61
+        time = [i * timeStep for i in range(timeStepCount)]
+
+        dps_list = []
+        for result in results:
+            dps_list.append([])
+            for i in range(timeStepCount):
+                dps_list[-1].append(sum([j[2] for j in result if i * timeStep <= j[1] < (i + 1) * timeStep]))
+
+        mean_list = [sum([j[i] for j in dps_list]) / len(dps_list) for i in range(timeStepCount)]
+        max_list = [max([j[i] for j in dps_list]) for i in range(timeStepCount)]
+        min_list = [min([j[i] for j in dps_list]) for i in range(timeStepCount)]
         data = {
             "time": time,
-            "max": 400 + 400 * np.sin(2 * np.pi * time / 20),
-            "mean": 300 + 300 * np.sin(2 * np.pi * time / 20),
-            "min": 200 + 200 * np.sin(2 * np.pi * time / 20),
+            "max": max_list,
+            "mean": mean_list,
+            "min": min_list,
         }
-        self.sim_dmgTime = DMGCanvas(
-            self.sim_dmgTime_frame, data, "time"
-        )  # 시뮬레이션 결과
+        self.sim_dmgTime = DMGCanvas(self.sim_dmgTime_frame, data, "time")  # 시뮬레이션 결과
         self.sim_dmgTime.move(5, 5)
         self.sim_dmgTime.resize(self.sim_dmg_width - 10, self.sim_dmg_height - 10)
 
@@ -606,16 +570,26 @@ class MainWindow(QWidget):
         self.sim_totalDmg_frame.setStyleSheet(
             "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
         )
-        time = np.linspace(0, 60, 121)
+
+        sums = [sum([i[2] for i in j]) for j in results]
+        max_idx = sums.index(max(sums))
+        min_idx = sums.index(min(sums))
+
+        total_list = []
+        for dps in dps_list:
+            total_list.append([])
+            for i in range(timeStepCount):
+                total = sum([j for j in dps[: i + 1]])
+                total_list[-1].append(total)
+
+        means = [sum([j[i] for j in total_list]) / len(total_list) for i in range(timeStepCount)]
         data = {
             "time": time,
-            "max": 400 + 400 * time - 400 * np.cos(2 * np.pi * time / 20),
-            "mean": 300 + 300 * time - 300 * np.cos(2 * np.pi * time / 20),
-            "min": 200 + 200 * time - 200 * np.cos(2 * np.pi * time / 20),
+            "max": total_list[max_idx],
+            "mean": means,
+            "min": total_list[min_idx],
         }
-        self.sim_totalDmg = DMGCanvas(
-            self.sim_totalDmg_frame, data, "cumulative"
-        )  # 시뮬레이션 결과
+        self.sim_totalDmg = DMGCanvas(self.sim_totalDmg_frame, data, "cumulative")  # 시뮬레이션 결과
         self.sim_totalDmg.move(5, 5)
         self.sim_totalDmg.resize(self.sim_dmg_width - 10, self.sim_dmg_height - 10)
 
@@ -635,42 +609,41 @@ class MainWindow(QWidget):
             "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
         )
 
-        # 5개의 스킬에 대한 데이터 생성
-        time = np.linspace(0, 60, 121)
-        num_skills = 6
-        data_raw = np.random.rand(num_skills, 121)  # 5x100 랜덤 데이터
+        skillsData = []
+        for num in list(range(6)) + [-1]:
+            skillsData.append([])
+            for i in range(timeStepCount):
+                skillsData[-1].append(
+                    sum([j[2] for j in resultDet if j[0] == num and j[1] < (i + 1) * timeStep])
+                )
 
-        def moving_average(data, window_size):
-            window = np.ones(window_size) / window_size
-            return np.convolve(data, window, mode="same")
+        totalData = []
+        for i in range(timeStepCount):
+            totalData.append(sum([j[2] for j in resultDet if j[1] < (i + 1) * timeStep]))
 
-        # 이동 평균을 사용하여 데이터 스무딩
-        window_size = 11  # 윈도우 크기 (홀수를 사용하는 것이 좋음)
-        smoothed_data = np.array([moving_average(row, window_size) for row in data_raw])
+        data_normalized = []
+        for i in range(7):
+            data_normalized.append([skillsData[i][j] / totalData[j] for j in range(timeStepCount)])
 
-        # 각 시점에서 합이 1이 되도록 정규화
-        data_normalized = smoothed_data / smoothed_data.sum(axis=0)
-        # 누적 합 계산
-        data_cumsum = np.cumsum(data_normalized, axis=0)
+        data_cumsum = [[0.0 for _ in row] for row in data_normalized]
+        for i in range(len(data_normalized)):
+            for j in range(len(data_normalized[0])):
+                data_cumsum[i][j] = sum(row[j] for row in data_normalized[: i + 1])
 
-        # 데이터 딕셔너리 생성
+        names = []
+        for i in range(6):
+            if i != -1:
+                names.append(self.skillNameList[self.serverID][self.jobID][self.selectedSkillList[i]])
+            else:
+                names.append(None)
+
         data = {
             "time": time,
-            "skill1": data_normalized[0],
-            "skill2": data_normalized[1],
-            "skill3": data_normalized[2],
-            "skill4": data_normalized[3],
-            "skill5": data_normalized[4],
-            "skill6": data_normalized[5],
-            "skill1_sum": data_normalized[0],
-            "skill2_sum": data_cumsum[0],
-            "skill3_sum": data_cumsum[1],
-            "skill4_sum": data_cumsum[2],
-            "skill5_sum": data_cumsum[3],
-            "skill6_sum": data_cumsum[4],
+            "skills_normalized": data_normalized,
+            "skills_sum": data_cumsum,
         }
         self.sim_skillContribute = SkillContributionCanvas(
-            self.sim_skillContribute_frame, data
+            self.sim_skillContribute_frame, data, names
         )  # 시뮬레이션 결과
         self.sim_skillContribute.move(5, 5)
         self.sim_skillContribute.resize(
@@ -680,7 +653,7 @@ class MainWindow(QWidget):
 
         # 메인 프레임 크기 조정
         self.sim_mainFrame.setFixedHeight(
-            self.sim2_frame2.y() + self.sim2_frame2.height(),
+            self.sim2_frame2.y() + self.sim2_frame2.height() + self.sim_mainFrameMargin,
         )
         [i.show() for i in self.page2.findChildren(QWidget)]
         self.updatePosition()
@@ -699,26 +672,33 @@ class MainWindow(QWidget):
             928,
             self.sim_title_H + (self.sim_widget_D + self.sim_stat_frame_H) * 3,
         )
-        self.sim1_frame1.setStyleSheet(
-            "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
-        )
+        self.sim1_frame1.setStyleSheet("QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }")
 
-        self.sim1_frame1_labelFrame, self.sim1_frame1_label = self.sim_makeTitleFrame(
+        self.sim1_frame1_labelFrame, self.sim1_frame1_label = self.sim_returnTitleFrame(
             self.sim1_frame1, "캐릭터 스탯"
         )
-        self.sim_make_StatInput(self.sim1_frame1)
+        self.sim_makeStatInput(self.sim1_frame1)
         self.sim_stat_inputs[0].setFocus()
 
         margin, count = 21, 6
         for i in range(18):
             self.sim_stat_frames[i].move(
-                self.sim_stat_margin
-                + self.sim_stat_width * (i % count)
-                + margin * (i % count),
+                self.sim_stat_margin + self.sim_stat_width * (i % count) + margin * (i % count),
                 self.sim1_frame1_labelFrame.height()
                 + self.sim_widget_D * ((i // count) + 1)
                 + self.sim_stat_frame_H * (i // count),
             )
+            self.sim_stat_labels[i].setGeometry(
+                0,
+                0,
+                self.sim_stat_width,
+                self.sim_stat_label_H,
+            )
+            self.sim_stat_inputs[i].setGeometry(
+                0, self.sim_stat_label_H, self.sim_stat_width, self.sim_stat_input_H
+            )
+
+            self.sim_stat_inputs[i].setText(str(self.info_stats[i]))
 
         # 스킬 레벨
         self.sim1_frame2 = QFrame(self.sim_mainFrame)
@@ -728,34 +708,88 @@ class MainWindow(QWidget):
             928,
             self.sim_title_H + (self.sim_widget_D + self.sim_skill_frame_H) * 2,
         )
-        self.sim1_frame2.setStyleSheet(
-            "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
-        )
+        self.sim1_frame2.setStyleSheet("QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }")
 
-        self.sim1_frame2_labelFrame, self.sim1_frame2_label = self.sim_makeTitleFrame(
+        self.sim1_frame2_labelFrame, self.sim1_frame2_label = self.sim_returnTitleFrame(
             self.sim1_frame2, "스킬 레벨"
         )
-        self.sim_make_SkillInput(self.sim1_frame2)
+        self.sim_makeSkillInput(self.sim1_frame2)
 
         margin, count = 66, 4
         for i in range(8):
             self.sim_skill_frames[i].move(
-                self.sim_skill_margin
-                + self.sim_skill_width * (i % count)
-                + margin * (i % count),
+                self.sim_skill_margin + self.sim_skill_width * (i % count) + margin * (i % count),
                 self.sim1_frame2_labelFrame.height()
                 + self.sim_widget_D * ((i // count) + 1)
                 + self.sim_skill_frame_H * (i // count),
             )
+            self.sim_skill_names[i].setGeometry(
+                0,
+                0,
+                self.sim_skill_width,
+                self.sim_skill_name_H,
+            )
+            self.sim_skill_levels[i].setGeometry(
+                self.sim_skill_image_Size,
+                self.sim_skill_name_H,
+                self.sim_skill_right_W,
+                self.sim_skill_level_H,
+            )
+            self.sim_skill_inputs[i].setGeometry(
+                self.sim_skill_image_Size,
+                self.sim_skill_name_H + self.sim_skill_level_H,
+                self.sim_skill_right_W,
+                self.sim_skill_input_H,
+            )
+
+            self.sim_skill_inputs[i].setText(str(self.info_skills[i]))
+
+        # 시뮬레이션 정보
+        self.sim1_frame3 = QFrame(self.sim_mainFrame)
+        self.sim1_frame3.setGeometry(
+            0,
+            self.sim1_frame2.y() + self.sim1_frame2.height() + self.sim_main_D,
+            928,
+            self.sim_title_H + (self.sim_widget_D + self.sim_simInfo_frame_H) * 1,
+        )
+        self.sim1_frame3.setStyleSheet("QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }")
+
+        self.sim1_frame3_labelFrame, self.sim1_frame3_label = self.sim_returnTitleFrame(
+            self.sim1_frame3, "시뮬레이션 정보"
+        )
+        self.sim_makeSimInfoInput(self.sim1_frame3)
+
+        margin = 60
+        for i in range(3):
+            self.sim_simInfo_frames[i].move(
+                self.sim_simInfo_margin + (self.sim_simInfo_width + margin) * i,
+                self.sim1_frame3_labelFrame.height() + self.sim_widget_D,
+            )
+            self.sim_simInfo_labels[i].setGeometry(
+                0,
+                0,
+                self.sim_simInfo_width,
+                self.sim_simInfo_label_H,
+            )
+            self.sim_simInfo_inputs[i].setGeometry(
+                0, self.sim_simInfo_label_H, self.sim_simInfo_width, self.sim_simInfo_input_H
+            )
+
+            self.sim_simInfo_inputs[i].setText(str(self.info_simInfo[i]))
+
+        # Tab Order 설정
+        tabOrders = self.sim_stat_inputs + self.sim_skill_inputs + self.sim_simInfo_inputs
+        for i in range(len(tabOrders) - 1):
+            QWidget.setTabOrder(tabOrders[i], tabOrders[i + 1])
 
         # 메인 프레임 크기 조정
         self.sim_mainFrame.setFixedHeight(
-            self.sim1_frame2.y() + self.sim1_frame2.height(),
+            self.sim1_frame3.y() + self.sim1_frame3.height() + self.sim_mainFrameMargin,
         )
         [i.show() for i in self.page2.findChildren(QWidget)]
         self.updatePosition()
 
-    def sim_makeTitleFrame(self, mainFrame, title):
+    def sim_returnTitleFrame(self, mainFrame, title):
         labelFrame = QFrame(mainFrame)
         labelFrame.setGeometry(0, 0, 928, self.sim_label_H)
         labelFrame.setStyleSheet(
@@ -781,8 +815,8 @@ class MainWindow(QWidget):
                 """
             )
 
-    def sim_make_PowerLabels(self, mainframe, texts):
-        titles = ["보스", "데미지", "PVE", "PVP"]
+    def sim_makePowerLabels(self, mainframe, texts):
+        titles = ["보스데미지", "일반데미지", "보스", "사냥"]
         power_list = [[], [], [], []]
         for i in range(4):
             frame = QFrame(mainframe)
@@ -806,45 +840,100 @@ class MainWindow(QWidget):
 
         return power_list
 
-    def sim_make_SkillInput(self, mainframe):
+    def sim_makeSimInfoInput(self, mainframe):
+        statList = [
+            "몬스터 내공",
+            "보스 내공",
+            "포션 회복량",
+        ]
+
+        self.sim_simInfo_frames = []
+        self.sim_simInfo_labels = []
+        self.sim_simInfo_inputs = []
+        for i in range(len(statList)):
+            frame = QFrame(mainframe)
+            frame.setStyleSheet("QFrame { background-color: transparent; border: 0px solid; }")
+            self.sim_simInfo_frames.append(frame)
+
+            label = QLabel(statList[i], frame)
+            label.setStyleSheet("QLabel { background-color: transparent; border: 0px solid; }")
+            label.setFont(QFont("나눔스퀘어라운드 Bold", 10))
+            self.sim_simInfo_labels.append(label)
+
+            lineEdit = QLineEdit("", frame)
+            lineEdit.setFont(QFont("나눔스퀘어라운드 Bold", 14))
+            lineEdit.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            lineEdit.setStyleSheet(
+                f"QLineEdit {{ background-color: {self.sim_input_colors[0]}; border: 1px solid {self.sim_input_colors[1]}; border-radius: 4px; }}"
+            )
+
+            # 데이터 입력시 실행할 함수 연결
+            lineEdit.textChanged.connect(self.sim_simInfo_inputChanged)
+            self.sim_simInfo_inputs.append(lineEdit)
+
+    def sim_simInfo_inputChanged(self):
+        # 스탯이 정상적으로 입력되었는지 확인
+        def checkInput(num, text) -> bool:
+            if not text.isdigit():
+                return False
+
+            match num:
+                case 0 | 1:
+                    if int(text) == 0:
+                        return False
+                    return True
+                case _:
+                    return True
+
+            return True
+
+        self.sim_powers_calculated = False
+
+        if not False in [checkInput(i, j.text()) for i, j in enumerate(self.sim_simInfo_inputs)]:  # 모두 통과
+            for i in self.sim_simInfo_inputs:  # 통과O면 원래색
+                i.setStyleSheet(
+                    f"QLineEdit {{ background-color: {self.sim_input_colors[0]}; border: 1px solid {self.sim_input_colors[1]}; border-radius: 4px; }}"
+                )
+
+            self.info_simInfo = [int(i.text()) for i in self.sim_simInfo_inputs]
+            self.dataSave()
+            self.sim_simInfo_inputCheck = True
+
+        else:  # 하나라도 통과X
+            for i, j in enumerate(self.sim_simInfo_inputs):
+                if not checkInput(i, j.text()):  # 통과X면 빨간색
+                    j.setStyleSheet(
+                        f"QLineEdit {{ background-color: {self.sim_input_colors[0]}; border: 2px solid {self.sim_input_colorsRed}; border-radius: 4px; }}"
+                    )
+                else:
+                    j.setStyleSheet(
+                        f"QLineEdit {{ background-color: {self.sim_input_colors[0]}; border: 1px solid {self.sim_input_colors[1]}; border-radius: 4px; }}"
+                    )
+            self.sim_simInfo_inputCheck = False
+
+    def sim_makeSkillInput(self, mainframe):
         texts = self.skillNameList[self.serverID][self.jobID]
 
         self.sim_skill_frames = []
         self.sim_skill_names = []
         self.sim_skill_images = []
         self.sim_skill_levels = []
-        self.sim1_skill_inputs = []
+        self.sim_skill_inputs = []
         for i in range(8):
             frame = QFrame(mainframe)
-            frame.setStyleSheet(
-                "QFrame { background-color: transparent; border: 0px solid black; }"
-            )
+            frame.setStyleSheet("QFrame { background-color: transparent; border: 0px solid black; }")
             self.sim_skill_frames.append(frame)
 
             name = QLabel(texts[i], frame)
-            name.setGeometry(
-                0,
-                0,
-                self.sim_skill_width,
-                self.sim_skill_name_H,
-            )
             name.setStyleSheet(
-                f"QLabel {{ background-color: {self.sim_input_colors[0]}; border: 1px solid {self.sim_input_colors[1]}; border-radius: 4px; }}"
+                f"QLabel {{ border: 1px solid {self.sim_input_colors[1]}; border-radius: 4px; }}"
             )
             name.setFont(QFont("나눔스퀘어라운드 Bold", 14))
             name.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.sim_skill_names.append(name)
 
             label = QLabel("레벨", frame)
-            label.setGeometry(
-                self.sim_skill_image_Size,
-                self.sim_skill_name_H,
-                self.sim_skill_right_W,
-                self.sim_skill_level_H,
-            )
-            label.setStyleSheet(
-                "QLabel { background-color: transparent; border: 0px solid; }"
-            )
+            label.setStyleSheet("QLabel { background-color: transparent; border: 0px solid; }")
             label.setFont(QFont("나눔스퀘어라운드 Bold", 10))
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.sim_skill_levels.append(label)
@@ -855,13 +944,10 @@ class MainWindow(QWidget):
             lineEdit.setStyleSheet(
                 f"QLineEdit {{ background-color: {self.sim_input_colors[0]}; border: 1px solid {self.sim_input_colors[1]}; border-radius: 4px; }}"
             )
-            lineEdit.setGeometry(
-                self.sim_skill_image_Size,
-                self.sim_skill_name_H + self.sim_skill_level_H,
-                self.sim_skill_right_W,
-                self.sim_skill_input_H,
-            )
-            self.sim1_skill_inputs.append(lineEdit)
+
+            # 데이터 입력시 실행할 함수 연결
+            lineEdit.textChanged.connect(self.sim_skill_inputChanged)
+            self.sim_skill_inputs.append(lineEdit)
 
         for i in range(8):
             image = QPushButton(self.sim_skill_frames[i])
@@ -871,18 +957,49 @@ class MainWindow(QWidget):
                 self.sim_skill_image_Size,
                 self.sim_skill_image_Size,
             )
-            image.setStyleSheet(
-                "QPushButton { background-color: transparent; border: 0px solid; }"
-            )
+            image.setStyleSheet("QPushButton { background-color: transparent; border: 0px solid; }")
             pixmap = QPixmap(self.getSkillImage(i))
             image.setIcon(QIcon(pixmap))
-            image.setIconSize(
-                QSize(self.sim_skill_image_Size, self.sim_skill_image_Size)
-            )
+            image.setIconSize(QSize(self.sim_skill_image_Size, self.sim_skill_image_Size))
             self.sim_skill_images.append(image)
 
-    def sim_make_StatInput(self, mainframe):
-        texts = [
+    def sim_skill_inputChanged(self):
+        # 스킬이 정상적으로 입력되었는지 확인
+        def checkInput(text: str) -> bool:
+            if not text.isdigit():
+                return False
+
+            if int(text) == 0 or int(text) > 30:
+                return False
+
+            return True
+
+        self.sim_powers_calculated = False
+
+        if not False in [checkInput(i.text()) for i in self.sim_skill_inputs]:  # 모두 통과
+            for i in self.sim_skill_inputs:  # 통과O면 원래색
+                i.setStyleSheet(
+                    f"QLineEdit {{ background-color: {self.sim_input_colors[0]}; border: 1px solid {self.sim_input_colors[1]}; border-radius: 4px; }}"
+                )
+
+            self.info_skills = [int(i.text()) for i in self.sim_skill_inputs]
+            self.dataSave()
+            self.sim_skill_inputCheck = True
+
+        else:  # 하나라도 통과X
+            for i in self.sim_skill_inputs:
+                if not checkInput(i.text()):  # 통과X면 빨간색
+                    i.setStyleSheet(
+                        f"QLineEdit {{ background-color: {self.sim_input_colors[0]}; border: 2px solid {self.sim_input_colorsRed}; border-radius: 4px; }}"
+                    )
+                else:
+                    i.setStyleSheet(
+                        f"QLineEdit {{ background-color: {self.sim_input_colors[0]}; border: 1px solid {self.sim_input_colors[1]}; border-radius: 4px; }}"
+                    )
+            self.sim_skill_inputCheck = False
+
+    def sim_makeStatInput(self, mainframe):
+        statList = [
             "공격력",
             "방어력",
             "파괴력",
@@ -906,49 +1023,358 @@ class MainWindow(QWidget):
         self.sim_stat_frames = []
         self.sim_stat_labels = []
         self.sim_stat_inputs = []
-        for i in range(18):
+        for i in range(len(statList)):
             frame = QFrame(mainframe)
-            frame.setStyleSheet(
-                "QFrame { background-color: transparent; border: 0px solid; }"
-            )
+            frame.setStyleSheet("QFrame { background-color: transparent; border: 0px solid; }")
             self.sim_stat_frames.append(frame)
 
-            label = QLabel(texts[i], frame)
-            label.setGeometry(
-                0,
-                0,
-                self.sim_stat_width,
-                self.sim_stat_label_H,
-            )
-            label.setStyleSheet(
-                "QLabel { background-color: transparent; border: 0px solid; }"
-            )
+            label = QLabel(statList[i], frame)
+            label.setStyleSheet("QLabel { background-color: transparent; border: 0px solid; }")
             label.setFont(QFont("나눔스퀘어라운드 Bold", 10))
             self.sim_stat_labels.append(label)
 
             lineEdit = QLineEdit("", frame)
-            lineEdit.setFont(QFont("나눔스퀘어라운드 Bold", 16))
+            lineEdit.setFont(QFont("나눔스퀘어라운드 Bold", 14))
             lineEdit.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lineEdit.setStyleSheet(
                 f"QLineEdit {{ background-color: {self.sim_input_colors[0]}; border: 1px solid {self.sim_input_colors[1]}; border-radius: 4px; }}"
             )
-            lineEdit.setGeometry(
-                0, self.sim_stat_label_H, self.sim_stat_width, self.sim_stat_input_H
-            )
+
+            # 데이터 입력시 실행할 함수 연결
+            lineEdit.textChanged.connect(self.sim_stat_inputChanged)
             self.sim_stat_inputs.append(lineEdit)
+
+    def sim_stat_inputChanged(self):
+        # 스탯이 정상적으로 입력되었는지 확인
+        def checkInput(num, text) -> bool:
+            # 기본데미지 = 공격력 * (근력 + 지력) * (1 + 파괴력 * 0.01) * 내공계수
+            # 0공, 1방, 2파괴력, 3근력, 4지력, 5경도, 6치확, 7치뎀, 8보뎀, 9명중, 10회피, 11상태이상저항, 12신속, 13체력, 14공속, 15포션회복, 16운, 17경험치
+            if not text.isdigit():
+                return False
+
+            match num:
+                case 0 | 1 | 3 | 4 | 5 | 13:
+                    if int(text) == 0:
+                        return False
+                    return True
+                case _:
+                    return True
+
+            return True
+
+        self.sim_powers_calculated = False
+
+        if not False in [checkInput(i, j.text()) for i, j in enumerate(self.sim_stat_inputs)]:  # 모두 digit
+            for i in self.sim_stat_inputs:  # 통과O면 원래색
+                i.setStyleSheet(
+                    f"QLineEdit {{ background-color: {self.sim_input_colors[0]}; border: 1px solid {self.sim_input_colors[1]}; border-radius: 4px; }}"
+                )
+
+            self.info_stats = [int(i.text()) for i in self.sim_stat_inputs]
+            self.dataSave()
+            self.sim_stat_inputCheck = True
+
+        else:  # 하나라도 통과X
+            for i, j in enumerate(self.sim_stat_inputs):
+                if not checkInput(i, j.text()):  # 통과X면 빨간색
+                    j.setStyleSheet(
+                        f"QLineEdit {{ background-color: {self.sim_input_colors[0]}; border: 2px solid {self.sim_input_colorsRed}; border-radius: 4px; }}"
+                    )
+                else:  # 통과O면 원래색
+                    j.setStyleSheet(
+                        f"QLineEdit {{ background-color: {self.sim_input_colors[0]}; border: 1px solid {self.sim_input_colors[1]}; border-radius: 4px; }}"
+                    )
+            self.sim_stat_inputCheck = False
+
+    def simulateMacro(self, stats, detOnly=False):
+        def runSimul(attackDetails, buffDetails, stats, boss, deterministic=False):
+            def getStatus(stats, time, buff_list):
+                status = stats.copy()
+                for buff in buff_list:
+                    if buff[0] <= time <= buff[1]:
+                        status[buff[2]] += buff[3]
+                return status
+
+            def getDMG(stats, boss, deterministic):
+                dmg = (
+                    stats[0]  # 공격력
+                    * (stats[3] + stats[4])  # 근력 + 지력
+                    * (1 + stats[2] * 0.01)  # 파괴력
+                    * 1.0  # 내공계수
+                    * ((1 + stats[8] * 0.01) if boss else 1)
+                    * 0.01  # 보정계수
+                )
+
+                if deterministic:
+                    crit_prob = stats[6] if stats[6] <= 100 else 100
+                    dmg *= 1 + crit_prob * stats[7] * 0.0001
+                    dmg *= 1.1  # 최소, 최대데미지 중간
+                    return dmg
+
+                dmg *= random.uniform(1, 1.2)  # 최소, 최대데미지
+                return dmg * (1 + stats[7] * 0.01) if random.random() < stats[6] * 0.01 else dmg
+
+            def merge_buff(data):
+                # 지속 시간이 끝나는 시간 추가
+                intervals = [
+                    [start, round(start + duration, 2), buff_type, value]
+                    for start, buff_type, value, duration in data
+                ]
+
+                # 종류와 값을 기준으로 그룹화
+                grouped = {}
+                for start, end, buff_type, value in intervals:
+                    key = (buff_type, value)
+                    if key not in grouped:
+                        grouped[key] = []
+                    grouped[key].append([start, end])
+
+                # 각 그룹의 겹치는 구간 병합
+                merged_intervals = []
+                for (buff_type, value), times in grouped.items():
+                    times.sort()  # 시작 시간을 기준으로 정렬
+                    merged = [times[0]]
+                    for current in times[1:]:
+                        prev = merged[-1]
+                        if current[0] <= prev[1]:  # 겹침 확인
+                            prev[1] = max(prev[1], current[1])  # 병합
+                        else:
+                            merged.append(current)
+                    for start, end in merged:
+                        merged_intervals.append([start, end, buff_type, value])
+
+                # 시작 시간 기준으로 정렬
+                merged_intervals.sort()
+                return merged_intervals
+
+            buffInfo = merge_buff(buffDetails)  # [[start, type, value, duration], ...]
+            attacks = []  # [type, time, damage]
+            ## 시뮬레이션 시작
+            for attack in attackDetails:
+                time = attack[1]
+                status = getStatus(stats, time, buffInfo)
+                dmg = round(getDMG(status, boss, deterministic) * attack[2], 5)
+                attacks.append([attack[0], time, dmg])
+
+            # if deterministic:
+            #     pprint(attacks)
+            return attacks
+
+        def calculate_percentile(data, percentile):
+            data_sorted = sorted(data)
+            rank = (percentile * 0.01) * (len(data) - 1) + 1
+            lower_index = int(rank) - 1
+            fraction = rank - int(rank)
+            if lower_index + 1 < len(data):
+                result = data_sorted[lower_index] + fraction * (
+                    data_sorted[lower_index + 1] - data_sorted[lower_index]
+                )
+            else:
+                result = data_sorted[lower_index]
+            return result
+
+        def calculate_std(data):
+            # Step 1: 평균 계산
+            mean = sum(data) / len(data)
+
+            # Step 2: 각 데이터에서 평균을 뺀 제곱의 합 계산
+            squared_differences = [(x - mean) ** 2 for x in data]
+
+            # Step 3: 분산 계산
+            variance = sum(squared_differences) / len(data)
+
+            # Step 4: 표준편차 계산
+            std_dev = variance**0.5
+
+            return std_dev
+
+        simulatedSkills = self.getSimulatedSKillList()
+
+        # 1초 이내에 같은 스킬 사용 => 콤보
+        for num, skill in enumerate(simulatedSkills):
+            i = 1
+            while (num >= i) and (skill[1] - simulatedSkills[num - i][1] <= 1000):
+
+                if (simulatedSkills[num - i][0] == skill[0]) and (
+                    simulatedSkills[num - i][2]
+                    < self.skillComboCountList[self.serverID][self.jobID][self.selectedSkillList[skill[0]]]
+                ):
+                    simulatedSkills[num].append(simulatedSkills[num - i][2] + 1)
+                    break
+
+                i += 1
+
+            # 콤보가 아닌 경우 0번콤보
+            if len(simulatedSkills[num]) == 2:
+                simulatedSkills[num].append(0)
+
+        # 평타 추가
+        num, delay = 0, 1
+        while (time := num * (100 - self.cooltimeReduce) * 10 * delay) <= 60000:
+            simulatedSkills.append([-1, time])
+            num += 1
+
+        # 시간 단위를 1초로 변경
+        for i in range(len(simulatedSkills)):
+            simulatedSkills[i][1] = round(simulatedSkills[i][1] * 0.001, 2)
+
+        # 스킬 세부사항 모으기
+        attackDetails = []  # [스킬 번호, 시간, 데미지]
+        buffDetails = []  #
+        for attack in simulatedSkills:
+            # 평타
+            if attack[0] == -1:
+                attackDetails.append(attack + [1.0])
+                continue
+
+            # 스킬
+            info_skills = [0] * 8  # temp: self.info_skills -> info_skills = 0 * 8
+
+            # [[0.0, [0, 0.5]], [0.1, [0, 0.5]], [0.2, [0, 0.5]], [0.3, [0, 0.5]], [0.4, [0, 0.5]]]
+            skills = self.skillAttackData[self.serverID][self.jobID][self.selectedSkillList[attack[0]]][
+                info_skills[self.selectedSkillList[attack[0]]]
+            ][attack[2]]
+
+            for skill in skills:
+                # [time, [type(0: damage, 1: buff), [buff_type, buff_value, buff_duration] or damage_value]]
+                if skill[1][0] == 0:  # 공격
+                    attackDetails.append(
+                        [
+                            attack[0],  # 스킬 번호
+                            round(attack[1] + skill[0], 2),  # 시간
+                            skill[1][1],  # 데미지
+                        ]
+                    )
+                else:  # 버프
+                    buffDetails.append(
+                        [
+                            round(attack[1] + skill[0], 2),  # 시간
+                            skill[1][1][0],  # 버프 종류
+                            skill[1][1][1],  # 버프 값
+                            skill[1][1][2],  # 버프 지속시간
+                        ]
+                    )
+
+        # 시간순으로 정렬
+        attackDetails.sort(key=lambda x: x[1])
+        buffDetails.sort(key=lambda x: x[0])
+
+        # print(attackDetails)
+        # print(buffDetails)
+
+        ## 전투력
+        # 기본데미지 = 공격력 * (근력 + 지력) * (1 + 파괴력 * 0.01) * 내공계수
+        # 0공, 1방, 2파괴력, 3근력, 4지력, 5경도, 6치확, 7치뎀, 8보뎀, 9명중, 10회피, 11상태이상저항, 12신속, 13체력, 14공속, 15포션회복, 16운, 17경험치
+        boss_attacks = runSimul(attackDetails, buffDetails, stats, boss=True, deterministic=True)
+        normal_attacks = runSimul(attackDetails, buffDetails, stats, boss=False, deterministic=True)
+        sum_BossDMG = sum([i[2] for i in boss_attacks])
+        sum_NormalDMG = sum([i[2] for i in normal_attacks])
+        powers = [
+            str(int(sum_BossDMG * self.coef_bossDMG)),  # 보스데미지
+            str(int(sum_NormalDMG * self.coef_normalDMG)),  # 일반데미지
+            str(
+                int(
+                    sum_BossDMG
+                    * self.coef_bossDMG  # 보스데미지
+                    * (
+                        stats[13] * stats[1] * stats[5] * 0.0000001  # 피격 = 0.55
+                        + (stats[13] * 0.1 + (1 + stats[15] * 0.01) * 300) * 0.001  # 회복 = 0.535
+                    )
+                    * (1 + stats[10] * 0.01)  # 회피
+                    * self.coef_boss
+                )
+            ),
+            str(
+                int(
+                    sum_NormalDMG
+                    * self.coef_normalDMG  # 일반데미지
+                    * (1 + stats[16] * 0.01)  # 운
+                    * (1 + stats[11] * 0.001)  # 상태이상저항
+                    * (1 + stats[17] * 0.01)  # 경험치
+                    * self.coef_normal
+                )
+            ),
+        ]
+        if detOnly:
+            return powers
+
+        simuls_boss = []
+        simuls_normal = []
+        for i in range(100):  # 멀티프로세싱으로 수정 후 1000회로 변경
+            simuls_boss.append(runSimul(attackDetails, buffDetails, stats, boss=True))
+            simuls_normal.append(runSimul(attackDetails, buffDetails, stats, boss=False))
+
+        sums_simulBossDMG = [sum([i[2] for i in j]) for j in simuls_boss]
+        sums_simulNormalDMG = [sum([i[2] for i in j]) for j in simuls_normal]
+
+        min_bossDMG = min(sums_simulBossDMG)
+        max_bossDMG = max(sums_simulBossDMG)
+        std_bossDMG = calculate_std(sums_simulBossDMG)
+        p25_bossDMG = calculate_percentile(sums_simulBossDMG, 25)
+        p50_bossDMG = calculate_percentile(sums_simulBossDMG, 50)
+        p75_bossDMG = calculate_percentile(sums_simulBossDMG, 75)
+        min_normalDMG = min(sums_simulNormalDMG)
+        max_normalDMG = max(sums_simulNormalDMG)
+        std_normalDMG = calculate_std(sums_simulNormalDMG)
+        p25_normalDMG = calculate_percentile(sums_simulNormalDMG, 25)
+        p50_normalDMG = calculate_percentile(sums_simulNormalDMG, 50)
+        p75_normalDMG = calculate_percentile(sums_simulNormalDMG, 75)
+
+        analysis = [
+            {
+                "title": "초당 보스피해량",
+                "number": f"{int(sum_BossDMG / 60)}",
+                "min": f"{int(min_bossDMG / 60)}",
+                "max": f"{int(max_bossDMG / 60)}",
+                "std": f"{std_bossDMG / 60:.1f}",
+                "p25": f"{int(p25_bossDMG / 60)}",
+                "p50": f"{int(p50_bossDMG / 60)}",
+                "p75": f"{int(p75_bossDMG / 60)}",
+            },
+            {
+                "title": "총 보스피해량",
+                "number": f"{int(sum_BossDMG)}",
+                "min": f"{int(min_bossDMG)}",
+                "max": f"{int(max_bossDMG)}",
+                "std": f"{std_bossDMG:.1f}",
+                "p25": f"{int(p25_bossDMG)}",
+                "p50": f"{int(p50_bossDMG)}",
+                "p75": f"{int(p75_bossDMG)}",
+            },
+            {
+                "title": "초당 피해량",
+                "number": f"{int(sum_NormalDMG / 60)}",
+                "min": f"{int(min_normalDMG / 60)}",
+                "max": f"{int(max_normalDMG / 60)}",
+                "std": f"{std_normalDMG / 60:.1f}",
+                "p25": f"{int(p25_normalDMG / 60)}",
+                "p50": f"{int(p50_normalDMG / 60)}",
+                "p75": f"{int(p75_normalDMG / 60)}",
+            },
+            {
+                "title": "총 피해량",
+                "number": f"{int(sum_NormalDMG)}",
+                "min": f"{int(min_normalDMG)}",
+                "max": f"{int(max_normalDMG)}",
+                "std": f"{std_normalDMG:.1f}",
+                "p25": f"{int(p25_normalDMG)}",
+                "p50": f"{int(p50_normalDMG)}",
+                "p75": f"{int(p75_normalDMG)}",
+            },
+        ]
+
+        return powers, analysis, boss_attacks, simuls_boss
 
     # 매크로 시뮬레이션 => 스킬 리스트
     def getSimulatedSKillList(self):
         # 실제와 다른 경우가 있어서 시뮬레이션 진행할 때 옵션 추가해야함
         def use(skill, additionalTime=0):
-            self.usedSkillList.append(
-                [skill, (self.elapsedTime + additionalTime) * 0.001]
-            )
+            self.usedSkillList.append([skill, (self.elapsedTime + additionalTime)])
 
             self.minusSkillCount = [skill, additionalTime]
             # self.availableSkillCount[skill] -= 1
 
-            print(f"{(self.elapsedTime + additionalTime) * 0.001:.3f} - {skill}")
+            # print(f"{(self.elapsedTime + additionalTime) * 0.001:.3f} - {skill}")
 
         self.initMacro()
         self.elapsedTime = 0  # 1000배
@@ -956,7 +1382,7 @@ class MainWindow(QWidget):
         self.minusSkillCount = [
             None,
             None,
-        ]  # availableSkillCount -1까지 남은 시간: [skill, time]
+        ]  # availableSkillCount -= 1까지 남은 시간: [skill, time] (doClick을 할때 delay가 있기 때문)
         self.usedSkillList = []
 
         # 스킬 남은 쿨타임 : [0, 0, 0, 0, 0, 0]  # 초 1000배
@@ -966,9 +1392,7 @@ class MainWindow(QWidget):
 
         # 스킬 사용 가능 횟수 : [3, 2, 2, 1, 3, 3]
         self.availableSkillCount = [
-            self.skillComboCountList[self.serverID][self.jobID][
-                self.selectedSkillList[i]
-            ]
+            self.skillComboCountList[self.serverID][self.jobID][self.selectedSkillList[i]]
             for i in range(self.usableSkillCount[self.serverID])
         ]
 
@@ -1006,16 +1430,12 @@ class MainWindow(QWidget):
             for skill in range(self.usableSkillCount[self.serverID]):  # 0~6
                 if (
                     self.availableSkillCount[skill]
-                    < self.skillComboCountList[self.serverID][self.jobID][
-                        self.selectedSkillList[skill]
-                    ]
+                    < self.skillComboCountList[self.serverID][self.jobID][self.selectedSkillList[skill]]
                 ):  # 스킬 사용해서 쿨타임 기다리는 중이면
                     self.skillCoolTimers[skill] += int(self.unitTime * 100)
 
                     if self.skillCoolTimers[skill] >= int(
-                        self.skillCooltimeList[self.serverID][self.jobID][
-                            self.selectedSkillList[skill]
-                        ]
+                        self.skillCooltimeList[self.serverID][self.jobID][self.selectedSkillList[skill]]
                         * (100 - self.cooltimeReduce)
                     ):  # 쿨타임이 지나면
                         self.preparedSkillList[2].append(skill)  # 대기열에 추가
@@ -1029,13 +1449,11 @@ class MainWindow(QWidget):
                 self.minusSkillCount = [None, None]
 
             if self.minusSkillCount[1] != None:
-                self.minusSkillCount[1] = max(
-                    0, self.minusSkillCount[1] - int(self.unitTime * 1000)
-                )
+                self.minusSkillCount[1] = max(0, self.minusSkillCount[1] - int(self.unitTime * 1000))
             self.simWaitTime = max(0, self.simWaitTime - int(self.unitTime * 1000))
             self.elapsedTime += int(self.unitTime * 1000)
 
-        self.usedSkillList = [i for i in self.usedSkillList if i[1] <= 60.5]
+        self.usedSkillList = [i for i in self.usedSkillList if i[1] <= 60500]
         # 1초마다 평타도 추가시켜야함 => 데미지 계산 할 때 추가시키기
         return self.usedSkillList
 
@@ -1048,9 +1466,7 @@ class MainWindow(QWidget):
 
         # 스킬 사용 가능 횟수 : [3, 2, 2, 1, 3, 3]
         self.availableSkillCount = [
-            self.skillComboCountList[self.serverID][self.jobID][
-                self.selectedSkillList[i]
-            ]
+            self.skillComboCountList[self.serverID][self.jobID][self.selectedSkillList[i]]
             for i in range(self.usableSkillCount[self.serverID])
         ]
 
@@ -1063,9 +1479,7 @@ class MainWindow(QWidget):
 
         while self.isActivated and self.loopNum == loopNum:  # 매크로 작동중일 때
             self.addTaskList()  # taskList에 사용 가능한 스킬 추가
-            usedSkill = self.useSkill(
-                loopNum
-            )  # 스킬 사용하고 시간, 사용한 스킬 리턴. skill: slot
+            usedSkill = self.useSkill(loopNum)  # 스킬 사용하고 시간, 사용한 스킬 리턴. skill: slot
 
             # 잠수면 매크로 중지
             if self.isAFKEnabled:
@@ -1094,19 +1508,20 @@ class MainWindow(QWidget):
             time.sleep(self.delay * 0.001)
 
     def updateSkillCooltime(self, loopNum):
+        startTime = time.perf_counter()
+
+        i = 0
         while self.isActivated and self.loopNum == loopNum:
+            i += 1
+
             for skill in range(self.usableSkillCount[self.serverID]):  # 0~6
                 if (
                     self.availableSkillCount[skill]
-                    < self.skillComboCountList[self.serverID][self.jobID][
-                        self.selectedSkillList[skill]
-                    ]
+                    < self.skillComboCountList[self.serverID][self.jobID][self.selectedSkillList[skill]]
                 ) and (  # 스킬 사용해서 쿨타임 기다리는 중이면
                     ((time.time() - self.skillCoolTimers[skill]) * 100)
                     >= int(
-                        self.skillCooltimeList[self.serverID][self.jobID][
-                            self.selectedSkillList[skill]
-                        ]
+                        self.skillCooltimeList[self.serverID][self.jobID][self.selectedSkillList[skill]]
                         * (100 - self.cooltimeReduce)
                     )
                 ):  # 쿨타임이 지나면
@@ -1119,7 +1534,7 @@ class MainWindow(QWidget):
 
                     self.skillCoolTimers[skill] = time.time()  # 쿨타임 초기화
 
-            time.sleep(self.unitTime)
+            time.sleep(self.unitTime * i - (time.perf_counter() - startTime))
 
     def initMacro(self):
         self.selectedItemSlot = -1
@@ -1129,38 +1544,28 @@ class MainWindow(QWidget):
             [
                 i
                 for i in range(6)
-                if not self.ifUseSkill[self.selectedSkillList[i]]
-                and self.selectedSkillList[i] != -1
+                if not self.ifUseSkill[self.selectedSkillList[i]] and self.selectedSkillList[i] != -1
             ],
             [
                 i
                 for i in range(6)
-                if self.ifUseSkill[self.selectedSkillList[i]]
-                and self.selectedSkillList[i] != -1
+                if self.ifUseSkill[self.selectedSkillList[i]] and self.selectedSkillList[i] != -1
             ],
             [],  # append 대기
         ]
         self.preparedSkillCountList = [  # 0~5
             [
-                self.skillComboCountList[self.serverID][self.jobID][
-                    self.selectedSkillList[i]
-                ]
+                self.skillComboCountList[self.serverID][self.jobID][self.selectedSkillList[i]]
                 for i in range(6)
-                if not self.ifUseSkill[self.selectedSkillList[i]]
-                and self.selectedSkillList[i] != -1
+                if not self.ifUseSkill[self.selectedSkillList[i]] and self.selectedSkillList[i] != -1
             ],
             [
-                self.skillComboCountList[self.serverID][self.jobID][
-                    self.selectedSkillList[i]
-                ]
+                self.skillComboCountList[self.serverID][self.jobID][self.selectedSkillList[i]]
                 for i in range(6)
-                if self.ifUseSkill[self.selectedSkillList[i]]
-                and self.selectedSkillList[i] != -1
+                if self.ifUseSkill[self.selectedSkillList[i]] and self.selectedSkillList[i] != -1
             ],
         ]
-        self.preparedSkillComboList = [  # 0~5
-            self.comboCount[self.selectedSkillList[i]] for i in range(6)
-        ]
+        self.preparedSkillComboList = [self.comboCount[self.selectedSkillList[i]] for i in range(6)]  # 0~5
 
         # 개별 우선순위 -> 등록 순서
         self.skillSequences = []  # 0~5 in self.selectedSkillList
@@ -1211,15 +1616,11 @@ class MainWindow(QWidget):
             for x, y in enumerate(j):
                 if not y in self.linkSkillRequirementList[-1]:
                     self.linkSkillRequirementList[-1].append(y)
-                    self.linkSkillComboRequirementList[-1].append(
-                        self.usingLinkSkillComboList[i][x]
-                    )
+                    self.linkSkillComboRequirementList[-1].append(self.usingLinkSkillComboList[i][x])
                 else:
                     for k, l in enumerate(self.linkSkillRequirementList[-1]):
                         if l == y:
-                            self.linkSkillComboRequirementList[-1][
-                                k
-                            ] += self.usingLinkSkillComboList[i][x]
+                            self.linkSkillComboRequirementList[-1][k] += self.usingLinkSkillComboList[i][x]
 
         self.preparedLinkSkillList = list(range(len(self.usingLinkSkillList)))
 
@@ -1239,13 +1640,9 @@ class MainWindow(QWidget):
         def use(skill):
             if (
                 self.availableSkillCount[skill]
-                == self.skillComboCountList[self.serverID][self.jobID][
-                    self.selectedSkillList[skill]
-                ]
+                == self.skillComboCountList[self.serverID][self.jobID][self.selectedSkillList[skill]]
             ):
-                self.skillCoolTimers[skill] = (
-                    time.time()
-                )  # 스킬 스택이 모두 찬 상태일 때
+                self.skillCoolTimers[skill] = time.time()  # 스킬 스택이 모두 찬 상태일 때
 
             self.availableSkillCount[skill] -= 1
 
@@ -1389,13 +1786,9 @@ class MainWindow(QWidget):
                                     if self.isSkillCasting[self.serverID][self.jobID][
                                         self.selectedSkillList[skill]
                                     ]:
-                                        self.taskList.append(
-                                            [skill, True]
-                                        )  # skill: k, click: True
+                                        self.taskList.append([skill, True])  # skill: k, click: True
                                     else:
-                                        self.taskList.append(
-                                            [skill, False]
-                                        )  # skill: k, click: False
+                                        self.taskList.append([skill, False])  # skill: k, click: False
                                     self.preparedSkillCountList[k][idx] -= 1
                                     # print(
                                     #     "count: ",
@@ -1423,16 +1816,10 @@ class MainWindow(QWidget):
                     for j, k in enumerate(self.preparedSkillList[x]):
                         if i == k:
                             while self.preparedSkillCountList[x][j] >= 1:
-                                if self.isSkillCasting[self.serverID][self.jobID][
-                                    self.selectedSkillList[k]
-                                ]:
-                                    self.taskList.append(
-                                        [k, True]
-                                    )  # skill: k, click: True
+                                if self.isSkillCasting[self.serverID][self.jobID][self.selectedSkillList[k]]:
+                                    self.taskList.append([k, True])  # skill: k, click: True
                                 else:
-                                    self.taskList.append(
-                                        [k, False]
-                                    )  # skill: k, click: False
+                                    self.taskList.append([k, False])  # skill: k, click: False
                                 self.preparedSkillCountList[x][j] -= 1
                                 # print(
                                 #     "2준비된 스킬 개수 리스트:",
@@ -1445,21 +1832,12 @@ class MainWindow(QWidget):
             ):
                 for j, k in enumerate(self.preparedSkillList[1]):
                     if i == k:
-                        while (
-                            self.preparedSkillCountList[1][j]
-                            >= self.preparedSkillComboList[i]
-                        ):
+                        while self.preparedSkillCountList[1][j] >= self.preparedSkillComboList[i]:
                             for _ in range(self.preparedSkillComboList[i]):
-                                if self.isSkillCasting[self.serverID][self.jobID][
-                                    self.selectedSkillList[k]
-                                ]:
-                                    self.taskList.append(
-                                        [k, True]
-                                    )  # skill: k, click: True
+                                if self.isSkillCasting[self.serverID][self.jobID][self.selectedSkillList[k]]:
+                                    self.taskList.append([k, True])  # skill: k, click: True
                                 else:
-                                    self.taskList.append(
-                                        [k, False]
-                                    )  # skill: k, click: False
+                                    self.taskList.append([k, False])  # skill: k, click: False
                                 self.preparedSkillCountList[1][j] -= 1
                                 # print(
                                 #     "2준비된 스킬 개수 리스트:",
@@ -1499,20 +1877,12 @@ class MainWindow(QWidget):
     def printMacroInfo(self, brief=False):
         if brief:
             print("테스크 리스트:", self.taskList)  # 사용여부 x, 사용여부 o
-            print(
-                "준비된 스킬 리스트:", self.preparedSkillList
-            )  # 사용여부 x, 사용여부 o
-            print(
-                "준비된 스킬 개수 리스트:", self.preparedSkillCountList
-            )  # 사용여부 x, 사용여부 o
+            print("준비된 스킬 리스트:", self.preparedSkillList)  # 사용여부 x, 사용여부 o
+            print("준비된 스킬 개수 리스트:", self.preparedSkillCountList)  # 사용여부 x, 사용여부 o
             print("준비된 연계스킬리스트:", self.preparedLinkSkillList)
         else:
-            print(
-                "준비된 스킬 리스트:", self.preparedSkillList
-            )  # 사용여부 x, 사용여부 o
-            print(
-                "준비된 스킬 개수 리스트:", self.preparedSkillCountList
-            )  # 사용여부 x, 사용여부 o
+            print("준비된 스킬 리스트:", self.preparedSkillList)  # 사용여부 x, 사용여부 o
+            print("준비된 스킬 개수 리스트:", self.preparedSkillCountList)  # 사용여부 x, 사용여부 o
             print("스킬 콤보 리스트:", self.preparedSkillComboList)  # 사용여부 o
             print("스킬 정렬 순서:", self.skillSequences)
             print("연계스킬 스킬 리스트:", self.usingLinkSkillList)
@@ -1588,18 +1958,23 @@ class MainWindow(QWidget):
             pass
 
     ## 초기 변수 설정
-    def resetVar(self):
+    def defineVar(self):
         self.defaultWindowWidth = 960
         self.defaultWindowHeight = 540
 
-        self.icon = QIcon(QPixmap(convertResourcePath("resource\\icon.ico")))
-        self.icon_on = QIcon(QPixmap(convertResourcePath("resource\\icon_on.ico")))
+        self.icon = QIcon(QPixmap(convertResourcePath("resource\\image\\icon\\icon.ico")))
+        self.icon_on = QIcon(QPixmap(convertResourcePath("resource\\image\\icon\\icon_on.ico")))
 
         # pag.PAUSE = 0.01  # pag click delay 설정
 
         # 이 계수를 조정하여 time.sleep과 실제 시간 간의 괴리를 조정
         self.sleepCoefficient_normal = 0.975
         self.sleepCoefficient_unit = 0.97
+
+        self.coef_bossDMG = 1.0
+        self.coef_normalDMG = 1.2
+        self.coef_boss = 0.8
+        self.coef_normal = 0.7
 
         self.simType = 0
         self.unitTime = 0.05  # 1tick
@@ -1690,139 +2065,38 @@ class MainWindow(QWidget):
             ["검호", "매화", "살수", "도제", "술사", "도사", "빙궁", "귀궁"],
         ]
         self.usableSkillCount = [6]  # 장착 가능한 스킬 개수
-        self.skillNameList = [
-            [
-                [
-                    "월성검법",
-                    "수류검법",
-                    "섬광베기",
-                    "월성경공",
-                    "월광검법",
-                    "기합",
-                    "청무흑검",
-                    "섬극난무",
-                ],
-                [
-                    "매화노방",
-                    "매개이도",
-                    "매화낙섬",
-                    "매화낙락",
-                    "매화분분",
-                    "매인설한",
-                    "운기",
-                    "매화만리향",
-                ],
-                [
-                    "급마살",
-                    "겁속살투",
-                    "극독무격",
-                    "암행술",
-                    "회극살투",
-                    "혈마검법",
-                    "삼천극",
-                    "적월혈무",
-                ],
-                [
-                    "흑무참",
-                    "암자영참",
-                    "비연참",
-                    "음영천유",
-                    "천강격류",
-                    "천지극참",
-                    "유성격참",
-                    "검우무진",
-                ],
-                [
-                    "열화주",
-                    "낙뢰",
-                    "회복진",
-                    "이형환위",
-                    "격뢰성진",
-                    "삼매진화",
-                    "열화지옥",
-                    "협성마공",
-                ],
-                [
-                    "파광부적",
-                    "환공홍매",
-                    "영기회생",
-                    "천상제",
-                    "부폭지술",
-                    "무혼절기",
-                    "연공지폭",
-                    "선무회생",
-                ],
-                [
-                    "빙정관사",
-                    "삼로빙사",
-                    "빙화연사",
-                    "발궁순행",
-                    "빙옥수렴",
-                    "빙설극각",
-                    "순행빙결",
-                    "혹한비조",
-                ],
-                [
-                    "이중연섬",
-                    "풍력격퇴",
-                    "명환진궁",
-                    "일보퇴격",
-                    "둔속사화",
-                    "유선속발",
-                    "연공신촉",
-                    "극력일사",
-                ],
-            ]
-        ]
-        # self.skillCooltimeList = [[[8] * 8] * 8]
-        self.skillCooltimeList = [
-            [
-                [3.0, 5.0, 6.0, 4.0, 4.0, 3.0, 5.0, 7.0],
-                [3.0, 5.0, 6.0, 4.0, 4.0, 3.0, 5.0, 7.0],
-                [3.0, 5.0, 6.0, 4.0, 4.0, 3.0, 5.0, 7.0],
-                [3.0, 5.0, 6.0, 4.0, 4.0, 3.0, 5.0, 7.0],
-                [3.0, 5.0, 6.0, 4.0, 4.0, 3.0, 5.0, 7.0],
-                [3.0, 5.0, 6.0, 4.0, 4.0, 3.0, 5.0, 7.0],
-                [3.0, 5.0, 6.0, 4.0, 4.0, 3.0, 5.0, 7.0],
-                [3.0, 5.0, 6.0, 4.0, 4.0, 3.0, 5.0, 7.0],
-            ]
-        ]
-        self.skillComboCountList = [
-            [
-                [3, 2, 2, 1, 3, 1, 1, 3],
-                [2, 3, 2, 1, 1, 2, 1, 1],
-                [2, 2, 1, 1, 2, 3, 3, 1],
-                [1, 3, 1, 1, 1, 3, 1, 1],
-                [3, 2, 2, 1, 1, 3, 1, 1],
-                [3, 1, 1, 1, 2, 1, 1, 1],
-                [2, 2, 1, 1, 1, 1, 1, 1],
-                [2, 2, 1, 1, 2, 2, 1, 1],
-            ]
-        ]
-        self.isSkillCasting = [
-            [
-                [True, True, False, False, True, False, False, True],
-                [True, True, True, False, False, True, False, True],
-                [True, True, False, False, True, True, True, True],
-                [True, True, False, False, True, True, False, True],
-                [True, True, False, False, True, False, True, False],
-                [False, True, False, False, True, True, False, True],
-                [True, True, False, False, True, True, False, True],
-                [True, True, False, False, True, True, True, True],
-            ]
-        ]
+
+        with open(convertResourcePath("resource\\data\\skill_data.json"), "r", encoding="utf-8") as f:
+
+            skillData = json.load(f)
+        # self.skillNameList[serverID][jobID][skill]
+        self.skillNameList = skillData["Names"]
+
+        # self.skillAttackData[serverID][jobID][skill][level:임시로 하나만][combo][attackNum]:
+        # [time, [type(0: damage, 1: buff), [buff_type, buff_value, buff_duration] or damage_value]]
+        self.skillAttackData = skillData["AttackData"]
+
+        # self.skillCooltimeList[serverID][jobID][skill]
+        self.skillCooltimeList = skillData["CooltimeList"]
+
+        # self.skillComboCountList[serverID][jobID][skill]
+        self.skillComboCountList = skillData["ComboCounts"]
+
+        # self.skillComboList[serverID][jobID][skill]
+        self.isSkillCasting = skillData["IsSkillCasting"]
 
     ## 기본 폰트 설정
     def setDefaultFont(self):
-        QFontDatabase.addApplicationFont(convertResourcePath("font\\NSR_L.ttf"))
-        QFontDatabase.addApplicationFont(convertResourcePath("font\\NSR_R.ttf"))
-        QFontDatabase.addApplicationFont(convertResourcePath("font\\NSR_B.ttf"))
-        QFontDatabase.addApplicationFont(convertResourcePath("font\\NSR_RB.ttf"))
         # "나눔스퀘어라운드 Light"
+        QFontDatabase.addApplicationFont(convertResourcePath("resource\\font\\NSR_L.ttf"))
         # "나눔스퀘어라운드 Regular"
+        QFontDatabase.addApplicationFont(convertResourcePath("resource\\font\\NSR_R.ttf"))
         # "나눔스퀘어라운드 Bold"
+        QFontDatabase.addApplicationFont(convertResourcePath("resource\\font\\NSR_B.ttf"))
         # "나눔스퀘어라운드 ExtraBold"
-        font_path = convertResourcePath("font\\NSR_B.ttf")
+        QFontDatabase.addApplicationFont(convertResourcePath("resource\\font\\NSR_RB.ttf"))
+
+        font_path = convertResourcePath("resource\\font\\NSR_B.ttf")
         fm.fontManager.addfont(font_path)
         prop = fm.FontProperties(fname=font_path)
         plt.rcParams["font.family"] = prop.get_name()
@@ -1896,19 +2170,16 @@ class MainWindow(QWidget):
         self.setWindowTitle("데이즈 스킬매크로 " + version)
         self.setMinimumSize(self.defaultWindowWidth, self.defaultWindowHeight)
         # self.setGeometry(0, 0, 960, 540)
+        self.setStyleSheet("*:focus { outline: none; }")
         self.backPalette = self.palette()
         self.backPalette.setColor(QPalette.ColorRole.Window, QColor(255, 255, 255))
         self.setPalette(self.backPalette)
         self.page1 = QFrame(self)
         self.page2 = QFrame(self)
 
-        self.labelCreator = QPushButton(
-            "제작자: 프로데이즈  |  디스코드: prodays", self
-        )
+        self.labelCreator = QPushButton("제작자: 프로데이즈  |  디스코드: prodays", self)
         self.labelCreator.setFont(QFont("나눔스퀘어라운드 Bold", 10))
-        self.labelCreator.setStyleSheet(
-            "background-color: transparent; text-align: left; border: 0px;"
-        )
+        self.labelCreator.setStyleSheet("background-color: transparent; text-align: left; border: 0px;")
         # self.labelCreator.clicked.connect(
         #     lambda: open_new("https://github.com/Pro-Days")
         # )
@@ -1971,9 +2242,7 @@ class MainWindow(QWidget):
             tabButton.move(365 + 250 * tabNum, 25)
 
             tabRemoveButton = QPushButton("", self.page1)
-            tabRemoveButton.clicked.connect(
-                partial(lambda x: self.onTabRemoveClick(x), tabNum)
-            )
+            tabRemoveButton.clicked.connect(partial(lambda x: self.onTabRemoveClick(x), tabNum))
             tabRemoveButton.setFont(QFont("나눔스퀘어라운드 ExtraBold", 16))
             if tabNum == self.recentPreset:
                 tabRemoveButton.setStyleSheet(
@@ -1997,7 +2266,7 @@ class MainWindow(QWidget):
                     }
                 """
                 )
-            pixmap = QPixmap(convertResourcePath("resource\\x.png"))
+            pixmap = QPixmap(convertResourcePath("resource\\image\\x.png"))
             tabRemoveButton.setIcon(QIcon(pixmap))
             tabRemoveButton.setFixedSize(40, 40)
             tabRemoveButton.move(565 + 250 * tabNum, 25)
@@ -2019,7 +2288,7 @@ class MainWindow(QWidget):
             }
         """
         )
-        pixmap = QPixmap(convertResourcePath("resource\\plus.png"))
+        pixmap = QPixmap(convertResourcePath("resource\\image\\plus.png"))
         self.tabAddButton.setIcon(QIcon(pixmap))
         self.tabAddButton.setFixedSize(40, 40)
         self.tabAddButton.move(370 + 250 * len(self.tabNames), 25)
@@ -2038,9 +2307,7 @@ class MainWindow(QWidget):
         self.selectableSkillFrame = []
         for i in range(8):
             frame = QFrame(self.skillBackground)
-            frame.setStyleSheet(
-                "QFrame { background-color: transparent; border-radius :0px; }"
-            )
+            frame.setStyleSheet("QFrame { background-color: transparent; border-radius :0px; }")
             frame.setFixedSize(64, 88)
             frame.move(50 + 132 * (i % 4), 80 + 120 * (i // 4))
             frame.show()
@@ -2049,9 +2316,7 @@ class MainWindow(QWidget):
         self.selectableSkillImageName = []
         for i, j in enumerate(self.selectableSkillFrame):
             button = QPushButton(j)
-            button.setStyleSheet(
-                "QPushButton { background-color: #bbbbbb; border-radius :10px; }"
-            )
+            button.setStyleSheet("QPushButton { background-color: #bbbbbb; border-radius :10px; }")
             button.clicked.connect(partial(lambda x: self.onSelectableSkillClick(x), i))
             button.setFixedSize(64, 64)
             pixmap = QPixmap(self.getSkillImage(i))
@@ -2061,9 +2326,7 @@ class MainWindow(QWidget):
             self.selectableSkillImageButton.append(button)
 
             label = QLabel(self.skillNameList[self.serverID][self.jobID][i], j)
-            label.setStyleSheet(
-                "QLabel { background-color: transparent; border-radius :0px; }"
-            )
+            label.setStyleSheet("QLabel { background-color: transparent; border-radius :0px; }")
             label.setFixedSize(64, 24)
             label.move(0, 64)
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -2079,9 +2342,7 @@ class MainWindow(QWidget):
         self.selectedSkillFrame = []
         for i in range(6):
             frame = QFrame(self.skillBackground)
-            frame.setStyleSheet(
-                "QFrame { background-color: transparent; border-radius :0px; }"
-            )
+            frame.setStyleSheet("QFrame { background-color: transparent; border-radius :0px; }")
             frame.setFixedSize(64, 96)
             frame.move(38 + 84 * i, 330)
             frame.show()
@@ -2106,7 +2367,7 @@ class MainWindow(QWidget):
             if self.selectedSkillList[i] != -1:
                 pixmap = QPixmap(self.getSkillImage(self.selectedSkillList[i]))
             else:
-                pixmap = QPixmap(convertResourcePath("resource\\emptySkill.png"))
+                pixmap = QPixmap(convertResourcePath("resource\\image\\emptySkill.png"))
             button.setIcon(QIcon(pixmap))
             button.setIconSize(QSize(64, 64))
             button.show()
@@ -2123,17 +2384,16 @@ class MainWindow(QWidget):
         # 설정 레이블
         self.sidebarFrame = QFrame(self.page1)
         self.sidebarFrame.setFixedSize(300, 790)
-        self.sidebarFrame.setPalette(self.backPalette)
+        self.sidebarFrame.setStyleSheet("QFrame { background-color: #FFFFFF; }")
+        # self.sidebarFrame.setPalette(self.backPalette)
         self.sidebarScrollArea = QScrollArea(self.page1)
         self.sidebarScrollArea.setWidget(self.sidebarFrame)
         self.sidebarScrollArea.setFixedSize(319, self.height() - 24)
         self.sidebarScrollArea.setStyleSheet(
-            "QScrollArea { border: 0px solid black; border-radius: 10px; }"
+            "QScrollArea { background-color: #FFFFFF; border: 0px solid black; border-radius: 10px; }"
         )
-        self.sidebarScrollArea.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOn
-        )
-        self.sidebarScrollArea.setPalette(self.backPalette)
+        self.sidebarScrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        # self.sidebarScrollArea.setPalette(self.backPalette)
         self.sidebarScrollArea.show()
 
         ## 사이드바 옵션 아이콘
@@ -2189,7 +2449,7 @@ class MainWindow(QWidget):
             self.makeNoticePopup("MacroIsRunning")
             return
         if self.isSkillSelecting == num:
-            pixmap = QPixmap(convertResourcePath("resource\\emptySkill.png"))
+            pixmap = QPixmap(convertResourcePath("resource\\image\\emptySkill.png"))
             self.selectedSkillImageButton[num].setIcon(QIcon(pixmap))
 
             for i, j in enumerate(self.linkSkillList):
@@ -2213,9 +2473,7 @@ class MainWindow(QWidget):
                                     self.settingSkillSequences[j].setText(str(k - 1))
             if self.settingType == 1 and self.selectedSkillList[num] != -1:
                 pixmap = QPixmap(self.getSkillImage(self.selectedSkillList[num], "off"))
-                self.settingSkillImages[self.selectedSkillList[num]].setIcon(
-                    QIcon(pixmap)
-                )
+                self.settingSkillImages[self.selectedSkillList[num]].setIcon(QIcon(pixmap))
                 self.settingSkillSequences[self.selectedSkillList[num]].setText("-")
                 # print(self.selectedSkillList)
 
@@ -2260,17 +2518,9 @@ class MainWindow(QWidget):
 
         if self.selectedSkillList[self.isSkillSelecting] != -1:
             if self.settingType == 1:
-                pixmap = QPixmap(
-                    self.getSkillImage(
-                        self.selectedSkillList[self.isSkillSelecting], "off"
-                    )
-                )
-                self.settingSkillImages[
-                    self.selectedSkillList[self.isSkillSelecting]
-                ].setIcon(QIcon(pixmap))
-                self.settingSkillSequences[
-                    self.selectedSkillList[self.isSkillSelecting]
-                ].setText("-")
+                pixmap = QPixmap(self.getSkillImage(self.selectedSkillList[self.isSkillSelecting], "off"))
+                self.settingSkillImages[self.selectedSkillList[self.isSkillSelecting]].setIcon(QIcon(pixmap))
+                self.settingSkillSequences[self.selectedSkillList[self.isSkillSelecting]].setText("-")
 
             for i, j in enumerate(self.linkSkillList):
                 for k in j[2]:
@@ -2326,15 +2576,9 @@ class MainWindow(QWidget):
             # self.tabAddButton.clicked.connect(self.onTabAddClick)
             skill.setStyleSheet("background-color: transparent;")
             if not self.isActivated:
-                pixmap = QPixmap(
-                    self.getSkillImage(
-                        self.selectedSkillList[self.taskList[i][0]], "off"
-                    )
-                )
+                pixmap = QPixmap(self.getSkillImage(self.selectedSkillList[self.taskList[i][0]], "off"))
             else:
-                pixmap = QPixmap(
-                    self.getSkillImage(self.selectedSkillList[self.taskList[i][0]], 1)
-                )
+                pixmap = QPixmap(self.getSkillImage(self.selectedSkillList[self.taskList[i][0]], 1))
             skill.setIcon(QIcon(pixmap))
             skill.setIconSize(QSize(min(width, height), min(width, height)))
             skill.setFixedSize(width, height)
@@ -2349,7 +2593,7 @@ class MainWindow(QWidget):
         match num:
             case 0:
                 button.clicked.connect(self.changeSettingTo0)
-                pixmap = QPixmap(convertResourcePath("resource\\setting.png"))
+                pixmap = QPixmap(convertResourcePath("resource\\image\\setting.png"))
                 button.setStyleSheet(
                     """
                     QPushButton {
@@ -2363,7 +2607,7 @@ class MainWindow(QWidget):
                 button.move(0, 0)
             case 1:
                 button.clicked.connect(self.changeSettingTo1)
-                pixmap = QPixmap(convertResourcePath("resource\\usageSetting.png"))
+                pixmap = QPixmap(convertResourcePath("resource\\image\\usageSetting.png"))
                 button.setStyleSheet(
                     """
                     QPushButton {
@@ -2377,7 +2621,7 @@ class MainWindow(QWidget):
                 button.move(0, 34)
             case 2:
                 button.clicked.connect(self.changeSettingTo2)
-                pixmap = QPixmap(convertResourcePath("resource\\linkSetting.png"))
+                pixmap = QPixmap(convertResourcePath("resource\\image\\linkSetting.png"))
                 button.setStyleSheet(
                     """
                     QPushButton {
@@ -2392,7 +2636,7 @@ class MainWindow(QWidget):
             case 3:
                 button.clicked.connect(lambda: self.changeLayout(1))
                 # button.clicked.connect(self.changeLayout)
-                pixmap = QPixmap(convertResourcePath("resource\\simulationSidebar.png"))
+                pixmap = QPixmap(convertResourcePath("resource\\image\\simulationSidebar.png"))
                 button.setStyleSheet(
                     """
                     QPushButton {
@@ -2739,9 +2983,9 @@ class MainWindow(QWidget):
 
             button = QPushButton("", self.sidebarFrame)
             if self.ifUseSkill[i]:
-                pixmap = QPixmap(convertResourcePath("resource\\checkTrue.png"))
+                pixmap = QPixmap(convertResourcePath("resource\\image\\checkTrue.png"))
             else:
-                pixmap = QPixmap(convertResourcePath("resource\\checkFalse.png"))
+                pixmap = QPixmap(convertResourcePath("resource\\image\\checkFalse.png"))
             button.clicked.connect(partial(lambda x: self.onSkillUsagesClick(x), i))
             button.setIcon(QIcon(pixmap))
             button.setIconSize(QSize(32, 32))
@@ -2762,9 +3006,9 @@ class MainWindow(QWidget):
 
             button = QPushButton("", self.sidebarFrame)
             if self.ifUseSole[i]:
-                pixmap = QPixmap(convertResourcePath("resource\\checkTrue.png"))
+                pixmap = QPixmap(convertResourcePath("resource\\image\\checkTrue.png"))
             else:
-                pixmap = QPixmap(convertResourcePath("resource\\checkFalse.png"))
+                pixmap = QPixmap(convertResourcePath("resource\\image\\checkFalse.png"))
             button.clicked.connect(partial(lambda x: self.onSkillCombosClick(x), i))
             button.setIcon(QIcon(pixmap))
             button.setIconSize(QSize(32, 32))
@@ -2787,9 +3031,7 @@ class MainWindow(QWidget):
                 f"{self.comboCount[i]} / {self.skillComboCountList[self.serverID][self.jobID][i]}",
                 self.sidebarFrame,
             )
-            button.clicked.connect(
-                partial(lambda x: self.onSkillComboCountsClick(x), i)
-            )
+            button.clicked.connect(partial(lambda x: self.onSkillComboCountsClick(x), i))
             button.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
             button.setFixedSize(46, 32)
             button.move(177, 210 + 51 * i)
@@ -2877,9 +3119,7 @@ class MainWindow(QWidget):
                     pixmap = QPixmap(self.getSkillImage(j[2][k][0], j[2][k][1]))
                     button.setIcon(QIcon(pixmap))
                     button.setIconSize(QSize(48, 48))
-                    button.setStyleSheet(
-                        "QPushButton { background-color: transparent;}"
-                    )
+                    button.setStyleSheet("QPushButton { background-color: transparent;}")
                     button.setFixedSize(50, 50)
                     button.move(18 + 50 * k, 201 + 51 * i)
                     button.show()
@@ -2890,9 +3130,7 @@ class MainWindow(QWidget):
                     pixmap = QPixmap(self.getSkillImage(j[2][k][0], j[2][k][1]))
                     button.setIcon(QIcon(pixmap))
                     button.setIconSize(QSize(24, 24))
-                    button.setStyleSheet(
-                        "QPushButton { background-color: transparent;}"
-                    )
+                    button.setStyleSheet("QPushButton { background-color: transparent;}")
                     button.setFixedSize(25, 25)
                     button.move(18 + 25 * k, 213 + 51 * i)
                     button.show()
@@ -2906,32 +3144,24 @@ class MainWindow(QWidget):
                     pixmap = QPixmap(self.getSkillImage(j[2][k][0], j[2][k][1]))
                     button.setIcon(QIcon(pixmap))
                     button.setIconSize(QSize(24, 24))
-                    button.setStyleSheet(
-                        "QPushButton { background-color: transparent;}"
-                    )
+                    button.setStyleSheet("QPushButton { background-color: transparent;}")
                     button.setFixedSize(25, 25)
                     button.move(18 + 25 * k, 201 + 51 * i)
                     button.show()
                     self.settingSkillPreview.append(button)
                 for k in range(line2):
                     button = QPushButton("", self.sidebarFrame)
-                    pixmap = QPixmap(
-                        self.getSkillImage(j[2][k + line1][0], j[2][k + line1][1])
-                    )
+                    pixmap = QPixmap(self.getSkillImage(j[2][k + line1][0], j[2][k + line1][1]))
                     button.setIcon(QIcon(pixmap))
                     button.setIconSize(QSize(24, 24))
-                    button.setStyleSheet(
-                        "QPushButton { background-color: transparent;}"
-                    )
+                    button.setStyleSheet("QPushButton { background-color: transparent;}")
                     button.setFixedSize(25, 25)
                     button.move(18 + 25 * k, 226 + 51 * i)
                     button.show()
                     self.settingSkillPreview.append(button)
 
             button = QPushButton(j[1], self.sidebarFrame)
-            button.setStyleSheet(
-                "QPushButton { background-color: transparent; border: 0px; }"
-            )
+            button.setStyleSheet("QPushButton { background-color: transparent; border: 0px; }")
             button.setFixedSize(50, 50)
             button.move(182, 201 + 51 * i)
             button.show()
@@ -2951,7 +3181,7 @@ class MainWindow(QWidget):
 
             button = QPushButton("", self.sidebarFrame)
             button.clicked.connect(partial(lambda x: self.removeLinkSkill(x), i))
-            pixmap = QPixmap(convertResourcePath("resource\\x.png"))
+            pixmap = QPixmap(convertResourcePath("resource\\image\\x.png"))
             button.setIcon(QIcon(pixmap))
             button.setStyleSheet(
                 """QPushButton { background-color: transparent; border: 0px; }
@@ -3034,9 +3264,7 @@ class MainWindow(QWidget):
         self.ButtonLinkType1.show()
 
         self.labelLinkKey = QLabel("단축키", self.sidebarFrame)
-        self.labelLinkKey.setToolTip(
-            "매크로가 실행 중이지 않을 때 해당 연계스킬을 작동시킬 단축키입니다."
-        )
+        self.labelLinkKey.setToolTip("매크로가 실행 중이지 않을 때 해당 연계스킬을 작동시킬 단축키입니다.")
         self.labelLinkKey.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
         self.labelLinkKey.setFixedSize(80, 30)
         self.labelLinkKey.move(40, 235)
@@ -3061,9 +3289,7 @@ class MainWindow(QWidget):
         self.linkSkillRemove = []
         for i, j in enumerate(data[2]):
             skill = QPushButton("", self.sidebarFrame)
-            skill.clicked.connect(
-                partial(lambda x: self.editLinkSkillType(x), (data, i))
-            )
+            skill.clicked.connect(partial(lambda x: self.editLinkSkillType(x), (data, i)))
             # skill.setStyleSheet("background-color: transparent;")
             pixmap = QPixmap(self.getSkillImage(j[0], j[1]))
             skill.setIcon(QIcon(pixmap))
@@ -3080,9 +3306,7 @@ class MainWindow(QWidget):
                 f"{j[1]} / {self.skillComboCountList[self.serverID][self.jobID][j[0]]}",
                 self.sidebarFrame,
             )
-            button.clicked.connect(
-                partial(lambda x: self.editLinkSkillCount(x), (data, i))
-            )
+            button.clicked.connect(partial(lambda x: self.editLinkSkillCount(x), (data, i)))
             button.setFixedSize(50, 30)
             button.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
             button.move(210, 290 + 51 * i)
@@ -3090,9 +3314,7 @@ class MainWindow(QWidget):
             self.linkSkillCount.append(button)
 
             remove = QPushButton("", self.sidebarFrame)
-            remove.clicked.connect(
-                partial(lambda x: self.removeOneLinkSkill(x), (data, i))
-            )
+            remove.clicked.connect(partial(lambda x: self.removeOneLinkSkill(x), (data, i)))
             remove.setStyleSheet(
                 """QPushButton {
                     background-color: transparent; border-radius: 16px;
@@ -3101,7 +3323,7 @@ class MainWindow(QWidget):
                     background-color: #eeeeee;
                 }"""
             )
-            pixmap = QPixmap(convertResourcePath("resource\\xAlpha.png"))
+            pixmap = QPixmap(convertResourcePath("resource\\image\\xAlpha.png"))
             remove.setIcon(QIcon(pixmap))
             remove.setIconSize(QSize(16, 16))
             remove.setFixedSize(32, 32)
@@ -3126,7 +3348,7 @@ class MainWindow(QWidget):
                     background-color: #cccccc;
                 }"""
         )
-        pixmap = QPixmap(convertResourcePath("resource\\plus.png"))
+        pixmap = QPixmap(convertResourcePath("resource\\image\\plus.png"))
         self.linkSkillPlus.setIcon(QIcon(pixmap))
         self.linkSkillPlus.setIconSize(QSize(24, 24))
         self.linkSkillPlus.setFixedSize(36, 36)
@@ -3141,9 +3363,7 @@ class MainWindow(QWidget):
         self.linkSkillCancelButton.show()
 
         self.linkSkillSaveButton = QPushButton("저장", self.sidebarFrame)
-        self.linkSkillSaveButton.clicked.connect(
-            lambda: self.saveEditingLinkSkill(data)
-        )
+        self.linkSkillSaveButton.clicked.connect(lambda: self.saveEditingLinkSkill(data))
         self.linkSkillSaveButton.setFixedSize(120, 32)
         self.linkSkillSaveButton.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
         self.linkSkillSaveButton.move(165, 350 + 51 * len(data[2]))
@@ -3165,9 +3385,7 @@ class MainWindow(QWidget):
         self.activatePopup("editLinkSkillType")
 
         self.settingPopupFrame = QFrame(self.sidebarFrame)
-        self.settingPopupFrame.setStyleSheet(
-            "QFrame { background-color: white; border-radius: 10px; }"
-        )
+        self.settingPopupFrame.setStyleSheet("QFrame { background-color: white; border-radius: 10px; }")
         self.settingPopupFrame.setFixedSize(185, 95)
         self.settingPopupFrame.move(100, 285 + 51 * num)
         self.settingPopupFrame.setGraphicsEffect(self.getShadow(0, 5, 30, 150))
@@ -3176,15 +3394,11 @@ class MainWindow(QWidget):
         for i in range(8):
             button = QPushButton("", self.settingPopupFrame)
             pixmap = QPixmap(
-                self.getSkillImage(i)
-                if i in self.selectedSkillList
-                else self.getSkillImage(i, "off")
+                self.getSkillImage(i) if i in self.selectedSkillList else self.getSkillImage(i, "off")
             )
             button.setIcon(QIcon(pixmap))
             button.setIconSize(QSize(40, 40))
-            button.clicked.connect(
-                partial(lambda x: self.oneLinkSkillTypePopupClick(x), (data, num, i))
-            )
+            button.clicked.connect(partial(lambda x: self.oneLinkSkillTypePopupClick(x), (data, num, i)))
             button.setFixedSize(40, 40)
             # button.setStyleSheet("background-color: transparent;")
             button.move(45 * (i % 4) + 5, 5 + (i // 4) * 45)
@@ -3272,9 +3486,7 @@ class MainWindow(QWidget):
         count = self.skillComboCountList[self.serverID][self.jobID][data[2][num][0]]
 
         self.settingPopupFrame = QFrame(self.sidebarFrame)
-        self.settingPopupFrame.setStyleSheet(
-            "QFrame { background-color: white; border-radius: 10px; }"
-        )
+        self.settingPopupFrame.setStyleSheet("QFrame { background-color: white; border-radius: 10px; }")
         self.settingPopupFrame.setFixedSize(5 + 35 * count, 40)
         self.settingPopupFrame.move(200 - 35 * count, 285 + 51 * num)
         self.settingPopupFrame.setGraphicsEffect(self.getShadow(0, 5, 30, 150))
@@ -3283,9 +3495,7 @@ class MainWindow(QWidget):
         for i in range(1, count + 1):
             button = QPushButton(str(i), self.settingPopupFrame)
             button.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
-            button.clicked.connect(
-                partial(lambda x: self.onLinkSkillCountPopupClick(x), (data, num, i))
-            )
+            button.clicked.connect(partial(lambda x: self.onLinkSkillCountPopupClick(x), (data, num, i)))
             button.setFixedSize(30, 30)
             button.move(35 * i - 30, 5)
 
@@ -3436,7 +3646,7 @@ class MainWindow(QWidget):
     def onSkillUsagesClick(self, num):
         self.disablePopup()
         if self.ifUseSkill[num]:
-            pixmap = QPixmap(convertResourcePath("resource\\checkFalse.png"))
+            pixmap = QPixmap(convertResourcePath("resource\\image\\checkFalse.png"))
             self.settingSkillUsages[num].setIcon(QIcon(pixmap))
             self.ifUseSkill[num] = False
 
@@ -3445,7 +3655,7 @@ class MainWindow(QWidget):
             #         if k[0] == num:
             #             self.linkSkillList[i][0] = 1
         else:
-            pixmap = QPixmap(convertResourcePath("resource\\checkTrue.png"))
+            pixmap = QPixmap(convertResourcePath("resource\\image\\checkTrue.png"))
             self.settingSkillUsages[num].setIcon(QIcon(pixmap))
             self.ifUseSkill[num] = True
         self.dataSave()
@@ -3454,11 +3664,11 @@ class MainWindow(QWidget):
     def onSkillCombosClick(self, num):
         self.disablePopup()
         if self.ifUseSole[num]:
-            pixmap = QPixmap(convertResourcePath("resource\\checkFalse.png"))
+            pixmap = QPixmap(convertResourcePath("resource\\image\\checkFalse.png"))
             self.settingSkillSingle[num].setIcon(QIcon(pixmap))
             self.ifUseSole[num] = False
         else:
-            pixmap = QPixmap(convertResourcePath("resource\\checkTrue.png"))
+            pixmap = QPixmap(convertResourcePath("resource\\image\\checkTrue.png"))
             self.settingSkillSingle[num].setIcon(QIcon(pixmap))
             self.ifUseSole[num] = True
         self.dataSave()
@@ -3473,9 +3683,7 @@ class MainWindow(QWidget):
         self.activatePopup("SkillComboCounts")
 
         self.settingPopupFrame = QFrame(self.sidebarFrame)
-        self.settingPopupFrame.setStyleSheet(
-            "QFrame { background-color: white; border-radius: 5px; }"
-        )
+        self.settingPopupFrame.setStyleSheet("QFrame { background-color: white; border-radius: 5px; }")
         width = 4 + 36 * combo
         self.settingPopupFrame.setFixedSize(width, 40)
         self.settingPopupFrame.move(170 - width, 206 + 51 * num)
@@ -3484,9 +3692,7 @@ class MainWindow(QWidget):
 
         for i in range(1, combo + 1):
             button = QPushButton(str(i), self.settingPopupFrame)
-            button.clicked.connect(
-                partial(lambda x: self.onSkillComboCountsPopupClick(x), (num, i))
-            )
+            button.clicked.connect(partial(lambda x: self.onSkillComboCountsPopupClick(x), (num, i)))
             button.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
             button.setFixedSize(32, 32)
             button.move(36 * i - 32, 4)
@@ -3539,11 +3745,11 @@ class MainWindow(QWidget):
         # return convertResourcePath("resource\\emptySkill.png")
         if count == -1:
             return convertResourcePath(
-                f"resource\\skill\\{self.serverID}\\{self.jobID}\\{num}\\{self.skillComboCountList[self.serverID][self.jobID][num]}.png"
+                f"resource\\image\\skill\\{self.serverID}\\{self.jobID}\\{num}\\{self.skillComboCountList[self.serverID][self.jobID][num]}.png"
             )
         else:
             return convertResourcePath(
-                f"resource\\skill\\{self.serverID}\\{self.jobID}\\{num}\\{count}.png"
+                f"resource\\image\\skill\\{self.serverID}\\{self.jobID}\\{num}\\{count}.png"
             )
 
     ## 탭 변경
@@ -3612,14 +3818,12 @@ class MainWindow(QWidget):
         for i in range(8):
             pixmap = QPixmap(self.getSkillImage(i))
             self.selectableSkillImageButton[i].setIcon(QIcon(pixmap))
-            self.selectableSkillImageName[i].setText(
-                self.skillNameList[self.serverID][self.jobID][i]
-            )
+            self.selectableSkillImageName[i].setText(self.skillNameList[self.serverID][self.jobID][i])
         for i in range(6):
             if self.selectedSkillList[i] != -1:
                 pixmap = QPixmap(self.getSkillImage(self.selectedSkillList[i]))
             else:
-                pixmap = QPixmap(convertResourcePath("resource\\emptySkill.png"))
+                pixmap = QPixmap(convertResourcePath("resource\\image\\emptySkill.png"))
             self.selectedSkillImageButton[i].setIcon(QIcon(pixmap))
 
         self.buttonServerList.setText(self.serverList[self.serverID])
@@ -3627,42 +3831,26 @@ class MainWindow(QWidget):
 
         self.buttonInputDelay.setText(str(self.inputDelay))
         rgb = 153 if self.activeDelaySlot == 1 else 0
-        self.buttonDefaultDelay.setStyleSheet(
-            f"QPushButton {{color: rgb({rgb}, {rgb}, {rgb});}}"
-        )
+        self.buttonDefaultDelay.setStyleSheet(f"QPushButton {{color: rgb({rgb}, {rgb}, {rgb});}}")
         rgb = 153 if self.activeDelaySlot == 0 else 0
-        self.buttonInputDelay.setStyleSheet(
-            f"QPushButton {{color: rgb({rgb}, {rgb}, {rgb});}}"
-        )
+        self.buttonInputDelay.setStyleSheet(f"QPushButton {{color: rgb({rgb}, {rgb}, {rgb});}}")
 
         self.buttonInputCooltime.setText(str(self.inputCooltime))
         rgb = 153 if self.activeCooltimeSlot == 1 else 0
-        self.buttonDefaultCooltime.setStyleSheet(
-            f"QPushButton {{color: rgb({rgb}, {rgb}, {rgb});}}"
-        )
+        self.buttonDefaultCooltime.setStyleSheet(f"QPushButton {{color: rgb({rgb}, {rgb}, {rgb});}}")
         rgb = 153 if self.activeCooltimeSlot == 0 else 0
-        self.buttonInputCooltime.setStyleSheet(
-            f"QPushButton {{color: rgb({rgb}, {rgb}, {rgb});}}"
-        )
+        self.buttonInputCooltime.setStyleSheet(f"QPushButton {{color: rgb({rgb}, {rgb}, {rgb});}}")
 
         self.buttonInputStartKey.setText(str(self.inputStartKey))
         rgb = 153 if self.activeStartKeySlot == 1 else 0
-        self.buttonDefaultStartKey.setStyleSheet(
-            f"QPushButton {{color: rgb({rgb}, {rgb}, {rgb});}}"
-        )
+        self.buttonDefaultStartKey.setStyleSheet(f"QPushButton {{color: rgb({rgb}, {rgb}, {rgb});}}")
         rgb = 153 if self.activeStartKeySlot == 0 else 0
-        self.buttonInputStartKey.setStyleSheet(
-            f"QPushButton {{color: rgb({rgb}, {rgb}, {rgb});}}"
-        )
+        self.buttonInputStartKey.setStyleSheet(f"QPushButton {{color: rgb({rgb}, {rgb}, {rgb});}}")
 
         rgb = 153 if self.activeMouseClickSlot == 1 else 0
-        self.button1stMouseType.setStyleSheet(
-            f"QPushButton {{color: rgb({rgb}, {rgb}, {rgb});}}"
-        )
+        self.button1stMouseType.setStyleSheet(f"QPushButton {{color: rgb({rgb}, {rgb}, {rgb});}}")
         rgb = 153 if self.activeMouseClickSlot == 0 else 0
-        self.button2ndMouseType.setStyleSheet(
-            f"QPushButton {{color: rgb({rgb}, {rgb}, {rgb});}}"
-        )
+        self.button2ndMouseType.setStyleSheet(f"QPushButton {{color: rgb({rgb}, {rgb}, {rgb});}}")
 
         self.update()
         self.updatePosition()
@@ -3702,9 +3890,7 @@ class MainWindow(QWidget):
         return label
 
     ## 그림자 리턴
-    def getShadow(
-        self, first=5, second=5, radius=10, transparent=100
-    ) -> QGraphicsDropShadowEffect:
+    def getShadow(self, first=5, second=5, radius=10, transparent=100) -> QGraphicsDropShadowEffect:
         shadow = QGraphicsDropShadowEffect(self)
         shadow.setBlurRadius(radius)
         shadow.setColor(QColor(0, 0, 0, transparent))
@@ -3724,6 +3910,7 @@ class MainWindow(QWidget):
         StartKeyChangeError: 시작키 변경 오류
         RequireUpdate: 업데이트 필요
         FailedUpdateCheck: 업데이트 확인 실패
+        SimInputError: 시뮬레이션 정보 입력 오류
         """
         noticePopup = QFrame(self)
 
@@ -3757,7 +3944,9 @@ class MainWindow(QWidget):
                 text = "해당 키는 이미 사용중입니다."
                 icon = "error"
             case "RequireUpdate":
-                text = f"프로그램이 최신버전이 아닙니다.\n현재 버전: {version}, 최신버전: {self.recentVersion}"
+                text = (
+                    f"프로그램이 최신버전이 아닙니다.\n현재 버전: {version}, 최신버전: {self.recentVersion}"
+                )
                 icon = "warning"
 
                 button = QPushButton("다운로드 링크", noticePopup)
@@ -3781,6 +3970,9 @@ class MainWindow(QWidget):
             case "FailedUpdateCheck":
                 text = f"프로그램 업데이트 확인에 실패하였습니다."
                 icon = "warning"
+            case "SimInputError":
+                text = f"시뮬레이션 정보가 올바르게 입력되지 않았습니다."
+                icon = "error"
 
         noticePopup.setStyleSheet("background-color: white; border-radius: 10px;")
         noticePopup.setFixedSize(400, frameHeight)
@@ -3795,16 +3987,14 @@ class MainWindow(QWidget):
         noticePopupIcon.setStyleSheet("background-color: transparent;")
         noticePopupIcon.setFixedSize(24, 24)
         noticePopupIcon.move(13, 15)
-        pixmap = QPixmap(convertResourcePath(f"resource\\{icon}.png"))
+        pixmap = QPixmap(convertResourcePath(f"resource\\image\\{icon}.png"))
         noticePopupIcon.setIcon(QIcon(pixmap))
         noticePopupIcon.setIconSize(QSize(24, 24))
         noticePopupIcon.show()
 
         noticePopupLabel = QLabel(text, noticePopup)
         noticePopupLabel.setWordWrap(True)
-        noticePopupLabel.setAlignment(
-            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
-        )
+        noticePopupLabel.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         noticePopupLabel.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
         noticePopupLabel.setStyleSheet("background-color: white; border-radius: 10px;")
         noticePopupLabel.setFixedSize(304, frameHeight - 24)
@@ -3829,14 +4019,12 @@ class MainWindow(QWidget):
         noticePopupRemove.clicked.connect(
             partial(lambda x: self.removeNoticePopup(x), self.activeErrorPopupNumber)
         )
-        pixmap = QPixmap(convertResourcePath("resource\\x.png"))
+        pixmap = QPixmap(convertResourcePath("resource\\image\\x.png"))
         noticePopupRemove.setIcon(QIcon(pixmap))
         noticePopupRemove.setIconSize(QSize(24, 24))
         noticePopupRemove.show()
 
-        self.activeErrorPopup.append(
-            [noticePopup, frameHeight, self.activeErrorPopupNumber]
-        )
+        self.activeErrorPopup.append([noticePopup, frameHeight, self.activeErrorPopupNumber])
         self.activeErrorPopupCount += 1
         self.activeErrorPopupNumber += 1
 
@@ -3869,8 +4057,8 @@ class MainWindow(QWidget):
         self.activePopup = text
 
     ## 인풋 팝업 생성
-    def makePopupInput(self, type):
-        match type:
+    def makePopupInput(self, popup_type):
+        match popup_type:
             case "delay":
                 x = 140
                 y = 370
@@ -3890,15 +4078,13 @@ class MainWindow(QWidget):
 
                 frame = self
         self.settingPopupFrame = QFrame(frame)
-        self.settingPopupFrame.setStyleSheet(
-            "background-color: white; border-radius: 10px;"
-        )
+        self.settingPopupFrame.setStyleSheet("background-color: white; border-radius: 10px;")
         self.settingPopupFrame.setFixedSize(width, 40)
         self.settingPopupFrame.move(x, y)
         self.settingPopupFrame.setGraphicsEffect(self.getShadow(0, 0, 30, 150))
         self.settingPopupFrame.show()
 
-        match type:
+        match popup_type:
             case "delay":
                 default = str(self.inputDelay)
             case "cooltime":
@@ -3908,16 +4094,14 @@ class MainWindow(QWidget):
         self.settingPopupInput = QLineEdit(default, self.settingPopupFrame)
         self.settingPopupInput.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
         self.settingPopupInput.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.settingPopupInput.setStyleSheet(
-            "border: 1px solid black; border-radius: 10px;"
-        )
+        self.settingPopupInput.setStyleSheet("border: 1px solid black; border-radius: 10px;")
         self.settingPopupInput.setFixedSize(width - 70, 30)
         self.settingPopupInput.move(5, 5)
         self.settingPopupInput.setFocus()
 
         self.settingPopupButton = QPushButton("적용", self.settingPopupFrame)
         self.settingPopupButton.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
-        self.settingPopupButton.clicked.connect(lambda: self.onInputPopupClick(type))
+        self.settingPopupButton.clicked.connect(lambda: self.onInputPopupClick(popup_type))
         self.settingPopupButton.setStyleSheet(
             """
                             QPushButton {
@@ -3939,20 +4123,18 @@ class MainWindow(QWidget):
         self.updatePosition()
 
     ## 인풋 팝업 확인 클릭시 실행
-    def onInputPopupClick(self, type):
+    def onInputPopupClick(self, input_type):
         text = self.settingPopupInput.text()
 
-        if type == "delay" or type == "cooltime":
+        if input_type == "delay" or input_type == "cooltime":
             try:
                 text = int(text)
             except:
                 self.disablePopup()
-                self.makeNoticePopup(
-                    "delayInputError" if type == "delay" else "cooltimeInputError"
-                )
+                self.makeNoticePopup("delayInputError" if input_type == "delay" else "cooltimeInputError")
                 return
 
-        match type:
+        match input_type:
             case "delay":
                 if not (self.minDelay <= text <= self.maxDelay):
                     self.disablePopup()
@@ -3970,8 +4152,8 @@ class MainWindow(QWidget):
                 self.inputCooltime = text
                 self.cooltimeReduce = text
             case ("tabName", _):
-                self.tabButtonList[type[1]].setText(" " + text)
-                self.tabNames[type[1]] = text
+                self.tabButtonList[input_type[1]].setText(" " + text)
+                self.tabNames[input_type[1]] = text
 
         self.dataSave()
         self.disablePopup()
@@ -3992,24 +4174,16 @@ class MainWindow(QWidget):
             self.activatePopup("settingServer")
 
             self.settingPopupFrame = QFrame(self.sidebarFrame)
-            self.settingPopupFrame.setStyleSheet(
-                "background-color: white; border-radius: 10px;"
-            )
+            self.settingPopupFrame.setStyleSheet("background-color: white; border-radius: 10px;")
             self.settingPopupFrame.setFixedSize(130, 5 + 35 * len(self.serverList))
             self.settingPopupFrame.move(25, 240)
             self.settingPopupFrame.setGraphicsEffect(self.getShadow(0, 5, 30, 150))
             self.settingPopupFrame.show()
 
             for i in range(len(self.serverList)):
-                self.settingServerButton = QPushButton(
-                    self.serverList[i], self.settingPopupFrame
-                )
-                self.settingServerButton.setFont(
-                    QFont("나눔스퀘어라운드 ExtraBold", 12)
-                )
-                self.settingServerButton.clicked.connect(
-                    partial(lambda x: self.onServerPopupClick(x), i)
-                )
+                self.settingServerButton = QPushButton(self.serverList[i], self.settingPopupFrame)
+                self.settingServerButton.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
+                self.settingServerButton.clicked.connect(partial(lambda x: self.onServerPopupClick(x), i))
                 self.settingServerButton.setStyleSheet(
                     f"""
                                 QPushButton {{
@@ -4048,24 +4222,16 @@ class MainWindow(QWidget):
             self.activatePopup("settingJob")
 
             self.settingPopupFrame = QFrame(self.sidebarFrame)
-            self.settingPopupFrame.setStyleSheet(
-                "background-color: white; border-radius: 10px;"
-            )
-            self.settingPopupFrame.setFixedSize(
-                130, 5 + 35 * len(self.jobList[self.serverID])
-            )
+            self.settingPopupFrame.setStyleSheet("background-color: white; border-radius: 10px;")
+            self.settingPopupFrame.setFixedSize(130, 5 + 35 * len(self.jobList[self.serverID]))
             self.settingPopupFrame.move(145, 240)
             self.settingPopupFrame.setGraphicsEffect(self.getShadow(0, 5, 30, 150))
             self.settingPopupFrame.show()
 
             for i in range(len(self.jobList[self.serverID])):
-                self.settingJobButton = QPushButton(
-                    self.jobList[self.serverID][i], self.settingPopupFrame
-                )
+                self.settingJobButton = QPushButton(self.jobList[self.serverID][i], self.settingPopupFrame)
                 self.settingJobButton.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
-                self.settingJobButton.clicked.connect(
-                    partial(lambda x: self.onJobPopupClick(x), i)
-                )
+                self.settingJobButton.clicked.connect(partial(lambda x: self.onJobPopupClick(x), i))
                 self.settingJobButton.setStyleSheet(
                     f"""
                                 QPushButton {{
@@ -4097,22 +4263,18 @@ class MainWindow(QWidget):
             self.buttonJobList.setText(self.jobList[self.serverID][num])
 
             for i in range(8):
-                self.comboCount[i] = self.skillComboCountList[self.serverID][
-                    self.jobID
-                ][i]
+                self.comboCount[i] = self.skillComboCountList[self.serverID][self.jobID][i]
 
             for i in range(8):
                 pixmap = QPixmap(self.getSkillImage(i))
                 self.selectableSkillImageButton[i].setIcon(QIcon(pixmap))
-                self.selectableSkillImageName[i].setText(
-                    self.skillNameList[self.serverID][self.jobID][i]
-                )
+                self.selectableSkillImageName[i].setText(self.skillNameList[self.serverID][self.jobID][i])
 
             for i in range(6):
                 if self.selectedSkillList[i] != -1:
                     pixmap = QPixmap(self.getSkillImage(self.selectedSkillList[i]))
                 else:
-                    pixmap = QPixmap(convertResourcePath("resource\\emptySkill.png"))
+                    pixmap = QPixmap(convertResourcePath("resource\\image\\emptySkill.png"))
                 self.selectedSkillImageButton[i].setIcon(QIcon(pixmap))
 
             self.updatePosition()
@@ -4211,25 +4373,19 @@ class MainWindow(QWidget):
             self.dataSave()
 
     ## 가상키보드 생성
-    def makeKeyboardPopup(self, type):
+    def makeKeyboardPopup(self, kb_type):
         def makePresetKey(key, row, column, disabled=False):
             button = QPushButton(key, self.settingPopupFrame)
-            match type:
+            match kb_type:
                 case "StartKey":
-                    button.clicked.connect(
-                        lambda: self.onStartKeyPopupKeyboardClick(key, disabled)
-                    )
+                    button.clicked.connect(lambda: self.onStartKeyPopupKeyboardClick(key, disabled))
                 case ("skillKey", _):
                     button.clicked.connect(
-                        lambda: self.onSkillKeyPopupKeyboardClick(
-                            key, disabled, type[1]
-                        )
+                        lambda: self.onSkillKeyPopupKeyboardClick(key, disabled, kb_type[1])
                     )
                 case ("LinkSkill", _):
                     button.clicked.connect(
-                        lambda: self.onLinkSkillKeyPopupKeyboardClick(
-                            key, disabled, type[1]
-                        )
+                        lambda: self.onLinkSkillKeyPopupKeyboardClick(key, disabled, kb_type[1])
                     )
             color1 = "#999999" if disabled else "white"
             color2 = "#999999" if disabled else "#cccccc"
@@ -4266,22 +4422,16 @@ class MainWindow(QWidget):
 
         def makeKey(key, x, y, width, height, disabled=False):
             button = QPushButton(key, self.settingPopupFrame)
-            match type:
+            match kb_type:
                 case "StartKey":
-                    button.clicked.connect(
-                        lambda: self.onStartKeyPopupKeyboardClick(key, disabled)
-                    )
+                    button.clicked.connect(lambda: self.onStartKeyPopupKeyboardClick(key, disabled))
                 case ("skillKey", _):
                     button.clicked.connect(
-                        lambda: self.onSkillKeyPopupKeyboardClick(
-                            key, disabled, type[1]
-                        )
+                        lambda: self.onSkillKeyPopupKeyboardClick(key, disabled, kb_type[1])
                     )
                 case ("LinkSkill", _):
                     button.clicked.connect(
-                        lambda: self.onLinkSkillKeyPopupKeyboardClick(
-                            key, disabled, type[1]
-                        )
+                        lambda: self.onLinkSkillKeyPopupKeyboardClick(key, disabled, kb_type[1])
                     )
             color1 = "#999999" if disabled else "white"
             color2 = "#999999" if disabled else "#cccccc"
@@ -4306,22 +4456,16 @@ class MainWindow(QWidget):
             pixmap = pixmap.transformed(QTransform().rotate(rot))
             button.setIcon(QIcon(pixmap))
             button.setIconSize(QSize(size, size))
-            match type:
+            match kb_type:
                 case "StartKey":
-                    button.clicked.connect(
-                        lambda: self.onStartKeyPopupKeyboardClick(key, disabled)
-                    )
+                    button.clicked.connect(lambda: self.onStartKeyPopupKeyboardClick(key, disabled))
                 case ("skillKey", _):
                     button.clicked.connect(
-                        lambda: self.onSkillKeyPopupKeyboardClick(
-                            key, disabled, type[1]
-                        )
+                        lambda: self.onSkillKeyPopupKeyboardClick(key, disabled, kb_type[1])
                     )
                 case ("LinkSkill", _):
                     button.clicked.connect(
-                        lambda: self.onLinkSkillKeyPopupKeyboardClick(
-                            key, disabled, type[1]
-                        )
+                        lambda: self.onLinkSkillKeyPopupKeyboardClick(key, disabled, kb_type[1])
                     )
             color1 = "#999999" if disabled else "white"
             color2 = "#999999" if disabled else "#cccccc"
@@ -4343,12 +4487,8 @@ class MainWindow(QWidget):
         ySizeMultiple = self.height() / 540
 
         self.settingPopupFrame = QFrame(self)
-        self.settingPopupFrame.setStyleSheet(
-            "background-color: white; border-radius: 10px;"
-        )
-        self.settingPopupFrame.setFixedSize(
-            round(635 * xSizeMultiple), round(215 * ySizeMultiple)
-        )
+        self.settingPopupFrame.setStyleSheet("background-color: white; border-radius: 10px;")
+        self.settingPopupFrame.setFixedSize(round(635 * xSizeMultiple), round(215 * ySizeMultiple))
         self.settingPopupFrame.move(30, 30)
         self.settingPopupFrame.setGraphicsEffect(self.getShadow(0, 0, 30, 150))
         self.settingPopupFrame.show()
@@ -4487,7 +4627,7 @@ class MainWindow(QWidget):
             round(180 * ySizeMultiple),
             round(45 * xSizeMultiple),
             round(30 * ySizeMultiple),
-            convertResourcePath("resource\\window"),
+            convertResourcePath("resource\\image\\window.png"),
             round(32 * ySizeMultiple),
             0,
             True,
@@ -4522,7 +4662,7 @@ class MainWindow(QWidget):
             round(180 * ySizeMultiple),
             round(45 * xSizeMultiple),
             round(30 * ySizeMultiple),
-            convertResourcePath("resource\\window"),
+            convertResourcePath("resource\\image\\window.png"),
             round(32 * ySizeMultiple),
             0,
             True,
@@ -4566,7 +4706,7 @@ class MainWindow(QWidget):
             round(145 * ySizeMultiple),
             round(30 * xSizeMultiple),
             round(30 * ySizeMultiple),
-            convertResourcePath("resource\\arrow"),
+            convertResourcePath("resource\\image\\arrow.png"),
             round(16 * xSizeMultiple),
             0,
             self.isKeyUsing("Up"),
@@ -4577,7 +4717,7 @@ class MainWindow(QWidget):
             round(180 * ySizeMultiple),
             round(30 * xSizeMultiple),
             round(30 * ySizeMultiple),
-            convertResourcePath("resource\\arrow"),
+            convertResourcePath("resource\\image\\arrow.png"),
             round(16 * xSizeMultiple),
             270,
             self.isKeyUsing("Left"),
@@ -4588,7 +4728,7 @@ class MainWindow(QWidget):
             round(180 * ySizeMultiple),
             round(30 * xSizeMultiple),
             round(30 * ySizeMultiple),
-            convertResourcePath("resource\\arrow"),
+            convertResourcePath("resource\\image\\arrow.png"),
             round(16 * xSizeMultiple),
             180,
             self.isKeyUsing("Down"),
@@ -4599,7 +4739,7 @@ class MainWindow(QWidget):
             round(180 * ySizeMultiple),
             round(30 * xSizeMultiple),
             round(30 * ySizeMultiple),
-            convertResourcePath("resource\\arrow"),
+            convertResourcePath("resource\\image\\arrow.png"),
             round(16 * xSizeMultiple),
             90,
             self.isKeyUsing("Right"),
@@ -4789,7 +4929,7 @@ class MainWindow(QWidget):
             }
         """
         )
-        pixmap = QPixmap(convertResourcePath("resource\\x.png"))
+        pixmap = QPixmap(convertResourcePath("resource\\image\\x.png"))
         tabRemoveButton.setIcon(QIcon(pixmap))
         tabRemoveButton.setFixedSize(40, 40)
         tabRemoveButton.move(545 + 250 * tabNum, 25)
@@ -4812,13 +4952,9 @@ class MainWindow(QWidget):
         self.tabRemoveBackground.show()
 
         self.tabRemoveFrame = QFrame(self.tabRemoveBackground)
-        self.tabRemoveFrame.setStyleSheet(
-            "QFrame { background-color: white; border-radius: 20px; }"
-        )
+        self.tabRemoveFrame.setStyleSheet("QFrame { background-color: white; border-radius: 20px; }")
         self.tabRemoveFrame.setFixedSize(340, 140)
-        self.tabRemoveFrame.move(
-            round(self.width() * 0.5 - 170), round(self.height() * 0.5 - 60)
-        )
+        self.tabRemoveFrame.move(round(self.width() * 0.5 - 170), round(self.height() * 0.5 - 60))
         self.tabRemoveFrame.setGraphicsEffect(self.getShadow(2, 2, 20))
         self.tabRemoveFrame.show()
 
@@ -4827,10 +4963,7 @@ class MainWindow(QWidget):
         self.tabRemoveNameLabel.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
         self.tabRemoveNameLabel.setFixedSize(330, 30)
         self.tabRemoveNameLabel.setText(
-            self.limitText(
-                f'정말 "{self.tabNames[num]}', self.tabRemoveNameLabel, margin=5
-            )
-            + '"'
+            self.limitText(f'정말 "{self.tabNames[num]}', self.tabRemoveNameLabel, margin=5) + '"'
         )
         self.tabRemoveNameLabel.move(5, 10)
         self.tabRemoveNameLabel.show()
@@ -4862,9 +4995,7 @@ class MainWindow(QWidget):
 
         self.settingJobButton = QPushButton("아니오", self.tabRemoveFrame)
         self.settingJobButton.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
-        self.settingJobButton.clicked.connect(
-            lambda: self.onTabRemovePopupClick(num, False)
-        )
+        self.settingJobButton.clicked.connect(lambda: self.onTabRemovePopupClick(num, False))
         self.settingJobButton.setStyleSheet(
             """
                         QPushButton {
@@ -4913,9 +5044,7 @@ class MainWindow(QWidget):
                         j.clicked.disconnect()
                         j.clicked.connect(partial(lambda x: self.onTabClick(x), i))
                         self.tabRemoveList[i].clicked.disconnect()
-                        self.tabRemoveList[i].clicked.connect(
-                            partial(lambda x: self.onTabRemoveClick(x), i)
-                        )
+                        self.tabRemoveList[i].clicked.connect(partial(lambda x: self.onTabRemoveClick(x), i))
 
                         self.tabList[i].move(340 + 250 * i, 20)
                         self.tabButtonList[i].move(345 + 250 * i, 25)
@@ -4951,9 +5080,7 @@ class MainWindow(QWidget):
                     j.clicked.disconnect()
                     j.clicked.connect(partial(lambda x: self.onTabClick(x), i))
                     self.tabRemoveList[i].clicked.disconnect()
-                    self.tabRemoveList[i].clicked.connect(
-                        partial(lambda x: self.onTabRemoveClick(x), i)
-                    )
+                    self.tabRemoveList[i].clicked.connect(partial(lambda x: self.onTabRemoveClick(x), i))
 
                     self.tabList[i].move(340 + 250 * i, 20)
                     self.tabButtonList[i].move(345 + 250 * i, 25)
@@ -4977,9 +5104,7 @@ class MainWindow(QWidget):
                     j.clicked.disconnect()
                     j.clicked.connect(partial(lambda x: self.onTabClick(x), i))
                     self.tabRemoveList[i].clicked.disconnect()
-                    self.tabRemoveList[i].clicked.connect(
-                        partial(lambda x: self.onTabRemoveClick(x), i)
-                    )
+                    self.tabRemoveList[i].clicked.connect(partial(lambda x: self.onTabRemoveClick(x), i))
 
                     self.tabList[i].move(340 + 250 * i, 20)
                     self.tabButtonList[i].move(345 + 250 * i, 25)
@@ -5088,27 +5213,15 @@ class MainWindow(QWidget):
                 round(136 + xAddedSize * 0.5 - 288 * xMultSize * 0.5),
                 round(10 + yAddedSize * 0.1 - 48 * yMultSize * 0.5),
             )
-            self.skillPreviewFrame.setFixedSize(
-                round(288 * (xMultSize + 1)), round(48 * (yMultSize + 1))
-            )
+            self.skillPreviewFrame.setFixedSize(round(288 * (xMultSize + 1)), round(48 * (yMultSize + 1)))
             for i, j in enumerate(self.skillPreviewList):
-                j.setFixedSize(
-                    round((288 * (xMultSize + 1) / 6)), round(48 * (yMultSize + 1))
-                )
+                j.setFixedSize(round((288 * (xMultSize + 1) / 6)), round(48 * (yMultSize + 1)))
                 j.move(
-                    round(
-                        (
-                            self.skillPreviewFrame.width()
-                            - j.width() * len(self.skillPreviewList)
-                        )
-                        * 0.5
-                    )
+                    round((self.skillPreviewFrame.width() - j.width() * len(self.skillPreviewList)) * 0.5)
                     + j.width() * i,
                     0,
                 )
-                j.setIconSize(
-                    QSize(min(j.width(), j.height()), min(j.width(), j.height()))
-                )
+                j.setIconSize(QSize(min(j.width(), j.height()), min(j.width(), j.height())))
 
             for i, j in enumerate(self.selectableSkillFrame):
                 j.move(
@@ -5118,40 +5231,31 @@ class MainWindow(QWidget):
                         - 64 * xMultSize * 0.5
                     ),
                     round(
-                        (80 + yAddedSize * 0.3 + (120 + yAddedSize * 0.2) * (i // 4))
-                        - 88 * yMultSize * 0.5
+                        (80 + yAddedSize * 0.3 + (120 + yAddedSize * 0.2) * (i // 4)) - 88 * yMultSize * 0.5
                     ),
                 )
                 j.setFixedSize(round(64 * (xMultSize + 1)), round(88 * (yMultSize + 1)))
 
             for i in self.selectableSkillImageButton:
                 i.setFixedSize(round(64 * (xMultSize + 1)), round(64 * (yMultSize + 1)))
-                i.setIconSize(
-                    QSize(min(i.width(), i.height()), min(i.width(), i.height()))
-                )
+                i.setIconSize(QSize(min(i.width(), i.height()), min(i.width(), i.height())))
             for i, j in enumerate(self.selectableSkillImageName):
                 j.move(0, round(64 * (yMultSize + 1)))
                 j.setFixedSize(round(64 * (xMultSize + 1)), round(24 * (yMultSize + 1)))
-                self.adjustFontSize(
-                    j, self.skillNameList[self.serverID][self.jobID][i], 20
-                )
+                self.adjustFontSize(j, self.skillNameList[self.serverID][self.jobID][i], 20)
             self.selectionSkillLine.move(20, round(309 + yAddedSize * 0.7))
             self.selectionSkillLine.setFixedSize(520 + xAddedSize, 1)
             for i, j in enumerate(self.selectedSkillFrame):
                 j.move(
                     round(
-                        (38 + xAddedSize * 0.1)
-                        + (64 + (20 + xAddedSize * 0.16)) * i
-                        - 64 * xMultSize * 0.5
+                        (38 + xAddedSize * 0.1) + (64 + (20 + xAddedSize * 0.16)) * i - 64 * xMultSize * 0.5
                     ),
                     round(330 + yAddedSize * 0.9 - 96 * yMultSize * 0.5),
                 )
                 j.setFixedSize(round(64 * (xMultSize + 1)), round(96 * (yMultSize + 1)))
             for i in self.selectedSkillImageButton:
                 i.setFixedSize(round(64 * (xMultSize + 1)), round(64 * (yMultSize + 1)))
-                i.setIconSize(
-                    QSize(min(i.width(), i.height()), min(i.width(), i.height()))
-                )
+                i.setIconSize(QSize(min(i.width(), i.height()), min(i.width(), i.height())))
             for i, j in enumerate(self.selectedSkillKey):
                 j.move(0, round(72 * (yMultSize + 1)))
                 j.setFixedSize(round(64 * (xMultSize + 1)), round(24 * (yMultSize + 1)))
@@ -5164,9 +5268,7 @@ class MainWindow(QWidget):
                     self.tabButtonList[tabNum].move(365 + 200 * tabNum, 25)
                     self.tabButtonList[tabNum].setFixedSize(190, 40)
                     self.tabButtonList[tabNum].setText(
-                        self.limitText(
-                            f" {self.tabNames[tabNum]}", self.tabButtonList[tabNum]
-                        )
+                        self.limitText(f" {self.tabNames[tabNum]}", self.tabButtonList[tabNum])
                     )
                     self.tabRemoveList[tabNum].move(515 + 200 * tabNum, 25)
                     self.tabAddButton.move(370 + 200 * len(self.tabNames), 25)
@@ -5181,9 +5283,7 @@ class MainWindow(QWidget):
                     self.tabButtonList[tabNum].move(365 + width * tabNum, 25)
                     self.tabButtonList[tabNum].setFixedSize(width - 10, 40)
                     self.tabButtonList[tabNum].setText(
-                        self.limitText(
-                            f" {self.tabNames[tabNum]}", self.tabButtonList[tabNum]
-                        )
+                        self.limitText(f" {self.tabNames[tabNum]}", self.tabButtonList[tabNum])
                     )
                     self.tabRemoveList[tabNum].move(315 + width * (tabNum + 1), 25)
                     self.tabAddButton.move(self.width() - 80, 25)
@@ -5193,9 +5293,7 @@ class MainWindow(QWidget):
 
             if self.isTabRemovePopupActivated:
                 self.tabRemoveBackground.setFixedSize(self.width(), self.height())
-                self.tabRemoveFrame.move(
-                    round(self.width() * 0.5 - 170), round(self.height() * 0.5 - 60)
-                )
+                self.tabRemoveFrame.move(round(self.width() * 0.5 - 170), round(self.height() * 0.5 - 60))
                 self.tabRemoveBackground.raise_()
 
         else:  # 레이아웃 1 (계산기)
@@ -5206,9 +5304,7 @@ class MainWindow(QWidget):
             # self.sim_navButtons[4].move(
             #     self.sim_navFrame.width() - self.sim_navHeight, 0
             # )
-            self.sim_mainFrame.setFixedWidth(
-                self.width() - self.scrollBarWidth - self.sim_margin * 2
-            )
+            self.sim_mainFrame.setFixedWidth(self.width() - self.scrollBarWidth - self.sim_margin * 2)
             self.sim_mainScrollArea.setFixedSize(
                 self.width() - self.sim_margin,
                 self.height()
@@ -5218,11 +5314,15 @@ class MainWindow(QWidget):
                 - self.sim_main1_D,
             )
 
-            if self.simType == 1:  # 캐릭터 정보
+            if self.simType == 1:  # 정보 입력
                 self.sim1_frame1.move(deltaWidth // 2, 0)
                 self.sim1_frame2.move(
                     deltaWidth // 2,
                     self.sim1_frame1.y() + self.sim1_frame1.height() + self.sim_main_D,
+                )
+                self.sim1_frame3.move(
+                    deltaWidth // 2,
+                    self.sim1_frame2.y() + self.sim1_frame2.height() + self.sim_main_D,
                 )
                 # self.sim1_frame1.setFixedWidth(
                 #     self.width() - self.scrollBarWidth - self.sim_margin * 2
@@ -5443,8 +5543,7 @@ class MainWindow(QWidget):
 
                     ## name
                     self.tabNames = [
-                        jsonObject["preset"][i]["name"]
-                        for i in range(len(jsonObject["preset"]))
+                        jsonObject["preset"][i]["name"] for i in range(len(jsonObject["preset"]))
                     ]
 
                     ## skills
@@ -5490,6 +5589,11 @@ class MainWindow(QWidget):
                         j.append(data["linkSettings"][i]["type"])
                         j.append(data["linkSettings"][i]["key"])
                         j.append(data["linkSettings"][i]["skills"])
+
+                    ## info
+                    self.info_stats = data["info"]["stats"]
+                    self.info_skills = data["info"]["skills"]
+                    self.info_simInfo = data["info"]["simInfo"]
             else:
                 self.dataMake()
                 self.dataLoad()
@@ -5500,12 +5604,13 @@ class MainWindow(QWidget):
     ## 오류발생, 최초실행 시 데이터 생성
     def dataMake(self):
         jsonObject = {
+            "version": dataVersion,
             "recentPreset": 0,
             "preset": [
                 {
                     "name": "스킬 매크로",
                     "skills": {
-                        "activeSkills": [-1, -1, -1, -1, -1, -1],
+                        "activeSkills": [-1] * 6,
                         "skillKeys": ["2", "3", "4", "5", "6", "7"],
                     },
                     "settings": {
@@ -5527,6 +5632,11 @@ class MainWindow(QWidget):
                         [True, True, 3, None],
                     ],
                     "linkSettings": [],
+                    "info": {
+                        "stats": [0] * 18,
+                        "skills": [1] * 8,
+                        "simInfo": [1, 1, 100],
+                    },
                 }
             ],
         }
@@ -5572,6 +5682,10 @@ class MainWindow(QWidget):
             data["linkSettings"][i]["key"] = self.linkSkillList[i][1]
             data["linkSettings"][i]["skills"] = self.linkSkillList[i][2]
 
+        data["info"]["stats"] = self.info_stats
+        data["info"]["skills"] = self.info_skills
+        data["info"]["simInfo"] = self.info_simInfo
+
         with open(fileDir, "w", encoding="UTF8") as f:
             json.dump(jsonObject, f)
 
@@ -5594,7 +5708,7 @@ class MainWindow(QWidget):
             {
                 "name": "스킬 매크로",
                 "skills": {
-                    "activeSkills": [-1, -1, -1, -1, -1, -1],
+                    "activeSkills": [-1] * 6,
                     "skillKeys": ["2", "3", "4", "5", "6", "7"],
                 },
                 "settings": {
@@ -5616,8 +5730,35 @@ class MainWindow(QWidget):
                     [True, True, 3, None],
                 ],
                 "linkSettings": [],
+                "info": {
+                    "stats": [0] * 18,
+                    "skills": [1] * 8,
+                    "simInfo": [1, 1, 100],
+                },
             }
         )
+
+        with open(fileDir, "w", encoding="UTF8") as f:
+            json.dump(jsonObject, f)
+
+    ## 데이터 업데이트
+    def dataUpdate(self):
+        def update_1to2():
+            jsonObject["version"] = 2
+
+            for i in range(len(jsonObject["preset"])):
+                jsonObject["preset"][i]["info"] = {}
+                jsonObject["preset"][i]["info"]["stats"] = [0] * 18
+                jsonObject["preset"][i]["info"]["skills"] = [1] * 8
+                jsonObject["preset"][i]["info"]["simInfo"] = [1, 1, 100]
+
+        with open(fileDir, "r", encoding="UTF8") as f:
+            jsonObject = json.load(f)
+
+        if not "version" in jsonObject:
+            update_1to2()
+        # if jsonObject["version"] == 2:
+        #     update_2to3()
 
         with open(fileDir, "w", encoding="UTF8") as f:
             json.dump(jsonObject, f)
@@ -5641,12 +5782,13 @@ class DpsDistributionCanvas(FigureCanvas):
         }
 
         n_bins = 15
-        counts, bins = np.histogram(self.data, bins=n_bins)
+        counts, bins = self.custom_histogram(self.data, n_bins)
         bin_width = 0.9 * (bins[1] - bins[0])
         bars = self.ax.bar(bins[:-1], counts, width=bin_width, align="edge", bottom=0)
 
         # Customizing the plot similar to the image
         self.ax.set_title("DPS 분포")
+        self.ax.yaxis.set_major_locator(mtick.MaxNLocator(integer=True))
         # self.ax.set_xlabel("DPS")
         # self.ax.set_ylabel("반복 횟수")
 
@@ -5667,8 +5809,7 @@ class DpsDistributionCanvas(FigureCanvas):
             bars[i].set_facecolor(self.colors["center5"])
 
         # Highest bar
-        median_val = np.median(self.data)
-        median_idx = np.digitize(median_val, bins) - 1
+        median_idx = self.find_median_index(self.data, bins)
         bars[median_idx].set_facecolor(self.colors["median"])
 
         # Create the annotation
@@ -5727,33 +5868,89 @@ class DpsDistributionCanvas(FigureCanvas):
         self.mpl_connect("motion_notify_event", on_hover)
         self.draw()
 
+    def calculate_median(self, data):
+        """
+        Calculate the median of a list of numbers without using numpy.
+        """
+        sorted_data = sorted(data)
+        n = len(sorted_data)
+
+        if n % 2 == 1:  # Odd number of elements
+            return sorted_data[n // 2]
+        else:  # Even number of elements
+            mid1, mid2 = sorted_data[n // 2 - 1], sorted_data[n // 2]
+            return (mid1 + mid2) / 2
+
+    def custom_digitize(self, value, bins):
+        """
+        Find the index of the bin into which the value falls.
+        Equivalent to numpy.digitize.
+        """
+        for idx, b in enumerate(bins):
+            if value <= b:
+                return idx
+        return len(bins)
+
+    def find_median_index(self, data, bins):
+        """
+        Find the index of the bin where the median of data falls.
+        """
+        median_val = self.calculate_median(data)
+        median_idx = self.custom_digitize(median_val, bins) - 1
+        return median_idx
+
+    def custom_histogram(self, data, n_bins):
+        """
+        Create a histogram with specified number of bins without using numpy.
+        """
+        min_val, max_val = min(data), max(data)
+        bin_width = (max_val - min_val) / n_bins
+        bins = [min_val + i * bin_width for i in range(n_bins + 1)]
+        counts = [0] * n_bins
+
+        for value in data:
+            for i in range(n_bins):
+                if bins[i] <= value < bins[i + 1]:
+                    counts[i] += 1
+                    break
+            if value == max_val:  # Include the rightmost edge
+                counts[-1] += 1
+
+        return counts, bins
+
 
 class SkillDpsDistributionCanvas(FigureCanvas):
 
-    def __init__(self, parent, data):
+    def __init__(self, parent, data, skill_name):
         fig, self.ax = plt.subplots()
         fig.set_facecolor("#F8F8F8")
         super().__init__(fig)
         self.setParent(parent)
         self.data = data
+        self.skill_name = skill_name
         self.plot()
 
     def plot(self):
         # Data for the pie chart
-        labels = [f"스킬{i+1}: {j}%" for i, j in enumerate(self.data)]
-        colors = ["#EF9A9A", "#90CAF9", "#A5D6A7", "#FFEB3B", "#CE93D8", "#FFA386"]
+        data = [i for i in self.data if i != 0]
+        labels = [f"{self.skill_name[i]}" for i, j in enumerate(self.data) if j != 0 and i != 6]
+        labels.append(f"평타")
+        colors = ["#EF9A9A", "#90CAF9", "#A5D6A7", "#FFEB3B", "#CE93D8", "#F0B070", "#2196F3"]
 
         # Plotting the pie chart
-        wedges, texts = self.ax.pie(
-            self.data,
+        wedges, texts, autotexts = self.ax.pie(
+            data,
             labels=labels,
-            colors=colors,
-            startangle=140,
-            wedgeprops={"edgecolor": "black", "linewidth": 0.5},
+            colors=colors[: len(labels)],
+            autopct="%1.1f%%",
+            startangle=90,
+            wedgeprops={"width": 0.7, "edgecolor": "#F8F8F8", "linewidth": 2},
+            # textprops={"verticalalignment": "center"},
+            pctdistance=0.65,
         )
 
         # Customizing the plot
-        self.ax.set_title("스킬 DPS")
+        self.ax.set_title("스킬 DPS", fontsize=14)
 
         # Adjust text size
         for text in texts:
@@ -5764,13 +5961,13 @@ class SkillDpsDistributionCanvas(FigureCanvas):
 
 class DMGCanvas(FigureCanvas):
 
-    def __init__(self, parent, data, type):
+    def __init__(self, parent, data, canvas_type):
         fig, self.ax = plt.subplots()
         fig.set_facecolor("#F8F8F8")
         super().__init__(fig)
         self.setParent(parent)
         self.data = data
-        self.type = type
+        self.canvas_type = canvas_type
         self.plot()
 
     def plot(self):
@@ -5786,7 +5983,7 @@ class DMGCanvas(FigureCanvas):
             self.data["mean"],
             label="평균",
             color="#70AAF9",
-            linewidth=2,
+            linewidth=1,
         )
         (self.line3,) = self.ax.plot(
             self.data["time"],
@@ -5796,12 +5993,12 @@ class DMGCanvas(FigureCanvas):
             linewidth=1,
         )
 
-        if self.type == "time":
+        if self.canvas_type == "time":
             self.ax.set_title("시간 경과에 따른 피해량")
-            self.ax.set_ylabel("피해량")
+            # self.ax.set_ylabel("피해량", rotation=0, labelpad=20)
         else:
             self.ax.set_title("누적 피해량")
-            self.ax.set_ylabel("피해량")
+            # self.ax.set_ylabel("피해량", rotation=0, labelpad=20)
 
         self.ax.set_xlabel("시간 (초)")
         self.ax.grid(True, linestyle="--")  # 격자를 점선으로 변경
@@ -5831,7 +6028,7 @@ class DMGCanvas(FigureCanvas):
     def on_hover(self, event):
         if event.inaxes == self.ax:
             x, y = event.xdata, event.ydata
-            index = np.argmin(np.abs(self.data["time"] - x))
+            index = abs(self.data["time"] - x).argmin()
             closest_x = self.data["time"][index]
             max_val = self.data["max"][index]
             mean_val = self.data["mean"][index]
@@ -5850,7 +6047,7 @@ class DMGCanvas(FigureCanvas):
 
 class SkillContributionCanvas(FigureCanvas):
 
-    def __init__(self, parent, data):
+    def __init__(self, parent, data, names):
         fig, self.ax = plt.subplots(figsize=(8, 6))  # 명시적 크기 설정
         fig.set_facecolor("#F8F8F8")
         super().__init__(fig)
@@ -5861,55 +6058,52 @@ class SkillContributionCanvas(FigureCanvas):
         self.resize(600, 400)
 
         self.data = data
+        self.skill_names = names
 
         self.plot()
 
     def plot(self):
-        colors = ["#F38181", "#70AAF9", "#80C080", "#FCE38A", "#95E1D3", "#F4A259"]
-        skill_names = ["스킬1", "스킬2", "스킬3", "스킬4", "스킬5", "스킬6"]
+        colors = ["#EF9A9A", "#90CAF9", "#A5D6A7", "#FFEB3B", "#CE93D8", "#F0B070", "#2196F3"]
 
+        data_normLast = [i[-1] for i in self.data["skills_normalized"]]
+        data_0idx = [i for i, j in enumerate(data_normLast) if j == 0]
+        data_0idx.sort(reverse=True)
+
+        for i in data_0idx:
+            self.data["skills_normalized"].pop(i)
+            self.data["skills_sum"].pop(i)
+            self.skill_names.pop(i)
+        self.skill_names.append("평타")
+
+        self.skillCount = len(self.data["skills_normalized"])
         self.lines = []
-        for i, skill in enumerate(
-            [
-                "skill1_sum",
-                "skill2_sum",
-                "skill3_sum",
-                "skill4_sum",
-                "skill5_sum",
-                "skill6_sum",
-            ]
-        ):
+        for i in reversed(range(self.skillCount)):
             (line,) = self.ax.plot(
                 self.data["time"],
-                self.data[skill],
-                label=skill_names[i],
+                self.data["skills_sum"][i],
+                label=self.skill_names[i],
                 color=colors[i],
                 linewidth=2,
             )
             self.lines.append(line)
 
         # 영역 채우기
-        for i in range(5, 0, -1):  # 4부터 1까지 역순으로
+        for i in range(1, self.skillCount):
             self.ax.fill_between(
                 self.data["time"],
-                self.data[f"skill{i}_sum"],
-                self.data[f"skill{i+1}_sum"],
-                color=colors[i - 1],
+                self.data["skills_sum"][i - 1],
+                self.data["skills_sum"][i],
+                color=colors[i],
             )  # 바로 위 선의 색상 사용
 
         # 맨 아래 영역 채우기
-        self.ax.fill_between(
-            self.data["time"], 0, self.data["skill1_sum"], color=colors[0]
-        )
-        self.ax.fill_between(
-            self.data["time"], self.data["skill6_sum"], 1, color=colors[5]
-        )
+        self.ax.fill_between(self.data["time"], 0, self.data["skills_sum"][0], color=colors[0])
 
         self.ax.set_title("스킬별 기여도")
-        self.ax.set_ylabel("기여도")
         self.ax.set_xlabel("시간 (초)")
         self.ax.grid(True, linestyle="--")
         self.ax.set_ylim(0, 1)  # y축 범위를 0부터 1로 설정
+        self.ax.yaxis.set_major_formatter(mtick.PercentFormatter(1.0))
         self.ax.set_xlim(left=0, right=60)  # x축 범위를 0부터 60으로 설정
         self.ax.legend()
 
@@ -5935,22 +6129,15 @@ class SkillContributionCanvas(FigureCanvas):
     def on_hover(self, event):
         if event.inaxes == self.ax:
             x, y = event.xdata, event.ydata
-            index = np.argmin(np.abs(self.data["time"] - x))
+            index = abs(self.data["time"] - x).argmin()
             closest_x = self.data["time"][index]
 
             values = []
-            for name, skill in [
-                ("스킬1", "skill1"),
-                ("스킬2", "skill2"),
-                ("스킬3", "skill3"),
-                ("스킬4", "skill4"),
-                ("스킬5", "skill5"),
-                ("스킬6", "skill6"),
-            ]:
-                values.append(f"{name}: {self.data[skill][index] * 100:.1f}%")
+            for i in reversed(range(self.skillCount)):
+                values.append(f"{self.skill_names[i]}: {self.data["skills_normalized"][i][index] * 100:.1f}%")
 
             self.annotation.xy = (x, y)
-            self.annotation.set_text(f"시간: {closest_x:.1f}\n" + "\n".join(values))
+            self.annotation.set_text(f"시간: {closest_x:.1f}\n\n" + "\n".join(values))
             self.annotation.set_visible(True)
             self.draw_idle()
         else:
@@ -5960,6 +6147,7 @@ class SkillContributionCanvas(FigureCanvas):
 
 if __name__ == "__main__":
     version = "v3.1.0-alpha"
+    dataVersion = 2
     fileDir = "C:\\PDFiles\\PDSkillMacro.json"
     app = QApplication(sys.argv)
     window = MainWindow()
