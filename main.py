@@ -33,6 +33,7 @@ from PyQt6.QtWidgets import (
     QWidget,
     QLineEdit,
     QPushButton,
+    QComboBox,
     QScrollArea,
     QApplication,
     QStackedLayout,
@@ -131,6 +132,7 @@ class MainWindow(QWidget):
             [i.deleteLater() for i in self.page2.findChildren(QWidget)]
             self.updatePosition()
         elif num == 1:
+            self.sim_powers_calculated = False
             self.makePage2()
 
     def makePage2(self):
@@ -187,7 +189,6 @@ class MainWindow(QWidget):
         self.sim_powerL_title_H = 50
         self.sim_powerL_number_H = 90
 
-        # sim_powerL_width = color + sim_analysis_details_W * 3 + sim_analysis_details_margin * 4
         self.sim_analysis_margin = self.sim_powerL_margin
         self.sim_analysis_D = self.sim_powerL_D
         self.sim_analysis_width = self.sim_powerL_width
@@ -214,6 +215,59 @@ class MainWindow(QWidget):
         self.sim_dmg_margin = 25
         self.sim_dmg_width = 880
         self.sim_dmg_height = 400
+
+        self.sim_powerS_margin = 375
+        self.sim_powerS_D = 15
+        self.sim_powerS_width = 120
+        self.sim_powerS_frame_H = 100
+        self.sim_powerS_title_H = 40
+        self.sim_powerS_number_H = 60
+
+        self.sim_efficiency_frame_H = 100
+        self.sim_potential_frame_H = 100
+
+        self.sim_efficiency_statL_W = 110
+        self.sim_efficiency_statL_H = 24
+        self.sim_efficiency_statL_y = 15
+        self.sim_efficiency_statL_margin = 33
+
+        self.sim_efficiency_statInput_margin = 28
+        self.sim_efficiency_statInput_W = 120
+        self.sim_efficiency_statInput_H = 40
+        self.sim_efficiency_statInput_y = self.sim_efficiency_statL_y + self.sim_efficiency_statL_H + 6
+
+        self.sim_efficiency_arrow_margin = 28 + self.sim_efficiency_statInput_W
+        self.sim_efficiency_arrow_W = 60
+        self.sim_efficiency_arrow_H = 60
+        self.sim_efficiency_arrow_y = 20
+
+        self.sim_efficiency_statR_margin = self.sim_efficiency_arrow_margin + self.sim_efficiency_arrow_W
+        self.sim_efficiency_statR_W = 120
+        self.sim_efficiency_statR_H = 30
+        self.sim_efficiency_statR_y = 35
+
+        self.sim_potential_stat_margin = 50
+        self.sim_potential_stat_W = 125
+        self.sim_potential_stat_H = 30
+        self.sim_potential_stat_D = 5
+
+        self.sim_powerM_margin = 225
+        self.sim_powerM_D = 20
+        self.sim_powerM_width = 148
+        self.sim_powerM_frame_H = 100
+        self.sim_powerM_title_H = 40
+        self.sim_powerM_number_H = 60
+
+        self.sim_potentialRank_margin = 25
+        self.sim_potentialRank_D = 20
+        self.sim_potentialRank_width = 205
+        self.sim_potentialRank_title_H = 50
+        self.sim_potentialRank_rank_H = 25
+        self.sim_potentialRank_ranks_H = self.sim_potentialRank_rank_H * 16
+        self.sim_potentialRank_frame_H = self.sim_potentialRank_title_H + self.sim_potentialRank_rank_H * 16
+        self.sim_potentialRank_rank_ranking_W = 30
+        self.sim_potentialRank_rank_potential_W = 115
+        self.sim_potentialRank_rank_power_W = 60
 
         # 상단바
         self.sim_navFrame = QFrame(self.page2)
@@ -296,10 +350,22 @@ class MainWindow(QWidget):
         self.sim_mainScrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self.sim_mainScrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         # self.sim_mainScrollArea.setPalette(self.backPalette)
+        self.sim_mainScrollArea.show()
 
         self.makeSimulType1()
 
     def removeSimulWidgets(self):
+        if self.simType == 3:
+            comboboxList = [
+                self.sim_efficiency_statL,
+                self.sim_efficiency_statR,
+                self.sim_potential_stat0,
+                self.sim_potential_stat1,
+                self.sim_potential_stat2,
+            ]
+            for i in comboboxList:
+                i.showPopup()
+                i.hidePopup()
         [i.deleteLater() for i in self.sim_mainFrame.findChildren(QWidget)]
         self.simType = 0
         plt.close("all")
@@ -308,7 +374,554 @@ class MainWindow(QWidget):
         pass
 
     def makeSimulType3(self):
-        pass
+        self.removeSimulWidgets()
+        self.sim_updateNavButton(2)
+
+        self.simType = 3
+
+        if not self.sim_powers_calculated:
+            self.sim_powers, *_ = self.simulateMacro(self.info_stats, detOnly=True)
+            self.sim_powers_calculated = True
+
+        self.widgetList = []
+        comboboxStyle = f"""QComboBox {{ 
+                background-color: {self.sim_input_colors[0]};
+                border: 1px solid {self.sim_input_colors[1]};
+                border-radius: 4px;
+            }}
+            QComboBox::drop-down {{
+                width: 20px;
+                border-left-width: 1px;
+                border-left-color: darkgray;
+                border-left-style: solid;
+            }}
+            QComboBox::down-arrow {{
+                image: url({convertResourcePath("resource\\image\\down_arrow.png").replace("\\", "/")});
+                width: 16px;
+                height: 16px;
+            }}
+            QComboBox QAbstractItemView {{
+                border: 1px solid {self.sim_input_colors[1]};
+            }}"""
+
+        # 스펙업 효율 계산기
+        self.sim3_frame1 = QFrame(self.sim_mainFrame)
+        self.sim3_frame1.setGeometry(
+            0,
+            0,
+            928,
+            self.sim_title_H + (self.sim_widget_D + self.sim_efficiency_frame_H),
+        )
+        self.sim3_frame1.setStyleSheet("QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }")
+        self.widgetList.append(self.sim3_frame1)
+
+        self.sim3_frame1_labelFrame, self.sim3_frame1_label = self.sim_returnTitleFrame(
+            self.sim3_frame1, "스펙업 효율 계산기"
+        )
+        self.widgetList.append(self.sim3_frame1_labelFrame)
+        self.widgetList.append(self.sim3_frame1_label)
+
+        self.sim_efficiency_statL = QComboBox(self.sim3_frame1)
+        self.sim_efficiency_statL.setFont(QFont("나눔스퀘어라운드 Bold", 10))
+        self.sim_efficiency_statL.addItems(self.statList)
+        self.sim_efficiency_statL.setStyleSheet(comboboxStyle)
+        self.sim_efficiency_statL.setGeometry(
+            self.sim_efficiency_statL_margin,
+            self.sim_label_H + self.sim_widget_D + self.sim_efficiency_statL_y,
+            self.sim_efficiency_statL_W,
+            self.sim_efficiency_statL_H,
+        )
+        self.widgetList.append(self.sim_efficiency_statL)
+
+        self.sim_efficiency_statInput = QLineEdit("10", self.sim3_frame1)
+        self.sim_efficiency_statInput.setFont(QFont("나눔스퀘어라운드 Bold", 14))
+        self.sim_efficiency_statInput.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.sim_efficiency_statInput.setStyleSheet(
+            f"QLineEdit {{ background-color: {self.sim_input_colors[0]}; border: 1px solid {self.sim_input_colors[1]}; border-radius: 4px; }}"
+        )
+        self.sim_efficiency_statInput.setGeometry(
+            self.sim_efficiency_statInput_margin,
+            self.sim_label_H + self.sim_widget_D + self.sim_efficiency_statInput_y,
+            self.sim_efficiency_statInput_W,
+            self.sim_efficiency_statInput_H,
+        )
+        self.widgetList.append(self.sim_efficiency_statInput)
+        # 데이터 입력시 실행할 함수 연결
+        # self.sim_efficiency_statInput.textChanged.connect(self.sim_efficiency_inputChanged)
+
+        self.sim_efficiency_arrow = QLabel("", self.sim3_frame1)
+        self.sim_efficiency_arrow.setStyleSheet(
+            f"QLabel {{ background-color: transparent; border: 0px solid; }}"
+        )
+        pixmap = QPixmap(convertResourcePath("resource\\image\\lineArrow.png"))
+        pixmap = pixmap.scaled(self.sim_efficiency_arrow_W, self.sim_efficiency_arrow_H)
+        self.sim_efficiency_arrow.setPixmap(pixmap)
+        self.sim_efficiency_arrow.setGeometry(
+            self.sim_efficiency_arrow_margin,
+            self.sim_label_H + self.sim_widget_D + self.sim_efficiency_arrow_y,
+            self.sim_efficiency_arrow_W,
+            self.sim_efficiency_arrow_H,
+        )
+        self.widgetList.append(self.sim_efficiency_arrow)
+
+        self.sim_efficiency_statR = QComboBox(self.sim3_frame1)
+        self.sim_efficiency_statR.setFont(QFont("나눔스퀘어라운드 Bold", 12))
+        self.sim_efficiency_statR.addItems(self.statList)
+        self.sim_efficiency_statR.setStyleSheet(comboboxStyle)
+        self.sim_efficiency_statR.setGeometry(
+            self.sim_efficiency_statR_margin,
+            self.sim_label_H + self.sim_widget_D + self.sim_efficiency_statR_y,
+            self.sim_efficiency_statR_W,
+            self.sim_efficiency_statR_H,
+        )
+        self.widgetList.append(self.sim_efficiency_statR)
+
+        self.sim_efficiency_power_list = self.sim_makePowerLabels(
+            self.sim3_frame1, ["0"] * 4
+        )  # [[f, t, n], [f, t, n], [f, t, n], [f, t, n]]
+
+        for i, (f, t, n) in enumerate(self.sim_efficiency_power_list):
+            f.setGeometry(
+                self.sim_powerS_margin + (self.sim_powerS_width + self.sim_powerS_D) * i,
+                self.sim_label_H + self.sim_widget_D,
+                self.sim_powerS_width,
+                self.sim_powerS_frame_H,
+            )
+            self.widgetList.append(f)
+            t.setGeometry(
+                0,
+                0,
+                self.sim_powerS_width,
+                self.sim_powerS_title_H,
+            )
+            self.widgetList.append(t)
+            n.setGeometry(
+                0,
+                self.sim_powerS_title_H,
+                self.sim_powerS_width,
+                self.sim_powerS_number_H,
+            )
+            self.widgetList.append(n)
+
+        # 추가 스펙업 계산기
+        self.sim3_frame2 = QFrame(self.sim_mainFrame)
+        self.sim3_frame2.setGeometry(
+            0,
+            self.sim3_frame1.y() + self.sim3_frame1.height() + self.sim_main_D,
+            928,
+            self.sim_title_H
+            + (self.sim_widget_D + self.sim_stat_frame_H) * 3
+            + self.sim_main_D
+            + (self.sim_widget_D + self.sim_skill_frame_H) * 2
+            + self.sim_main_D
+            + (self.sim_widget_D + self.sim_powerL_frame_H),
+        )
+        self.sim3_frame2.setStyleSheet("QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }")
+        self.widgetList.append(self.sim3_frame2)
+
+        self.sim3_frame2_labelFrame, self.sim3_frame2_label = self.sim_returnTitleFrame(
+            self.sim3_frame2, "추가 스펙업 계산기"
+        )
+        self.widgetList.append(self.sim3_frame2_labelFrame)
+        self.widgetList.append(self.sim3_frame2_label)
+
+        self.sim_makeStatInput(self.sim3_frame2)
+        self.sim_stat_inputs[0].setFocus()
+
+        margin, count = 21, 6
+        for i in range(18):
+            self.sim_stat_frames[i].move(
+                self.sim_stat_margin + self.sim_stat_width * (i % count) + margin * (i % count),
+                self.sim3_frame2_labelFrame.height()
+                + self.sim_widget_D * ((i // count) + 1)
+                + self.sim_stat_frame_H * (i // count),
+            )
+            self.widgetList.append(self.sim_stat_frames[i])
+            self.sim_stat_labels[i].setGeometry(
+                0,
+                0,
+                self.sim_stat_width,
+                self.sim_stat_label_H,
+            )
+            self.widgetList.append(self.sim_stat_labels[i])
+            self.sim_stat_inputs[i].setGeometry(
+                0, self.sim_stat_label_H, self.sim_stat_width, self.sim_stat_input_H
+            )
+            self.widgetList.append(self.sim_stat_inputs[i])
+
+            self.sim_stat_inputs[i].setText("0")
+
+        self.sim_makeSkillInput(self.sim3_frame2)
+
+        margin, count = 66, 4
+        for i in range(8):
+            self.sim_skill_frames[i].move(
+                self.sim_skill_margin + self.sim_skill_width * (i % count) + margin * (i % count),
+                self.sim3_frame2_labelFrame.height()
+                + self.sim_widget_D * ((i // count) + 1)
+                + self.sim_skill_frame_H * (i // count)
+                + (self.sim_widget_D + self.sim_stat_frame_H) * 3
+                + self.sim_main_D,
+            )
+            self.widgetList.append(self.sim_skill_frames[i])
+            self.sim_skill_names[i].setGeometry(
+                0,
+                0,
+                self.sim_skill_width,
+                self.sim_skill_name_H,
+            )
+            self.widgetList.append(self.sim_skill_names[i])
+            self.sim_skill_levels[i].setGeometry(
+                self.sim_skill_image_Size,
+                self.sim_skill_name_H,
+                self.sim_skill_right_W,
+                self.sim_skill_level_H,
+            )
+            self.widgetList.append(self.sim_skill_levels[i])
+            self.sim_skill_inputs[i].setGeometry(
+                self.sim_skill_image_Size,
+                self.sim_skill_name_H + self.sim_skill_level_H,
+                self.sim_skill_right_W,
+                self.sim_skill_input_H,
+            )
+            self.widgetList.append(self.sim_skill_inputs[i])
+
+            self.sim_skill_inputs[i].setText(str(self.info_skills[i]))
+
+        self.sim_additional_power_list = self.sim_makePowerLabels(
+            self.sim3_frame2, ["0"] * 4
+        )  # [[f, t, n], [f, t, n], [f, t, n], [f, t, n]]
+
+        for i, (f, t, n) in enumerate(self.sim_additional_power_list):
+            f.setGeometry(
+                self.sim_powerL_margin + (self.sim_powerL_width + self.sim_powerL_D) * i,
+                self.sim_label_H
+                + self.sim_widget_D
+                + (self.sim_widget_D + self.sim_stat_frame_H) * 3
+                + self.sim_main_D
+                + (self.sim_widget_D + self.sim_skill_frame_H) * 2
+                + self.sim_main_D,
+                self.sim_powerL_width,
+                self.sim_powerL_frame_H,
+            )
+            self.widgetList.append(f)
+            t.setGeometry(
+                0,
+                0,
+                self.sim_powerL_width,
+                self.sim_powerL_title_H,
+            )
+            self.widgetList.append(t)
+            n.setGeometry(
+                0,
+                self.sim_powerL_title_H,
+                self.sim_powerL_width,
+                self.sim_powerL_number_H,
+            )
+            self.widgetList.append(n)
+
+        # 잠재능력 계산기
+        self.sim3_frame3 = QFrame(self.sim_mainFrame)
+        self.sim3_frame3.setGeometry(
+            0,
+            self.sim3_frame2.y() + self.sim3_frame2.height() + self.sim_main_D,
+            928,
+            self.sim_title_H + (self.sim_widget_D + self.sim_potential_frame_H),
+        )
+        self.sim3_frame3.setStyleSheet("QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }")
+        self.widgetList.append(self.sim3_frame3)
+
+        self.sim3_frame3_labelFrame, self.sim3_frame3_label = self.sim_returnTitleFrame(
+            self.sim3_frame3, "잠재능력 계산기"
+        )
+        self.widgetList.append(self.sim3_frame3_labelFrame)
+        self.widgetList.append(self.sim3_frame3_label)
+
+        self.sim_potential_stat0 = QComboBox(self.sim3_frame3)
+        self.sim_potential_stat0.setFont(QFont("나눔스퀘어라운드 Bold", 10))
+        self.sim_potential_stat0.addItems(self.potentialStatList.keys())
+        self.sim_potential_stat0.setStyleSheet(comboboxStyle)
+        self.sim_potential_stat0.setGeometry(
+            self.sim_potential_stat_margin,
+            self.sim_label_H + self.sim_widget_D,
+            self.sim_potential_stat_W,
+            self.sim_potential_stat_H,
+        )
+        self.widgetList.append(self.sim_potential_stat0)
+
+        self.sim_potential_stat1 = QComboBox(self.sim3_frame3)
+        self.sim_potential_stat1.setFont(QFont("나눔스퀘어라운드 Bold", 10))
+        self.sim_potential_stat1.addItems(self.potentialStatList.keys())
+        self.sim_potential_stat1.setStyleSheet(comboboxStyle)
+        self.sim_potential_stat1.setGeometry(
+            self.sim_potential_stat_margin,
+            self.sim_label_H + self.sim_widget_D + (self.sim_potential_stat_H + self.sim_potential_stat_D),
+            self.sim_potential_stat_W,
+            self.sim_potential_stat_H,
+        )
+        self.widgetList.append(self.sim_potential_stat1)
+
+        self.sim_potential_stat2 = QComboBox(self.sim3_frame3)
+        self.sim_potential_stat2.setFont(QFont("나눔스퀘어라운드 Bold", 10))
+        self.sim_potential_stat2.addItems(self.potentialStatList.keys())
+        self.sim_potential_stat2.setStyleSheet(comboboxStyle)
+        self.sim_potential_stat2.setGeometry(
+            self.sim_potential_stat_margin,
+            self.sim_label_H
+            + self.sim_widget_D
+            + (self.sim_potential_stat_H + self.sim_potential_stat_D) * 2,
+            self.sim_potential_stat_W,
+            self.sim_potential_stat_H,
+        )
+        self.widgetList.append(self.sim_potential_stat2)
+
+        self.sim_potential_power_list = self.sim_makePowerLabels(
+            self.sim3_frame3, ["0"] * 4
+        )  # [[f, t, n], [f, t, n], [f, t, n], [f, t, n]]
+
+        for i, (f, t, n) in enumerate(self.sim_potential_power_list):
+            f.setGeometry(
+                self.sim_powerM_margin + (self.sim_powerM_width + self.sim_powerM_D) * i,
+                self.sim_label_H + self.sim_widget_D,
+                self.sim_powerM_width,
+                self.sim_powerM_frame_H,
+            )
+            self.widgetList.append(f)
+            t.setGeometry(
+                0,
+                0,
+                self.sim_powerM_width,
+                self.sim_powerM_title_H,
+            )
+            self.widgetList.append(t)
+            n.setGeometry(
+                0,
+                self.sim_powerM_title_H,
+                self.sim_powerM_width,
+                self.sim_powerM_number_H,
+            )
+            self.widgetList.append(n)
+
+        # 잠재능력 옵션 순위표
+        self.sim3_frame4 = QFrame(self.sim_mainFrame)
+        self.sim3_frame4.setGeometry(
+            0,
+            self.sim3_frame3.y() + self.sim3_frame3.height() + self.sim_main_D,
+            928,
+            self.sim_title_H + (self.sim_widget_D + self.sim_potentialRank_frame_H),
+        )
+        self.sim3_frame4.setStyleSheet("QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }")
+        self.widgetList.append(self.sim3_frame4)
+
+        self.sim3_frame4_labelFrame, self.sim3_frame4_label = self.sim_returnTitleFrame(
+            self.sim3_frame4, "잠재능력 옵션 순위표"
+        )
+        self.widgetList.append(self.sim3_frame4_labelFrame)
+        self.widgetList.append(self.sim3_frame4_label)
+
+        titles = ["보스데미지", "일반데미지", "보스", "사냥"]
+        texts = [[[str(i), "치명타데미지 +4", "+1234"] for i in range(1, 16)] for __ in range(4)]
+        texts[0].insert(0, ["순위", "잠재능력", "전투력"])
+        texts[1].insert(0, ["순위", "잠재능력", "전투력"])
+        texts[2].insert(0, ["순위", "잠재능력", "전투력"])
+        texts[3].insert(0, ["순위", "잠재능력", "전투력"])
+        colors = ["255, 163, 134", "255, 152, 0", "33, 150, 243", "165, 214, 167"]
+        transparencies = ["140", "89", "77", "179"]
+        self.sim_potentialRank_potentialList = [[], [], [], []]
+        self.sim_potentialRank_powerList = [[], [], [], []]
+        for i in range(4):
+            frame = QFrame(self.sim3_frame4)
+            frame.setGeometry(
+                self.sim_potentialRank_margin + (self.sim_potentialRank_width + self.sim_potentialRank_D) * i,
+                self.sim_label_H + self.sim_widget_D,
+                self.sim_potentialRank_width,
+                self.sim_potentialRank_frame_H,
+            )
+            self.widgetList.append(frame)
+
+            title = QLabel(titles[i], frame)
+            title.setStyleSheet(
+                f"""QLabel {{
+                    background-color: rgb({self.sim_colors4[i]});
+                    border: 1px solid rgb({self.sim_colors4[i]});
+                    border-bottom: 0px solid;
+                    border-top-left-radius: 4px;
+                    border-top-right-radius: 4px;
+                    border-bottom-left-radius: 0px;
+                    border-bottom-right-radius: 0px;
+                }}"""
+            )
+            title.setFont(QFont("나눔스퀘어라운드 ExtraBold", 14))
+            title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            title.setGeometry(
+                0,
+                0,
+                self.sim_potentialRank_width,
+                self.sim_potentialRank_title_H + 1,
+            )
+            self.widgetList.append(title)
+
+            table_frame = QFrame(frame)
+            table_frame.setStyleSheet(
+                f"""QFrame {{
+                    background-color: rgba({self.sim_colors4[i]}, 120);
+                    border-top-left-radius: 0px;
+                    border-top-right-radius: 0px;
+                    border-bottom-left-radius: 4px;
+                    border-bottom-right-radius: 4px
+                }}"""
+            )
+            table_frame.setGeometry(
+                0,
+                self.sim_potentialRank_title_H,
+                self.sim_potentialRank_width,
+                self.sim_potentialRank_ranks_H,
+            )
+            self.widgetList.append(table_frame)
+
+            for j in range(16):
+                rank = QLabel(texts[i][j][0], table_frame)
+                if j == 0:
+                    rank.setStyleSheet(
+                        f"""QLabel {{
+                            background-color: rgba({colors[i]}, {transparencies[i]});
+                            border: 1px solid rgb({self.sim_colors4[i]});
+                            border-top: 0px solid;
+                            border-top-left-radius: 0px;
+                            border-top-right-radius: 0px;
+                            border-bottom-left-radius: 0px;
+                            border-bottom-right-radius: 0px;
+                        }}"""
+                    )
+                elif j == 15:
+                    rank.setStyleSheet(
+                        f"""QLabel {{
+                            background-color: transparent;
+                            border: 1px solid rgb({self.sim_colors4[i]});
+                            border-top: 0px solid;
+                            border-top-left-radius: 0px;
+                            border-top-right-radius: 0px;
+                            border-bottom-left-radius: 4px;
+                            border-bottom-right-radius: 0px;
+                        }}"""
+                    )
+                else:
+                    rank.setStyleSheet(
+                        f"""QLabel {{
+                            background-color: transparent;
+                            border: 1px solid rgb({self.sim_colors4[i]});
+                            border-top: 0px solid;
+                            border-top-left-radius: 0px;
+                            border-top-right-radius: 0px;
+                            border-bottom-left-radius: 0px;
+                            border-bottom-right-radius: 0px;
+                        }}"""
+                    )
+                rank.setFont(QFont("나눔스퀘어라운드 Bold", 10))
+                rank.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                rank.setGeometry(
+                    0,
+                    self.sim_potentialRank_rank_H * j,
+                    self.sim_potentialRank_rank_ranking_W,
+                    self.sim_potentialRank_rank_H,
+                )
+                self.widgetList.append(rank)
+
+                potential = QLabel(texts[i][j][1], table_frame)
+                if j == 0:
+                    potential.setStyleSheet(
+                        f"""QLabel {{
+                            background-color: rgba({colors[i]}, {transparencies[i]});
+                            border: 1px solid rgb({self.sim_colors4[i]});
+                            border-top: 0px solid;
+                            border-left: 0px solid;
+                            border-right: 0px solid;
+                            border-top-left-radius: 0px;
+                            border-top-right-radius: 0px;
+                            border-bottom-left-radius: 0px;
+                            border-bottom-right-radius: 0px;
+                        }}"""
+                    )
+                    potential.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                else:
+                    potential.setStyleSheet(
+                        f"""QLabel {{
+                            background-color: transparent;
+                            border: 1px solid rgb({self.sim_colors4[i]});
+                            border-top: 0px solid;
+                            border-left: 0px solid;
+                            border-right: 0px solid;
+                            border-top-left-radius: 0px;
+                            border-top-right-radius: 0px;
+                            border-bottom-left-radius: 0px;
+                            border-bottom-right-radius: 0px;
+                        }}"""
+                    )
+                    potential.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+                potential.setFont(QFont("나눔스퀘어라운드 Bold", 10))
+                potential.setGeometry(
+                    self.sim_potentialRank_rank_ranking_W,
+                    self.sim_potentialRank_rank_H * j,
+                    self.sim_potentialRank_rank_potential_W,
+                    self.sim_potentialRank_rank_H,
+                )
+                self.widgetList.append(potential)
+                self.sim_potentialRank_potentialList[i].append(potential)
+
+                power = QLabel(texts[i][j][2], table_frame)
+                if j == 0:
+                    power.setStyleSheet(
+                        f"""QLabel {{
+                            background-color: rgba({colors[i]}, {transparencies[i]});
+                            border: 1px solid rgb({self.sim_colors4[i]});
+                            border-top: 0px solid;
+                            border-top-left-radius: 0px;
+                            border-top-right-radius: 0px;
+                            border-bottom-left-radius: 0px;
+                            border-bottom-right-radius: 0px;
+                        }}"""
+                    )
+                elif j == 15:
+                    power.setStyleSheet(
+                        f"""QLabel {{
+                            background-color: transparent;
+                            border: 1px solid rgb({self.sim_colors4[i]});
+                            border-top: 0px solid;
+                            border-top-left-radius: 0px;
+                            border-top-right-radius: 0px;
+                            border-bottom-left-radius: 0px;
+                            border-bottom-right-radius: 4px;
+                        }}"""
+                    )
+                else:
+                    power.setStyleSheet(
+                        f"""QLabel {{
+                            background-color: transparent;
+                            border: 1px solid rgb({self.sim_colors4[i]});
+                            border-top: 0px solid;
+                            border-top-left-radius: 0px;
+                            border-top-right-radius: 0px;
+                            border-bottom-left-radius: 0px;
+                            border-bottom-right-radius: 0px;
+                        }}"""
+                    )
+                power.setFont(QFont("나눔스퀘어라운드 Bold", 10))
+                power.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                power.setGeometry(
+                    self.sim_potentialRank_rank_ranking_W + self.sim_potentialRank_rank_potential_W,
+                    self.sim_potentialRank_rank_H * j,
+                    self.sim_potentialRank_rank_power_W,
+                    self.sim_potentialRank_rank_H,
+                )
+                self.widgetList.append(power)
+                self.sim_potentialRank_powerList[i].append(power)
+
+        # 메인 프레임 크기 조정
+        self.sim_mainFrame.setFixedHeight(
+            self.sim3_frame4.y() + self.sim3_frame4.height() + self.sim_mainFrameMargin,
+        )
+        [i.show() for i in self.widgetList]
+        self.updatePosition()
 
     def makeSimulType2(self):
         if not (self.sim_stat_inputCheck and self.sim_skill_inputCheck and self.sim_simInfo_inputCheck):
@@ -999,36 +1612,15 @@ class MainWindow(QWidget):
             self.sim_skill_inputCheck = False
 
     def sim_makeStatInput(self, mainframe):
-        statList = [
-            "공격력",
-            "방어력",
-            "파괴력",
-            "근력",
-            "지력",
-            "경도",
-            "치명타확률",
-            "치명타데미지",
-            "보스데미지",
-            "명중률",
-            "회피율",
-            "상태이상저항",
-            "신속",
-            "체력",
-            "공격속도",
-            "포션회복량",
-            "운",
-            "경험치획득량",
-        ]
-
         self.sim_stat_frames = []
         self.sim_stat_labels = []
         self.sim_stat_inputs = []
-        for i in range(len(statList)):
+        for i in range(len(self.statList)):
             frame = QFrame(mainframe)
             frame.setStyleSheet("QFrame { background-color: transparent; border: 0px solid; }")
             self.sim_stat_frames.append(frame)
 
-            label = QLabel(statList[i], frame)
+            label = QLabel(self.statList[i], frame)
             label.setStyleSheet("QLabel { background-color: transparent; border: 0px solid; }")
             label.setFont(QFont("나눔스퀘어라운드 Bold", 10))
             self.sim_stat_labels.append(label)
@@ -1048,21 +1640,41 @@ class MainWindow(QWidget):
         # 스탯이 정상적으로 입력되었는지 확인
         def checkInput(num, text) -> bool:
             # 기본데미지 = 공격력 * (근력 + 지력) * (1 + 파괴력 * 0.01) * 내공계수
-            # 0공, 1방, 2파괴력, 3근력, 4지력, 5경도, 6치확, 7치뎀, 8보뎀, 9명중, 10회피, 11상태이상저항, 12신속, 13체력, 14공속, 15포션회복, 16운, 17경험치
-            if not text.isdigit():
-                return False
+            # 0공, 1방, 2파괴력, 3근력, 4지력, 5경도, 6치확, 7치뎀, 8보뎀, 9명중, 10회피, 11상태이상저항, 12내공, 13체력, 14공속, 15포션회복, 16운, 17경험치
+            if self.simType == 1:
+                if not text.isdigit():
+                    return False
 
-            match num:
-                case 0 | 1 | 3 | 4 | 5 | 13:
-                    if int(text) == 0:
+                match num:
+                    case 0 | 1 | 3 | 4 | 5 | 13:
+                        if int(text) == 0:
+                            return False
+                        return True
+                    case 14:
+                        if 0 <= int(text) <= 50:
+                            return True
                         return False
-                    return True
-                case _:
-                    return True
+                return True
+            else:  # self.simType == 3
+                try:
+                    value = int(text)
+                except ValueError:
+                    return False
 
-            return True
+                stat = self.info_stats[num] + value
+                match num:
+                    case 0 | 1 | 3 | 4 | 5 | 13:
+                        if stat == 0:
+                            return False
+                        return True
+                    case 14:
+                        if 0 <= stat <= 50:
+                            return True
+                        return False
+                return True
 
-        self.sim_powers_calculated = False
+        if self.simType == 1:
+            self.sim_powers_calculated = False
 
         if not False in [checkInput(i, j.text()) for i, j in enumerate(self.sim_stat_inputs)]:  # 모두 digit
             for i in self.sim_stat_inputs:  # 통과O면 원래색
@@ -1070,8 +1682,9 @@ class MainWindow(QWidget):
                     f"QLineEdit {{ background-color: {self.sim_input_colors[0]}; border: 1px solid {self.sim_input_colors[1]}; border-radius: 4px; }}"
                 )
 
-            self.info_stats = [int(i.text()) for i in self.sim_stat_inputs]
-            self.dataSave()
+            if self.simType == 1:
+                self.info_stats = [int(i.text()) for i in self.sim_stat_inputs]
+                self.dataSave()
             self.sim_stat_inputCheck = True
 
         else:  # 하나라도 통과X
@@ -1188,7 +1801,7 @@ class MainWindow(QWidget):
 
             return std_dev
 
-        simulatedSkills = self.getSimulatedSKillList()
+        simulatedSkills = self.getSimulatedSKillList(stats[14])
 
         # 1초 이내에 같은 스킬 사용 => 콤보
         for num, skill in enumerate(simulatedSkills):
@@ -1228,6 +1841,7 @@ class MainWindow(QWidget):
                 continue
 
             # 스킬
+            # info_skills = self.info_skills.copy()
             info_skills = [0] * 8  # temp: self.info_skills -> info_skills = 0 * 8
 
             # [[0.0, [0, 0.5]], [0.1, [0, 0.5]], [0.2, [0, 0.5]], [0.3, [0, 0.5]], [0.4, [0, 0.5]]]
@@ -1264,7 +1878,7 @@ class MainWindow(QWidget):
 
         ## 전투력
         # 기본데미지 = 공격력 * (근력 + 지력) * (1 + 파괴력 * 0.01) * 내공계수
-        # 0공, 1방, 2파괴력, 3근력, 4지력, 5경도, 6치확, 7치뎀, 8보뎀, 9명중, 10회피, 11상태이상저항, 12신속, 13체력, 14공속, 15포션회복, 16운, 17경험치
+        # 0공, 1방, 2파괴력, 3근력, 4지력, 5경도, 6치확, 7치뎀, 8보뎀, 9명중, 10회피, 11상태이상저항, 12내공, 13체력, 14공속, 15포션회복, 16운, 17경험치
         boss_attacks = runSimul(attackDetails, buffDetails, stats, boss=True, deterministic=True)
         normal_attacks = runSimul(attackDetails, buffDetails, stats, boss=False, deterministic=True)
         sum_BossDMG = sum([i[2] for i in boss_attacks])
@@ -1366,7 +1980,7 @@ class MainWindow(QWidget):
         return powers, analysis, boss_attacks, simuls_boss
 
     # 매크로 시뮬레이션 => 스킬 리스트
-    def getSimulatedSKillList(self):
+    def getSimulatedSKillList(self, cooltimeReduce):
         # 실제와 다른 경우가 있어서 시뮬레이션 진행할 때 옵션 추가해야함
         def use(skill, additionalTime=0):
             self.usedSkillList.append([skill, (self.elapsedTime + additionalTime)])
@@ -1436,7 +2050,7 @@ class MainWindow(QWidget):
 
                     if self.skillCoolTimers[skill] >= int(
                         self.skillCooltimeList[self.serverID][self.jobID][self.selectedSkillList[skill]]
-                        * (100 - self.cooltimeReduce)
+                        * (100 - cooltimeReduce)
                     ):  # 쿨타임이 지나면
                         self.preparedSkillList[2].append(skill)  # 대기열에 추가
                         self.availableSkillCount[skill] += 1  # 사용 가능 횟수 증가
@@ -1673,9 +2287,9 @@ class MainWindow(QWidget):
 
             self.taskList.pop(0)
 
-            print(
-                f"{time.time() - self.startTime - pag.PAUSE if doClick else time.time() - self.startTime:.3f} - {skill}"
-            )
+            # print(
+            #     f"{time.time() - self.startTime - pag.PAUSE if doClick else time.time() - self.startTime:.3f} - {skill}"
+            # )
 
             sleepTime = (
                 self.delay * 0.001 * self.sleepCoefficient_normal - pag.PAUSE
@@ -1996,6 +2610,58 @@ class MainWindow(QWidget):
         self.activeErrorPopup = []
         self.activeErrorPopupCount = 0
         self.skillPreviewList = []
+        self.statList = [
+            "공격력",
+            "방어력",
+            "파괴력",
+            "근력",
+            "지력",
+            "경도",
+            "치명타확률",
+            "치명타데미지",
+            "보스데미지",
+            "명중률",
+            "회피율",
+            "상태이상저항",
+            "내공",
+            "체력",
+            "공격속도",
+            "포션회복량",
+            "운",
+            "경험치획득량",
+        ]
+        self.potentialStatList = {
+            "내공 +1": [12, 1],
+            "내공 +2": [12, 2],
+            "내공 +3": [12, 3],
+            "경도 +1": [5, 1],
+            "경도 +2": [5, 2],
+            "경도 +3": [5, 3],
+            "치명타확률 +1": [6, 1],
+            "치명타확률 +2": [6, 2],
+            "치명타확률 +3": [6, 3],
+            "치명타데미지 +2": [7, 2],
+            "치명타데미지 +3": [7, 3],
+            "치명타데미지 +4": [7, 4],
+            "보스데미지 +1": [8, 1],
+            "보스데미지 +2": [8, 2],
+            "보스데미지 +3": [8, 3],
+            "상태이상저항 +2": [11, 2],
+            "상태이상저항 +4": [11, 4],
+            "상태이상저항 +6": [11, 6],
+            "체력 +2": [13, 2],
+            "체력 +4": [13, 4],
+            "체력 +6": [13, 6],
+            "공격속도 +1": [14, 1],
+            "공격속도 +2": [14, 2],
+            "공격속도 +3": [14, 3],
+            "포션회복량 +2": [15, 2],
+            "포션회복량 +4": [15, 4],
+            "포션회복량 +6": [15, 6],
+            "운 +2": [16, 2],
+            "운 +4": [16, 4],
+            "운 +6": [16, 6],
+        }
         self.key_dict = {
             "f1": "F1",
             "f2": "F2",
@@ -5300,10 +5966,6 @@ class MainWindow(QWidget):
             deltaWidth = self.width() - self.defaultWindowWidth
 
             self.sim_navFrame.move(self.sim_margin + deltaWidth // 2, self.sim_margin)
-            # self.sim_navFrame.setFixedWidth(self.width() - self.sim_margin * 2)
-            # self.sim_navButtons[4].move(
-            #     self.sim_navFrame.width() - self.sim_navHeight, 0
-            # )
             self.sim_mainFrame.setFixedWidth(self.width() - self.scrollBarWidth - self.sim_margin * 2)
             self.sim_mainScrollArea.setFixedSize(
                 self.width() - self.sim_margin,
@@ -5324,200 +5986,28 @@ class MainWindow(QWidget):
                     deltaWidth // 2,
                     self.sim1_frame2.y() + self.sim1_frame2.height() + self.sim_main_D,
                 )
-                # self.sim1_frame1.setFixedWidth(
-                #     self.width() - self.scrollBarWidth - self.sim_margin * 2
-                # )
-                # self.sim1_frame1_labelFrame.setFixedWidth(self.sim1_frame1.width())
-                # self.sim1_frame1_label.setFixedWidth(
-                #     self.sim1_frame1.width() - self.sim_label_x,
-                # )
-
-                # margin, count = 21, 6
-                # if count == 6:
-                #     self.sim1_frame1.setFixedHeight(
-                #         self.sim_title_H
-                #         + (self.sim_widget_D + self.sim_stat_frame_H) * 3
-                #     )
-                # else:
-                #     self.sim1_frame1.setFixedHeight(
-                #         self.sim_title_H
-                #         + (self.sim_widget_D + self.sim_stat_frame_H) * 2
-                #     )
-                # for i in range(18):
-                #     self.sim_stat_frames[i].move(
-                #         self.sim_stat_margin
-                #         + self.sim_stat_width * (i % count)
-                #         + margin * (i % count),
-                #         self.sim1_frame1_labelFrame.height()
-                #         + self.sim_widget_D * ((i // count) + 1)
-                #         + self.sim_stat_frame_H * (i // count),
-                #     )
-
-                # self.sim1_frame2.move(
-                #     0,
-                #     self.sim1_frame1.y() + self.sim1_frame1.height() + self.sim_main_D,
-                # )
-                # self.sim1_frame2_labelFrame.setFixedWidth(self.sim_mainFrame.width())
-                # self.sim1_frame2_label.setFixedWidth(
-                #     self.sim_mainFrame.width() - self.sim_label_x,
-                # )
-
-                # margin, count = 66, 4
-                # if count == 4:
-                #     self.sim1_frame2.setFixedSize(
-                #         self.sim_mainFrame.width(),
-                #         self.sim_title_H
-                #         + (self.sim_widget_D + self.sim_skill_frame_H) * 2,
-                #     )
-                # else:
-                #     self.sim1_frame2.setFixedSize(
-                #         self.sim_mainFrame.width(),
-                #         self.sim_title_H
-                #         + (self.sim_widget_D + self.sim_skill_frame_H) * 1,
-                #     )
-                # for i in range(8):
-                #     self.sim_skill_frames[i].move(
-                #         self.sim_skill_margin
-                #         + self.sim_skill_width * (i % count)
-                #         + margin * (i % count),
-                #         self.sim1_frame2_labelFrame.height()
-                #         + self.sim_widget_D * ((i // count) + 1)
-                #         + self.sim_skill_frame_H * (i // count),
-                #     )
-
-                # # mainFrame
-                # self.sim_mainFrame.setFixedHeight(
-                #     self.sim1_frame2.y() + self.sim1_frame2.height(),
-                # )
 
             elif self.simType == 2:  # 시뮬레이터
                 self.sim2_frame1.move(deltaWidth // 2, 0)
-                # self.sim2_frame1.setFixedWidth(
-                #     self.width() - self.scrollBarWidth - self.sim_margin * 2
-                # )
-                # self.sim2_frame1_labelFrame.setFixedWidth(self.sim2_frame1.width())
-                # self.sim2_frame1_label.setFixedWidth(
-                #     self.sim2_frame1.width() - self.sim_label_x,
-                # )
                 self.sim2_frame2.move(
                     deltaWidth // 2,
                     self.sim2_frame1.y() + self.sim2_frame1.height() + self.sim_main_D,
                 )
-                # self.sim2_frame2.setFixedWidth(
-                #     self.width() - self.scrollBarWidth - self.sim_margin * 2
-                # )
-                # self.sim2_frame2_labelFrame.setFixedWidth(self.sim2_frame2.width())
-                # self.sim2_frame2_label.setFixedWidth(
-                #     self.sim2_frame2.width() - self.sim_label_x,
-                # )
 
-                # for i, (f, t, n) in enumerate(self.sim_power_list):
-                #     f.move(
-                #         self.sim_powerL_margin
-                #         + int(deltaWidth * self.sim_powerL_marginRate)
-                #         + (
-                #             self.sim_powerL_width
-                #             + self.sim_powerL_D
-                #             + int(
-                #                 deltaWidth
-                #                 * (self.sim_powerL_DRate + self.sim_powerL_WRate)
-                #             )
-                #         )
-                #         * i,
-                #         self.sim_label_H + self.sim_widget_D,
-                #     )
-                #     f.setFixedWidth(
-                #         self.sim_powerL_width + int(deltaWidth * self.sim_powerL_WRate)
-                #     )
-                #     t.setFixedWidth(
-                #         self.sim_powerL_width + int(deltaWidth * self.sim_powerL_WRate)
-                #     )
-                #     n.setFixedWidth(
-                #         self.sim_powerL_width + int(deltaWidth * self.sim_powerL_WRate)
-                #     )
-
-                # for i, (f, c, l, n, d) in enumerate(self.sim_analysis_list):
-                #     f.setGeometry(
-                #         self.sim_analysis_margin
-                #         + int(deltaWidth * self.sim_analysis_marginRate)
-                #         + (
-                #             self.sim_analysis_width
-                #             + self.sim_analysis_D
-                #             + int(
-                #                 deltaWidth
-                #                 * (self.sim_analysis_DRate + self.sim_analysis_WRate)
-                #             )
-                #         )
-                #         * i,
-                #         self.sim_label_H + self.sim_widget_D,
-                #         self.sim_analysis_width
-                #         + int(deltaWidth * self.sim_analysis_WRate),
-                #         self.sim_analysis_frame_H,
-                #     )
-                #     l.setFixedWidth(
-                #         self.sim_analysis_widthXC
-                #         + int(deltaWidth * self.sim_analysis_WRate)
-                #     )
-                #     n.setFixedWidth(
-                #         self.sim_analysis_widthXC
-                #         + int(deltaWidth * self.sim_analysis_WRate)
-                #     )
-
-                #     for j, (df, dt, dn) in enumerate(d):
-                #         df.setGeometry(
-                #             self.sim_analysis_color_W
-                #             + int(deltaWidth * self.sim_analysis_DetailRate)
-                #             + self.sim_analysis_details_margin
-                #             + (
-                #                 self.sim_analysis_details_W
-                #                 + int(deltaWidth * self.sim_analysis_DetailRate)
-                #                 + self.sim_analysis_details_margin
-                #             )
-                #             * (j % 3)
-                #             - 1,
-                #             self.sim_analysis_title_H
-                #             + self.sim_analysis_number_H
-                #             + self.sim_analysis_number_marginH
-                #             + self.sim_analysis_details_H * (j // 3),
-                #             self.sim_analysis_details_W
-                #             + int(deltaWidth * self.sim_analysis_DetailRate),
-                #             self.sim_analysis_details_H,
-                #         )
-
-                # self.sim_dpsGraph_frame.setGeometry(
-                #     self.sim_dps_margin + int(deltaWidth * self.sim_dps_marginRate),
-                #     self.sim_label_H
-                #     + self.sim_analysis_frame_H
-                #     + self.sim_widget_D * 2,
-                #     self.sim_dps_width + int(deltaWidth * self.sim_dps_WRate),
-                #     self.sim_dps_height,
-                # )
-                # self.sim_dpsGraph.move(5, 5)
-                # self.sim_dpsGraph.resize(
-                #     self.sim_dps_width + int(deltaWidth * self.sim_dps_WRate) - 10,
-                #     self.sim_dps_height - 10,
-                # )
-
-                # self.sim_skillDpsGraph_frame.setGeometry(
-                #     self.sim_dps_margin
-                #     + self.sim_dps_width
-                #     + self.sim_skillDps_margin
-                #     + int(deltaWidth * self.sim_skillDps_marginRate)
-                #     + int(deltaWidth * self.sim_dps_marginRate)
-                #     + int(deltaWidth * self.sim_dps_WRate),
-                #     self.sim_label_H
-                #     + self.sim_analysis_frame_H
-                #     + self.sim_widget_D * 2,
-                #     self.sim_skillDps_width + int(deltaWidth * self.sim_skillDps_WRate),
-                #     self.sim_skillDps_height,
-                # )
-                # self.sim_skillDpsGraph.move(10, 10)
-                # self.sim_skillDpsGraph.resize(
-                #     self.sim_skillDps_width
-                #     + int(deltaWidth * self.sim_skillDps_WRate)
-                #     - 20,
-                #     self.sim_skillDps_height - 20,
-                # )
+            elif self.simType == 3:  # 스탯 계산기
+                self.sim3_frame1.move(deltaWidth // 2, 0)
+                self.sim3_frame2.move(
+                    deltaWidth // 2,
+                    self.sim3_frame1.y() + self.sim3_frame1.height() + self.sim_main_D,
+                )
+                self.sim3_frame3.move(
+                    deltaWidth // 2,
+                    self.sim3_frame2.y() + self.sim3_frame2.height() + self.sim_main_D,
+                )
+                self.sim3_frame4.move(
+                    deltaWidth // 2,
+                    self.sim3_frame3.y() + self.sim3_frame3.height() + self.sim_main_D,
+                )
 
         # 항상 업데이트
         self.labelCreator.move(2, self.height() - 25)
