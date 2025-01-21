@@ -134,7 +134,6 @@ class MainWindow(QWidget):
             [i.deleteLater() for i in self.page2.findChildren(QWidget)]
             self.updatePosition()
         elif num == 1:
-            self.sim_powers_calculated = False
             self.makePage2()
 
     def makePage2(self):
@@ -381,12 +380,10 @@ class MainWindow(QWidget):
 
         self.simType = 3
         # print(self.info_simInfo)
-        if not self.sim_powers_calculated:
-            self.sim_powers = self.simulateMacro(
-                tuple(self.info_stats), tuple(self.info_skills), tuple(self.info_simInfo), 1
-            )
-            self.sim_powers = [str(int(i)) for i in self.sim_powers]
-            self.sim_powers_calculated = True
+        self.sim_powers = self.simulateMacro(
+            tuple(self.info_stats), tuple(self.info_skills), tuple(self.info_simInfo), 1
+        )
+        self.sim_powers = [str(int(i)) for i in self.sim_powers]
 
         self.widgetList = []
         self.sim_skill_inputCheck = False
@@ -968,7 +965,6 @@ class MainWindow(QWidget):
         self.sim_powers, analysis, resultDet, results = self.simulateMacro(
             tuple(self.info_stats), tuple(self.info_skills), tuple(self.info_simInfo), random.random()
         )
-        self.sim_powers_calculated = True
 
         # 전투력
         self.sim2_frame1 = QFrame(self.sim_mainFrame)
@@ -1180,7 +1176,7 @@ class MainWindow(QWidget):
             "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
         )
 
-        timeStep, timeStepCount = 1, 61
+        timeStep, timeStepCount = 1, 61  # 61이라면 61초까지 시뮬레이션 돌려야함
         times = [i * timeStep for i in range(timeStepCount)]
 
         dps_list = []
@@ -1591,8 +1587,6 @@ class MainWindow(QWidget):
 
             return True
 
-        self.sim_powers_calculated = False
-
         if not False in [checkInput(i, j.text()) for i, j in enumerate(self.sim_simInfo_inputs)]:  # 모두 통과
             for i in self.sim_simInfo_inputs:  # 통과O면 원래색
                 i.setStyleSheet(
@@ -1677,9 +1671,6 @@ class MainWindow(QWidget):
                 return False
 
             return True
-
-        if self.simType == 1:
-            self.sim_powers_calculated = False
 
         if not False in [checkInput(i.text()) for i in self.sim_skill_inputs]:  # 모두 통과
             for i in self.sim_skill_inputs:  # 통과O면 원래색
@@ -1783,9 +1774,6 @@ class MainWindow(QWidget):
                             return True
                         return False
                 return False
-
-        if self.simType == 1:
-            self.sim_powers_calculated = False
 
         if not False in [checkInput(i, j.text()) for i, j in enumerate(self.sim_stat_inputs)]:  # 모두 digit
             for i in self.sim_stat_inputs:  # 통과O면 원래색
@@ -2029,7 +2017,7 @@ class MainWindow(QWidget):
 
         # 평타 추가
         num, delay = 0, 1
-        while (t := num * (100 - stats[14]) * 10 * delay) <= 60000:
+        while (t := num * (100 - stats[14]) * 10 * delay) <= 61000:
             simulatedSkills.append([-1, t])
             num += 1
 
@@ -2223,7 +2211,7 @@ class MainWindow(QWidget):
             for i in range(self.usableSkillCount[self.serverID])
         ]
 
-        while self.elapsedTime <= 61000:  # 65000
+        while self.elapsedTime <= 62000:  # 65000
             self.addTaskList()
 
             # 스킬 사용
@@ -2280,7 +2268,7 @@ class MainWindow(QWidget):
             self.simWaitTime = max(0, self.simWaitTime - int(self.unitTime * 1000))
             self.elapsedTime += int(self.unitTime * 1000)
 
-        self.usedSkillList = [i for i in self.usedSkillList if i[1] <= 60500]
+        self.usedSkillList = [i for i in self.usedSkillList if i[1] <= 61000]
         # 1초마다 평타도 추가시켜야함 => 데미지 계산 할 때 추가시키기
         return self.usedSkillList
 
@@ -2885,36 +2873,36 @@ class MainWindow(QWidget):
             [0, None],
         ]
         self.potentialStatList = {
-            "내공 +1": [12, 1],
-            "내공 +2": [12, 2],
             "내공 +3": [12, 3],
-            "경도 +1": [5, 1],
-            "경도 +2": [5, 2],
+            "내공 +2": [12, 2],
+            "내공 +1": [12, 1],
             "경도 +3": [5, 3],
-            "치명타확률 +1": [6, 1],
-            "치명타확률 +2": [6, 2],
+            "경도 +2": [5, 2],
+            "경도 +1": [5, 1],
             "치명타확률 +3": [6, 3],
-            "치명타데미지 +2": [7, 2],
-            "치명타데미지 +3": [7, 3],
+            "치명타확률 +2": [6, 2],
+            "치명타확률 +1": [6, 1],
             "치명타데미지 +4": [7, 4],
-            "보스데미지 +1": [8, 1],
-            "보스데미지 +2": [8, 2],
+            "치명타데미지 +3": [7, 3],
+            "치명타데미지 +2": [7, 2],
             "보스데미지 +3": [8, 3],
-            "상태이상저항 +2": [11, 2],
-            "상태이상저항 +4": [11, 4],
+            "보스데미지 +2": [8, 2],
+            "보스데미지 +1": [8, 1],
             "상태이상저항 +6": [11, 6],
-            "체력 +2": [13, 2],
-            "체력 +4": [13, 4],
+            "상태이상저항 +4": [11, 4],
+            "상태이상저항 +2": [11, 2],
             "체력 +6": [13, 6],
-            "공격속도 +1": [14, 1],
-            "공격속도 +2": [14, 2],
+            "체력 +4": [13, 4],
+            "체력 +2": [13, 2],
             "공격속도 +3": [14, 3],
-            "포션회복량 +2": [15, 2],
-            "포션회복량 +4": [15, 4],
+            "공격속도 +2": [14, 2],
+            "공격속도 +1": [14, 1],
             "포션회복량 +6": [15, 6],
-            "운 +2": [16, 2],
-            "운 +4": [16, 4],
+            "포션회복량 +4": [15, 4],
+            "포션회복량 +2": [15, 2],
             "운 +6": [16, 6],
+            "운 +4": [16, 4],
+            "운 +2": [16, 2],
         }
         self.key_dict = {
             "f1": "F1",
@@ -3271,13 +3259,21 @@ class MainWindow(QWidget):
         self.selectedSkillKey = []
         for i, j in enumerate(self.selectedSkillFrame):
             button = QPushButton(j)
+            # self.selectedSkillColors = [
+            #     "#8BC28C",
+            #     "#FF626C",
+            #     "#96C0FF",
+            #     "#FFA049",
+            #     "#F18AAD",
+            #     "#8E8FE0",
+            # ]
             self.selectedSkillColors = [
-                "#8BC28C",
-                "#FF626C",
-                "#96C0FF",
-                "#FFA049",
-                "#F18AAD",
-                "#8E8FE0",
+                "#BBBBBB",
+                "#BBBBBB",
+                "#BBBBBB",
+                "#BBBBBB",
+                "#BBBBBB",
+                "#BBBBBB",
             ]
             button.setStyleSheet(
                 f"QPushButton {{ background-color: {self.selectedSkillColors[i]}; border-radius :10px; }}"
