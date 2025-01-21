@@ -5,6 +5,7 @@ import sys
 import time
 import random
 import requests
+from functools import lru_cache
 from pprint import pprint
 from functools import partial
 from threading import Thread
@@ -129,6 +130,7 @@ class MainWindow(QWidget):
         self.layoutType = num
 
         if num == 0:
+            self.removeSimulWidgets()
             [i.deleteLater() for i in self.page2.findChildren(QWidget)]
             self.updatePosition()
         elif num == 1:
@@ -378,12 +380,17 @@ class MainWindow(QWidget):
         self.sim_updateNavButton(2)
 
         self.simType = 3
-
+        # print(self.info_simInfo)
         if not self.sim_powers_calculated:
-            self.sim_powers, *_ = self.simulateMacro(self.info_stats, detOnly=True)
+            self.sim_powers = self.simulateMacro(
+                tuple(self.info_stats), tuple(self.info_skills), tuple(self.info_simInfo), 1
+            )
+            self.sim_powers = [str(int(i)) for i in self.sim_powers]
             self.sim_powers_calculated = True
 
         self.widgetList = []
+        self.sim_skill_inputCheck = False
+        self.sim_stat_inputCheck = False
         comboboxStyle = f"""QComboBox {{ 
                 background-color: {self.sim_input_colors[0]};
                 border: 1px solid {self.sim_input_colors[1]};
@@ -432,6 +439,7 @@ class MainWindow(QWidget):
             self.sim_efficiency_statL_H,
         )
         self.widgetList.append(self.sim_efficiency_statL)
+        self.sim_efficiency_statL.currentIndexChanged.connect(self.sim_efficiency_Changed)
 
         self.sim_efficiency_statInput = QLineEdit("10", self.sim3_frame1)
         self.sim_efficiency_statInput.setFont(QFont("나눔스퀘어라운드 Bold", 14))
@@ -445,9 +453,10 @@ class MainWindow(QWidget):
             self.sim_efficiency_statInput_W,
             self.sim_efficiency_statInput_H,
         )
+        self.sim_efficiency_statInput.setFocus()
         self.widgetList.append(self.sim_efficiency_statInput)
         # 데이터 입력시 실행할 함수 연결
-        # self.sim_efficiency_statInput.textChanged.connect(self.sim_efficiency_inputChanged)
+        self.sim_efficiency_statInput.textChanged.connect(self.sim_efficiency_Changed)
 
         self.sim_efficiency_arrow = QLabel("", self.sim3_frame1)
         self.sim_efficiency_arrow.setStyleSheet(
@@ -475,6 +484,7 @@ class MainWindow(QWidget):
             self.sim_efficiency_statR_H,
         )
         self.widgetList.append(self.sim_efficiency_statR)
+        self.sim_efficiency_statR.currentIndexChanged.connect(self.sim_efficiency_Changed)
 
         self.sim_efficiency_power_list = self.sim_makePowerLabels(
             self.sim3_frame1, ["0"] * 4
@@ -503,6 +513,8 @@ class MainWindow(QWidget):
             )
             self.widgetList.append(n)
 
+        self.sim_update_efficiency()
+
         # 추가 스펙업 계산기
         self.sim3_frame2 = QFrame(self.sim_mainFrame)
         self.sim3_frame2.setGeometry(
@@ -525,8 +537,39 @@ class MainWindow(QWidget):
         self.widgetList.append(self.sim3_frame2_labelFrame)
         self.widgetList.append(self.sim3_frame2_label)
 
+        self.sim_additional_power_list = self.sim_makePowerLabels(
+            self.sim3_frame2, ["0"] * 4, font_size=16
+        )  # [[f, t, n], [f, t, n], [f, t, n], [f, t, n]]
+
+        for i, (f, t, n) in enumerate(self.sim_additional_power_list):
+            f.setGeometry(
+                self.sim_powerL_margin + (self.sim_powerL_width + self.sim_powerL_D) * i,
+                self.sim_label_H
+                + self.sim_widget_D
+                + (self.sim_widget_D + self.sim_stat_frame_H) * 3
+                + self.sim_main_D
+                + (self.sim_widget_D + self.sim_skill_frame_H) * 2
+                + self.sim_main_D,
+                self.sim_powerL_width,
+                self.sim_powerL_frame_H,
+            )
+            self.widgetList.append(f)
+            t.setGeometry(
+                0,
+                0,
+                self.sim_powerL_width,
+                self.sim_powerL_title_H,
+            )
+            self.widgetList.append(t)
+            n.setGeometry(
+                0,
+                self.sim_powerL_title_H,
+                self.sim_powerL_width,
+                self.sim_powerL_number_H,
+            )
+            self.widgetList.append(n)
+
         self.sim_makeStatInput(self.sim3_frame2)
-        self.sim_stat_inputs[0].setFocus()
 
         margin, count = 21, 6
         for i in range(18):
@@ -588,38 +631,6 @@ class MainWindow(QWidget):
 
             self.sim_skill_inputs[i].setText(str(self.info_skills[i]))
 
-        self.sim_additional_power_list = self.sim_makePowerLabels(
-            self.sim3_frame2, ["0"] * 4
-        )  # [[f, t, n], [f, t, n], [f, t, n], [f, t, n]]
-
-        for i, (f, t, n) in enumerate(self.sim_additional_power_list):
-            f.setGeometry(
-                self.sim_powerL_margin + (self.sim_powerL_width + self.sim_powerL_D) * i,
-                self.sim_label_H
-                + self.sim_widget_D
-                + (self.sim_widget_D + self.sim_stat_frame_H) * 3
-                + self.sim_main_D
-                + (self.sim_widget_D + self.sim_skill_frame_H) * 2
-                + self.sim_main_D,
-                self.sim_powerL_width,
-                self.sim_powerL_frame_H,
-            )
-            self.widgetList.append(f)
-            t.setGeometry(
-                0,
-                0,
-                self.sim_powerL_width,
-                self.sim_powerL_title_H,
-            )
-            self.widgetList.append(t)
-            n.setGeometry(
-                0,
-                self.sim_powerL_title_H,
-                self.sim_powerL_width,
-                self.sim_powerL_number_H,
-            )
-            self.widgetList.append(n)
-
         # 잠재능력 계산기
         self.sim3_frame3 = QFrame(self.sim_mainFrame)
         self.sim3_frame3.setGeometry(
@@ -647,6 +658,7 @@ class MainWindow(QWidget):
             self.sim_potential_stat_W,
             self.sim_potential_stat_H,
         )
+        self.sim_potential_stat0.currentIndexChanged.connect(self.sim_potential_update)
         self.widgetList.append(self.sim_potential_stat0)
 
         self.sim_potential_stat1 = QComboBox(self.sim3_frame3)
@@ -659,6 +671,7 @@ class MainWindow(QWidget):
             self.sim_potential_stat_W,
             self.sim_potential_stat_H,
         )
+        self.sim_potential_stat1.currentIndexChanged.connect(self.sim_potential_update)
         self.widgetList.append(self.sim_potential_stat1)
 
         self.sim_potential_stat2 = QComboBox(self.sim3_frame3)
@@ -673,6 +686,7 @@ class MainWindow(QWidget):
             self.sim_potential_stat_W,
             self.sim_potential_stat_H,
         )
+        self.sim_potential_stat2.currentIndexChanged.connect(self.sim_potential_update)
         self.widgetList.append(self.sim_potential_stat2)
 
         self.sim_potential_power_list = self.sim_makePowerLabels(
@@ -702,6 +716,8 @@ class MainWindow(QWidget):
             )
             self.widgetList.append(n)
 
+        self.sim_potential_update()
+
         # 잠재능력 옵션 순위표
         self.sim3_frame4 = QFrame(self.sim_mainFrame)
         self.sim3_frame4.setGeometry(
@@ -720,11 +736,27 @@ class MainWindow(QWidget):
         self.widgetList.append(self.sim3_frame4_label)
 
         titles = ["보스데미지", "일반데미지", "보스", "사냥"]
-        texts = [[[str(i), "치명타데미지 +4", "+1234"] for i in range(1, 16)] for __ in range(4)]
-        texts[0].insert(0, ["순위", "잠재능력", "전투력"])
-        texts[1].insert(0, ["순위", "잠재능력", "전투력"])
-        texts[2].insert(0, ["순위", "잠재능력", "전투력"])
-        texts[3].insert(0, ["순위", "잠재능력", "전투력"])
+        texts = [[], [], [], []]
+        for key, (num, value) in self.potentialStatList.items():
+            stats = self.info_stats.copy()
+            stats[num] += value
+
+            powers = self.simulateMacro(tuple(stats), tuple(self.info_skills), tuple(self.info_simInfo), 1)
+            diff_powers = [int(powers[i]) - int(self.sim_powers[i]) for i in range(4)]
+
+            for i in range(4):
+                texts[i].append([key, diff_powers[i]])
+
+        [texts[i].sort(key=lambda x: x[1], reverse=True) for i in range(4)]
+        for i in range(4):
+            for j in range(len(self.potentialStatList)):
+                if texts[i][j][1] == 0:
+                    texts[i][j] = ["", "", ""]
+                else:
+                    texts[i][j][1] = f"+{texts[i][j][1]}"
+                    texts[i][j].insert(0, str(j + 1))
+        [texts[i].insert(0, ["순위", "잠재능력", "전투력"]) for i in range(4)]
+
         colors = ["255, 163, 134", "255, 152, 0", "33, 150, 243", "165, 214, 167"]
         transparencies = ["140", "89", "77", "179"]
         self.sim_potentialRank_potentialList = [[], [], [], []]
@@ -933,7 +965,9 @@ class MainWindow(QWidget):
 
         self.simType = 2
 
-        self.sim_powers, analysis, resultDet, results = self.simulateMacro(self.info_stats)
+        self.sim_powers, analysis, resultDet, results = self.simulateMacro(
+            tuple(self.info_stats), tuple(self.info_skills), tuple(self.info_simInfo), random.random()
+        )
         self.sim_powers_calculated = True
 
         # 전투력
@@ -1147,7 +1181,7 @@ class MainWindow(QWidget):
         )
 
         timeStep, timeStepCount = 1, 61
-        time = [i * timeStep for i in range(timeStepCount)]
+        times = [i * timeStep for i in range(timeStepCount)]
 
         dps_list = []
         for result in results:
@@ -1159,7 +1193,7 @@ class MainWindow(QWidget):
         max_list = [max([j[i] for j in dps_list]) for i in range(timeStepCount)]
         min_list = [min([j[i] for j in dps_list]) for i in range(timeStepCount)]
         data = {
-            "time": time,
+            "time": times,
             "max": max_list,
             "mean": mean_list,
             "min": min_list,
@@ -1197,7 +1231,7 @@ class MainWindow(QWidget):
 
         means = [sum([j[i] for j in total_list]) / len(total_list) for i in range(timeStepCount)]
         data = {
-            "time": time,
+            "time": times,
             "max": total_list[max_idx],
             "mean": means,
             "min": total_list[min_idx],
@@ -1251,7 +1285,7 @@ class MainWindow(QWidget):
                 names.append(None)
 
         data = {
-            "time": time,
+            "time": times,
             "skills_normalized": data_normalized,
             "skills_sum": data_cumsum,
         }
@@ -1357,7 +1391,7 @@ class MainWindow(QWidget):
 
             self.sim_skill_inputs[i].setText(str(self.info_skills[i]))
 
-        # 시뮬레이션 정보
+        # 추가 정보 입력
         self.sim1_frame3 = QFrame(self.sim_mainFrame)
         self.sim1_frame3.setGeometry(
             0,
@@ -1368,7 +1402,7 @@ class MainWindow(QWidget):
         self.sim1_frame3.setStyleSheet("QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }")
 
         self.sim1_frame3_labelFrame, self.sim1_frame3_label = self.sim_returnTitleFrame(
-            self.sim1_frame3, "시뮬레이션 정보"
+            self.sim1_frame3, "추가 정보 입력"
         )
         self.sim_makeSimInfoInput(self.sim1_frame3)
 
@@ -1428,7 +1462,7 @@ class MainWindow(QWidget):
                 """
             )
 
-    def sim_makePowerLabels(self, mainframe, texts):
+    def sim_makePowerLabels(self, mainframe, texts, font_size=18):
         titles = ["보스데미지", "일반데미지", "보스", "사냥"]
         power_list = [[], [], [], []]
         for i in range(4):
@@ -1447,7 +1481,7 @@ class MainWindow(QWidget):
             number.setStyleSheet(
                 f"QLabel {{ background-color: rgba({self.sim_colors4[i]}, 120); border: 1px solid rgb({self.sim_colors4[i]}); border-top: 0px solid; border-top-left-radius: 0px; border-top-right-radius: 0px; border-bottom-left-radius: 4px; border-bottom-right-radius: 4px }}"
             )
-            number.setFont(QFont("나눔스퀘어라운드 ExtraBold", 18))
+            number.setFont(QFont("나눔스퀘어라운드 ExtraBold", font_size))
             number.setAlignment(Qt.AlignmentFlag.AlignCenter)
             power_list[i].append(number)
 
@@ -1483,6 +1517,63 @@ class MainWindow(QWidget):
             # 데이터 입력시 실행할 함수 연결
             lineEdit.textChanged.connect(self.sim_simInfo_inputChanged)
             self.sim_simInfo_inputs.append(lineEdit)
+
+    def sim_potential_update(self):
+        indexList = [
+            self.sim_potential_stat0.currentText(),
+            self.sim_potential_stat1.currentText(),
+            self.sim_potential_stat2.currentText(),
+        ]
+
+        stats = self.info_stats.copy()
+        for i in range(3):
+            num, value = self.potentialStatList[indexList[i]]
+            stats[num] += value
+
+        powers = self.simulateMacro(tuple(stats), tuple(self.info_skills), tuple(self.info_simInfo), 1)
+
+        diff_powers = [int(powers[i]) - int(self.sim_powers[i]) for i in range(4)]
+
+        [self.sim_potential_power_list[i][2].setText(f"{diff_powers[i]:+}") for i in range(4)]
+
+    def sim_update_efficiency(self):
+        if self.sim_efficiency_statL.currentIndex() == self.sim_efficiency_statR.currentIndex():
+            [
+                self.sim_efficiency_power_list[i][2].setText(
+                    f"{int(self.sim_efficiency_statInput.text()):.2f}"
+                )
+                for i in range(4)
+            ]
+            return
+
+        stats = self.info_stats.copy()
+        stats[self.sim_efficiency_statL.currentIndex()] += int(self.sim_efficiency_statInput.text())
+        powers = self.simulateMacro(tuple(stats), tuple(self.info_skills), tuple(self.info_simInfo), 1)
+        reqStats = self.getRequiredStat(powers, self.sim_efficiency_statR.currentIndex())
+
+        [self.sim_efficiency_power_list[i][2].setText(reqStats[i]) for i in range(4)]
+
+    def sim_efficiency_Changed(self):
+        text = self.sim_efficiency_statInput.text()
+        index = self.sim_efficiency_statL.currentIndex()
+        if not text.isdigit():
+            [self.sim_efficiency_power_list[i][2].setText("오류") for i in range(4)]
+            return
+
+        stat = self.info_stats[self.sim_efficiency_statL.currentIndex()] + int(text)
+
+        if self.statRangeList[index][0] <= stat:
+            if self.statRangeList[index][1] == None:
+                self.sim_update_efficiency()
+                return
+            else:
+                if stat <= self.statRangeList[index][1]:
+                    self.sim_update_efficiency()
+                    return
+                [self.sim_efficiency_power_list[i][2].setText("오류") for i in range(4)]
+                return
+        [self.sim_efficiency_power_list[i][2].setText("오류") for i in range(4)]
+        return
 
     def sim_simInfo_inputChanged(self):
         # 스탯이 정상적으로 입력되었는지 확인
@@ -1587,7 +1678,8 @@ class MainWindow(QWidget):
 
             return True
 
-        self.sim_powers_calculated = False
+        if self.simType == 1:
+            self.sim_powers_calculated = False
 
         if not False in [checkInput(i.text()) for i in self.sim_skill_inputs]:  # 모두 통과
             for i in self.sim_skill_inputs:  # 통과O면 원래색
@@ -1595,8 +1687,9 @@ class MainWindow(QWidget):
                     f"QLineEdit {{ background-color: {self.sim_input_colors[0]}; border: 1px solid {self.sim_input_colors[1]}; border-radius: 4px; }}"
                 )
 
-            self.info_skills = [int(i.text()) for i in self.sim_skill_inputs]
-            self.dataSave()
+            if self.simType == 1:
+                self.info_skills = [int(i.text()) for i in self.sim_skill_inputs]
+                self.dataSave()
             self.sim_skill_inputCheck = True
 
         else:  # 하나라도 통과X
@@ -1610,6 +1703,28 @@ class MainWindow(QWidget):
                         f"QLineEdit {{ background-color: {self.sim_input_colors[0]}; border: 1px solid {self.sim_input_colors[1]}; border-radius: 4px; }}"
                     )
             self.sim_skill_inputCheck = False
+
+        if self.simType == 3:
+            self.update_additional_power_list()
+
+    def update_additional_power_list(self):
+        if self.sim_skill_inputCheck and self.sim_stat_inputCheck:
+            stats = self.info_stats.copy()
+            stats = [stats[i] + int(self.sim_stat_inputs[i].text()) for i in range(len(stats))]
+            skills = self.info_skills.copy()
+            skills = [skills[i] + int(self.sim_skill_inputs[i].text()) for i in range(len(skills))]
+            powers = self.simulateMacro(tuple(stats), tuple(skills), tuple(self.info_simInfo), 1)
+
+            diff_powers = [int(powers[i]) - int(self.sim_powers[i]) for i in range(4)]
+
+            [
+                self.sim_additional_power_list[i][2].setText(
+                    f"{int(powers[i]):}\n({diff_powers[i]:+}, {diff_powers[i] / int(self.sim_powers[i]) * 100:+.1f}%)"
+                )
+                for i in range(4)
+            ]
+        else:
+            [self.sim_additional_power_list[i][2].setText("오류") for i in range(4)]
 
     def sim_makeStatInput(self, mainframe):
         self.sim_stat_frames = []
@@ -1645,16 +1760,14 @@ class MainWindow(QWidget):
                 if not text.isdigit():
                     return False
 
-                match num:
-                    case 0 | 1 | 3 | 4 | 5 | 13:
-                        if int(text) == 0:
-                            return False
+                if self.statRangeList[num][0] <= int(text):
+                    if self.statRangeList[num][1] == None:
                         return True
-                    case 14:
-                        if 0 <= int(text) <= 50:
+                    else:
+                        if int(text) <= self.statRangeList[num][1]:
                             return True
                         return False
-                return True
+                return False
             else:  # self.simType == 3
                 try:
                     value = int(text)
@@ -1662,16 +1775,14 @@ class MainWindow(QWidget):
                     return False
 
                 stat = self.info_stats[num] + value
-                match num:
-                    case 0 | 1 | 3 | 4 | 5 | 13:
-                        if stat == 0:
-                            return False
+                if self.statRangeList[num][0] <= stat:
+                    if self.statRangeList[num][1] == None:
                         return True
-                    case 14:
-                        if 0 <= stat <= 50:
+                    else:
+                        if stat <= self.statRangeList[num][1]:
                             return True
                         return False
-                return True
+                return False
 
         if self.simType == 1:
             self.sim_powers_calculated = False
@@ -1699,21 +1810,114 @@ class MainWindow(QWidget):
                     )
             self.sim_stat_inputCheck = False
 
-    def simulateMacro(self, stats, detOnly=False):
-        def runSimul(attackDetails, buffDetails, stats, boss, deterministic=False):
-            def getStatus(stats, time, buff_list):
-                status = stats.copy()
+        if self.simType == 3:
+            self.update_additional_power_list()
+
+    def getRequiredStat(self, powers, stat_num):
+        reqStats = []
+        reqStats.append(self.calculateRequiredStat(powers[0], stat_num, 0))
+        reqStats.append(self.calculateRequiredStat(powers[1], stat_num, 1))
+        reqStats.append(self.calculateRequiredStat(powers[2], stat_num, 2))
+        reqStats.append(self.calculateRequiredStat(powers[3], stat_num, 3))
+
+        return reqStats
+
+    def calculateRequiredStat(self, power, stat_num, power_num):
+        def checkInput(stat) -> bool:
+            num = self.sim_efficiency_statR.currentIndex()
+            if self.statRangeList[num][0] <= stat:
+                if self.statRangeList[num][1] == None:
+                    return True
+                else:
+                    if stat <= self.statRangeList[num][1]:
+                        return True
+                    return False
+            return False
+
+        stats = self.info_stats.copy()
+        baseStat = self.info_stats[stat_num]
+        current_power = self.simulateMacro(
+            tuple(stats), tuple(self.info_skills), tuple(self.info_simInfo), 1
+        )[power_num]
+
+        # 1씩 증가시키며 범위 알아내기
+        low, high = 0, 1
+        step = 1
+        num = 0
+        while current_power < power and num < 10:
+            if not checkInput(baseStat + low):
+                return "0"
+            stats[stat_num] = baseStat + high
+            if stat_num == 12:
+                stats[stat_num] = int(stats[stat_num])
+
+            current_power = self.simulateMacro(
+                tuple(stats), tuple(self.info_skills), tuple(self.info_simInfo), 1
+            )[power_num]
+
+            if current_power >= power:
+                break
+
+            # print(f"{low=}, {high=}, {step=}")
+
+            low = high
+            high += step
+            step *= 2
+            num += 1
+
+        if num == 10:
+            return "0"
+
+        # 범위 내에서 이분탐색
+        epsilon = 0.005
+        num = 0
+        while high - low > epsilon and num < 15:
+            if not checkInput(baseStat + low):
+                return "0"
+            mid = (low + high) * 0.5
+            stats[stat_num] = baseStat + mid
+            if stat_num == 12:
+                stats[stat_num] = int(stats[stat_num])
+            # print(tuple(stats), tuple(self.info_skills), tuple(self.info_simInfo))
+            current_power = self.simulateMacro(
+                tuple(stats), tuple(self.info_skills), tuple(self.info_simInfo), 1
+            )[power_num]
+
+            # print(f"{low=}, {high=}, {mid=}")
+
+            if current_power < power:
+                low = mid
+            else:
+                high = mid
+
+            num += 1
+
+        # print("\n")
+        return f"{(low + high) * 0.5:.2f}"
+
+    @lru_cache
+    def simulateMacro(self, stats: tuple, skillLevels: tuple, simInfo: tuple, randomSeed):
+        def runSimul(attackDetails, buffDetails, stats, boss, simInfo, naegongDiff, deterministic=False):
+            def getStatus(stats, nowTime, buff_list):
+                status = list(stats).copy()
                 for buff in buff_list:
-                    if buff[0] <= time <= buff[1]:
+                    if buff[0] <= nowTime <= buff[1]:
                         status[buff[2]] += buff[3]
                 return status
 
-            def getDMG(stats, boss, deterministic):
+            def getNaegongDiff(stats, naegong, naegongDiff):
+                diff = naegong - stats[12]
+                for (low, high), multiplier in naegongDiff.items():
+                    if low <= diff <= high:
+                        return multiplier
+
+            def getDMG(stats, boss, naegong, naegongDiff, deterministic):
+                # print(stats[0])
                 dmg = (
                     stats[0]  # 공격력
                     * (stats[3] + stats[4])  # 근력 + 지력
                     * (1 + stats[2] * 0.01)  # 파괴력
-                    * 1.0  # 내공계수
+                    * getNaegongDiff(stats, naegong, naegongDiff)
                     * ((1 + stats[8] * 0.01) if boss else 1)
                     * 0.01  # 보정계수
                 )
@@ -1754,20 +1958,20 @@ class MainWindow(QWidget):
                         else:
                             merged.append(current)
                     for start, end in merged:
-                        merged_intervals.append([start, end, buff_type, value])
+                        merged_intervals.append((start, end, buff_type, value))
 
                 # 시작 시간 기준으로 정렬
                 merged_intervals.sort()
-                return merged_intervals
+                return tuple(merged_intervals)
 
             buffInfo = merge_buff(buffDetails)  # [[start, type, value, duration], ...]
             attacks = []  # [type, time, damage]
+            naegong = simInfo[1] if boss else simInfo[0]
             ## 시뮬레이션 시작
             for attack in attackDetails:
-                time = attack[1]
-                status = getStatus(stats, time, buffInfo)
-                dmg = round(getDMG(status, boss, deterministic) * attack[2], 5)
-                attacks.append([attack[0], time, dmg])
+                status = getStatus(stats, attack[1], buffInfo)
+                dmg = round(getDMG(status, boss, naegong, naegongDiff, deterministic) * attack[2], 5)
+                attacks.append([attack[0], attack[1], dmg])
 
             # if deterministic:
             #     pprint(attacks)
@@ -1801,6 +2005,8 @@ class MainWindow(QWidget):
 
             return std_dev
 
+        if randomSeed != 1:
+            random.seed(randomSeed)
         simulatedSkills = self.getSimulatedSKillList(stats[14])
 
         # 1초 이내에 같은 스킬 사용 => 콤보
@@ -1823,8 +2029,8 @@ class MainWindow(QWidget):
 
         # 평타 추가
         num, delay = 0, 1
-        while (time := num * (100 - self.cooltimeReduce) * 10 * delay) <= 60000:
-            simulatedSkills.append([-1, time])
+        while (t := num * (100 - stats[14]) * 10 * delay) <= 60000:
+            simulatedSkills.append([-1, t])
             num += 1
 
         # 시간 단위를 1초로 변경
@@ -1837,41 +2043,42 @@ class MainWindow(QWidget):
         for attack in simulatedSkills:
             # 평타
             if attack[0] == -1:
-                attackDetails.append(attack + [1.0])
+                attackDetails.append(tuple(attack + [1.0]))
                 continue
 
             # 스킬
-            # info_skills = self.info_skills.copy()
-            info_skills = [0] * 8  # temp: self.info_skills -> info_skills = 0 * 8
+            skillLevels = [0] * 8  # temp: self.info_skills -> info_skills = 0 * 8
 
             # [[0.0, [0, 0.5]], [0.1, [0, 0.5]], [0.2, [0, 0.5]], [0.3, [0, 0.5]], [0.4, [0, 0.5]]]
             skills = self.skillAttackData[self.serverID][self.jobID][self.selectedSkillList[attack[0]]][
-                info_skills[self.selectedSkillList[attack[0]]]
+                skillLevels[self.selectedSkillList[attack[0]]]
             ][attack[2]]
 
             for skill in skills:
                 # [time, [type(0: damage, 1: buff), [buff_type, buff_value, buff_duration] or damage_value]]
                 if skill[1][0] == 0:  # 공격
                     attackDetails.append(
-                        [
+                        (
                             attack[0],  # 스킬 번호
                             round(attack[1] + skill[0], 2),  # 시간
                             skill[1][1],  # 데미지
-                        ]
+                        )
                     )
                 else:  # 버프
                     buffDetails.append(
-                        [
+                        (
                             round(attack[1] + skill[0], 2),  # 시간
                             skill[1][1][0],  # 버프 종류
                             skill[1][1][1],  # 버프 값
                             skill[1][1][2],  # 버프 지속시간
-                        ]
+                        )
                     )
 
         # 시간순으로 정렬
         attackDetails.sort(key=lambda x: x[1])
         buffDetails.sort(key=lambda x: x[0])
+        buffDetails = tuple(buffDetails)
+        naegongDiff = self.naegongDiff
 
         # print(attackDetails)
         # print(buffDetails)
@@ -1879,44 +2086,50 @@ class MainWindow(QWidget):
         ## 전투력
         # 기본데미지 = 공격력 * (근력 + 지력) * (1 + 파괴력 * 0.01) * 내공계수
         # 0공, 1방, 2파괴력, 3근력, 4지력, 5경도, 6치확, 7치뎀, 8보뎀, 9명중, 10회피, 11상태이상저항, 12내공, 13체력, 14공속, 15포션회복, 16운, 17경험치
-        boss_attacks = runSimul(attackDetails, buffDetails, stats, boss=True, deterministic=True)
-        normal_attacks = runSimul(attackDetails, buffDetails, stats, boss=False, deterministic=True)
+        boss_attacks = runSimul(
+            attackDetails, buffDetails, stats, True, simInfo, naegongDiff, deterministic=True
+        )
+        normal_attacks = runSimul(
+            attackDetails, buffDetails, stats, False, simInfo, naegongDiff, deterministic=True
+        )
         sum_BossDMG = sum([i[2] for i in boss_attacks])
         sum_NormalDMG = sum([i[2] for i in normal_attacks])
+
+        # 데미지감소 = 방어력 * 0.5 + 체력 * 경도 * 0.001
+        dmgReduction = stats[1] * 0.5 + stats[13] * stats[5] * 0.001
+        # dmgReduction = stats[1] * 0.8 + stats[13] * stats[5] * 0.0004
+        # 초당 회복량 = 체력 * 자연회복 * 0.2 + 포션회복 * 0.5
+        recovery = stats[13] * 0.1 * 0.2 + simInfo[2] * (1 + stats[15] * 0.01) * 0.5
+
         powers = [
-            str(int(sum_BossDMG * self.coef_bossDMG)),  # 보스데미지
-            str(int(sum_NormalDMG * self.coef_normalDMG)),  # 일반데미지
-            str(
-                int(
-                    sum_BossDMG
-                    * self.coef_bossDMG  # 보스데미지
-                    * (
-                        stats[13] * stats[1] * stats[5] * 0.0000001  # 피격 = 0.55
-                        + (stats[13] * 0.1 + (1 + stats[15] * 0.01) * 300) * 0.001  # 회복 = 0.535
-                    )
-                    * (1 + stats[10] * 0.01)  # 회피
-                    * self.coef_boss
-                )
-            ),
-            str(
-                int(
-                    sum_NormalDMG
-                    * self.coef_normalDMG  # 일반데미지
-                    * (1 + stats[16] * 0.01)  # 운
-                    * (1 + stats[11] * 0.001)  # 상태이상저항
-                    * (1 + stats[17] * 0.01)  # 경험치
-                    * self.coef_normal
-                )
-            ),
+            sum_BossDMG * self.coef_bossDMG,  # 보스데미지
+            sum_NormalDMG * self.coef_normalDMG,  # 일반데미지
+            sum_BossDMG
+            # * self.coef_bossDMG  # 보스데미지
+            # * (stats[13] ** 0.5)  # 체력 ** 0.5
+            # * (dmgReduction + recovery)  # 뎀감 + 초당회복량 = 초당 버틸 수 있는 체력
+            * (
+                stats[13] + dmgReduction * 5 + recovery * 5
+            )  # 5초마다 한 번씩 피해를 입는다는 가정에서의 버틸 수 있는 체력
+            / (1 - stats[10] * 0.01)
+            * self.coef_boss,  # 회피
+            sum_NormalDMG
+            * self.coef_normalDMG  # 일반데미지
+            * (1 + stats[16] * 0.01)  # 운
+            * (1 + stats[11] * 0.001)  # 상태이상저항
+            * (1 + stats[17] * 0.01)  # 경험치
+            * self.coef_normal,
         ]
-        if detOnly:
+        if randomSeed == 1:
             return powers
+
+        powers = [str(int(i)) for i in powers]
 
         simuls_boss = []
         simuls_normal = []
         for i in range(100):  # 멀티프로세싱으로 수정 후 1000회로 변경
-            simuls_boss.append(runSimul(attackDetails, buffDetails, stats, boss=True))
-            simuls_normal.append(runSimul(attackDetails, buffDetails, stats, boss=False))
+            simuls_boss.append(runSimul(attackDetails, buffDetails, stats, True, simInfo, naegongDiff))
+            simuls_normal.append(runSimul(attackDetails, buffDetails, stats, False, simInfo, naegongDiff))
 
         sums_simulBossDMG = [sum([i[2] for i in j]) for j in simuls_boss]
         sums_simulNormalDMG = [sum([i[2] for i in j]) for j in simuls_normal]
@@ -2586,8 +2799,8 @@ class MainWindow(QWidget):
         self.sleepCoefficient_unit = 0.97
 
         self.coef_bossDMG = 1.0
-        self.coef_normalDMG = 1.2
-        self.coef_boss = 0.8
+        self.coef_normalDMG = 1.3
+        self.coef_boss = 0.0002
         self.coef_normal = 0.7
 
         self.simType = 0
@@ -2610,6 +2823,27 @@ class MainWindow(QWidget):
         self.activeErrorPopup = []
         self.activeErrorPopupCount = 0
         self.skillPreviewList = []
+
+        # 내공 차이에 의한 데미지 배수 (몹-나)
+        self.naegongDiff = {
+            (6, 1000): 0,
+            (5, 5): 0.3,
+            (4, 4): 0.5,
+            (3, 3): 0.7,
+            (2, 2): 0.85,
+            (1, 1): 0.95,
+            (0, 0): 1.0,
+            (-1, -1): 1.025,
+            (-2, -2): 1.05,
+            (-4, -3): 1.075,
+            (-6, -5): 1.1,
+            (-9, -7): 1.15,
+            (-13, -10): 1.2,
+            (-18, -14): 1.3,
+            (-25, -19): 1.4,
+            (-1000, -26): 1.5,
+        }
+
         self.statList = [
             "공격력",
             "방어력",
@@ -2629,6 +2863,26 @@ class MainWindow(QWidget):
             "포션회복량",
             "운",
             "경험치획득량",
+        ]
+        self.statRangeList = [
+            [1, None],
+            [1, None],
+            [0, None],
+            [1, None],
+            [1, None],
+            [1, None],
+            [0, None],
+            [0, None],
+            [0, None],
+            [0, None],
+            [0, None],
+            [0, None],
+            [0, None],
+            [1, None],
+            [0, self.maxCooltime],
+            [0, None],
+            [0, None],
+            [0, None],
         ]
         self.potentialStatList = {
             "내공 +1": [12, 1],
