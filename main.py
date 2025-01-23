@@ -16,16 +16,18 @@ from matplotlib import font_manager as fm
 import matplotlib.ticker as mtick
 import keyboard as kb
 import pyautogui as pag
-from PyQt6.QtCore import QObject, QSize, Qt, QThread, QTimer, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import QObject, QSize, Qt, QThread, QTimer, pyqtSignal, QPoint, pyqtSlot
 from PyQt6.QtGui import (
     QPen,
     QFont,
     QIcon,
     QColor,
+    QRegion,
     QPixmap,
     QPainter,
     QPalette,
     QTransform,
+    QFontMetrics,
     QFontDatabase,
 )
 from PyQt6.QtWidgets import (
@@ -33,8 +35,9 @@ from PyQt6.QtWidgets import (
     QLabel,
     QWidget,
     QLineEdit,
-    QPushButton,
     QComboBox,
+    QPushButton,
+    QFileDialog,
     QScrollArea,
     QApplication,
     QStackedLayout,
@@ -77,7 +80,7 @@ class MainWindow(QWidget):
         self.dataLoad()
         self.initUI()
 
-        self.checkVersion()
+        # self.checkVersion()
         self.activateThread()
 
     ## 서브 쓰레드 실행
@@ -270,6 +273,84 @@ class MainWindow(QWidget):
         self.sim_potentialRank_rank_potential_W = 115
         self.sim_potentialRank_rank_power_W = 60
 
+        # 캐릭터 카드
+        self.sim_char_frame_H = 420
+        self.sim_char_margin = 50
+        self.sim_char_margin_y = 20
+
+        self.sim_charInfo_marginX = 20
+        self.sim_charInfo_marginY = 25
+        self.sim_charInfo_label_y = 2
+        self.sim_charInfo_label_H = 33
+        self.sim_charInfo_W = int((928 - self.sim_char_margin * 4) * 0.5)  # 364
+        self.sim_charInfo_H = self.sim_char_frame_H - self.sim_char_margin_y  # 400
+        self.sim_charInfo_frame_W = self.sim_charInfo_W - self.sim_charInfo_marginX * 2  # 324
+
+        self.sim_charInfo_nickname_H = 80
+        self.sim_charInfo_nickname_input_margin = 20
+        self.sim_charInfo_nickname_input_W = 200
+        self.sim_charInfo_nickname_input_H = 35
+        self.sim_charInfo_nickname_load_margin = (
+            self.sim_charInfo_nickname_input_margin * 2 + self.sim_charInfo_nickname_input_W
+        )  # 200
+        self.sim_charInfo_nickname_load_W = 64
+        self.sim_charInfo_nickname_load_H = 31
+        self.sim_charInfo_nickname_load_y = self.sim_charInfo_label_y + self.sim_charInfo_label_H + 2  # 37
+
+        self.sim_charInfo_char_H = 75
+        self.sim_charInfo_char_button_margin = 12
+        self.sim_charInfo_char_button_W = 92
+        self.sim_charInfo_char_button_H = 30
+        self.sim_charInfo_char_button_y = self.sim_charInfo_label_y + self.sim_charInfo_label_H  # 35
+
+        self.sim_charInfo_power_H = 75
+        self.sim_charInfo_power_button_margin = 12
+        self.sim_charInfo_power_button_W = 66
+        self.sim_charInfo_power_button_H = 30
+        self.sim_charInfo_power_button_y = self.sim_charInfo_label_y + self.sim_charInfo_label_H  # 35
+
+        self.sim_charInfo_complete_y = 30
+        self.sim_charInfo_complete_margin = 50
+        self.sim_charInfo_complete_W = 120
+        self.sim_charInfo_complete_H = 40
+
+        self.sim_charInfo_save_y = self.sim_charInfo_complete_y
+        self.sim_charInfo_save_margin = self.sim_charInfo_complete_margin + self.sim_charInfo_complete_W + 24
+        self.sim_charInfo_save_W = 120
+        self.sim_charInfo_save_H = 40
+
+        self.sim_charCard_W = int((928 - self.sim_char_margin * 4) * 0.5)  # 364
+        self.sim_charCard_H = self.sim_char_frame_H - self.sim_char_margin_y  # 400
+        self.sim_charCard_title_H = 50
+
+        self.sim_charCard_image_margin = 19
+        self.sim_charCard_image_W = 156
+        self.sim_charCard_image_H = 312
+
+        self.sim_charCard_name_margin = self.sim_charCard_image_margin + self.sim_charCard_image_W + 10
+        self.sim_charCard_name_y = self.sim_charCard_title_H + 50
+        self.sim_charCard_name_W = 166
+        self.sim_charCard_name_H = 35
+
+        self.sim_charCard_job_margin = self.sim_charCard_image_margin + self.sim_charCard_image_W + 30
+        self.sim_charCard_job_y = self.sim_charCard_name_y + self.sim_charCard_name_H
+        self.sim_charCard_job_W = 50  # 50 + 79 = 126
+        self.sim_charCard_job_H = 40
+        self.sim_charCard_level_margin = self.sim_charCard_job_margin + self.sim_charCard_job_W
+        self.sim_charCard_level_y = self.sim_charCard_job_y
+        self.sim_charCard_level_W = 76  # 50 + 76 = 126
+        self.sim_charCard_level_H = self.sim_charCard_job_H
+
+        self.sim_charCard_name_line_W = 146
+        self.sim_charCard_info_line_H = 16
+
+        self.sim_charCard_powerFrame_margin = self.sim_charCard_image_margin + self.sim_charCard_image_W + 10
+        self.sim_charCard_powerFrame_y = self.sim_charCard_job_y + self.sim_charCard_job_H + 15
+        self.sim_charCard_powerFrame_W = 166
+        self.sim_charCard_powerFrame_H = 40
+        self.sim_charCard_power_title_W = 80
+        self.sim_charCard_power_number_W = 86
+
         # 상단바
         self.sim_navFrame = QFrame(self.page2)
         self.sim_navFrame.setGeometry(
@@ -372,7 +453,490 @@ class MainWindow(QWidget):
         plt.close("all")
 
     def makeSimulType4(self):
-        pass
+        self.removeSimulWidgets()
+        self.sim_updateNavButton(3)
+
+        self.simType = 4
+
+        self.sim_card_updated = False
+
+        self.sim_powers = self.simulateMacro(
+            tuple(self.info_stats), tuple(self.info_skills), tuple(self.info_simInfo), 1
+        )
+        self.sim_powers = [str(int(i)) for i in self.sim_powers]
+
+        # 스펙업 효율 계산기
+        self.sim4_frame = QFrame(self.sim_mainFrame)
+        self.sim4_frame.setGeometry(
+            0,
+            0,
+            928,
+            self.sim_char_frame_H,
+        )
+        self.sim4_frame.setStyleSheet(
+            """QFrame {
+            background-color: rgb(255, 255, 255);
+            border: 0px solid;
+        }"""
+        )
+
+        ## 캐릭터 정보 입력
+        self.sim4_frame_info = QFrame(self.sim4_frame)
+        self.sim4_frame_info.setGeometry(
+            self.sim_char_margin,
+            self.sim_char_margin_y,
+            self.sim_charInfo_W,
+            self.sim_charInfo_H,
+        )
+        self.sim4_frame_info.setStyleSheet(
+            """QFrame {
+            background-color: #F8F8F8;
+            border: 1px solid #CCCCCC;
+            border-radius: 4px;
+        }"""
+        )
+
+        # 닉네임 입력
+        self.sim4_info_nicknameFrame = QFrame(self.sim4_frame_info)
+        self.sim4_info_nicknameFrame.setGeometry(
+            self.sim_charInfo_marginX,
+            self.sim_charInfo_marginY,
+            self.sim_charInfo_frame_W,
+            self.sim_charInfo_nickname_H,
+        )
+        self.sim4_info_nicknameFrame.setStyleSheet(
+            """QFrame {
+            background-color: #FFFFFF;
+            border: 1px solid #DDDDDD;
+            border-radius: 4px;
+        }"""
+        )
+
+        self.sim4_info_nicknameLabel = QLabel("닉네임", self.sim4_info_nicknameFrame)
+        self.sim4_info_nicknameLabel.setGeometry(
+            self.sim_charInfo_nickname_input_margin,
+            self.sim_charInfo_label_y,
+            self.sim_charInfo_nickname_input_W,
+            self.sim_charInfo_label_H,
+        )
+        self.sim4_info_nicknameLabel.setStyleSheet(
+            """QLabel {
+            background-color: transparent;
+            border: 0px solid;
+        }"""
+        )
+        self.sim4_info_nicknameLabel.setFont(QFont("나눔스퀘어라운드 Bold", 14))
+        self.sim4_info_nicknameLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.sim4_info_nicknameInput = QLineEdit("", self.sim4_info_nicknameFrame)
+        self.sim4_info_nicknameInput.setGeometry(
+            self.sim_charInfo_nickname_input_margin,
+            self.sim_charInfo_label_y + self.sim_charInfo_label_H,
+            self.sim_charInfo_nickname_input_W,
+            self.sim_charInfo_nickname_input_H,
+        )
+        self.sim4_info_nicknameInput.setStyleSheet(
+            f"""QLineEdit {{
+                background-color: {self.sim_input_colors[0]};
+                border: 1px solid {self.sim_input_colors[1]};
+                border-radius: 4px;
+            }}"""
+        )
+        self.sim4_info_nicknameInput.setFont(QFont("나눔스퀘어라운드 Bold", 12))
+        self.sim4_info_nicknameInput.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.sim4_info_nicknameInput.setFocus()
+
+        self.sim4_info_nicknameButton = QPushButton("불러오기", self.sim4_info_nicknameFrame)
+        self.sim4_info_nicknameButton.setGeometry(
+            self.sim_charInfo_nickname_load_margin,
+            self.sim_charInfo_nickname_load_y,
+            self.sim_charInfo_nickname_load_W,
+            self.sim_charInfo_nickname_load_H,
+        )
+        self.sim4_info_nicknameButton.setStyleSheet(
+            f"""QPushButton {{
+            background-color: #70BB70;
+            border: 1px solid {self.sim_input_colors[1]};
+            border-radius: 4px;
+            }}
+            QPushButton:hover {{
+                background-color: #60A060;
+            }}"""
+        )
+        self.sim4_info_nicknameButton.setFont(QFont("나눔스퀘어라운드 Bold", 10))
+        self.sim4_info_nicknameButton.clicked.connect(self.sim_loadCharacterInfo)
+
+        # 캐릭터 선택
+        # 캐릭터 불러오면 시뮬레이션 진행한 직업과 같은 것만 선택 가능하도록
+        self.sim_info_charData = None
+
+        self.sim4_info_charFrame = QFrame(self.sim4_frame_info)
+        self.sim4_info_charFrame.setGeometry(
+            self.sim_charInfo_marginX,
+            self.sim_charInfo_marginY * 2 + self.sim_charInfo_nickname_H,
+            self.sim_charInfo_frame_W,
+            self.sim_charInfo_char_H,
+        )
+        self.sim4_info_charFrame.setStyleSheet(
+            """QFrame {
+            background-color: #FFFFFF;
+            border: 1px solid #DDDDDD;
+            border-radius: 4px;
+        }"""
+        )
+
+        self.sim4_info_charLabel = QLabel("캐릭터 선택", self.sim4_info_charFrame)
+        self.sim4_info_charLabel.setGeometry(
+            0,
+            self.sim_charInfo_label_y,
+            self.sim_charInfo_frame_W,
+            self.sim_charInfo_label_H,
+        )
+        self.sim4_info_charLabel.setStyleSheet(
+            """QLabel {
+            background-color: transparent;
+            border: 0px solid;
+        }"""
+        )
+        self.sim4_info_charLabel.setFont(QFont("나눔스퀘어라운드 Bold", 14))
+        self.sim4_info_charLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.sim4_info_charButtonList = []
+        for i in range(3):
+            button = QPushButton("", self.sim4_info_charFrame)
+            button.setGeometry(
+                self.sim_charInfo_char_button_margin
+                + (self.sim_charInfo_char_button_W + self.sim_charInfo_char_button_margin) * i,
+                self.sim_charInfo_char_button_y,
+                self.sim_charInfo_char_button_W,
+                self.sim_charInfo_char_button_H,
+            )
+            button.setStyleSheet(
+                f"""QPushButton {{
+                background-color: {self.sim_input_colors[0]};
+                border: 1px solid {self.sim_input_colors[1]};
+                border-radius: 8px;
+                }}"""
+            )
+            button.setFont(QFont("나눔스퀘어라운드 Bold", 10))
+            self.sim4_info_charButtonList.append(button)
+
+        # 전투력 표시
+        self.sim_info_powerActive = [True, True, True, True]
+
+        self.sim4_info_powerFrame = QFrame(self.sim4_frame_info)
+        self.sim4_info_powerFrame.setGeometry(
+            self.sim_charInfo_marginX,
+            self.sim_charInfo_marginY * 3 + self.sim_charInfo_nickname_H + self.sim_charInfo_char_H,
+            self.sim_charInfo_frame_W,
+            self.sim_charInfo_char_H,
+        )
+        self.sim4_info_powerFrame.setStyleSheet(
+            """QFrame {
+            background-color: #FFFFFF;
+            border: 1px solid #DDDDDD;
+            border-radius: 4px;
+        }"""
+        )
+
+        self.sim4_info_powerLabel = QLabel("전투력 표시", self.sim4_info_powerFrame)
+        self.sim4_info_powerLabel.setGeometry(
+            0,
+            self.sim_charInfo_label_y,
+            self.sim_charInfo_frame_W,
+            self.sim_charInfo_label_H,
+        )
+        self.sim4_info_powerLabel.setStyleSheet(
+            """QLabel {
+            background-color: transparent;
+            border: 0px solid;
+        }"""
+        )
+        self.sim4_info_powerLabel.setFont(QFont("나눔스퀘어라운드 Bold", 14))
+        self.sim4_info_powerLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        texts = ["보스데미지", "일반데미지", "보스", "사냥"]
+        self.sim4_info_powerButtons = []
+        for i in range(4):
+            button = QPushButton(texts[i], self.sim4_info_powerFrame)
+            button.setGeometry(
+                self.sim_charInfo_power_button_margin
+                + (self.sim_charInfo_power_button_W + self.sim_charInfo_power_button_margin) * i,
+                self.sim_charInfo_power_button_y,
+                self.sim_charInfo_power_button_W,
+                self.sim_charInfo_power_button_H,
+            )
+            button.setStyleSheet(
+                f"""QPushButton {{
+                background-color: #FFFFFF;
+                border: 1px solid {self.sim_input_colors[1]};
+                border-radius: 5px;
+                }}
+                QPushButton:hover {{
+                    background-color: #F0F0F0;
+                }}"""
+            )
+            button.setFont(QFont("나눔스퀘어라운드 Bold", 10))
+            button.clicked.connect(partial(lambda x: self.sim_info_powersClicked(x), i))
+            self.sim4_info_powerButtons.append(button)
+
+        # 입력 완료, 저장
+        self.sim4_info_completeButton = QPushButton("입력 완료", self.sim4_frame_info)
+        self.sim4_info_completeButton.setGeometry(
+            self.sim_charInfo_complete_margin,
+            self.sim_charInfo_marginY * 3
+            + self.sim_charInfo_nickname_H
+            + self.sim_charInfo_char_H
+            + self.sim_charInfo_power_H
+            + self.sim_charInfo_complete_y,
+            self.sim_charInfo_complete_W,
+            self.sim_charInfo_complete_H,
+        )
+        self.sim4_info_completeButton.setStyleSheet(
+            f"""QPushButton {{
+            background-color: #70BB70;
+            border: 1px solid {self.sim_input_colors[1]};
+            border-radius: 8px;
+            }}
+            QPushButton:hover {{
+                background-color: #60A060;
+            }}"""
+        )
+        self.sim4_info_completeButton.setFont(QFont("나눔스퀘어라운드 Bold", 14))
+        self.sim4_info_completeButton.clicked.connect(self.sim_card_update)
+
+        self.sim4_info_saveButton = QPushButton("저장", self.sim4_frame_info)
+        self.sim4_info_saveButton.setGeometry(
+            self.sim_charInfo_save_margin,
+            self.sim_charInfo_marginY * 3
+            + self.sim_charInfo_nickname_H
+            + self.sim_charInfo_char_H
+            + self.sim_charInfo_power_H
+            + self.sim_charInfo_save_y,
+            self.sim_charInfo_save_W,
+            self.sim_charInfo_save_H,
+        )
+        self.sim4_info_saveButton.setStyleSheet(
+            f"""QPushButton {{
+            background-color: #FF8282;
+            border: 1px solid {self.sim_input_colors[1]};
+            border-radius: 8px;
+            }}
+            QPushButton:hover {{
+                background-color: #FF6060;
+            }}"""
+        )
+        self.sim4_info_saveButton.setFont(QFont("나눔스퀘어라운드 Bold", 14))
+        self.sim4_info_saveButton.clicked.connect(self.sim_card_save)
+
+        ## 캐릭터 카드
+        self.sim4_frame_card = QFrame(self.sim4_frame)
+        self.sim4_frame_card.setGeometry(
+            self.sim_char_margin * 3 + self.sim_charInfo_W,
+            self.sim_char_margin_y,
+            self.sim_charCard_W,
+            self.sim_charCard_H,
+        )
+        self.sim4_frame_card.setStyleSheet(
+            """QFrame {
+            background-color: #FFFFFF;
+            border: 3px solid #CCCCCC;
+            border-radius: 0px;
+        }"""
+        )
+
+        # 타이틀
+        self.sim4_card_title = QLabel("한월 캐릭터 카드", self.sim4_frame_card)
+        self.sim4_card_title.setGeometry(
+            0,
+            0,
+            self.sim_charCard_W,
+            self.sim_charCard_title_H,
+        )
+        self.sim4_card_title.setStyleSheet(
+            """QLabel {
+            background-color: #CADEFC;
+            border: 3px solid #CCCCCC;
+            border-bottom: 0px solid;
+            border-radius: 0px;
+        }"""
+        )
+        self.sim4_card_title.setFont(QFont("나눔스퀘어라운드 ExtraBold", 18))
+        self.sim4_card_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        # 이미지
+        self.sim4_card_image_bg = QLabel("", self.sim4_frame_card)
+        self.sim4_card_image_bg.setGeometry(
+            self.sim_charCard_image_margin,
+            self.sim_charCard_image_margin + self.sim_charCard_title_H,
+            self.sim_charCard_image_W,
+            self.sim_charCard_image_H,
+        )
+        self.sim4_card_image_bg.setStyleSheet(
+            """QLabel {
+            background-color: transparent;
+            border: 5px solid #AAAAAA;
+            border-radius: 5px;
+        }"""
+        )
+        self.sim4_card_image_bg.setScaledContents(True)
+
+        self.sim4_card_image = QLabel("", self.sim4_frame_card)
+        self.sim4_card_image.setGeometry(
+            self.sim_charCard_image_margin + 15,
+            self.sim_charCard_image_margin + self.sim_charCard_title_H + 15,
+            self.sim_charCard_image_W - 30,  # 126
+            self.sim_charCard_image_H - 30,  # 282
+        )
+        self.sim4_card_image.setStyleSheet(
+            """QLabel {
+            background-color: transparent;
+            border: 0px solid;
+        }"""
+        )
+        self.sim4_card_image.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.sim4_card_image.setScaledContents(True)
+
+        # 캐릭터 정보
+        self.sim4_card_name = QLabel("", self.sim4_frame_card)
+        self.sim4_card_name.setGeometry(
+            self.sim_charCard_name_margin,
+            self.sim_charCard_name_y,
+            self.sim_charCard_name_W,
+            self.sim_charCard_name_H,
+        )
+        self.sim4_card_name.setStyleSheet(
+            """QLabel {
+            background-color: transparent;
+            border: 0px solid;
+        }"""
+        )
+        self.sim4_card_name.setFont(QFont("나눔스퀘어라운드 ExtraBold", 18))
+        self.sim4_card_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.sim4_card_job = QLabel("", self.sim4_frame_card)
+        self.sim4_card_job.setGeometry(
+            self.sim_charCard_job_margin,
+            self.sim_charCard_job_y,
+            self.sim_charCard_job_W,
+            self.sim_charCard_job_H,
+        )
+        self.sim4_card_job.setStyleSheet(
+            """QLabel {
+            background-color: transparent;
+            border: 0px solid;
+        }"""
+        )
+        self.sim4_card_job.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
+        self.sim4_card_job.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.sim4_card_level = QLabel("", self.sim4_frame_card)
+        self.sim4_card_level.setGeometry(
+            self.sim_charCard_level_margin,
+            self.sim_charCard_level_y,
+            self.sim_charCard_level_W,
+            self.sim_charCard_level_H,
+        )
+        self.sim4_card_level.setStyleSheet(
+            """QLabel {
+            background-color: transparent;
+            border: 0px solid;
+        }"""
+        )
+        self.sim4_card_level.setFont(QFont("나눔스퀘어라운드 Bold", 12))
+        self.sim4_card_level.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.sim4_card_name_line = QFrame(self.sim4_frame_card)
+        self.sim4_card_name_line.setGeometry(
+            self.sim_charCard_name_margin + 10,
+            self.sim_charCard_name_y + self.sim_charCard_name_H,
+            self.sim_charCard_name_line_W,
+            1,
+        )
+        self.sim4_card_name_line.setStyleSheet(
+            """QFrame {
+            background-color: #CCCCCC;
+            border: 0px solid;
+        }"""
+        )
+
+        self.sim4_card_info_line = QFrame(self.sim4_frame_card)
+        self.sim4_card_info_line.setGeometry(
+            self.sim_charCard_level_margin + 1,
+            self.sim_charCard_level_y + 12,
+            1,
+            self.sim_charCard_info_line_H,
+        )
+        self.sim4_card_info_line.setStyleSheet(
+            """QFrame {
+            background-color: #CCCCCC;
+            border: 0px solid;
+        }"""
+        )
+
+        # 전투력
+        titles = ["보스데미지", "일반데미지", "보스", "사냥"]
+        self.sim4_card_powers = [[], [], [], []]
+        for i in range(4):
+            frame = QFrame(self.sim4_frame_card)
+            frame.setGeometry(
+                self.sim_charCard_powerFrame_margin,
+                self.sim_charCard_powerFrame_y + self.sim_charCard_powerFrame_H * i,
+                self.sim_charCard_powerFrame_W,
+                self.sim_charCard_powerFrame_H,
+            )
+            frame.setStyleSheet(
+                """QFrame {
+                background-color: transparent;
+                border: 0px solid;
+            }"""
+            )
+            self.sim4_card_powers[i].append(frame)
+
+            title = QLabel(titles[i], frame)
+            title.setStyleSheet(
+                f"""QLabel {{
+                    background-color: rgb({self.sim_colors4[i]});
+                    border: 1px solid rgb({self.sim_colors4[i]});
+                    border-top-left-radius: 4px;
+                    border-top-right-radius: 0px;
+                    border-bottom-left-radius: 4px;
+                    border-bottom-right-radius: 0px;
+                }}"""
+            )
+            title.setGeometry(0, 0, self.sim_charCard_power_title_W, self.sim_charCard_powerFrame_H)
+            title.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
+            title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.sim4_card_powers[i].append(title)
+
+            number = QLabel("", frame)
+            number.setStyleSheet(
+                f"""QLabel {{
+                    background-color: rgba({self.sim_colors4[i]}, 120);
+                    border: 1px solid rgb({self.sim_colors4[i]});
+                    border-left: 0px solid;
+                    border-top-left-radius: 0px;
+                    border-top-right-radius: 4px;
+                    border-bottom-left-radius: 0px;
+                    border-bottom-right-radius: 4px
+                }}"""
+            )
+            number.setGeometry(
+                self.sim_charCard_power_title_W,
+                0,
+                self.sim_charCard_power_number_W,
+                self.sim_charCard_powerFrame_H,
+            )
+            number.setFont(QFont("나눔스퀘어라운드 ExtraBold", 14))
+            number.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.sim4_card_powers[i].append(number)
+
+        # 메인 프레임 크기 조정
+        self.sim_mainFrame.setFixedHeight(
+            self.sim4_frame.y() + self.sim4_frame.height() + self.sim_mainFrameMargin,
+        )
+        [i.show() for i in self.page2.findChildren(QWidget)]
+        self.updatePosition()
 
     def makeSimulType3(self):
         self.removeSimulWidgets()
@@ -1431,6 +1995,170 @@ class MainWindow(QWidget):
         )
         [i.show() for i in self.page2.findChildren(QWidget)]
         self.updatePosition()
+
+    def sim_loadCharacterInfo(self):
+        self.sim_info_charData = None
+
+        try:
+            data = [
+                {"job": 0, "level": 200},
+                {"job": 2, "level": 190},
+                {"job": 0, "level": 180},
+            ]
+        except:
+            self.makeNoticePopup("SimCharLoadError")
+            return
+
+        for i, j in enumerate(data):
+            job, level = j["job"], j["level"]
+            if job == self.jobID:
+                self.sim4_info_charButtonList[i].setText(f"{self.jobList[self.serverID][job]} | Lv.{level}")
+                self.sim4_info_charButtonList[i].setStyleSheet(
+                    f"""QPushButton {{
+                    background-color: #FFFFFF;
+                    border: 1px solid {self.sim_input_colors[1]};
+                    border-radius: 8px;
+                    color: #000000;
+                    }}
+                    QPushButton:hover {{
+                        background-color: #F0F0F0;
+                    }}"""
+                )
+
+                self.sim4_info_charButtonList[i].clicked.connect(
+                    partial(lambda x, y: self.sim_selectCharacter(x, y), i, j)
+                )
+            else:
+                self.sim4_info_charButtonList[i].setText(f"{self.jobList[self.serverID][job]} | Lv.{level}")
+                self.sim4_info_charButtonList[i].setStyleSheet(
+                    f"""QPushButton {{
+                    background-color: #FFFFFF;
+                    border: 1px solid {self.sim_input_colors[1]};
+                    border-radius: 8px;
+                    color: rgb(153, 153, 153);
+                    }}"""
+                )
+
+                try:
+                    self.sim4_info_charButtonList[i].clicked.disconnect()
+                except:
+                    pass
+
+    def sim_selectCharacter(self, index, data):
+        self.sim_loadCharacterInfo()
+
+        self.sim_info_charData = data
+
+        self.sim4_info_charButtonList[index].setStyleSheet(
+            f"""QPushButton {{
+            background-color: #CCCCCC;
+            border: 1px solid {self.sim_input_colors[1]};
+            border-radius: 8px;
+            color: #000000;
+            }}"""
+        )
+
+    def sim_info_powersClicked(self, num):
+        self.sim_info_powerActive[num] = not self.sim_info_powerActive[num]
+
+        for i in range(4):
+            self.sim4_info_powerButtons[i].setStyleSheet(
+                f"""QPushButton {{
+                background-color: #FFFFFF;
+                border: 1px solid {self.sim_input_colors[1]};
+                border-radius: 5px;
+                color: {"#000000" if self.sim_info_powerActive[i] else "rgb(153, 153, 153)"};
+                }}
+                QPushButton:hover {{
+                    background-color: #F0F0F0;
+                }}"""
+            )
+
+    def sim_card_save(self):
+        if not self.sim_card_updated:
+            self.makeNoticePopup("SimCardNotUpdated")
+            return
+
+        scale_factor = 3
+        original_size = self.sim4_frame_card.size()
+        scaled_size = original_size * scale_factor
+
+        pixmap = QPixmap(scaled_size)
+        pixmap.fill()
+
+        painter = QPainter(pixmap)
+        painter.scale(scale_factor, scale_factor)
+        self.sim4_frame_card.render(painter)
+        painter.end()
+
+        # Open a file dialog to save the image
+        file_dialog = QFileDialog(self)
+        file_dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
+        file_dialog.setNameFilters(["Images (*.png *.jpg *.bmp)"])
+        file_dialog.setDefaultSuffix("png")
+        if file_dialog.exec():
+            file_path = file_dialog.selectedFiles()[0]
+            pixmap.save(file_path)
+            os.startfile(file_path)
+
+    def sim_card_update(self):
+        if self.sim_info_charData is None:
+            self.makeNoticePopup("SimCardError")
+            return
+
+        if not any(self.sim_info_powerActive):
+            self.makeNoticePopup("SimCardPowerError")
+            return
+
+        name = self.sim4_info_nicknameInput.text()
+        try:
+            response = requests.get(f"https://api.mojang.com/users/profiles/minecraft/{name}")
+            name = response.json()["name"]
+            url = f"https://starlightskins.lunareclipse.studio/render/default/{name}/full?renderScale=3.2"
+        except:
+            self.makeNoticePopup("SimCardError")
+            return
+
+        pixmap = QPixmap(convertResourcePath("resource\\image\\card_bg.png"))
+        self.sim4_card_image_bg.setPixmap(pixmap)
+        image = requests.get(url).content
+        pixmap = QPixmap()
+        pixmap.loadFromData(image)
+
+        h_ratio = 282 / pixmap.height()
+        width = round(pixmap.width() * h_ratio)
+        dWidth = width - (self.sim_charCard_image_W - 30)
+
+        self.sim4_card_image.setGeometry(
+            self.sim_charCard_image_margin + 15 - dWidth // 2,
+            self.sim_charCard_image_margin + self.sim_charCard_title_H + 15,
+            round(pixmap.width() * h_ratio),
+            self.sim_charCard_image_H - 30,
+        )
+        self.sim4_card_image.setPixmap(pixmap)
+
+        self.adjustFontSize(self.sim4_card_name, name, 18)
+        self.sim4_card_job.setText(self.jobList[self.serverID][self.jobID])
+        self.sim4_card_level.setText(f"Lv.{self.sim_info_charData["level"]}")
+
+        countF = self.sim_info_powerActive.count(False)
+        count = 0
+        for i in range(4):
+            if self.sim_info_powerActive[i]:
+                self.sim4_card_powers[i][0].setGeometry(
+                    self.sim_charCard_powerFrame_margin,
+                    self.sim_charCard_powerFrame_y + self.sim_charCard_powerFrame_H * count + 20 * countF,
+                    self.sim_charCard_powerFrame_W,
+                    self.sim_charCard_powerFrame_H,
+                )
+                self.sim4_card_powers[i][2].setText(f"{self.sim_powers[i]}")
+
+                self.sim4_card_powers[i][0].show()
+                count += 1
+            else:
+                self.sim4_card_powers[i][0].hide()
+
+        self.sim_card_updated = True
 
     def sim_returnTitleFrame(self, mainFrame, title):
         labelFrame = QFrame(mainFrame)
@@ -3010,38 +3738,38 @@ class MainWindow(QWidget):
         plt.rcParams["font.family"] = prop.get_name()
 
     ## 위젯 크기에 맞는 폰트로 변경
-    def adjustFontSize(self, label, text, maxSize):
-        label.setText(text)
+    def adjustFontSize(self, widget, text, maxSize, font_name="나눔스퀘어라운드 ExtraBold"):
+        widget.setText(text)
+        widget.setFont(QFont(font_name))
 
-        width = label.width()
-        height = label.height()
+        if "\n" in text:
+            text = text.split("\n")[0]
 
-        size = 1
+        if widget.width() == 0 or widget.height() == 0 or not text:
+            return
 
-        font = QFont("나눔스퀘어라운드 ExtraBold")
-        font.setBold(True)
-        font.setPointSize(size)
-        label.setFont(font)
+        font = widget.font()
+        font_size = 1
+        font.setPointSize(font_size)
+        metrics = QFontMetrics(font)
 
-        while (
-            label.fontMetrics().boundingRect(text).width() < width
-            and (
-                label.fontMetrics().boundingRect(text).height() * 2.6
-                if "\n" in text
-                else label.fontMetrics().boundingRect(text).height()
-            )
-            < height
-            and size <= maxSize
-        ):
-            font.setPointSize(size)
-            label.setFont(font)
-            size += 1
-            # print(label.fontMetrics().boundingRect(text).width(), width)
+        while font_size < maxSize:
+            text_width = metrics.horizontalAdvance(text)
+            text_height = metrics.height()
 
-        size -= 6 if (text.isdigit() or text.isupper()) else 3
-        size = size + 3 if "\n" in text else size
-        font.setPointSize(size)
-        label.setFont(font)
+            if isinstance(widget, QPushButton):
+                text_width += 4
+                text_height += 4
+
+            if text_width > widget.width() or text_height > widget.height():
+                break
+
+            font_size += 1
+            font.setPointSize(font_size)
+            metrics = QFontMetrics(font)
+
+        font.setPointSize(font_size - 1)
+        widget.setFont(font)
 
     ## 위젯 크기에 맞게 텍스트 자름
     def limitText(self, text, widget, margin=40) -> str:
@@ -3865,7 +4593,7 @@ class MainWindow(QWidget):
             label.setFixedSize(50, 50)
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             label.move(75 + 50 * i, 150)
-            self.adjustFontSize(label, texts[i], 20)
+            label.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
             label.show()
             self.skillSettingTexts.append(label)
 
@@ -4827,6 +5555,10 @@ class MainWindow(QWidget):
         RequireUpdate: 업데이트 필요
         FailedUpdateCheck: 업데이트 확인 실패
         SimInputError: 시뮬레이션 정보 입력 오류
+        SimCharLoadError: 캐릭터 데이터 불러오기 실패
+        SimCardError: 카드 생성 오류
+        SimCardPowerError: 카드 전투력 선택 안함
+        SimCardNotUpdated: 카드 정보 업데이트 필요
         """
         noticePopup = QFrame(self)
 
@@ -4888,6 +5620,18 @@ class MainWindow(QWidget):
                 icon = "warning"
             case "SimInputError":
                 text = f"시뮬레이션 정보가 올바르게 입력되지 않았습니다."
+                icon = "error"
+            case "SimCharLoadError":
+                text = f"캐릭터를 불러올 수 없습니다. 닉네임을 확인해주세요."
+                icon = "error"
+            case "SimCardError":
+                text = f"카드를 생성할 수 없습니다. 닉네임과 캐릭터를 확인해주세요."
+                icon = "error"
+            case "SimCardPowerError":
+                text = f"표시할 전투력 종류를 선택해주세요."
+                icon = "error"
+            case "SimCardNotUpdated":
+                text = f"캐릭터 정보를 입력하고 '입력완료' 버튼을 눌러주세요."
                 icon = "error"
 
         noticePopup.setStyleSheet("background-color: white; border-radius: 10px;")
@@ -5315,24 +6059,24 @@ class MainWindow(QWidget):
                     }}
                 """
             )
-            button.setFixedSize(round(30 * xSizeMultiple), round(30 * ySizeMultiple))
+            button.setFixedSize(30, 30)
             match column:
                 case 0:
-                    defaultX = round(115 * xSizeMultiple)
+                    defaultX = 115
                 case 1:
-                    defaultX = round(5 * xSizeMultiple)
+                    defaultX = 5
                 case 2:
-                    defaultX = round(50 * xSizeMultiple)
+                    defaultX = 50
                 case 3:
-                    defaultX = round(60 * xSizeMultiple)
+                    defaultX = 60
                 case 4:
-                    defaultX = round(80 * xSizeMultiple)
-            defaultY = round(5 * ySizeMultiple)
+                    defaultX = 80
+            defaultY = 5
 
             self.adjustFontSize(button, key, 20)
             button.move(
-                defaultX + row * round(35 * xSizeMultiple),
-                defaultY + column * round(35 * ySizeMultiple),
+                defaultX + row * 35,
+                defaultY + column * 35,
             )
             button.show()
 
@@ -5399,12 +6143,9 @@ class MainWindow(QWidget):
             button.move(x, y)
             button.show()
 
-        xSizeMultiple = self.width() / 960
-        ySizeMultiple = self.height() / 540
-
         self.settingPopupFrame = QFrame(self)
         self.settingPopupFrame.setStyleSheet("background-color: white; border-radius: 10px;")
-        self.settingPopupFrame.setFixedSize(round(635 * xSizeMultiple), round(215 * ySizeMultiple))
+        self.settingPopupFrame.setFixedSize(635, 215)
         self.settingPopupFrame.move(30, 30)
         self.settingPopupFrame.setGraphicsEffect(self.getShadow(0, 0, 30, 150))
         self.settingPopupFrame.show()
@@ -5430,30 +6171,30 @@ class MainWindow(QWidget):
         k4 = ["Z", "X", "C", "V", "B", "N", "M", ",", ".", "/"]
 
         for i, key in enumerate(k0):
-            x = round((5 + 35 * i) * xSizeMultiple)
+            x = 5 + 35 * i
             if i >= 1:
-                x += round(15 * xSizeMultiple)
+                x += 15
             if i >= 5:
-                x += round(15 * xSizeMultiple)
+                x += 15
             if i >= 9:
-                x += round(15 * xSizeMultiple)
+                x += 15
 
             if key == "Esc":
                 makeKey(
                     key,
                     x,
-                    round(5 * ySizeMultiple),
-                    round(30 * xSizeMultiple),
-                    round(30 * ySizeMultiple),
+                    5,
+                    30,
+                    30,
                     True,
                 )
             else:
                 makeKey(
                     key,
                     x,
-                    round(5 * ySizeMultiple),
-                    round(30 * xSizeMultiple),
-                    round(30 * ySizeMultiple),
+                    5,
+                    30,
+                    30,
                     self.isKeyUsing(key),
                 )
 
@@ -5464,19 +6205,19 @@ class MainWindow(QWidget):
             row += 1
         makeKey(
             "Back",
-            round(460 * xSizeMultiple),
-            round(40 * ySizeMultiple),
-            round(40 * xSizeMultiple),
-            round(30 * ySizeMultiple),
+            460,
+            40,
+            40,
+            30,
             True,
         )
 
         makeKey(
             "Tab",
-            round(5 * xSizeMultiple),
-            round(75 * ySizeMultiple),
-            round(40 * xSizeMultiple),
-            round(30 * ySizeMultiple),
+            5,
+            75,
+            40,
+            30,
             self.isKeyUsing("Tab"),
         )
         row = 0
@@ -5487,10 +6228,10 @@ class MainWindow(QWidget):
 
         makeKey(
             "Caps Lock",
-            round(5 * xSizeMultiple),
-            round(110 * ySizeMultiple),
-            round(50 * xSizeMultiple),
-            round(30 * ySizeMultiple),
+            5,
+            110,
+            50,
+            30,
             True,
         )
         row = 0
@@ -5500,19 +6241,19 @@ class MainWindow(QWidget):
             row += 1
         makeKey(
             "Enter",
-            round(445 * xSizeMultiple),
-            round(110 * ySizeMultiple),
-            round(55 * xSizeMultiple),
-            round(30 * ySizeMultiple),
+            445,
+            110,
+            55,
+            30,
             self.isKeyUsing("Enter"),
         )
 
         makeKey(
             "Shift",
-            round(5 * xSizeMultiple),
-            round(145 * ySizeMultiple),
-            round(70 * xSizeMultiple),
-            round(30 * ySizeMultiple),
+            5,
+            145,
+            70,
+            30,
             self.isKeyUsing("Shift"),
         )
         row = 0
@@ -5522,81 +6263,81 @@ class MainWindow(QWidget):
             row += 1
         makeKey(
             "Shift",
-            round(430 * xSizeMultiple),
-            round(145 * ySizeMultiple),
-            round(70 * xSizeMultiple),
-            round(30 * ySizeMultiple),
+            430,
+            145,
+            70,
+            30,
             self.isKeyUsing("Shift"),
         )
 
         makeKey(
             "Ctrl",
-            round(5 * xSizeMultiple),
-            round(180 * ySizeMultiple),
-            round(45 * xSizeMultiple),
-            round(30 * ySizeMultiple),
+            5,
+            180,
+            45,
+            30,
             self.isKeyUsing("Ctrl"),
         )
         makeImageKey(
             "Window",
-            round(55 * xSizeMultiple),
-            round(180 * ySizeMultiple),
-            round(45 * xSizeMultiple),
-            round(30 * ySizeMultiple),
+            55,
+            180,
+            45,
+            30,
             convertResourcePath("resource\\image\\window.png"),
-            round(32 * ySizeMultiple),
+            32,
             0,
             True,
         )
         makeKey(
             "Alt",
-            round(105 * xSizeMultiple),
-            round(180 * ySizeMultiple),
-            round(45 * xSizeMultiple),
-            round(30 * ySizeMultiple),
+            105,
+            180,
+            45,
+            30,
             self.isKeyUsing("Alt"),
         )
         makeKey(
             "Space",
-            round(155 * xSizeMultiple),
-            round(180 * ySizeMultiple),
-            round(145 * xSizeMultiple),
-            round(30 * ySizeMultiple),
+            155,
+            180,
+            145,
+            30,
             self.isKeyUsing("Space"),
         )
         makeKey(
             "Alt",
-            round(305 * xSizeMultiple),
-            round(180 * ySizeMultiple),
-            round(45 * xSizeMultiple),
-            round(30 * ySizeMultiple),
+            305,
+            180,
+            45,
+            30,
             self.isKeyUsing("Alt"),
         )
         makeImageKey(
             "Window",
-            round(355 * xSizeMultiple),
-            round(180 * ySizeMultiple),
-            round(45 * xSizeMultiple),
-            round(30 * ySizeMultiple),
+            355,
+            180,
+            45,
+            30,
             convertResourcePath("resource\\image\\window.png"),
-            round(32 * ySizeMultiple),
+            32,
             0,
             True,
         )
         makeKey(
             "Fn",
-            round(405 * xSizeMultiple),
-            round(180 * ySizeMultiple),
-            round(45 * xSizeMultiple),
-            round(30 * ySizeMultiple),
+            405,
+            180,
+            45,
+            30,
             True,
         )
         makeKey(
             "Ctrl",
-            round(455 * xSizeMultiple),
-            round(180 * ySizeMultiple),
-            round(45 * xSizeMultiple),
-            round(30 * ySizeMultiple),
+            455,
+            180,
+            45,
+            30,
             self.isKeyUsing("Ctrl"),
         )
 
@@ -5609,54 +6350,54 @@ class MainWindow(QWidget):
             for j1, j2 in enumerate(i2):
                 makeKey(
                     j2,
-                    round((530 + j1 * 35) * xSizeMultiple),
-                    round((5 + 35 * i1) * ySizeMultiple),
-                    round(30 * xSizeMultiple),
-                    round(30 * ySizeMultiple),
+                    530 + j1 * 35,
+                    5 + 35 * i1,
+                    30,
+                    30,
                     self.isKeyUsing(j2),
                 )
 
         makeImageKey(
             "Up",
-            round(565 * xSizeMultiple),
-            round(145 * ySizeMultiple),
-            round(30 * xSizeMultiple),
-            round(30 * ySizeMultiple),
+            565,
+            145,
+            30,
+            30,
             convertResourcePath("resource\\image\\arrow.png"),
-            round(16 * xSizeMultiple),
+            16,
             0,
             self.isKeyUsing("Up"),
         )
         makeImageKey(
             "Left",
-            round(530 * xSizeMultiple),
-            round(180 * ySizeMultiple),
-            round(30 * xSizeMultiple),
-            round(30 * ySizeMultiple),
+            530,
+            180,
+            30,
+            30,
             convertResourcePath("resource\\image\\arrow.png"),
-            round(16 * xSizeMultiple),
+            16,
             270,
             self.isKeyUsing("Left"),
         )
         makeImageKey(
             "Down",
-            round(565 * xSizeMultiple),
-            round(180 * ySizeMultiple),
-            round(30 * xSizeMultiple),
-            round(30 * ySizeMultiple),
+            565,
+            180,
+            30,
+            30,
             convertResourcePath("resource\\image\\arrow.png"),
-            round(16 * xSizeMultiple),
+            16,
             180,
             self.isKeyUsing("Down"),
         )
         makeImageKey(
             "Right",
-            round(600 * xSizeMultiple),
-            round(180 * ySizeMultiple),
-            round(30 * xSizeMultiple),
-            round(30 * ySizeMultiple),
+            600,
+            180,
+            30,
+            30,
             convertResourcePath("resource\\image\\arrow.png"),
-            round(16 * xSizeMultiple),
+            16,
             90,
             self.isKeyUsing("Right"),
         )
@@ -6155,10 +6896,13 @@ class MainWindow(QWidget):
             for i in self.selectableSkillImageButton:
                 i.setFixedSize(round(64 * (xMultSize + 1)), round(64 * (yMultSize + 1)))
                 i.setIconSize(QSize(min(i.width(), i.height()), min(i.width(), i.height())))
+
             for i, j in enumerate(self.selectableSkillImageName):
                 j.move(0, round(64 * (yMultSize + 1)))
                 j.setFixedSize(round(64 * (xMultSize + 1)), round(24 * (yMultSize + 1)))
-                self.adjustFontSize(j, self.skillNameList[self.serverID][self.jobID][i], 20)
+                j.setText(self.skillNameList[self.serverID][self.jobID][i])
+                j.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
+
             self.selectionSkillLine.move(20, round(309 + yAddedSize * 0.7))
             self.selectionSkillLine.setFixedSize(520 + xAddedSize, 1)
             for i, j in enumerate(self.selectedSkillFrame):
@@ -6258,6 +7002,9 @@ class MainWindow(QWidget):
                     deltaWidth // 2,
                     self.sim3_frame3.y() + self.sim3_frame3.height() + self.sim_main_D,
                 )
+
+            elif self.simType == 4:  # 캐릭터 카드
+                self.sim4_frame.move(deltaWidth // 2, 0)
 
         # 항상 업데이트
         self.labelCreator.move(2, self.height() - 25)
