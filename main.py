@@ -122,7 +122,18 @@ class MainWindow(QWidget):
             elif convertedKey in linkKeys and not self.isActivated:
                 for i in range(len(linkKeys)):
                     if convertedKey == linkKeys[i]:
-                        Thread(target=self.useLinkSkill, args=[i, self.loopNum]).start()
+                        skills = [
+                            self.linkSkillList[i][2][num][0] for num in range(len(self.linkSkillList[i][2]))
+                        ]
+
+                        canStart = True
+                        for skill in skills:
+                            if not skill in self.selectedSkillList:
+                                canStart = False
+                                break
+
+                        if canStart:
+                            Thread(target=self.useLinkSkill, args=[i, self.loopNum]).start()
 
                 time.sleep(0.25 * self.sleepCoefficient_normal)
             else:
@@ -3251,18 +3262,18 @@ class MainWindow(QWidget):
                     time.sleep(self.delay * 0.001 * self.sleepCoefficient_normal)
                     click()
                     slot = skill
-                    # time.sleep(self.delay * 0.001)
+                    time.sleep(self.delay * 0.001 * self.sleepCoefficient_normal)
                 else:
                     press(key)
                     slot = skill
-                    # time.sleep(self.delay * 0.001)
+                    time.sleep(self.delay * 0.001 * self.sleepCoefficient_normal)
             else:
                 if clickTF:
                     click()
-                    # time.sleep(self.delay * 0.001)
+                    time.sleep(self.delay * 0.001 * self.sleepCoefficient_normal)
                 else:
                     press(key)
-                    # time.sleep(self.delay * 0.001)
+                    time.sleep(self.delay * 0.001 * self.sleepCoefficient_normal)
 
             taskList.pop(0)
 
