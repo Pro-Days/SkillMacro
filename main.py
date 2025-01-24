@@ -97,7 +97,8 @@ class MainWindow(QWidget):
             # 링크스킬에 사용되는 키 리스트
             linkKeys = []
             for i in self.linkSkillList:
-                linkKeys.append(i[1])
+                if i["keyType"] == 1:
+                    linkKeys.append(i["key"])
 
             if self.isActivated:
                 self.afkTime0 = time.time()
@@ -123,7 +124,8 @@ class MainWindow(QWidget):
                 for i in range(len(linkKeys)):
                     if convertedKey == linkKeys[i]:
                         skills = [
-                            self.linkSkillList[i][2][num][0] for num in range(len(self.linkSkillList[i][2]))
+                            self.linkSkillList[i]["skills"][num][0]
+                            for num in range(len(self.linkSkillList[i]["skills"]))
                         ]
 
                         canStart = True
@@ -3153,10 +3155,10 @@ class MainWindow(QWidget):
         self.usingLinkSkillList = []
         self.usingLinkSkillComboList = []
         for i in self.linkSkillList:
-            if i[0] == 0:
+            if i["useType"] == 0:
                 self.usingLinkSkillList.append([])
                 self.usingLinkSkillComboList.append([])
-                for j in i[2]:
+                for j in i["skills"]:
                     x = self.convert7to5(j[0])
                     # if not (x in self.requireLinkSkillList[-1]):
                     self.usingLinkSkillList[-1].append(x)
@@ -3281,7 +3283,7 @@ class MainWindow(QWidget):
 
         slot = -1
         taskList = []
-        for i in self.linkSkillList[num][2]:
+        for i in self.linkSkillList[num]["skills"]:
             for _ in range(i[1]):
                 taskList.append(
                     [
@@ -3797,20 +3799,25 @@ class MainWindow(QWidget):
     def isKeyUsing(self, key) -> bool:
         key = key.replace("\n", "_")
         usingKey = []
+
         if self.activeStartKeySlot == 1:
             usingKey.append(self.inputStartKey)
         else:
             usingKey.append("F9")
-        if self.settingType == 3:
-            usingKey.append(self.ButtonLinkKey.text())
+
         for i in self.skillKeys:
             usingKey.append(i)
+
         for i in self.linkSkillList:
-            usingKey.append(i[1])
+            if i["keyType"] == 1:
+                usingKey.append(i["key"])
+
+        # if self.settingType == 3:
+        #     usingKey.append(self.ButtonLinkKey1.text())
 
         # print(usingKey, key)
 
-        return True if key in usingKey else False
+        return key in usingKey
 
     ## 프로그램 초기 UI 설정
     def initUI(self):
@@ -4108,9 +4115,9 @@ class MainWindow(QWidget):
             self.selectedSkillImageButton[num].setIcon(QIcon(pixmap))
 
             for i, j in enumerate(self.linkSkillList):
-                for k in j[2]:
+                for k in j["skills"]:
                     if k[0] == self.selectedSkillList[self.isSkillSelecting]:
-                        self.linkSkillList[i][0] = 1
+                        self.linkSkillList[i]["useType"] = 1
 
             if self.settingType == 2:
                 self.removeSetting2()
@@ -4178,9 +4185,9 @@ class MainWindow(QWidget):
                 self.settingSkillSequences[self.selectedSkillList[self.isSkillSelecting]].setText("-")
 
             for i, j in enumerate(self.linkSkillList):
-                for k in j[2]:
+                for k in j["skills"]:
                     if k[0] == self.selectedSkillList[self.isSkillSelecting]:
-                        self.linkSkillList[i][0] = 1
+                        self.linkSkillList[i]["useType"] = 1
 
         self.selectedSkillList[self.isSkillSelecting] = num
 
@@ -4398,7 +4405,8 @@ class MainWindow(QWidget):
         self.ButtonLinkType0.deleteLater()
         self.ButtonLinkType1.deleteLater()
         self.labelLinkKey.deleteLater()
-        self.ButtonLinkKey.deleteLater()
+        self.ButtonLinkKey0.deleteLater()
+        self.ButtonLinkKey1.deleteLater()
         self.linkSkillLineA.deleteLater()
         self.linkSkillPlus.deleteLater()
         self.linkSkillCancelButton.deleteLater()
@@ -4702,7 +4710,7 @@ class MainWindow(QWidget):
             button.show()
             self.settingSkillSequences.append(button)
 
-    ## 사이드바 타입 -> 연계설정으로 변경
+    ## 사이드바 타입 -> 연계설정 스킬 목록으로 변경
     def changeSettingTo2(self):
         self.disablePopup()
 
@@ -4754,7 +4762,7 @@ class MainWindow(QWidget):
             self.settingLines.append(line)
 
             am_dp = QFrame(self.sidebarFrame)  # auto, manual 표시 프레임
-            if j[0]:
+            if j["useType"]:
                 am_dp.setStyleSheet(
                     "QFrame { background-color: #0000ff; border: 0px solid black; border-radius: 2px; }"
                 )
@@ -4767,11 +4775,11 @@ class MainWindow(QWidget):
             am_dp.show()
             self.settingAMDP.append(am_dp)
 
-            imageCount = min(len(j[2]), 12)
+            imageCount = min(len(j["skills"]), 12)
             if imageCount <= 3:
-                for k in range(len(j[2])):
+                for k in range(len(j["skills"])):
                     button = QPushButton("", self.sidebarFrame)
-                    pixmap = QPixmap(self.getSkillImage(j[2][k][0], j[2][k][1]))
+                    pixmap = QPixmap(self.getSkillImage(j["skills"][k][0], j["skills"][k][1]))
                     button.setIcon(QIcon(pixmap))
                     button.setIconSize(QSize(48, 48))
                     button.setStyleSheet("QPushButton { background-color: transparent;}")
@@ -4780,9 +4788,9 @@ class MainWindow(QWidget):
                     button.show()
                     self.settingSkillPreview.append(button)
             elif imageCount <= 6:
-                for k in range(len(j[2])):
+                for k in range(len(j["skills"])):
                     button = QPushButton("", self.sidebarFrame)
-                    pixmap = QPixmap(self.getSkillImage(j[2][k][0], j[2][k][1]))
+                    pixmap = QPixmap(self.getSkillImage(j["skills"][k][0], j["skills"][k][1]))
                     button.setIcon(QIcon(pixmap))
                     button.setIconSize(QSize(24, 24))
                     button.setStyleSheet("QPushButton { background-color: transparent;}")
@@ -4796,7 +4804,7 @@ class MainWindow(QWidget):
 
                 for k in range(line1):
                     button = QPushButton("", self.sidebarFrame)
-                    pixmap = QPixmap(self.getSkillImage(j[2][k][0], j[2][k][1]))
+                    pixmap = QPixmap(self.getSkillImage(j["skills"][k][0], j["skills"][k][1]))
                     button.setIcon(QIcon(pixmap))
                     button.setIconSize(QSize(24, 24))
                     button.setStyleSheet("QPushButton { background-color: transparent;}")
@@ -4806,7 +4814,7 @@ class MainWindow(QWidget):
                     self.settingSkillPreview.append(button)
                 for k in range(line2):
                     button = QPushButton("", self.sidebarFrame)
-                    pixmap = QPixmap(self.getSkillImage(j[2][k + line1][0], j[2][k + line1][1]))
+                    pixmap = QPixmap(self.getSkillImage(j["skills"][k + line1][0], j["skills"][k + line1][1]))
                     button.setIcon(QIcon(pixmap))
                     button.setIconSize(QSize(24, 24))
                     button.setStyleSheet("QPushButton { background-color: transparent;}")
@@ -4815,12 +4823,16 @@ class MainWindow(QWidget):
                     button.show()
                     self.settingSkillPreview.append(button)
 
-            button = QPushButton(j[1], self.sidebarFrame)
+            if j["keyType"] == 0:
+                text = ""
+            else:
+                text = j["key"]
+            button = QPushButton(text, self.sidebarFrame)
             button.setStyleSheet("QPushButton { background-color: transparent; border: 0px; }")
             button.setFixedSize(50, 50)
             button.move(182, 201 + 51 * i)
             button.show()
-            self.adjustFontSize(button, j[1], 20)
+            self.adjustFontSize(button, text, 20)
             self.settingSkillKey.append(button)
 
             button = QPushButton("", self.sidebarFrame)
@@ -4874,7 +4886,7 @@ class MainWindow(QWidget):
         """
         )
 
-        self.sidebarFrame.setFixedSize(300, 390 + 51 * len(data[2]))
+        self.sidebarFrame.setFixedSize(300, 390 + 51 * len(data["skills"]))
 
         self.linkSkillPreviewFrame = QFrame(self.sidebarFrame)
         self.linkSkillPreviewFrame.setStyleSheet(
@@ -4898,7 +4910,7 @@ class MainWindow(QWidget):
 
         self.ButtonLinkType0 = QPushButton("자동", self.sidebarFrame)
         self.ButtonLinkType0.clicked.connect(lambda: self.setLinkSkillToAuto(data))
-        if data[0]:
+        if data["useType"]:
             self.ButtonLinkType0.setStyleSheet("color: #999999;")
         else:
             self.ButtonLinkType0.setStyleSheet("color: #000000;")
@@ -4909,7 +4921,7 @@ class MainWindow(QWidget):
 
         self.ButtonLinkType1 = QPushButton("수동", self.sidebarFrame)
         self.ButtonLinkType1.clicked.connect(lambda: self.setLinkSkillToManual(data))
-        if data[0]:
+        if data["useType"]:
             self.ButtonLinkType1.setStyleSheet("color: #000000;")
         else:
             self.ButtonLinkType1.setStyleSheet("color: #999999;")
@@ -4925,12 +4937,27 @@ class MainWindow(QWidget):
         self.labelLinkKey.move(40, 235)
         self.labelLinkKey.show()
 
-        self.ButtonLinkKey = QPushButton(data[1], self.sidebarFrame)
-        self.ButtonLinkKey.clicked.connect(lambda: self.setLinkSkillKey(data))
-        self.ButtonLinkKey.setFixedSize(50, 30)
-        self.adjustFontSize(self.ButtonLinkKey, data[1], 30)
-        self.ButtonLinkKey.move(210, 235)
-        self.ButtonLinkKey.show()
+        self.ButtonLinkKey0 = QPushButton("설정안함", self.sidebarFrame)
+        self.ButtonLinkKey0.clicked.connect(lambda: self.setLinkSkillKey(data, 0))
+        self.ButtonLinkKey0.setFixedSize(50, 30)
+        self.ButtonLinkKey0.setFont(QFont("나눔스퀘어라운드 ExtraBold", 8))
+        if data["keyType"] == 0:
+            self.ButtonLinkKey0.setStyleSheet("color: #000000;")
+        else:
+            self.ButtonLinkKey0.setStyleSheet("color: #999999;")
+        self.ButtonLinkKey0.move(155, 235)
+        self.ButtonLinkKey0.show()
+
+        self.ButtonLinkKey1 = QPushButton(data["key"], self.sidebarFrame)
+        self.ButtonLinkKey1.clicked.connect(lambda: self.setLinkSkillKey(data, 1))
+        self.ButtonLinkKey1.setFixedSize(50, 30)
+        self.adjustFontSize(self.ButtonLinkKey1, data["key"], 30)
+        if data["keyType"] == 0:
+            self.ButtonLinkKey1.setStyleSheet("color: #999999;")
+        else:
+            self.ButtonLinkKey1.setStyleSheet("color: #000000;")
+        self.ButtonLinkKey1.move(210, 235)
+        self.ButtonLinkKey1.show()
 
         self.linkSkillLineA = QFrame(self.sidebarFrame)
         self.linkSkillLineA.setStyleSheet("QFrame { background-color: #b4b4b4;}")
@@ -4942,7 +4969,7 @@ class MainWindow(QWidget):
         self.linkSkillCount = []
         self.linkSkillLineB = []
         self.linkSkillRemove = []
-        for i, j in enumerate(data[2]):
+        for i, j in enumerate(data["skills"]):
             skill = QPushButton("", self.sidebarFrame)
             skill.clicked.connect(partial(lambda x: self.editLinkSkillType(x), (data, i)))
             # skill.setStyleSheet("background-color: transparent;")
@@ -5007,21 +5034,21 @@ class MainWindow(QWidget):
         self.linkSkillPlus.setIcon(QIcon(pixmap))
         self.linkSkillPlus.setIconSize(QSize(24, 24))
         self.linkSkillPlus.setFixedSize(36, 36)
-        self.linkSkillPlus.move(132, 289 + 51 * len(data[2]))
+        self.linkSkillPlus.move(132, 289 + 51 * len(data["skills"]))
         self.linkSkillPlus.show()
 
         self.linkSkillCancelButton = QPushButton("취소", self.sidebarFrame)
         self.linkSkillCancelButton.clicked.connect(self.cancelEditingLinkSkill)
         self.linkSkillCancelButton.setFixedSize(120, 32)
         self.linkSkillCancelButton.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
-        self.linkSkillCancelButton.move(15, 350 + 51 * len(data[2]))
+        self.linkSkillCancelButton.move(15, 350 + 51 * len(data["skills"]))
         self.linkSkillCancelButton.show()
 
         self.linkSkillSaveButton = QPushButton("저장", self.sidebarFrame)
         self.linkSkillSaveButton.clicked.connect(lambda: self.saveEditingLinkSkill(data))
         self.linkSkillSaveButton.setFixedSize(120, 32)
         self.linkSkillSaveButton.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
-        self.linkSkillSaveButton.move(165, 350 + 51 * len(data[2]))
+        self.linkSkillSaveButton.move(165, 350 + 51 * len(data["skills"]))
         self.linkSkillSaveButton.show()
 
     ## 사이드바 타입3 새로고침
@@ -5065,11 +5092,11 @@ class MainWindow(QWidget):
         self.disablePopup()
         data, num, i = var
 
-        if data[2][num][0] == i:
+        if data["skills"][num][0] == i:
             return
-        data[2][num][0] = i
-        data[2][num][1] = 1
-        data[0] = 1
+        data["skills"][num][0] = i
+        data["skills"][num][1] = 1
+        data["useType"] = 1
         self.reloadSetting3(data)
 
     ## 링크스킬 목록에서 하나 삭제
@@ -5077,20 +5104,22 @@ class MainWindow(QWidget):
         self.disablePopup()
         data, num = var
 
-        if len(data[2]) == 1:
+        if len(data["skills"]) == 1:
             return
-        del data[2][num]
-        data[0] = 1
+        del data["skills"][num]
+        data["useType"] = 1
         self.reloadSetting3(data)
 
     ## 링크스킬 저장
     def saveEditingLinkSkill(self, data):
         self.disablePopup()
 
-        if data[3] == -1:
-            self.linkSkillList.append(data[:3])
+        num = data["num"]
+        data.pop("num")
+        if num == -1:
+            self.linkSkillList.append(data)
         else:
-            self.linkSkillList[data[3]] = data[:3]
+            self.linkSkillList[num] = data
 
         self.dataSave()
         self.removeSetting3()
@@ -5110,7 +5139,7 @@ class MainWindow(QWidget):
         def checkRemain():
             skillID = 0
             maxSkill = self.skillComboCountList[self.serverID][self.jobID][skillID]
-            for i in data[2]:
+            for i in data["skills"]:
                 skill = i[0]
                 count = i[1]
                 if skill == skillID:
@@ -5125,8 +5154,8 @@ class MainWindow(QWidget):
         remainSkill = checkRemain()
         if remainSkill == -1:
             self.makeNoticePopup("exceedMaxLinkSkill")
-        data[2].append([0, 1])
-        data[0] = 1
+        data["skills"].append([0, 1])
+        data["useType"] = 1
         self.reloadSetting3(data)
 
     ## 링크스킬 사용 횟수 설정
@@ -5138,7 +5167,7 @@ class MainWindow(QWidget):
             return
         self.activatePopup("editLinkSkillCount")
 
-        count = self.skillComboCountList[self.serverID][self.jobID][data[2][num][0]]
+        count = self.skillComboCountList[self.serverID][self.jobID][data["skills"][num][0]]
 
         self.settingPopupFrame = QFrame(self.sidebarFrame)
         self.settingPopupFrame.setStyleSheet("QFrame { background-color: white; border-radius: 10px; }")
@@ -5159,9 +5188,9 @@ class MainWindow(QWidget):
     ## 링크스킬 사용 횟수 팝업창 클릭시 실행
     def onLinkSkillCountPopupClick(self, var):
         def checkRemain():
-            skillID = data[2][num][0]
+            skillID = data["skills"][num][0]
             maxSkill = self.skillComboCountList[self.serverID][self.jobID][skillID]
-            for i in data[2]:
+            for i in data["skills"]:
                 skill = i[0]
                 count = i[1]
                 if skill == skillID:
@@ -5174,24 +5203,30 @@ class MainWindow(QWidget):
         self.disablePopup()
         data, num, i = var
 
-        data[2][num][1] = i
+        data["skills"][num][1] = i
         if checkRemain() == -1:
             self.makeNoticePopup("exceedMaxLinkSkill")
-        data[0] = 1
+        data["useType"] = 1
         self.reloadSetting3(data)
 
     ## 링크스킬 키 설정
-    def setLinkSkillKey(self, data):
-        self.activatePopup("settingLinkSkillKey")
-        self.makeKeyboardPopup(("LinkSkill", data))
+    def setLinkSkillKey(self, data, num):
+        if num == 0:
+            data["keyType"] = 0
+            self.reloadSetting3(data)
+        else:
+            self.activatePopup("settingLinkSkillKey")
+            self.makeKeyboardPopup(("LinkSkill", data))
 
     ## 링크스킬 자동으로 설정
     def setLinkSkillToAuto(self, data):
         self.disablePopup()
-        if data[0] == 0:
+        if data["useType"] == 0:
             return
 
-        for i in data[2]:
+        num = data["num"]
+
+        for i in data["skills"]:
             if not (i[0] in self.selectedSkillList):
                 self.makeNoticePopup("skillNotSelected")
                 return
@@ -5202,30 +5237,31 @@ class MainWindow(QWidget):
         #         self.makeNoticePopup("skillNotUsing")
         #         return
         if len(self.linkSkillList) != 0:
-            prevData = copy.deepcopy(self.linkSkillList[data[3]])
-            self.linkSkillList[data[3]] = data[:3]
+            prevData = copy.deepcopy(self.linkSkillList[num])
+            self.linkSkillList[num] = copy.deepcopy(data)
+            self.linkSkillList[num].pop("num")
             autoSkillList = []
             for i in self.linkSkillList:
-                if i[0] == 0:
-                    for j in range(len(i[2])):
-                        autoSkillList.append(i[2][j][0])
-            self.linkSkillList[data[3]] = prevData
+                if i["useType"] == 0:
+                    for j in range(len(i["skills"])):
+                        autoSkillList.append(i["skills"][j][0])
+            self.linkSkillList[num] = prevData
 
-            for i in range(len(data[2])):
-                if data[2][i][0] in autoSkillList:
+            for i in range(len(data["skills"])):
+                if data["skills"][i][0] in autoSkillList:
                     self.makeNoticePopup("autoAlreadyExist")
                     return
 
-        data[0] = 0
+        data["useType"] = 0
         self.reloadSetting3(data)
 
     ## 링크스킬 수동으로 설정
     def setLinkSkillToManual(self, data):
         self.disablePopup()
-        if data[0] == 1:
+        if data["useType"] == 1:
             return
 
-        data[0] = 1
+        data["useType"] = 1
         self.reloadSetting3(data)
 
     ## 링크스킬 미리보기 생성
@@ -5233,10 +5269,10 @@ class MainWindow(QWidget):
         for i in self.linkSkillPreviewList:
             i.deleteLater()
 
-        count = len(data[2])
+        count = len(data["skills"])
         if count <= 6:
             x1 = round((288 - 48 * count) * 0.5)
-            for i, j in enumerate(data[2]):
+            for i, j in enumerate(data["skills"]):
                 skill = QPushButton("", self.linkSkillPreviewFrame)
                 skill.setStyleSheet("background-color: transparent;")
                 pixmap = QPixmap(self.getSkillImage(j[0], j[1]))
@@ -5249,7 +5285,7 @@ class MainWindow(QWidget):
                 self.linkSkillPreviewList.append(skill)
         else:
             size = round(288 / count)
-            for i, j in enumerate(data[2]):
+            for i, j in enumerate(data["skills"]):
                 skill = QPushButton("", self.linkSkillPreviewFrame)
                 skill.setStyleSheet("background-color: transparent;")
                 pixmap = QPixmap(self.getSkillImage(j[0], j[1]))
@@ -5276,7 +5312,7 @@ class MainWindow(QWidget):
         self.cancelSkillSelection()
 
         data = copy.deepcopy(self.linkSkillList[num])
-        data.append(num)
+        data["num"] = num
         self.removeSetting2()
         self.settingType = -1
         self.changeSettingTo3(data)
@@ -5292,7 +5328,15 @@ class MainWindow(QWidget):
         self.disablePopup()
         self.cancelSkillSelection()
 
-        data = [1, findKey(), [[0, 1]], -1]
+        data = {
+            "useType": 1,
+            "keyType": 0,
+            "key": findKey(),
+            "skills": [
+                [0, 1],
+            ],
+            "num": -1,
+        }
         self.removeSetting2()
         self.settingType = -1
         self.changeSettingTo3(data)
@@ -6806,7 +6850,8 @@ class MainWindow(QWidget):
 
         self.disablePopup()
 
-        data[1] = key
+        data["key"] = key
+        data["keyType"] = 1
         self.reloadSetting3(data)
 
     ## 스킬 단축키용 가상키보드 키 클릭시 실행
@@ -7082,11 +7127,12 @@ class MainWindow(QWidget):
                     self.skillPriority = [data["usageSettings"][i][3] for i in range(8)]
 
                     ## linkSettings
-                    self.linkSkillList = [[] for _ in range(len(data["linkSettings"]))]
-                    for i, j in enumerate(self.linkSkillList):
-                        j.append(data["linkSettings"][i]["type"])
-                        j.append(data["linkSettings"][i]["key"])
-                        j.append(data["linkSettings"][i]["skills"])
+                    # self.linkSkillList = [[] for _ in range(len(data["linkSettings"]))]
+                    # for i, j in enumerate(self.linkSkillList):
+                    #     j.append(data["linkSettings"][i]["type"])
+                    #     j.append(data["linkSettings"][i]["key"])
+                    #     j.append(data["linkSettings"][i]["skills"])
+                    self.linkSkillList = data["linkSettings"]
 
                     ## info
                     self.info_stats = data["info"]["stats"]
@@ -7173,12 +7219,7 @@ class MainWindow(QWidget):
             data["usageSettings"][i][2] = self.comboCount[i]
             data["usageSettings"][i][3] = self.skillPriority[i]
 
-        data["linkSettings"] = []
-        for i in range(len(self.linkSkillList)):
-            data["linkSettings"].append({})
-            data["linkSettings"][i]["type"] = self.linkSkillList[i][0]
-            data["linkSettings"][i]["key"] = self.linkSkillList[i][1]
-            data["linkSettings"][i]["skills"] = self.linkSkillList[i][2]
+        data["linkSettings"] = self.linkSkillList
 
         data["info"]["stats"] = self.info_stats
         data["info"]["skills"] = self.info_skills
@@ -7243,6 +7284,13 @@ class MainWindow(QWidget):
     def dataUpdate(self):
         def update_1to2():
             jsonObject["version"] = 2
+
+            for i in range(len(jsonObject["preset"])):
+                for j in range(len(jsonObject["preset"][i]["linkSettings"])):
+                    jsonObject["preset"][i]["linkSettings"][j]["useType"] = jsonObject["preset"][i][
+                        "linkSettings"
+                    ][j].pop("type")
+                    jsonObject["preset"][i]["linkSettings"][j]["keyType"] = 1
 
             for i in range(len(jsonObject["preset"])):
                 jsonObject["preset"][i]["info"] = {}
