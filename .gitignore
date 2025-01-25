@@ -1,4 +1,6 @@
 .venv/
+venv_matplotlib/
+requirements_m.txt
 .vscode/
 build/
 dist/
