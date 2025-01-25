@@ -2128,7 +2128,7 @@ class MainWindow(QWidget):
                     self.sim_charCard_powerFrame_W,
                     self.sim_charCard_powerFrame_H,
                 )
-                self.sim4_card_powers[i][2].setText(f"{self.sim_powers[i]}")
+                self.sim4_card_powers[i][2].setText(f"{int(self.sim_powers[i])}")
 
                 self.sim4_card_powers[i][0].show()
                 count += 1
