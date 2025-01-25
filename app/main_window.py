@@ -395,6 +395,10 @@ class MainWindow(QWidget):
         plt.close("all")
 
     def makeSimulType4(self):
+        if not (self.sim_stat_inputCheck and self.sim_skill_inputCheck and self.sim_simInfo_inputCheck):
+            self.makeNoticePopup("SimInputError")
+            return
+
         self.removeSimulWidgets()
         self.sim_updateNavButton(3)
 
@@ -402,18 +406,6 @@ class MainWindow(QWidget):
 
         self.sim_card_updated = False
 
-        constants = (
-            self.shared_data.SKILL_COMBO_COUNT_LIST,
-            self.shared_data.serverID,
-            self.shared_data.jobID,
-            self.shared_data.selectedSkillList,
-            self.shared_data.SKILL_ATTACK_DATA,
-            self.shared_data.NAEGONG_DIFF,
-            self.shared_data.COEF_BOSS_DMG,
-            self.shared_data.COEF_NORMAL_DMG,
-            self.shared_data.COEF_BOSS,
-            self.shared_data.COEF_NORMAL,
-        )
         self.sim_powers = simulateMacro(
             self.shared_data,
             tuple(self.shared_data.info_stats),
@@ -421,7 +413,7 @@ class MainWindow(QWidget):
             tuple(self.shared_data.info_simInfo),
             1,
         )
-        self.sim_powers = [str(int(i)) for i in self.sim_powers]
+        # self.sim_powers = [str(int(i)) for i in self.sim_powers]
 
         # 스펙업 효율 계산기
         self.sim4_frame = QFrame(self.sim_mainFrame)
@@ -897,23 +889,15 @@ class MainWindow(QWidget):
         self.updatePosition()
 
     def makeSimulType3(self):
+        if not (self.sim_stat_inputCheck and self.sim_skill_inputCheck and self.sim_simInfo_inputCheck):
+            self.makeNoticePopup("SimInputError")
+            return
+
         self.removeSimulWidgets()
         self.sim_updateNavButton(2)
 
         self.shared_data.sim_type = 3
 
-        constants = (
-            self.shared_data.SKILL_COMBO_COUNT_LIST,
-            self.shared_data.serverID,
-            self.shared_data.jobID,
-            self.shared_data.selectedSkillList,
-            self.shared_data.SKILL_ATTACK_DATA,
-            self.shared_data.NAEGONG_DIFF,
-            self.shared_data.COEF_BOSS_DMG,
-            self.shared_data.COEF_NORMAL_DMG,
-            self.shared_data.COEF_BOSS,
-            self.shared_data.COEF_NORMAL,
-        )
         # print(self.shared_data.info_simInfo)
         self.sim_powers = simulateMacro(
             self.shared_data,
@@ -922,7 +906,7 @@ class MainWindow(QWidget):
             tuple(self.shared_data.info_simInfo),
             1,
         )
-        self.sim_powers = [str(int(i)) for i in self.sim_powers]
+        # self.sim_powers = [str(int(i)) for i in self.sim_powers]
 
         self.widgetList = []
         self.sim_skill_inputCheck = False
@@ -1284,7 +1268,7 @@ class MainWindow(QWidget):
                 tuple(self.shared_data.info_simInfo),
                 1,
             )
-            diff_powers = [int(powers[i]) - int(self.sim_powers[i]) for i in range(4)]
+            diff_powers = [round(powers[i] - self.sim_powers[i], 5) for i in range(4)]
 
             for i in range(4):
                 texts[i].append([key, diff_powers[i]])
@@ -1295,7 +1279,7 @@ class MainWindow(QWidget):
                 if texts[i][j][1] == 0:
                     texts[i][j] = ["", "", ""]
                 else:
-                    texts[i][j][1] = f"+{texts[i][j][1]}"
+                    texts[i][j][1] = f"+{round(texts[i][j][1])}"
                     texts[i][j].insert(0, str(j + 1))
         [texts[i].insert(0, ["순위", "잠재능력", "전투력"]) for i in range(4)]
 
@@ -1506,19 +1490,6 @@ class MainWindow(QWidget):
         self.sim_updateNavButton(1)
 
         self.shared_data.sim_type = 2
-
-        constants = (
-            self.shared_data.SKILL_COMBO_COUNT_LIST,
-            self.shared_data.serverID,
-            self.shared_data.jobID,
-            self.shared_data.selectedSkillList,
-            self.shared_data.SKILL_ATTACK_DATA,
-            self.shared_data.NAEGONG_DIFF,
-            self.shared_data.COEF_BOSS_DMG,
-            self.shared_data.COEF_NORMAL_DMG,
-            self.shared_data.COEF_BOSS,
-            self.shared_data.COEF_NORMAL,
-        )
 
         self.sim_powers, analysis, resultDet, results = simulateMacro(
             self.shared_data,
@@ -2255,19 +2226,6 @@ class MainWindow(QWidget):
             self.sim_potential_stat2.currentText(),
         ]
 
-        constants = (
-            self.shared_data.SKILL_COMBO_COUNT_LIST,
-            self.shared_data.serverID,
-            self.shared_data.jobID,
-            self.shared_data.selectedSkillList,
-            self.shared_data.SKILL_ATTACK_DATA,
-            self.shared_data.NAEGONG_DIFF,
-            self.shared_data.COEF_BOSS_DMG,
-            self.shared_data.COEF_NORMAL_DMG,
-            self.shared_data.COEF_BOSS,
-            self.shared_data.COEF_NORMAL,
-        )
-
         stats = self.shared_data.info_stats.copy()
         for i in range(3):
             num, value = self.shared_data.POTENTIAL_STAT_LIST[indexList[i]]
@@ -2281,7 +2239,7 @@ class MainWindow(QWidget):
             1,
         )
 
-        diff_powers = [int(powers[i]) - int(self.sim_powers[i]) for i in range(4)]
+        diff_powers = [round(powers[i] - self.sim_powers[i]) for i in range(4)]
 
         [self.sim_potential_power_list[i][2].setText(f"{diff_powers[i]:+}") for i in range(4)]
 
@@ -2294,19 +2252,6 @@ class MainWindow(QWidget):
                 for i in range(4)
             ]
             return
-
-        constants = (
-            self.shared_data.SKILL_COMBO_COUNT_LIST,
-            self.shared_data.serverID,
-            self.shared_data.jobID,
-            self.shared_data.selectedSkillList,
-            self.shared_data.SKILL_ATTACK_DATA,
-            self.shared_data.NAEGONG_DIFF,
-            self.shared_data.COEF_BOSS_DMG,
-            self.shared_data.COEF_NORMAL_DMG,
-            self.shared_data.COEF_BOSS,
-            self.shared_data.COEF_NORMAL,
-        )
 
         stats = self.shared_data.info_stats.copy()
         stats[self.sim_efficiency_statL.currentIndex()] += int(self.sim_efficiency_statInput.text())
@@ -2477,28 +2422,15 @@ class MainWindow(QWidget):
             skills = self.shared_data.info_skills.copy()
             skills = [skills[i] + int(self.sim_skill_inputs[i].text()) for i in range(len(skills))]
 
-            constants = (
-                self.shared_data.SKILL_COMBO_COUNT_LIST,
-                self.shared_data.serverID,
-                self.shared_data.jobID,
-                self.shared_data.selectedSkillList,
-                self.shared_data.SKILL_ATTACK_DATA,
-                self.shared_data.NAEGONG_DIFF,
-                self.shared_data.COEF_BOSS_DMG,
-                self.shared_data.COEF_NORMAL_DMG,
-                self.shared_data.COEF_BOSS,
-                self.shared_data.COEF_NORMAL,
-            )
-
             powers = simulateMacro(
                 self.shared_data, tuple(stats), tuple(skills), tuple(self.shared_data.info_simInfo), 1
             )
 
-            diff_powers = [int(powers[i]) - int(self.sim_powers[i]) for i in range(4)]
+            diff_powers = [powers[i] - self.sim_powers[i] for i in range(4)]
 
             [
                 self.sim_additional_power_list[i][2].setText(
-                    f"{int(powers[i]):}\n({diff_powers[i]:+}, {diff_powers[i] / int(self.sim_powers[i]) * 100:+.1f}%)"
+                    f"{int(powers[i]):}\n({round(diff_powers[i]):+}, {round(diff_powers[i] / self.sim_powers[i] * 100, 2):+.1f}%)"
                 )
                 for i in range(4)
             ]

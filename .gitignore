@@ -1,6 +1,5 @@
 .venv/
 venv_matplotlib/
-requirements_m.txt
 .vscode/
 build/
 dist/
@@ -14,3 +13,6 @@ SkillMacro.spec
 testCodes/
 app/__pycache__/
 app/utils/__pycache__/
+
+requirements_m.txt
+requirements_temp.txt
