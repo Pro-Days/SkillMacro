@@ -13,6 +13,7 @@ SkillMacro.spec
 testCodes/
 app/__pycache__/
 app/utils/__pycache__/
+upx/
 
 requirements_m.txt
 requirements_temp.txt
