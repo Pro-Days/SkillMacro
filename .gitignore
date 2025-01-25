@@ -10,3 +10,5 @@ pyinstaller/
 v2/
 SkillMacro.spec
 testCodes/
+app/__pycache__/
+app/utils/__pycache__/
