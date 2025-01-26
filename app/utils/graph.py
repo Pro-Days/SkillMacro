@@ -104,7 +104,12 @@ class DpsDistributionCanvas(FigureCanvas):
                     bars[median_idx].set_facecolor(self.colors["median"])
                     self.draw()
 
+        def on_figure_leave(event):
+            annotation.set_visible(False)
+            self.draw()
+
         self.mpl_connect("motion_notify_event", on_hover)
+        self.mpl_connect("figure_leave_event", on_figure_leave)
         self.draw()
 
     def calculate_median(self, data):
@@ -157,6 +162,11 @@ class DpsDistributionCanvas(FigureCanvas):
 
         return counts, bins
 
+    def wheelEvent(self, event):
+        """Override wheelEvent to propagate to the parent widget."""
+        event.ignore()  # Ignore this event in FigureCanvas
+        self.parent().wheelEvent(event)  # Pass the event to the parent widget
+
 
 class SkillDpsDistributionCanvas(FigureCanvas):
 
@@ -196,6 +206,11 @@ class SkillDpsDistributionCanvas(FigureCanvas):
             text.set_fontsize(10)
 
         self.draw()
+
+    def wheelEvent(self, event):
+        """Override wheelEvent to propagate to the parent widget."""
+        event.ignore()  # Ignore this event in FigureCanvas
+        self.parent().wheelEvent(event)  # Pass the event to the parent widget
 
 
 class DMGCanvas(FigureCanvas):
@@ -263,6 +278,7 @@ class DMGCanvas(FigureCanvas):
 
         # Connect the hover event
         self.mpl_connect("motion_notify_event", self.on_hover)
+        self.mpl_connect("figure_leave_event", self.on_figure_leave)
 
     def on_hover(self, event):
         if event.inaxes == self.ax:
@@ -282,6 +298,15 @@ class DMGCanvas(FigureCanvas):
         else:
             self.annotation.set_visible(False)
             self.draw()
+
+    def on_figure_leave(self, event):
+        self.annotation.set_visible(False)
+        self.draw()
+
+    def wheelEvent(self, event):
+        """Override wheelEvent to propagate to the parent widget."""
+        event.ignore()  # Ignore this event in FigureCanvas
+        self.parent().wheelEvent(event)  # Pass the event to the parent widget
 
 
 class SkillContributionCanvas(FigureCanvas):
@@ -364,10 +389,12 @@ class SkillContributionCanvas(FigureCanvas):
 
         # Connect the hover event
         self.mpl_connect("motion_notify_event", self.on_hover)
+        self.mpl_connect("figure_leave_event", self.on_figure_leave)
 
     def on_hover(self, event):
         if event.inaxes == self.ax:
             x, y = event.xdata, event.ydata
+            self.annotation.xy = (x, y)
 
             index = abs(self.data["time"] - x).argmin()
             closest_x = self.data["time"][index]
@@ -376,10 +403,19 @@ class SkillContributionCanvas(FigureCanvas):
             for i in reversed(range(self.skillCount)):
                 values.append(f"{self.skill_names[i]}: {self.data["skills_normalized"][i][index] * 100:.1f}%")
 
-            self.annotation.xy = (x, y)
             self.annotation.set_text(f"시간: {closest_x:.1f}\n\n" + "\n".join(values))
+
             self.annotation.set_visible(True)
             self.draw()
         else:
             self.annotation.set_visible(False)
             self.draw()
+
+    def on_figure_leave(self, event):
+        self.annotation.set_visible(False)
+        self.draw()
+
+    def wheelEvent(self, event):
+        """Override wheelEvent to propagate to the parent widget."""
+        event.ignore()  # Ignore this event in FigureCanvas
+        self.parent().wheelEvent(event)  # Pass the event to the parent widget
