@@ -57,7 +57,7 @@ class DpsDistributionCanvas(FigureCanvas):
             xy=(0, 0),
             xytext=(-24, 10),
             textcoords="offset points",
-            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="black", lw=1),
+            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="black", lw=1, alpha=0.5),
             # arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=0"),
         )
         annotation.set_visible(False)
@@ -257,7 +257,7 @@ class DMGCanvas(FigureCanvas):
             xy=(0, 0),
             xytext=(-24, 10),
             textcoords="offset points",
-            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="black", lw=1),
+            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="black", lw=1, alpha=0.5),
         )
         self.annotation.set_visible(False)
 
@@ -278,10 +278,10 @@ class DMGCanvas(FigureCanvas):
                 f"시간: {closest_x:.1f}\n최대: {max_val:.1f}\n평균: {mean_val:.1f}\n최소: {min_val:.1f}"
             )
             self.annotation.set_visible(True)
-            self.draw_idle()
+            self.draw()
         else:
             self.annotation.set_visible(False)
-            self.draw_idle()
+            self.draw()
 
 
 class SkillContributionCanvas(FigureCanvas):
@@ -358,7 +358,7 @@ class SkillContributionCanvas(FigureCanvas):
             xy=(0, 0),
             xytext=(-24, 10),
             textcoords="offset points",
-            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="black", lw=1),
+            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="black", lw=1, alpha=0.5),
         )
         self.annotation.set_visible(False)
 
@@ -368,6 +368,7 @@ class SkillContributionCanvas(FigureCanvas):
     def on_hover(self, event):
         if event.inaxes == self.ax:
             x, y = event.xdata, event.ydata
+
             index = abs(self.data["time"] - x).argmin()
             closest_x = self.data["time"][index]
 
@@ -378,7 +379,7 @@ class SkillContributionCanvas(FigureCanvas):
             self.annotation.xy = (x, y)
             self.annotation.set_text(f"시간: {closest_x:.1f}\n\n" + "\n".join(values))
             self.annotation.set_visible(True)
-            self.draw_idle()
+            self.draw()
         else:
             self.annotation.set_visible(False)
-            self.draw_idle()
+            self.draw()
