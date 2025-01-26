@@ -53,7 +53,7 @@ class MainWindow(QWidget):
 
         set_default_fonts()
         self.shared_data = SharedData()
-        self.setWindowIcon(QIcon(QPixmap(convertResourcePath("resources\\image\\icon\\icon.ico"))))
+        self.setWindowIcon(QIcon(QPixmap(convertResourcePath("resources\\image\\icon.ico"))))
 
         dataUpdate()
         dataLoad(self.shared_data)

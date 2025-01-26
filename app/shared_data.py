@@ -1,6 +1,5 @@
 import json
 from dataclasses import dataclass
-from PyQt6.QtGui import QIcon, QPixmap
 from .utils.data_manager import convertResourcePath
 
 
@@ -27,7 +26,7 @@ class SharedData:
     COEF_NORMAL = 0.7
 
     UNIT_TIME = 0.05  # 1tick
-    IS_AFK_ENABLED = False  # AFK 모드 활성화 여부: 정식 버전에서는 True로 변경
+    IS_AFK_ENABLED = True  # AFK 모드 활성화 여부: 정식 버전에서는 True로 변경
     MIN_DELAY = 50
     MAX_DELAY = 1000
     MIN_COOLTIME = 0
