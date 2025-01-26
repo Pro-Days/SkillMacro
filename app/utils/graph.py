@@ -106,6 +106,11 @@ class DpsDistributionCanvas(FigureCanvas):
 
         def on_figure_leave(event):
             annotation.set_visible(False)
+            for bar in bars:
+                bar.set_facecolor(self.colors["normal"])
+            for i in range(center_start, center_start + 5):
+                bars[i].set_facecolor(self.colors["center5"])
+            bars[median_idx].set_facecolor(self.colors["median"])
             self.draw()
 
         self.mpl_connect("motion_notify_event", on_hover)

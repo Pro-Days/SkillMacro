@@ -4584,7 +4584,6 @@ class MainWindow(QWidget):
             [noticePopup, frameHeight, self.shared_data.active_error_popup_count]
         )
         self.shared_data.active_error_popup_count += 1
-        self.shared_data.active_error_popup_count += 1
 
     ## 알림 창 제거
     def removeNoticePopup(self, num=-1):
