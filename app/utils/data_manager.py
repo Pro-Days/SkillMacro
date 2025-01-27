@@ -258,13 +258,16 @@ def dataUpdate():
             jsonObject["preset"][i]["info"]["skills"] = [1] * 8
             jsonObject["preset"][i]["info"]["simInfo"] = [1, 1, 100]
 
-    with open(fileDir, "r", encoding="UTF8") as f:
-        jsonObject = json.load(f)
+    try:
+        with open(fileDir, "r", encoding="UTF8") as f:
+            jsonObject = json.load(f)
 
-    if not "version" in jsonObject:
-        update_1to2()
-    # if jsonObject["version"] == 2:
-    #     update_2to3()
+        if not "version" in jsonObject:
+            update_1to2()
+        # if jsonObject["version"] == 2:
+        #     update_2to3()
 
-    with open(fileDir, "w", encoding="UTF8") as f:
-        json.dump(jsonObject, f)
+        with open(fileDir, "w", encoding="UTF8") as f:
+            json.dump(jsonObject, f)
+    except:
+        dataMake()

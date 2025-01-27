@@ -6,7 +6,7 @@ from .utils.data_manager import convertResourcePath
 @dataclass(unsafe_hash=True)
 class SharedData:
     # 상수 설정
-    VERSION = "v3.1.0-alpha"
+    VERSION = "3.1.0-beta.1"
 
     DEFAULT_WINDOW_WIDTH = 960
     DEFAULT_WINDOW_HEIGHT = 540

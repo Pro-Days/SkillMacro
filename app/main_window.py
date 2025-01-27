@@ -155,8 +155,8 @@ class MainWindow(QWidget):
         self.sim_dps_height = 300
 
         self.sim_skillDps_margin = 20
-        self.sim_skillDps_width = self.sim_dps_width
-        self.sim_skillDps_height = self.sim_dps_height
+        self.sim_skillRatio_width = self.sim_dps_width
+        self.sim_skillRatio_height = self.sim_dps_height
 
         self.sim_dmg_margin = 25
         self.sim_dmg_width = 880
@@ -1674,15 +1674,15 @@ class MainWindow(QWidget):
         self.sim_dpsGraph.move(5, 5)
         self.sim_dpsGraph.resize(self.sim_dps_width - 10, self.sim_dps_height - 10)
 
-        ## 스킬 DPS
-        self.sim_skillDpsGraph_frame = QFrame(self.sim2_frame2)
-        self.sim_skillDpsGraph_frame.setGeometry(
+        ## 스킬 비율
+        self.sim_skillRatioGraph_frame = QFrame(self.sim2_frame2)
+        self.sim_skillRatioGraph_frame.setGeometry(
             self.sim_dps_margin + self.sim_dps_width + self.sim_skillDps_margin,
             self.sim_label_H + self.sim_analysis_frame_H + self.sim_widget_D * 2,
-            self.sim_skillDps_width,
-            self.sim_skillDps_height,
+            self.sim_skillRatio_width,
+            self.sim_skillRatio_height,
         )
-        self.sim_skillDpsGraph_frame.setStyleSheet(
+        self.sim_skillRatioGraph_frame.setStyleSheet(
             "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
         )
         data = [sum([i[2] for i in resultDet if i[0] == num]) for num in list(range(6)) + [-1]]
@@ -1697,9 +1697,9 @@ class MainWindow(QWidget):
                 )
             else:
                 names.append(None)
-        self.sim_skillDpsGraph = SkillDpsDistributionCanvas(self.sim_skillDpsGraph_frame, data, names)
-        self.sim_skillDpsGraph.move(10, 10)
-        self.sim_skillDpsGraph.resize(self.sim_skillDps_width - 20, self.sim_skillDps_height - 20)
+        self.sim_skillRatioGraph = SkillDpsRatioCanvas(self.sim_skillRatioGraph_frame, data, names)
+        self.sim_skillRatioGraph.move(10, 10)
+        self.sim_skillRatioGraph.resize(self.sim_skillRatio_width - 20, self.sim_skillRatio_height - 20)
 
         ## 시간 경과에 따른 피해량
         self.sim_dmgTime_frame = QFrame(self.sim2_frame2)

@@ -173,7 +173,7 @@ class DpsDistributionCanvas(FigureCanvas):
         self.parent().wheelEvent(event)  # Pass the event to the parent widget
 
 
-class SkillDpsDistributionCanvas(FigureCanvas):
+class SkillDpsRatioCanvas(FigureCanvas):
 
     def __init__(self, parent, data, skill_name):
         fig, self.ax = plt.subplots()
@@ -204,7 +204,7 @@ class SkillDpsDistributionCanvas(FigureCanvas):
         )
 
         # Customizing the plot
-        self.ax.set_title("스킬 DPS", fontsize=14)
+        self.ax.set_title("스킬 비율", fontsize=14)
 
         # Adjust text size
         for text in texts:
