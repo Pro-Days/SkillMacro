@@ -5,12 +5,9 @@ on:
   pull_request:
 
 jobs:
-  pyinstaller-build:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Create Executable
         uses: sayyid5416/pyinstaller@v1
         with:
@@ -21,16 +18,13 @@ jobs:
           upload_exe_with_name: 'SkillMacro'
           options: -F, -w, --upx-dir "./upx", -i "./app/resources/image/icon.ico", --add-data="app;app"
 
-      - name: Set up Go
-        uses: actions/setup-go@v4
+      - name: Checkout Repo
+        uses: actions/checkout@v4
 
-      - name: Build
-        run: |
-          GOOS=windows GOARCH=386 go build -o ./ghaction-virustotal-win32.exe -v -ldflags "-s -w"
-          GOOS=windows GOARCH=amd64 go build -o ./ghaction-virustotal-win64.exe -v -ldflags "-s -w"
-
-      - name: VirusTotal Scan
-        uses: crazy-max/ghaction-virustotal@v4
+      - name: Run VirusTotal Link Checker
+        uses: arddluma/gh-action-virustotal-link-checker@v1.0.0
         with:
-          vt_api_key: ${{ secrets.VT_API_KEY }}
-          files: ./dist/SkillMacro.exe
+            virustotal-api-key: ${{ secrets.VT_API_KEY }}
+            filename: './dist/SkillMacro.exe'
+            malicious_threshold: 1
+            suspicious_threshold: 1
