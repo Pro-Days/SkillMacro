@@ -15,7 +15,7 @@ jobs:
         with:
           python_ver: '3.12'
           pyinstaller_ver: '==6.9.0'
-          spec: 'SkillMacro.spec'
+          spec: 'SkillMacro.py'
           requirements: 'requirements.txt'
           upload_exe_with_name: 'SkillMacro'
-          options: -F, -w
+          options: -F, -w, --upx-dir ".\upx\", -i=".\app\resources\image\icon.ico", --add-data "app;app"
