@@ -6,25 +6,26 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
-      - name: Create Executable
-        uses: sayyid5416/pyinstaller@v1
-        with:
-          python_ver: '3.12'
-          pyinstaller_ver: '==6.9.0'
-          spec: 'SkillMacro.py'
-          requirements: 'requirements.txt'
-          upload_exe_with_name: 'SkillMacro'
-          options: -F, -w, --upx-dir "./upx", -i "./app/resources/image/icon.ico", --add-data="app;app"
-
-      - name: Checkout Repo
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Run VirusTotal Link Checker
-        uses: arddluma/gh-action-virustotal-link-checker@v1.0.0
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-            virustotal-api-key: ${{ secrets.VT_API_KEY }}
-            filename: './dist/SkillMacro.exe'
-            malicious_threshold: 1
-            suspicious_threshold: 1
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller==6.9.0
+          pip install -r requirements.txt
+
+      - name: Create Executable
+        run: pyinstaller --upx-dir "./upx" -F -w --clean -i="./app/resources/image/icon.ico" --add-data "app;app" SkillMacro.py
+
+      - name: Upload Executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: SkillMacro
