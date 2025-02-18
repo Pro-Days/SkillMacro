@@ -2,14 +2,15 @@ name: Package exe with PyInstaller - Windows
 
 on:
   push:
-    branches: [ main ]
   pull_request:
-    branches: [ main ]
 
 jobs:
   pyinstaller-build:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Create Executable
         uses: sayyid5416/pyinstaller@v1
         with:
@@ -18,4 +19,18 @@ jobs:
           spec: 'SkillMacro.py'
           requirements: 'requirements.txt'
           upload_exe_with_name: 'SkillMacro'
-          options: -F, -w, --upx-dir ".\upx", -i ".\app\resources\image\icon.ico", --add-data "app;app"
+          options: -F, -w, --upx-dir "./upx", -i "./app/resources/image/icon.ico", --add-data "app;app"
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+
+      - name: Build
+        run: |
+          GOOS=windows GOARCH=386 go build -o ./ghaction-virustotal-win32.exe -v -ldflags "-s -w"
+          GOOS=windows GOARCH=amd64 go build -o ./ghaction-virustotal-win64.exe -v -ldflags "-s -w"
+
+      - name: VirusTotal Scan
+        uses: crazy-max/ghaction-virustotal@v4
+        with:
+          vt_api_key: ${{ secrets.VT_API_KEY }}
+          files: ./dist/SkillMacro.exe
