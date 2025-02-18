@@ -23,9 +23,9 @@ jobs:
           pip install -r requirements.txt
 
       - name: Create Executable
-        run: pyinstaller --upx-dir "./upx" -F -w --clean -i="./app/resources/image/icon.ico" --add-data "app;app" SkillMacro.py
+        run: pyinstaller --upx-dir ".\upx" -F -w --clean -i=".\app\resources\image\icon.ico" --add-data "app;app" SkillMacro.py
 
       - name: Upload Executable
         uses: actions/upload-artifact@v4
         with:
-          name: SkillMacro
+          name: .\dist\SkillMacro.exe
