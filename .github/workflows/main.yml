@@ -18,4 +18,4 @@ jobs:
           spec: 'SkillMacro.spec'
           requirements: 'requirements.txt'
           upload_exe_with_name: 'SkillMacro'
-          options: --onefile, --name "SkillMacro", --windowed
+          options: -F, -w
