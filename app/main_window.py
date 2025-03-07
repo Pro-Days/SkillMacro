@@ -1,5 +1,4 @@
 from .utils.data_manager import *
-from .utils.version_checker import *
 from .shared_data import SharedData
 from .utils.set_font import *
 from .utils.run_macro import *
@@ -20,8 +19,8 @@ from functools import partial
 
 import matplotlib.pyplot as plt
 
-from PyQt6.QtCore import QSize, Qt, QThread, QTimer, pyqtSlot
-from PyQt6.QtGui import (
+from PySide6.QtCore import QSize, Qt, QThread, QTimer
+from PySide6.QtGui import (
     QPen,
     QFont,
     QIcon,
@@ -32,7 +31,7 @@ from PyQt6.QtGui import (
     QTransform,
     QFontMetrics,
 )
-from PyQt6.QtWidgets import (
+from PySide6.QtWidgets import (
     QFrame,
     QLabel,
     QWidget,
@@ -60,7 +59,6 @@ class MainWindow(QWidget):
 
         self.initUI()
 
-        self.checkVersion()
         self.activateThread()
 
     ## 서브 쓰레드 실행
@@ -68,7 +66,10 @@ class MainWindow(QWidget):
         Thread(target=check_kb_pressed, args=[self.shared_data], daemon=True).start()
 
         self.previewTimer = QTimer(self)
-        self.previewTimer.singleShot(16, self.tick)
+        self.previewTimer.singleShot(100, self.tick)
+
+        self.versionTimer = QTimer(self)
+        self.versionTimer.singleShot(100, self.checkVersionThread)
 
     def changeLayout(self, num):
         self.windowLayout.setCurrentIndex(num)
@@ -2552,34 +2553,21 @@ class MainWindow(QWidget):
         # elif e.key() == Qt.Key.Key_L:
         #     print(self.getSimulatedSKillList())
 
-    def checkVersion(self):
-        """
-        버전 확인
-        """
+    def checkVersionThread(self):
+        try:
+            response = requests.get("https://api.github.com/repos/pro-days/skillmacro/releases/latest")
+            if response.status_code == 200:
+                self.recentVersion = response.json()["name"]
+                self.updateUrl = response.json()["html_url"]
+            else:
+                self.recentVersion = "FailedUpdateCheck"
+        except:
+            self.recentVersion = "FailedUpdateCheck"
 
-        self.worker = VersionChecker()
-
-        self.thread = QThread()
-        self.worker.moveToThread(self.thread)
-        self.thread.start()
-        self.worker.versionChecked.connect(self.onVersionChecked)
-
-        self.delayTimer = QTimer()
-        self.delayTimer.setSingleShot(True)
-        self.delayTimer.timeout.connect(self.worker.checkVersion)
-        self.delayTimer.start(1000)
-
-    @pyqtSlot(str)
-    def onVersionChecked(self, recentVersion):
-        """
-        버전이 확인 되었을 때 실행
-        """
-
-        if recentVersion == "FailedUpdateCheck":
+        if self.recentVersion == "FailedUpdateCheck":
             self.makeNoticePopup("FailedUpdateCheck")
-        elif recentVersion != self.shared_data.VERSION:
-            self.recentVersion = recentVersion
-            self.update_url = self.worker.updateUrl
+
+        elif self.recentVersion != self.shared_data.VERSION:
             self.makeNoticePopup("RequireUpdate")
 
     ## 위젯 크기에 맞는 폰트로 변경

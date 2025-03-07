@@ -4,7 +4,7 @@ from .data_manager import convertResourcePath
 import matplotlib.pyplot as plt
 from matplotlib import font_manager as fm
 
-# from PyQt6.QtGui import QFontDatabase
+from PySide6.QtGui import QFontDatabase
 
 
 def set_default_fonts():
@@ -13,7 +13,8 @@ def set_default_fonts():
     """
 
     # "나눔스퀘어라운드 ExtraBold"
-    # QFontDatabase.addApplicationFont(convertResourcePath("resources\\font\\NSR_B.ttf"))
+    QFontDatabase.addApplicationFont(convertResourcePath("resources\\font\\NSR_B.ttf"))
+    QFontDatabase.addApplicationFont(convertResourcePath("resources\\font\\NSR_EB.ttf"))
 
     font_path = convertResourcePath("resources\\font\\NSR_B.ttf")
     fm.fontManager.addfont(font_path)
