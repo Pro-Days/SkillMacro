@@ -1,19 +1,37 @@
-name: Package exe with PyInstaller - Windows
+name: Build exe file with Nuitka
 
 on:
   push:
   pull_request:
 
 jobs:
-  pyinstaller-build:
+
+  build:
     runs-on: windows-latest
+
     steps:
-      - name: Create Executable
-        uses: sayyid5416/pyinstaller@v1
+
+      # Check-out repository
+      - uses: actions/checkout@v4
+
+      # Setup Python
+      - uses: actions/setup-python@v5
         with:
-          python_ver: '3.12'
-          pyinstaller_ver: '==6.9.0'
-          spec: 'SkillMacro.py'
-          requirements: 'requirements.txt'
-          upload_exe_with_name: 'SkillMacro'
-          options: -F, -w, --upx-dir ".\upx", -i ".\app\resources\image\icon.ico", --add-data "app;app"
+          python-version: '3.12' # Version range or exact version of a Python version to use, using SemVer's version range syntax
+          architecture: 'x64' # optional x64 or x86. Defaults to x64 if not specified
+
+      # Build python script into a single execute or app folder (macOS)
+      - uses: Nuitka/Nuitka-Action@main
+        with:
+          nuitka-version: main
+          script-name: SkillMacro.py
+          mode: standalone
+          enable-plugins: pyside6
+
+      # Uploads artifact
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: exe
+          path: build/SkillMacro.exe
+          include-hidden-files: true
