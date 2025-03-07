@@ -29,9 +29,11 @@ jobs:
         with:
           nuitka-version: main
           script-name: SkillMacro.py
-          mode: standalone
+          mode: onefile
           enable-plugins: pyside6
           include-data-dir: app=app
+          windows-console-mode: disable
+          windows-icon-from-ico: app/resources/image/icon.ico
 
       # Uploads artifact
       - name: Upload Artifact
