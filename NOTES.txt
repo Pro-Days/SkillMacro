@@ -148,7 +148,7 @@ pip uninstall -r requirements_temp.txt -y
 (4. 총 회복량)
 
 ### 그래프 분석
-1. DPS 분포 (1)
+1. DPM 분포 (1)
 2. 스킬 DPS (연계스킬 포함, 원) (1)
 3. 시간 경과에 따른 피해량 (2)
 4. 누적 피해량 (2)

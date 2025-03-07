@@ -1659,7 +1659,7 @@ class MainWindow(QWidget):
                 detail_number.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.sim_analysis_list[i][4][j].append(detail_number)
 
-        ## DPS 분포
+        ## DPM 분포
         self.sim_dpsGraph_frame = QFrame(self.sim2_frame2)
         self.sim_dpsGraph_frame.setGeometry(
             self.sim_dps_margin,

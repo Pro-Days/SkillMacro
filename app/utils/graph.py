@@ -26,7 +26,7 @@ class DpsDistributionCanvas(FigureCanvas):
         bars = self.ax.bar(bins[:-1], counts, width=bin_width, align="edge", bottom=0)
 
         # Customizing the plot similar to the image
-        self.ax.set_title("DPS 분포")
+        self.ax.set_title("DPM 분포")
         self.ax.yaxis.set_major_locator(mtick.MaxNLocator(integer=True))
         # self.ax.set_xlabel("DPS")
         # self.ax.set_ylabel("반복 횟수")
