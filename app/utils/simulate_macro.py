@@ -1,6 +1,5 @@
 import random
 import time
-import multiprocessing
 from functools import lru_cache
 from .run_macro import initMacro, addTaskList
 

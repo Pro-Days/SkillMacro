@@ -19,7 +19,7 @@ from functools import partial
 
 import matplotlib.pyplot as plt
 
-from PyQt6.QtCore import QSize, Qt, QThread, QTimer
+from PyQt6.QtCore import QSize, Qt, QTimer
 from PyQt6.QtGui import (
     QPen,
     QFont,
