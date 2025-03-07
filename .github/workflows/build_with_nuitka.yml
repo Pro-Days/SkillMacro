@@ -31,11 +31,12 @@ jobs:
           script-name: SkillMacro.py
           mode: standalone
           enable-plugins: pyside6
+          include-data-dir: app=app
 
       # Uploads artifact
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: exe
+          name: skillmacro
           path: build/*
           include-hidden-files: true
