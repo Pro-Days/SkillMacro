@@ -4,7 +4,7 @@ from .data_manager import convertResourcePath
 import matplotlib.pyplot as plt
 from matplotlib import font_manager as fm
 
-from PySide6.QtGui import QFontDatabase
+from PyQt6.QtGui import QFontDatabase
 
 
 def set_default_fonts():

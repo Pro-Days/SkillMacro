@@ -19,8 +19,8 @@ from functools import partial
 
 import matplotlib.pyplot as plt
 
-from PySide6.QtCore import QSize, Qt, QThread, QTimer
-from PySide6.QtGui import (
+from PyQt6.QtCore import QSize, Qt, QThread, QTimer
+from PyQt6.QtGui import (
     QPen,
     QFont,
     QIcon,
@@ -31,7 +31,7 @@ from PySide6.QtGui import (
     QTransform,
     QFontMetrics,
 )
-from PySide6.QtWidgets import (
+from PyQt6.QtWidgets import (
     QFrame,
     QLabel,
     QWidget,

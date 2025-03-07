@@ -30,7 +30,7 @@ jobs:
           nuitka-version: main
           script-name: SkillMacro.py
           mode: onefile
-          enable-plugins: pyside6
+          enable-plugins: pyqt6
           include-data-dir: app=app
           windows-console-mode: disable
           windows-icon-from-ico: app/resources/image/icon.ico
