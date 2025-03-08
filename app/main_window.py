@@ -391,9 +391,12 @@ class MainWindow(QWidget):
             for i in comboboxList:
                 i.showPopup()
                 i.hidePopup()
+
         [i.deleteLater() for i in self.sim_mainFrame.findChildren(QWidget)]
         self.shared_data.sim_type = 0
+
         plt.close("all")
+        plt.clf()
 
     def makeSimulType4(self):
         if not (self.sim_stat_inputCheck and self.sim_skill_inputCheck and self.sim_simInfo_inputCheck):
@@ -407,12 +410,11 @@ class MainWindow(QWidget):
 
         self.sim_card_updated = False
 
-        self.sim_powers = simulateMacro(
+        self.sim_powers = detSimulate(
             self.shared_data,
             tuple(self.shared_data.info_stats),
             tuple(self.shared_data.info_skills),
             tuple(self.shared_data.info_simInfo),
-            1,
         )
         # self.sim_powers = [str(int(i)) for i in self.sim_powers]
 
@@ -900,12 +902,11 @@ class MainWindow(QWidget):
         self.shared_data.sim_type = 3
 
         # print(self.shared_data.info_simInfo)
-        self.sim_powers = simulateMacro(
+        self.sim_powers = detSimulate(
             self.shared_data,
             tuple(self.shared_data.info_stats),
             tuple(self.shared_data.info_skills),
             tuple(self.shared_data.info_simInfo),
-            1,
         )
         # self.sim_powers = [str(int(i)) for i in self.sim_powers]
 
@@ -1262,12 +1263,11 @@ class MainWindow(QWidget):
             stats = self.shared_data.info_stats.copy()
             stats[num] += value
 
-            powers = simulateMacro(
+            powers = detSimulate(
                 self.shared_data,
                 tuple(stats),
                 tuple(self.shared_data.info_skills),
                 tuple(self.shared_data.info_simInfo),
-                1,
             )
             diff_powers = [round(powers[i] - self.sim_powers[i], 5) for i in range(4)]
 
@@ -1492,12 +1492,11 @@ class MainWindow(QWidget):
 
         self.shared_data.sim_type = 2
 
-        self.sim_powers, analysis, resultDet, results = simulateMacro(
+        self.sim_powers, analysis, resultDet, results = randSimulate(
             self.shared_data,
             tuple(self.shared_data.info_stats),
             tuple(self.shared_data.info_skills),
             tuple(self.shared_data.info_simInfo),
-            random.random(),
         )
 
         # 전투력
@@ -2232,12 +2231,11 @@ class MainWindow(QWidget):
             num, value = self.shared_data.POTENTIAL_STAT_LIST[indexList[i]]
             stats[num] += value
 
-        powers = simulateMacro(
+        powers = detSimulate(
             self.shared_data,
             tuple(stats),
             tuple(self.shared_data.info_skills),
             tuple(self.shared_data.info_simInfo),
-            1,
         )
 
         diff_powers = [round(powers[i] - self.sim_powers[i]) for i in range(4)]
@@ -2256,12 +2254,11 @@ class MainWindow(QWidget):
 
         stats = self.shared_data.info_stats.copy()
         stats[self.sim_efficiency_statL.currentIndex()] += int(self.sim_efficiency_statInput.text())
-        powers = simulateMacro(
+        powers = detSimulate(
             self.shared_data,
             tuple(stats),
             tuple(self.shared_data.info_skills),
             tuple(self.shared_data.info_simInfo),
-            1,
         )
         reqStats = getRequiredStat(self.shared_data, powers, self.sim_efficiency_statR.currentIndex())
 
@@ -2423,8 +2420,8 @@ class MainWindow(QWidget):
             skills = self.shared_data.info_skills.copy()
             skills = [skills[i] + int(self.sim_skill_inputs[i].text()) for i in range(len(skills))]
 
-            powers = simulateMacro(
-                self.shared_data, tuple(stats), tuple(skills), tuple(self.shared_data.info_simInfo), 1
+            powers = detSimulate(
+                self.shared_data, tuple(stats), tuple(skills), tuple(self.shared_data.info_simInfo)
             )
 
             diff_powers = [powers[i] - self.sim_powers[i] for i in range(4)]

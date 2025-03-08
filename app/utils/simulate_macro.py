@@ -40,8 +40,8 @@ def calculateRequiredStat(shared_data, power, stat_num, power_num):
 
     stats = shared_data.info_stats.copy()
     baseStat = shared_data.info_stats[stat_num]
-    current_power = simulateMacro(
-        shared_data, tuple(stats), tuple(shared_data.info_skills), tuple(shared_data.info_simInfo), 1
+    current_power = detSimulate(
+        shared_data, tuple(stats), tuple(shared_data.info_skills), tuple(shared_data.info_simInfo)
     )[power_num]
 
     # 1씩 증가시키며 범위 알아내기
@@ -56,8 +56,8 @@ def calculateRequiredStat(shared_data, power, stat_num, power_num):
         if stat_num == 12:
             stats[stat_num] = int(stats[stat_num])
 
-        current_power = simulateMacro(
-            shared_data, tuple(stats), tuple(shared_data.info_skills), tuple(shared_data.info_simInfo), 1
+        current_power = detSimulate(
+            shared_data, tuple(stats), tuple(shared_data.info_skills), tuple(shared_data.info_simInfo)
         )[power_num]
 
         if current_power >= power:
@@ -84,8 +84,8 @@ def calculateRequiredStat(shared_data, power, stat_num, power_num):
         if stat_num == 12:
             stats[stat_num] = int(stats[stat_num])
         # print(tuple(stats), tuple(shared_data.info_skills), tuple(shared_data.info_simInfo))
-        current_power = simulateMacro(
-            shared_data, tuple(stats), tuple(shared_data.info_skills), tuple(shared_data.info_simInfo), 1
+        current_power = detSimulate(
+            shared_data, tuple(stats), tuple(shared_data.info_skills), tuple(shared_data.info_simInfo)
         )[power_num]
 
         # print(f"{low=}, {high=}, {mid=}")
@@ -186,7 +186,15 @@ def runSimulBatch(batch_args):
     return [runSimul(*args) for args in batch_args]
 
 
-@lru_cache
+def randSimulate(shared_data, stats: tuple, skillLevels: tuple, simInfo: tuple):
+    return simulateMacro(shared_data, stats, skillLevels, simInfo, random.random())
+
+
+@lru_cache(maxsize=1024)
+def detSimulate(shared_data, stats: tuple, skillLevels: tuple, simInfo: tuple):
+    return simulateMacro(shared_data, stats, skillLevels, simInfo, 1)
+
+
 def simulateMacro(shared_data, stats: tuple, skillLevels: tuple, simInfo: tuple, randomSeed):
     def calculate_percentile(data, percentile):
         data_sorted = sorted(data)
