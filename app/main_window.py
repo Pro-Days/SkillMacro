@@ -1,6 +1,5 @@
 from .utils.data_manager import *
 from .shared_data import SharedData
-from .utils.set_font import *
 from .utils.run_macro import *
 from .utils.graph import *
 from .utils.get_character_data import *

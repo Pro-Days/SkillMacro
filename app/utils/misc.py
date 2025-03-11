@@ -1,3 +1,10 @@
+from .data_manager import convertResourcePath
+
+import matplotlib.pyplot as plt
+from matplotlib import font_manager as fm
+from PyQt6.QtGui import QFontDatabase
+
+
 def convert7to5(shared_data, num):
     for x, y in enumerate(shared_data.selectedSkillList):  # x: 0~5, y: 0~7
         if y == num:
@@ -30,3 +37,18 @@ def isKeyUsing(shared_data, key):
     # print(usingKey, key)
 
     return key in usingKey
+
+
+def set_default_fonts():
+    """
+    기본 폰트 설정
+    """
+
+    # "나눔스퀘어라운드 ExtraBold"
+    QFontDatabase.addApplicationFont(convertResourcePath("resources\\font\\NSR_B.ttf"))
+    QFontDatabase.addApplicationFont(convertResourcePath("resources\\font\\NSR_EB.ttf"))
+
+    font_path = convertResourcePath("resources\\font\\NSR_B.ttf")
+    fm.fontManager.addfont(font_path)
+    prop = fm.FontProperties(fname=font_path)
+    plt.rcParams["font.family"] = prop.get_name()
