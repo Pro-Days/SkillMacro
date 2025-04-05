@@ -1,8 +1,15 @@
 import os
 import json
 
-dataVersion = 2
-fileDir = "C:\\PDFiles\\PDSkillMacro.json"
+dataVersion = 3
+
+local_appdata = os.environ.get("LOCALAPPDATA")
+data_path = os.path.join(local_appdata, "ProDays")
+fileDir = os.path.join(data_path, "SkillMacro.json")
+
+# 이전에 사용하던 경로 "C:\\PDFiles\\PDSkillMacro.json"
+data_path_old = "C:\\PDFiles"
+fileDir_old = "C:\\PDFiles\\PDSkillMacro.json"
 
 
 def convertResourcePath(relative_path):
@@ -80,10 +87,10 @@ def dataLoad(shared_data, num=-1):
                 shared_data.info_simInfo = data["info"]["simInfo"]
         else:
             dataMake()
-            dataLoad()
+            dataLoad(shared_data)
     except:
         dataMake()
-        dataLoad()
+        dataLoad(shared_data)
 
 
 def dataMake():
@@ -129,8 +136,8 @@ def dataMake():
         ],
     }
 
-    if not os.path.isdir("C:\\PDFiles"):
-        os.mkdir("C:\\PDFiles")
+    os.makedirs(data_path, exist_ok=True)  # 폴더가 없으면 생성
+
     with open(fileDir, "w", encoding="UTF8") as f:
         json.dump(jsonObject, f)
 
@@ -258,16 +265,35 @@ def dataUpdate():
             jsonObject["preset"][i]["info"]["skills"] = [1] * 8
             jsonObject["preset"][i]["info"]["simInfo"] = [1, 1, 100]
 
+    def update_2to3():
+        os.makedirs(data_path, exist_ok=True)  # 폴더가 없으면 생성
+
+        with open(fileDir, "w", encoding="UTF8") as f:
+            json.dump(jsonObject, f)
+
     try:
         with open(fileDir, "r", encoding="UTF8") as f:
             jsonObject = json.load(f)
 
+        # if jsonObject["version"] == 1:
+        #     update_1to2()
+
+        # with open(fileDir, "w", encoding="UTF8") as f:
+        #     json.dump(jsonObject, f)
+
+    except:
+        with open(fileDir_old, "r", encoding="UTF8") as f:
+            jsonObject = json.load(f)
+
         if not "version" in jsonObject:
             update_1to2()
-        # if jsonObject["version"] == 2:
-        #     update_2to3()
 
-        with open(fileDir, "w", encoding="UTF8") as f:
-            json.dump(jsonObject, f)
-    except:
-        dataMake()
+        if jsonObject["version"] == 2:
+            update_2to3()
+
+        # 이전 경로에 있는 파일 삭제
+        filelist = os.listdir(data_path_old)
+        for filename in filelist:
+            file_path = os.path.join(data_path_old, filename)
+            os.remove(file_path)
+        os.rmdir(data_path_old)
