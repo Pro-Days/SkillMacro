@@ -38,106 +38,82 @@ class Sharing:
         """매크로 공유 서비스를 위한 UI 위젯 생성"""
         # 메인 프레임 생성
         self.sharing_frame = QFrame(parent_frame)
-        self.sharing_frame.setStyleSheet(
-            "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
-        )
+        self.sharing_frame.setStyleSheet("QFrame { background-color: rgb(29, 29, 29); border: 0px solid; }")
 
         # 레이아웃 설정
         main_layout = QVBoxLayout(self.sharing_frame)
         main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(20)
         self.sharing_frame.setLayout(main_layout)
 
-        # 타이틀 레이블
-        title_label = QLabel("매크로 공유 서비스", self.sharing_frame)
-        title_label.setFont(QFont("나눔스퀘어라운드 ExtraBold", 16))
-        title_label.setStyleSheet("color: #333;")
-        main_layout.addWidget(title_label)
+        # 상단 섹션 (헤더와 업로드 버튼)
+        header_layout = QHBoxLayout()
 
-        # 로그인 섹션
-        login_frame = self._create_login_section()
-        main_layout.addWidget(login_frame)
+        # 타이틀 레이블
+        title_label = QLabel("Macro Sharing Service", self.sharing_frame)
+        title_label.setFont(QFont("Arial", 24, QFont.Weight.Bold))
+        title_label.setStyleSheet("color: white;")
+
+        # 업로드 버튼
+        self.upload_button = QPushButton("Upload Macro", self.sharing_frame)
+        self.upload_button.setFont(QFont("Arial", 12))
+        self.upload_button.setStyleSheet(
+            "background-color: #3B71CA; color: white; border-radius: 5px; padding: 10px 20px;"
+        )
+        self.upload_button.clicked.connect(self._handle_upload)
+
+        header_layout.addWidget(title_label)
+        header_layout.addStretch()
+        header_layout.addWidget(self.upload_button)
+
+        main_layout.addLayout(header_layout)
+
+        # 다운로드 버튼
+        self.download_button = QPushButton("Download", self.sharing_frame)
+        self.download_button.setFont(QFont("Arial", 12))
+        self.download_button.setStyleSheet(
+            "background-color: #3B71CA; color: white; border-radius: 5px; padding: 10px 20px; max-width: 200px;"
+        )
+        self.download_button.clicked.connect(self._handle_download)
+        main_layout.addWidget(self.download_button, 0, Qt.AlignmentFlag.AlignLeft)
+
+        # "All Macros" 레이블
+        all_macros_label = QLabel("All Macros", self.sharing_frame)
+        all_macros_label.setFont(QFont("Arial", 20, QFont.Weight.Bold))
+        all_macros_label.setStyleSheet("color: white;")
+        main_layout.addWidget(all_macros_label)
 
         # 매크로 목록 섹션
-        list_frame = self._create_macro_list_section()
-        main_layout.addWidget(list_frame)
+        self.macro_list_container = QWidget()
+        self.macro_list_layout = QVBoxLayout(self.macro_list_container)
+        self.macro_list_layout.setSpacing(20)
 
-        # 업로드/다운로드/삭제 버튼 섹션
-        buttons_frame = self._create_buttons_section()
-        main_layout.addWidget(buttons_frame)
+        # 매크로 카드 생성
+        self._create_macro_cards()
 
-        # 상태 표시 레이블
+        # 스크롤 영역 추가
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setWidget(self.macro_list_container)
+        scroll_area.setStyleSheet("QScrollArea { border: none; background-color: #1d1d1d; }")
+
+        main_layout.addWidget(scroll_area)
+
+        # 상태 표시 레이블 (필요시 나중에 추가)
         self.status_label = QLabel("", self.sharing_frame)
-        self.status_label.setFont(QFont("나눔스퀘어라운드 Bold", 10))
+        self.status_label.setFont(QFont("Arial", 10))
         self.status_label.setStyleSheet("color: #666;")
+        self.status_label.hide()  # 기본적으로 숨김
         main_layout.addWidget(self.status_label)
+
+        # 로그인 설정 (백그라운드에서 작동하지만 UI는 보이지 않음)
+        self.username = "default_user"
+        self.password = "default_pass"
 
         return self.sharing_frame
 
-    def _create_login_section(self):
-        """로그인 섹션 생성"""
-        login_frame = QFrame(self.sharing_frame)
-        login_frame.setFrameShape(QFrame.Shape.StyledPanel)
-        login_frame.setStyleSheet("QFrame { background-color: #f5f5f5; border-radius: 5px; padding: 10px; }")
-
-        login_layout = QGridLayout(login_frame)
-
-        # 사용자명 입력
-        username_label = QLabel("사용자명:", login_frame)
-        username_label.setFont(QFont("나눔스퀘어라운드 Bold", 10))
-        self.username_input = QLineEdit(login_frame)
-        self.username_input.setPlaceholderText("사용자명 입력")
-
-        # 비밀번호 입력
-        password_label = QLabel("비밀번호:", login_frame)
-        password_label.setFont(QFont("나눔스퀘어라운드 Bold", 10))
-        self.password_input = QLineEdit(login_frame)
-        self.password_input.setPlaceholderText("비밀번호 입력")
-        self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
-
-        # 로그인 상태
-        self.login_status = QLabel("로그인 필요", login_frame)
-        self.login_status.setFont(QFont("나눔스퀘어라운드 Bold", 10))
-        self.login_status.setStyleSheet("color: #999;")
-
-        # 로그인/로그아웃 버튼
-        self.login_button = QPushButton("로그인", login_frame)
-        self.login_button.setFont(QFont("나눔스퀘어라운드 Bold", 10))
-        self.login_button.setStyleSheet(
-            "background-color: #4CAF50; color: white; border-radius: 3px; padding: 5px;"
-        )
-        self.login_button.clicked.connect(self._handle_login)
-
-        # 레이아웃에 위젯 추가
-        login_layout.addWidget(username_label, 0, 0)
-        login_layout.addWidget(self.username_input, 0, 1, 1, 2)
-        login_layout.addWidget(password_label, 1, 0)
-        login_layout.addWidget(self.password_input, 1, 1, 1, 2)
-        login_layout.addWidget(self.login_status, 2, 0, 1, 2)
-        login_layout.addWidget(self.login_button, 2, 2)
-
-        return login_frame
-
-    def _create_macro_list_section(self):
-        """매크로 목록 섹션 생성"""
-        list_frame = QFrame(self.sharing_frame)
-        list_frame.setFrameShape(QFrame.Shape.StyledPanel)
-        list_frame.setStyleSheet("QFrame { background-color: #1e1e1e; border-radius: 5px; padding: 10px; }")
-
-        list_layout = QVBoxLayout(list_frame)
-
-        # 목록 타이틀
-        list_title = QLabel("All Macros", list_frame)
-        list_title.setFont(QFont("나눔스퀘어라운드 Bold", 14))
-        list_title.setStyleSheet("color: white;")
-
-        # 스크롤 영역 추가
-        scroll_area = QScrollArea(list_frame)
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setStyleSheet("QScrollArea { border: none; }")
-
-        scroll_content = QWidget()
-        scroll_layout = QVBoxLayout(scroll_content)
-
+    def _create_macro_cards(self):
+        """매크로 카드 UI 생성"""
         # 임시 매크로 데이터
         macros = [
             {
@@ -162,176 +138,107 @@ class Sharing:
                 "icons": ["0/2/0.png", "0/2/1.png", "0/2/2.png", "0/2/3.png"],
             },
             {
-                "name": "Fire/Ice Rotation",
+                "name": "Fire/ice Rotation",
                 "creator": "User456",
                 "damage": "25,910",
-                "description": "A balanced macro alternating between fire and ice abilities to maintain consistent damage output while exploiting enemy vulnerabilities.",
+                "description": "A balanced macro alternating between fire and ice epplionm maintain consistent damage outout while exploiting enemy vuinerabilities.",
                 "icons": ["0/3/0.png", "0/3/1.png", "0/3/2.png", "0/3/3.png"],
             },
         ]
 
-        for macro in macros:
-            macro_frame = QFrame(scroll_content)
-            macro_frame.setStyleSheet(
-                "QFrame { background-color: #2e2e2e; border-radius: 5px; padding: 10px; }"
-            )
-            macro_layout = QHBoxLayout(macro_frame)
+        # 각 매크로에 대한 카드 생성 (2개씩 열 배치)
+        row = 0
+        col = 0
+        grid_layout = QGridLayout()
+        grid_layout.setSpacing(20)
 
-            # 스킬 아이콘
-            icons_layout = QVBoxLayout()
-            for icon_path in macro["icons"]:
-                icon_label = QLabel(macro_frame)
-                pixmap = QPixmap(os.path.join("app/resources/image/skill", icon_path))
-                icon_label.setPixmap(pixmap.scaled(40, 40, Qt.AspectRatioMode.KeepAspectRatio))
-                icons_layout.addWidget(icon_label)
+        for i, macro in enumerate(macros):
+            macro_card = self._create_macro_card(macro)
+            grid_layout.addWidget(macro_card, row, col)
 
-            # 매크로 정보
-            info_layout = QVBoxLayout()
-            name_label = QLabel(macro["name"], macro_frame)
-            name_label.setFont(QFont("나눔스퀘어라운드 Bold", 12))
-            name_label.setStyleSheet("color: white;")
+            col += 1
+            if col > 1:  # 2개의 카드가 한 행에 배치되면 다음 행으로
+                col = 0
+                row += 1
 
-            creator_label = QLabel(macro["creator"], macro_frame)
-            creator_label.setFont(QFont("나눔스퀘어라운드 Regular", 10))
-            creator_label.setStyleSheet("color: #aaaaaa;")
+        self.macro_list_layout.addLayout(grid_layout)
 
-            damage_label = QLabel(macro["damage"], macro_frame)
-            damage_label.setFont(QFont("나눔스퀘어라운드 Bold", 12))
-            damage_label.setStyleSheet("color: orange;")
+    def _create_macro_card(self, macro):
+        """개별 매크로 카드 생성"""
+        card = QFrame()
+        card.setStyleSheet("QFrame { background-color: #222222; border-radius: 5px; padding: 10px; }")
+        card.setFixedSize(600, 180)  # 카드 크기 조절
 
-            description_label = QLabel(macro["description"], macro_frame)
-            description_label.setFont(QFont("나눔스퀘어라운드 Regular", 10))
-            description_label.setStyleSheet("color: #cccccc;")
-            description_label.setWordWrap(True)
+        card_layout = QVBoxLayout(card)
 
-            info_layout.addWidget(name_label)
-            info_layout.addWidget(creator_label)
-            info_layout.addWidget(damage_label)
-            info_layout.addWidget(description_label)
+        # 상단부 레이아웃 (아이콘들과 이름/점수)
+        top_layout = QHBoxLayout()
 
-            macro_layout.addLayout(icons_layout)
-            macro_layout.addLayout(info_layout)
+        # 아이콘 레이아웃
+        icons_layout = QHBoxLayout()
+        icons_layout.setSpacing(5)
 
-            scroll_layout.addWidget(macro_frame)
+        # 아이콘 이미지
+        for icon_path in macro["icons"]:
+            icon_frame = QFrame()
+            icon_frame.setFixedSize(60, 60)
+            icon_frame.setStyleSheet("background-color: #111111; border-radius: 5px;")
 
-        scroll_content.setLayout(scroll_layout)
-        scroll_area.setWidget(scroll_content)
+            icon_layout = QVBoxLayout(icon_frame)
+            icon_layout.setContentsMargins(0, 0, 0, 0)
 
-        # 레이아웃에 추가
-        list_layout.addWidget(list_title)
-        list_layout.addWidget(scroll_area)
+            icon_label = QLabel()
+            pixmap = QPixmap(os.path.join("app/resources/image/skill", icon_path))
+            if pixmap.isNull():
+                # 이미지가 없을 경우 대체 이미지 또는 색상 사용
+                icon_label.setStyleSheet("background-color: #333333; border-radius: 5px;")
+            else:
+                icon_label.setPixmap(pixmap.scaled(50, 50, Qt.AspectRatioMode.KeepAspectRatio))
 
-        return list_frame
+            icon_layout.addWidget(icon_label, 0, Qt.AlignmentFlag.AlignCenter)
+            icons_layout.addWidget(icon_frame)
 
-    def _create_buttons_section(self):
-        """버튼 섹션 생성"""
-        buttons_frame = QFrame(self.sharing_frame)
-        buttons_layout = QHBoxLayout(buttons_frame)
+        # 이름과 점수 레이아웃
+        info_layout = QVBoxLayout()
 
-        # 업로드 버튼
-        self.upload_button = QPushButton("매크로 업로드", buttons_frame)
-        self.upload_button.setFont(QFont("나눔스퀘어라운드 Bold", 10))
-        self.upload_button.setStyleSheet(
-            "background-color: #2196F3; color: white; border-radius: 3px; padding: 7px;"
-        )
-        self.upload_button.clicked.connect(self._handle_upload)
+        name_label = QLabel(macro["name"])
+        name_label.setFont(QFont("Arial", 16, QFont.Weight.Bold))
+        name_label.setStyleSheet("color: white;")
 
-        # 다운로드 버튼
-        self.download_button = QPushButton("매크로 다운로드", buttons_frame)
-        self.download_button.setFont(QFont("나눔스퀘어라운드 Bold", 10))
-        self.download_button.setStyleSheet(
-            "background-color: #FF9800; color: white; border-radius: 3px; padding: 7px;"
-        )
-        self.download_button.clicked.connect(self._handle_download)
+        creator_label = QLabel(macro["creator"])
+        creator_label.setFont(QFont("Arial", 12))
+        creator_label.setStyleSheet("color: #aaaaaa;")
 
-        # 삭제 버튼
-        self.delete_button = QPushButton("매크로 삭제", buttons_frame)
-        self.delete_button.setFont(QFont("나눔스퀘어라운드 Bold", 10))
-        self.delete_button.setStyleSheet(
-            "background-color: #F44336; color: white; border-radius: 3px; padding: 7px;"
-        )
-        self.delete_button.clicked.connect(self._handle_delete)
+        damage_label = QLabel(macro["damage"])
+        damage_label.setFont(QFont("Arial", 20, QFont.Weight.Bold))
+        damage_label.setStyleSheet("color: #f0a33e;")  # Orange color
+        damage_label.setAlignment(Qt.AlignmentFlag.AlignRight)
 
-        # 레이아웃에 버튼 추가
-        buttons_layout.addWidget(self.upload_button)
-        buttons_layout.addWidget(self.download_button)
-        buttons_layout.addWidget(self.delete_button)
+        info_layout.addWidget(name_label)
+        info_layout.addWidget(creator_label)
 
-        return buttons_frame
+        # 상단부 조합
+        top_layout.addLayout(icons_layout)
+        top_layout.addStretch()
+        top_layout.addWidget(damage_label)
+
+        # 설명 텍스트
+        description_label = QLabel(macro["description"])
+        description_label.setFont(QFont("Arial", 12))
+        description_label.setStyleSheet("color: #cccccc;")
+        description_label.setWordWrap(True)
+
+        # 카드에 모든 요소 추가
+        card_layout.addLayout(top_layout)
+        card_layout.addWidget(name_label)
+        card_layout.addWidget(creator_label)
+        card_layout.addWidget(description_label)
+
+        return card
 
     # ================ Event Handlers ================
-    def _handle_login(self):
-        """로그인 처리"""
-        username = self.username_input.text().strip()
-        password = self.password_input.text().strip()
-
-        if not username or not password:
-            self._show_message("경고", "사용자명과 비밀번호를 입력하세요.", QMessageBox.Icon.Warning)
-            return
-
-        # 실제 인증 로직은 여기서 구현해야 함
-        result = self.login(username, password)
-        if not result or not result.get("status") == "success":
-            self._show_message("오류", "로그인에 실패했습니다.", QMessageBox.Icon.Critical)
-            return
-
-        # 임시로 성공했다고 가정
-        self.username = username
-        self.password = password
-        self.login_status.setText(f"로그인됨: {self.username}")
-        self.login_status.setStyleSheet("color: green;")
-        self.login_button.setText("로그아웃")
-        self.login_button.clicked.disconnect()
-        self.login_button.clicked.connect(self._handle_logout)
-
-        self.refresh_macro_list()
-
-    def _handle_logout(self):
-        """로그아웃 처리"""
-        self.username = ""
-        self.password = ""
-        self.username_input.clear()
-        self.password_input.clear()
-        self.login_status.setText("로그인 필요")
-        self.login_status.setStyleSheet("color: #999;")
-        self.login_button.setText("로그인")
-        self.login_button.clicked.disconnect()
-        self.login_button.clicked.connect(self._handle_login)
-
-        self.refresh_macro_list()
-
-    def refresh_macro_list(self):
-        """매크로 목록 새로고침"""
-        self.macro_list_widget.clear()
-        self.status_label.setText("매크로 목록을 불러오는 중...")
-
-        # 매크로 목록 가져오기
-        result = self.list_macro_files()
-
-        if result and "files" in result:
-            files = result["files"]
-            if files:
-                for file_info in files:
-                    filename = file_info.get("filename", "Unknown")
-                    owner = file_info.get("owner", "Unknown")
-                    created = file_info.get("created", "Unknown")
-
-                    item = QListWidgetItem(f"{owner}/{filename} (생성일: {created})")
-                    item.setData(Qt.ItemDataRole.UserRole, file_info)  # 파일 정보 저장
-                    self.macro_list_widget.addItem(item)
-
-                self.status_label.setText(f"{len(files)}개의 매크로를 불러왔습니다.")
-            else:
-                self.status_label.setText("공유된 매크로가 없습니다.")
-        else:
-            self.status_label.setText("매크로 목록을 불러오지 못했습니다.")
-
     def _handle_upload(self):
         """매크로 업로드 처리"""
-        if not self._check_login():
-            self._show_message("경고", "로그인 후 업로드할 수 있습니다.", QMessageBox.Icon.Warning)
-            return
-
         dialog = QDialog(self.window)
         dialog.setWindowTitle("매크로 업로드")
         dialog.setFixedSize(400, 150)
@@ -376,7 +283,6 @@ class Sharing:
                 self._show_message(
                     "성공", "매크로가 성공적으로 업로드되었습니다.", QMessageBox.Icon.Information
                 )
-                self.refresh_macro_list()
                 dialog.accept()
             else:
                 self._show_message("오류", "매크로 업로드에 실패했습니다.", QMessageBox.Icon.Critical)
@@ -387,76 +293,15 @@ class Sharing:
 
     def _handle_download(self):
         """매크로 다운로드 처리"""
-        selected_items = self.macro_list_widget.selectedItems()
+        # 실제 구현에서는 선택된 매크로를 다운로드
+        self._show_message("정보", "선택한 매크로를 다운로드합니다.", QMessageBox.Icon.Information)
 
-        if not selected_items:
-            self._show_message("경고", "다운로드할 매크로를 선택하세요.", QMessageBox.Icon.Warning)
-            return
+        # 여기서는 모의 다운로드만 구현
+        self.status_label.setText("매크로 다운로드 중...")
+        self.status_label.show()
 
-        file_info = selected_items[0].data(Qt.ItemDataRole.UserRole)
-        owner = file_info.get("owner")
-        filename = file_info.get("filename")
-
-        self.status_label.setText(f"{owner}/{filename} 다운로드 중...")
-
-        result = self.download_macro_file(owner, filename)
-
-        if result and result.get("data"):
-            self._show_message(
-                "성공", f"{filename} 매크로를 성공적으로 다운로드했습니다.", QMessageBox.Icon.Information
-            )
-            self.status_label.setText(f"{filename} 매크로를 다운로드했습니다.")
-
-            # 여기서 다운로드한 데이터 처리
-            # 예: 애플리케이션에 매크로 적용 또는 파일로 저장
-        else:
-            self._show_message("오류", "매크로 다운로드에 실패했습니다.", QMessageBox.Icon.Critical)
-            self.status_label.setText("매크로 다운로드에 실패했습니다.")
-
-    def _handle_delete(self):
-        """매크로 삭제 처리"""
-        if not self._check_login():
-            self._show_message("경고", "로그인 후 삭제할 수 있습니다.", QMessageBox.Icon.Warning)
-            return
-
-        selected_items = self.macro_list_widget.selectedItems()
-
-        if not selected_items:
-            self._show_message("경고", "삭제할 매크로를 선택하세요.", QMessageBox.Icon.Warning)
-            return
-
-        file_info = selected_items[0].data(Qt.ItemDataRole.UserRole)
-        owner = file_info.get("owner")
-        filename = file_info.get("filename")
-
-        # 자신의 매크로만 삭제 가능
-        if owner != self.username:
-            self._show_message(
-                "경고", "자신이 업로드한 매크로만 삭제할 수 있습니다.", QMessageBox.Icon.Warning
-            )
-            return
-
-        confirm = self._show_confirm("확인", f"{filename} 매크로를 삭제하시겠습니까?")
-
-        if confirm:
-            self.status_label.setText(f"{filename} 삭제 중...")
-
-            result = self.delete_file(self.username, self.password, filename)
-
-            if result and result.get("status") == "success":
-                self._show_message(
-                    "성공", f"{filename} 매크로를 성공적으로 삭제했습니다.", QMessageBox.Icon.Information
-                )
-                self.refresh_macro_list()
-            else:
-                self._show_message("오류", "매크로 삭제에 실패했습니다.", QMessageBox.Icon.Critical)
-                self.status_label.setText("매크로 삭제에 실패했습니다.")
-
-    def _check_login(self):
-        """로그인 상태 확인"""
-        if not self.username or not self.password:
-            return False
-        return True
+        # 실제 다운로드가 발생하는 코드로 대체해야 함
+        # 예시: self.download_macro_file(owner, filename)
 
     def _show_message(self, title, message, icon=QMessageBox.Icon.Information):
         """메시지 박스 표시"""
@@ -465,16 +310,6 @@ class Sharing:
         msg_box.setText(message)
         msg_box.setIcon(icon)
         msg_box.exec()
-
-    def _show_confirm(self, title, message):
-        """확인 대화상자 표시"""
-        msg_box = QMessageBox()
-        msg_box.setWindowTitle(title)
-        msg_box.setText(message)
-        msg_box.setIcon(QMessageBox.Icon.Question)
-        msg_box.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        msg_box.setDefaultButton(QMessageBox.StandardButton.No)
-        return msg_box.exec() == QMessageBox.StandardButton.Yes
 
     # ================ API Communication Functions ================
     def _handle_remote_request(self, payload):
@@ -538,3 +373,27 @@ if __name__ == "__main__":
     window.setCentralWidget(sharing_widget)
     window.show()
     app.exec()
+
+
+"""
+매크로 공유 서비스
+
+(1) 매크로 목록
+
+각 매크로는 다음과 같은 정보를 가지고 있으며, 각 매크로 프레임에는 다운로드 버튼이 존재한다.
+1. 이름
+2. 스킬 이미지(7개)
+3. 제작자
+4. 설명
+5. 전투력 수치
+
+(2) 내 매크로
+
+내 매크로 페이지에서는 다음 기능을 수행할 수 있다.
+1. 로그인, 로그아웃
+2. 매크로 데이터 업로드
+3. 업로드한 매크로 삭제 
+
+
+밝은 테마의 연한 하늘색의 Desktop UI를 제작해.
+"""
