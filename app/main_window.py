@@ -2623,7 +2623,7 @@ class MainWindow(QWidget):
         self.page1 = QFrame(self)
         self.page2 = QFrame(self)
 
-        self.labelCreator = QPushButton("제작자: 프로데이즈  |  디스코드: prodays", self)
+        self.labelCreator = QPushButton("  제작자: 프로데이즈  |  디스코드: prodays", self)
         self.labelCreator.setFont(QFont("나눔스퀘어라운드 Bold", 10))
         self.labelCreator.setStyleSheet("background-color: transparent; text-align: left; border: 0px;")
         # self.labelCreator.clicked.connect(
