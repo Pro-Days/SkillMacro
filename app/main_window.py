@@ -1,10 +1,11 @@
 from .utils.data_manager import *
-from .shared_data import SharedData
+from .utils.shared_data import *
 from .utils.run_macro import *
 from .utils.graph import *
 from .utils.get_character_data import *
 from .utils.misc import *
 from .utils.simulate_macro import *
+from .utils.simul_ui import *
 
 import os
 import sys
@@ -82,232 +83,24 @@ class MainWindow(QWidget):
             self.makePage2()
 
     def makePage2(self):
-        self.sim_colors4 = [
-            "255, 130, 130",  # #FF8282
-            "255, 230, 140",  # #FFE68C
-            "170, 230, 255",  # #AAE6FF
-            "150, 225, 210",  # #96E1D2
-        ]
-        self.sim_input_colors = ["#f0f0f0", "#D9D9D9"]  # [background, border]
-        self.sim_input_colorsRed = "#FF6060"
-        self.sim_labelFrame_color = "#bbbbbb"
-        self.scrollBarWidth = 12
-        self.sim_margin = 10
-        self.sim_mainFrameMargin = 20
-
-        self.sim_navHeight = 50
-        self.sim_navBWidth = 200
-
-        self.sim_title_H = 50
-
-        self.sim_main1_D = 5
-        self.sim_main_D = 40
-        self.sim_widget_D = 20
-
-        self.sim_label_H = 50
-        self.sim_label_x = 50
-
-        self.sim_stat_margin = 50
-        self.sim_stat_frame_H = 60
-        self.sim_stat_label_H = 20
-        self.sim_stat_input_H = 40
-        self.sim_stat_width = 120
-
-        self.sim_skill_margin = 100
-        self.sim_skill_image_Size = 56
-        self.sim_skill_right_W = 76
-        self.sim_skill_width = 132
-        self.sim_skill_frame_H = 86
-        self.sim_skill_name_H = 30
-        self.sim_skill_level_H = 24
-        self.sim_skill_input_H = 24
-
-        self.sim_simInfo_margin = 224
-        self.sim_simInfo_frame_H = self.sim_stat_frame_H
-        self.sim_simInfo_label_H = self.sim_stat_label_H
-        self.sim_simInfo_input_H = self.sim_stat_input_H
-        self.sim_simInfo_width = self.sim_stat_width
-
-        self.sim_powerL_margin = 25
-        self.sim_powerL_D = 20
-        self.sim_powerL_width = 205
-        self.sim_powerL_frame_H = 140
-        self.sim_powerL_title_H = 50
-        self.sim_powerL_number_H = 90
-
-        self.sim_analysis_margin = self.sim_powerL_margin
-        self.sim_analysis_D = self.sim_powerL_D
-        self.sim_analysis_width = self.sim_powerL_width
-        self.sim_analysis_color_W = 4
-        self.sim_analysis_widthXC = self.sim_analysis_width - self.sim_analysis_color_W
-        self.sim_analysis_frame_H = 140
-        self.sim_analysis_title_H = 40
-        self.sim_analysis_number_H = 55
-        self.sim_analysis_number_marginH = 5
-        self.sim_analysis_details_H = 20
-        self.sim_analysis_details_W = 63
-        self.sim_analysis_detailsT_W = 22
-        self.sim_analysis_detailsN_W = 41
-        self.sim_analysis_details_margin = 3
-
-        self.sim_dps_margin = 25
-        self.sim_dps_width = 430
-        self.sim_dps_height = 300
-
-        self.sim_skillDps_margin = 20
-        self.sim_skillRatio_width = self.sim_dps_width
-        self.sim_skillRatio_height = self.sim_dps_height
-
-        self.sim_dmg_margin = 25
-        self.sim_dmg_width = 880
-        self.sim_dmg_height = 400
-
-        self.sim_powerS_margin = 375
-        self.sim_powerS_D = 15
-        self.sim_powerS_width = 120
-        self.sim_powerS_frame_H = 100
-        self.sim_powerS_title_H = 40
-        self.sim_powerS_number_H = 60
-
-        self.sim_efficiency_frame_H = 100
-        self.sim_potential_frame_H = 100
-
-        self.sim_efficiency_statL_W = 110
-        self.sim_efficiency_statL_H = 24
-        self.sim_efficiency_statL_y = 15
-        self.sim_efficiency_statL_margin = 33
-
-        self.sim_efficiency_statInput_margin = 28
-        self.sim_efficiency_statInput_W = 120
-        self.sim_efficiency_statInput_H = 40
-        self.sim_efficiency_statInput_y = self.sim_efficiency_statL_y + self.sim_efficiency_statL_H + 6
-
-        self.sim_efficiency_arrow_margin = 28 + self.sim_efficiency_statInput_W
-        self.sim_efficiency_arrow_W = 60
-        self.sim_efficiency_arrow_H = 60
-        self.sim_efficiency_arrow_y = 20
-
-        self.sim_efficiency_statR_margin = self.sim_efficiency_arrow_margin + self.sim_efficiency_arrow_W
-        self.sim_efficiency_statR_W = 120
-        self.sim_efficiency_statR_H = 30
-        self.sim_efficiency_statR_y = 35
-
-        self.sim_potential_stat_margin = 50
-        self.sim_potential_stat_W = 125
-        self.sim_potential_stat_H = 30
-        self.sim_potential_stat_D = 5
-
-        self.sim_powerM_margin = 225
-        self.sim_powerM_D = 20
-        self.sim_powerM_width = 148
-        self.sim_powerM_frame_H = 100
-        self.sim_powerM_title_H = 40
-        self.sim_powerM_number_H = 60
-
-        self.sim_potentialRank_margin = 25
-        self.sim_potentialRank_D = 20
-        self.sim_potentialRank_width = 205
-        self.sim_potentialRank_title_H = 50
-        self.sim_potentialRank_rank_H = 25
-        self.sim_potentialRank_ranks_H = self.sim_potentialRank_rank_H * 16
-        self.sim_potentialRank_frame_H = self.sim_potentialRank_title_H + self.sim_potentialRank_rank_H * 16
-        self.sim_potentialRank_rank_ranking_W = 30
-        self.sim_potentialRank_rank_potential_W = 115
-        self.sim_potentialRank_rank_power_W = 60
-
-        # 캐릭터 카드
-        self.sim_char_frame_H = 420
-        self.sim_char_margin = 50
-        self.sim_char_margin_y = 20
-
-        self.sim_charInfo_marginX = 20
-        self.sim_charInfo_marginY = 25
-        self.sim_charInfo_label_y = 2
-        self.sim_charInfo_label_H = 33
-        self.sim_charInfo_W = int((928 - self.sim_char_margin * 4) * 0.5)  # 364
-        self.sim_charInfo_H = self.sim_char_frame_H - self.sim_char_margin_y  # 400
-        self.sim_charInfo_frame_W = self.sim_charInfo_W - self.sim_charInfo_marginX * 2  # 324
-
-        self.sim_charInfo_nickname_H = 80
-        self.sim_charInfo_nickname_input_margin = 20
-        self.sim_charInfo_nickname_input_W = 200
-        self.sim_charInfo_nickname_input_H = 35
-        self.sim_charInfo_nickname_load_margin = (
-            self.sim_charInfo_nickname_input_margin * 2 + self.sim_charInfo_nickname_input_W
-        )  # 200
-        self.sim_charInfo_nickname_load_W = 64
-        self.sim_charInfo_nickname_load_H = 31
-        self.sim_charInfo_nickname_load_y = self.sim_charInfo_label_y + self.sim_charInfo_label_H + 2  # 37
-
-        self.sim_charInfo_char_H = 75
-        self.sim_charInfo_char_button_margin = 12
-        self.sim_charInfo_char_button_W = 92
-        self.sim_charInfo_char_button_H = 30
-        self.sim_charInfo_char_button_y = self.sim_charInfo_label_y + self.sim_charInfo_label_H  # 35
-
-        self.sim_charInfo_power_H = 75
-        self.sim_charInfo_power_button_margin = 12
-        self.sim_charInfo_power_button_W = 66
-        self.sim_charInfo_power_button_H = 30
-        self.sim_charInfo_power_button_y = self.sim_charInfo_label_y + self.sim_charInfo_label_H  # 35
-
-        self.sim_charInfo_complete_y = 30
-        self.sim_charInfo_complete_margin = 50
-        self.sim_charInfo_complete_W = 120
-        self.sim_charInfo_complete_H = 40
-
-        self.sim_charInfo_save_y = self.sim_charInfo_complete_y
-        self.sim_charInfo_save_margin = self.sim_charInfo_complete_margin + self.sim_charInfo_complete_W + 24
-        self.sim_charInfo_save_W = 120
-        self.sim_charInfo_save_H = 40
-
-        self.sim_charCard_W = int((928 - self.sim_char_margin * 4) * 0.5)  # 364
-        self.sim_charCard_H = self.sim_char_frame_H - self.sim_char_margin_y  # 400
-        self.sim_charCard_title_H = 50
-
-        self.sim_charCard_image_margin = 19
-        self.sim_charCard_image_W = 156
-        self.sim_charCard_image_H = 312
-
-        self.sim_charCard_name_margin = self.sim_charCard_image_margin + self.sim_charCard_image_W + 10
-        self.sim_charCard_name_y = self.sim_charCard_title_H + 50
-        self.sim_charCard_name_W = 166
-        self.sim_charCard_name_H = 35
-
-        self.sim_charCard_job_margin = self.sim_charCard_image_margin + self.sim_charCard_image_W + 30
-        self.sim_charCard_job_y = self.sim_charCard_name_y + self.sim_charCard_name_H
-        self.sim_charCard_job_W = 50  # 50 + 79 = 126
-        self.sim_charCard_job_H = 40
-        self.sim_charCard_level_margin = self.sim_charCard_job_margin + self.sim_charCard_job_W
-        self.sim_charCard_level_y = self.sim_charCard_job_y
-        self.sim_charCard_level_W = 76  # 50 + 76 = 126
-        self.sim_charCard_level_H = self.sim_charCard_job_H
-
-        self.sim_charCard_name_line_W = 146
-        self.sim_charCard_info_line_H = 16
-
-        self.sim_charCard_powerFrame_margin = self.sim_charCard_image_margin + self.sim_charCard_image_W + 10
-        self.sim_charCard_powerFrame_y = self.sim_charCard_job_y + self.sim_charCard_job_H + 15
-        self.sim_charCard_powerFrame_W = 166
-        self.sim_charCard_powerFrame_H = 40
-        self.sim_charCard_power_title_W = 80
-        self.sim_charCard_power_number_W = 86
-
         # 상단바
         self.sim_navFrame = QFrame(self.page2)
         self.sim_navFrame.setGeometry(
-            self.sim_margin,
-            self.sim_margin,
-            self.width() - self.sim_margin * 2,
-            self.sim_navHeight,
+            self.ui_var.sim_margin,
+            self.ui_var.sim_margin,
+            self.width() - self.ui_var.sim_margin * 2,
+            self.ui_var.sim_navHeight,
         )
         self.sim_navFrame.setStyleSheet("QFrame { background-color: rgb(255, 255, 255); }")
 
         self.sim_navButtons = []
         texts = ["정보 입력", "시뮬레이터", "스탯 계산기", "캐릭터 카드"]
-        for i in [0, 1, 2, 3]:
+
+        for i in range(4):
             button = QPushButton(texts[i], self.sim_navFrame)
-            button.setGeometry(self.sim_navBWidth * i, 0, self.sim_navBWidth, self.sim_navHeight)
+            button.setGeometry(
+                self.ui_var.sim_navBWidth * i, 0, self.ui_var.sim_navBWidth, self.ui_var.sim_navHeight
+            )
             button.setStyleSheet(
                 f"""
                 QPushButton {{ background-color: rgb(255, 255, 255); border: none; border-bottom: {"2" if i == 0 else "0"}px solid #9180F7; }}
@@ -316,12 +109,13 @@ class MainWindow(QWidget):
             )
             button.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
             self.sim_navButtons.append(button)
+
         button = QPushButton(self.sim_navFrame)  # 닫기 버튼
         button.setGeometry(
             890,
             0,
-            self.sim_navHeight,
-            self.sim_navHeight,
+            self.ui_var.sim_navHeight,
+            self.ui_var.sim_navHeight,
         )
         button.setStyleSheet(
             """
@@ -343,14 +137,14 @@ class MainWindow(QWidget):
         # 메인 프레임
         self.sim_mainFrame = QFrame(self.page2)
         self.sim_mainFrame.setGeometry(
-            self.sim_margin,
-            self.sim_margin + self.sim_navHeight + self.sim_main1_D,
-            self.width() - self.scrollBarWidth - self.sim_margin * 2,
+            self.ui_var.sim_margin,
+            self.ui_var.sim_margin + self.ui_var.sim_navHeight + self.ui_var.sim_main1_D,
+            self.width() - self.ui_var.scrollBarWidth - self.ui_var.sim_margin * 2,
             self.height()
             - self.labelCreator.height()
-            - self.sim_navHeight
-            - self.sim_margin * 2
-            - self.sim_main1_D,
+            - self.ui_var.sim_navHeight
+            - self.ui_var.sim_margin * 2
+            - self.ui_var.sim_main1_D,
         )
         self.sim_mainFrame.setStyleSheet(
             "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
@@ -359,14 +153,14 @@ class MainWindow(QWidget):
         self.sim_mainScrollArea = QScrollArea(self.page2)
         self.sim_mainScrollArea.setWidget(self.sim_mainFrame)
         self.sim_mainScrollArea.setGeometry(
-            self.sim_margin,
-            self.sim_margin + self.sim_navHeight + self.sim_main1_D,
-            self.width() - self.sim_margin,
+            self.ui_var.sim_margin,
+            self.ui_var.sim_margin + self.ui_var.sim_navHeight + self.ui_var.sim_main1_D,
+            self.width() - self.ui_var.sim_margin,
             self.height()
             - self.labelCreator.height()
-            - self.sim_navHeight
-            - self.sim_margin * 2
-            - self.sim_main1_D,
+            - self.ui_var.sim_navHeight
+            - self.ui_var.sim_margin * 2
+            - self.ui_var.sim_main1_D,
         )
         self.sim_mainScrollArea.setStyleSheet(
             "QScrollArea { background-color: #FFFFFF; border: 0px solid black; border-radius: 10px; }"
@@ -379,13 +173,14 @@ class MainWindow(QWidget):
         self.makeSimulType1()
 
     def removeSimulWidgets(self):
+        # 콤보박스 오류 수정
         if self.shared_data.sim_type == 3:
             comboboxList = [
-                self.sim_efficiency_statL,
-                self.sim_efficiency_statR,
-                self.sim_potential_stat0,
-                self.sim_potential_stat1,
-                self.sim_potential_stat2,
+                self.sim3_ui.efficiency_statL,
+                self.sim3_ui.efficiency_statR,
+                self.sim3_ui.potential_stat0,
+                self.sim3_ui.potential_stat1,
+                self.sim3_ui.potential_stat2,
             ]
             for i in comboboxList:
                 i.showPopup()
@@ -398,7 +193,7 @@ class MainWindow(QWidget):
         plt.clf()
 
     def makeSimulType4(self):
-        if not (self.sim_stat_inputCheck and self.sim_skill_inputCheck and self.sim_simInfo_inputCheck):
+        if not all(self.shared_data.inputCheck.values()):
             self.makeNoticePopup("SimInputError")
             return
 
@@ -407,491 +202,17 @@ class MainWindow(QWidget):
 
         self.shared_data.sim_type = 4
 
-        self.sim_card_updated = False
-
-        self.sim_powers = detSimulate(
-            self.shared_data,
-            tuple(self.shared_data.info_stats),
-            tuple(self.shared_data.info_skills),
-            tuple(self.shared_data.info_simInfo),
-        )
-        # self.sim_powers = [str(int(i)) for i in self.sim_powers]
-
-        # 스펙업 효율 계산기
-        self.sim4_frame = QFrame(self.sim_mainFrame)
-        self.sim4_frame.setGeometry(
-            0,
-            0,
-            928,
-            self.sim_char_frame_H,
-        )
-        self.sim4_frame.setStyleSheet(
-            """QFrame {
-            background-color: rgb(255, 255, 255);
-            border: 0px solid;
-        }"""
-        )
-
-        ## 캐릭터 정보 입력
-        self.sim4_frame_info = QFrame(self.sim4_frame)
-        self.sim4_frame_info.setGeometry(
-            self.sim_char_margin,
-            self.sim_char_margin_y,
-            self.sim_charInfo_W,
-            self.sim_charInfo_H,
-        )
-        self.sim4_frame_info.setStyleSheet(
-            """QFrame {
-            background-color: #F8F8F8;
-            border: 1px solid #CCCCCC;
-            border-radius: 4px;
-        }"""
-        )
-
-        # 닉네임 입력
-        self.sim4_info_nicknameFrame = QFrame(self.sim4_frame_info)
-        self.sim4_info_nicknameFrame.setGeometry(
-            self.sim_charInfo_marginX,
-            self.sim_charInfo_marginY,
-            self.sim_charInfo_frame_W,
-            self.sim_charInfo_nickname_H,
-        )
-        self.sim4_info_nicknameFrame.setStyleSheet(
-            """QFrame {
-            background-color: #FFFFFF;
-            border: 1px solid #DDDDDD;
-            border-radius: 4px;
-        }"""
-        )
-
-        self.sim4_info_nicknameLabel = QLabel("닉네임", self.sim4_info_nicknameFrame)
-        self.sim4_info_nicknameLabel.setGeometry(
-            self.sim_charInfo_nickname_input_margin,
-            self.sim_charInfo_label_y,
-            self.sim_charInfo_nickname_input_W,
-            self.sim_charInfo_label_H,
-        )
-        self.sim4_info_nicknameLabel.setStyleSheet(
-            """QLabel {
-            background-color: transparent;
-            border: 0px solid;
-        }"""
-        )
-        self.sim4_info_nicknameLabel.setFont(QFont("나눔스퀘어라운드 Bold", 14))
-        self.sim4_info_nicknameLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        self.sim4_info_nicknameInput = QLineEdit("", self.sim4_info_nicknameFrame)
-        self.sim4_info_nicknameInput.setGeometry(
-            self.sim_charInfo_nickname_input_margin,
-            self.sim_charInfo_label_y + self.sim_charInfo_label_H,
-            self.sim_charInfo_nickname_input_W,
-            self.sim_charInfo_nickname_input_H,
-        )
-        self.sim4_info_nicknameInput.setStyleSheet(
-            f"""QLineEdit {{
-                background-color: {self.sim_input_colors[0]};
-                border: 1px solid {self.sim_input_colors[1]};
-                border-radius: 4px;
-            }}"""
-        )
-        self.sim4_info_nicknameInput.setFont(QFont("나눔스퀘어라운드 Bold", 12))
-        self.sim4_info_nicknameInput.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.sim4_info_nicknameInput.setFocus()
-
-        self.sim4_info_nicknameButton = QPushButton("불러오기", self.sim4_info_nicknameFrame)
-        self.sim4_info_nicknameButton.setGeometry(
-            self.sim_charInfo_nickname_load_margin,
-            self.sim_charInfo_nickname_load_y,
-            self.sim_charInfo_nickname_load_W,
-            self.sim_charInfo_nickname_load_H,
-        )
-        self.sim4_info_nicknameButton.setStyleSheet(
-            f"""QPushButton {{
-            background-color: #70BB70;
-            border: 1px solid {self.sim_input_colors[1]};
-            border-radius: 4px;
-            }}
-            QPushButton:hover {{
-                background-color: #60A060;
-            }}"""
-        )
-        self.sim4_info_nicknameButton.setFont(QFont("나눔스퀘어라운드 Bold", 10))
-        self.sim4_info_nicknameButton.clicked.connect(self.sim_loadCharacterInfo)
-
-        # 캐릭터 선택
-        # 캐릭터 불러오면 시뮬레이션 진행한 직업과 같은 것만 선택 가능하도록
-        self.sim_info_charData = None
-
-        self.sim4_info_charFrame = QFrame(self.sim4_frame_info)
-        self.sim4_info_charFrame.setGeometry(
-            self.sim_charInfo_marginX,
-            self.sim_charInfo_marginY * 2 + self.sim_charInfo_nickname_H,
-            self.sim_charInfo_frame_W,
-            self.sim_charInfo_char_H,
-        )
-        self.sim4_info_charFrame.setStyleSheet(
-            """QFrame {
-            background-color: #FFFFFF;
-            border: 1px solid #DDDDDD;
-            border-radius: 4px;
-        }"""
-        )
-
-        self.sim4_info_charLabel = QLabel("캐릭터 선택", self.sim4_info_charFrame)
-        self.sim4_info_charLabel.setGeometry(
-            0,
-            self.sim_charInfo_label_y,
-            self.sim_charInfo_frame_W,
-            self.sim_charInfo_label_H,
-        )
-        self.sim4_info_charLabel.setStyleSheet(
-            """QLabel {
-            background-color: transparent;
-            border: 0px solid;
-        }"""
-        )
-        self.sim4_info_charLabel.setFont(QFont("나눔스퀘어라운드 Bold", 14))
-        self.sim4_info_charLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        self.sim4_info_charButtonList = []
-        for i in range(3):
-            button = QPushButton("", self.sim4_info_charFrame)
-            button.setGeometry(
-                self.sim_charInfo_char_button_margin
-                + (self.sim_charInfo_char_button_W + self.sim_charInfo_char_button_margin) * i,
-                self.sim_charInfo_char_button_y,
-                self.sim_charInfo_char_button_W,
-                self.sim_charInfo_char_button_H,
-            )
-            button.setStyleSheet(
-                f"""QPushButton {{
-                background-color: {self.sim_input_colors[0]};
-                border: 1px solid {self.sim_input_colors[1]};
-                border-radius: 8px;
-                }}"""
-            )
-            button.setFont(QFont("나눔스퀘어라운드 Bold", 10))
-            self.sim4_info_charButtonList.append(button)
-
-        # 전투력 표시
-        self.sim_info_powerActive = [True, True, True, True]
-
-        self.sim4_info_powerFrame = QFrame(self.sim4_frame_info)
-        self.sim4_info_powerFrame.setGeometry(
-            self.sim_charInfo_marginX,
-            self.sim_charInfo_marginY * 3 + self.sim_charInfo_nickname_H + self.sim_charInfo_char_H,
-            self.sim_charInfo_frame_W,
-            self.sim_charInfo_char_H,
-        )
-        self.sim4_info_powerFrame.setStyleSheet(
-            """QFrame {
-            background-color: #FFFFFF;
-            border: 1px solid #DDDDDD;
-            border-radius: 4px;
-        }"""
-        )
-
-        self.sim4_info_powerLabel = QLabel("전투력 표시", self.sim4_info_powerFrame)
-        self.sim4_info_powerLabel.setGeometry(
-            0,
-            self.sim_charInfo_label_y,
-            self.sim_charInfo_frame_W,
-            self.sim_charInfo_label_H,
-        )
-        self.sim4_info_powerLabel.setStyleSheet(
-            """QLabel {
-            background-color: transparent;
-            border: 0px solid;
-        }"""
-        )
-        self.sim4_info_powerLabel.setFont(QFont("나눔스퀘어라운드 Bold", 14))
-        self.sim4_info_powerLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        texts = ["보스데미지", "일반데미지", "보스", "사냥"]
-        self.sim4_info_powerButtons = []
-        for i in range(4):
-            button = QPushButton(texts[i], self.sim4_info_powerFrame)
-            button.setGeometry(
-                self.sim_charInfo_power_button_margin
-                + (self.sim_charInfo_power_button_W + self.sim_charInfo_power_button_margin) * i,
-                self.sim_charInfo_power_button_y,
-                self.sim_charInfo_power_button_W,
-                self.sim_charInfo_power_button_H,
-            )
-            button.setStyleSheet(
-                f"""QPushButton {{
-                background-color: #FFFFFF;
-                border: 1px solid {self.sim_input_colors[1]};
-                border-radius: 5px;
-                }}
-                QPushButton:hover {{
-                    background-color: #F0F0F0;
-                }}"""
-            )
-            button.setFont(QFont("나눔스퀘어라운드 Bold", 10))
-            button.clicked.connect(partial(lambda x: self.sim_info_powersClicked(x), i))
-            self.sim4_info_powerButtons.append(button)
-
-        # 입력 완료, 저장
-        self.sim4_info_completeButton = QPushButton("입력 완료", self.sim4_frame_info)
-        self.sim4_info_completeButton.setGeometry(
-            self.sim_charInfo_complete_margin,
-            self.sim_charInfo_marginY * 3
-            + self.sim_charInfo_nickname_H
-            + self.sim_charInfo_char_H
-            + self.sim_charInfo_power_H
-            + self.sim_charInfo_complete_y,
-            self.sim_charInfo_complete_W,
-            self.sim_charInfo_complete_H,
-        )
-        self.sim4_info_completeButton.setStyleSheet(
-            f"""QPushButton {{
-            background-color: #70BB70;
-            border: 1px solid {self.sim_input_colors[1]};
-            border-radius: 8px;
-            }}
-            QPushButton:hover {{
-                background-color: #60A060;
-            }}"""
-        )
-        self.sim4_info_completeButton.setFont(QFont("나눔스퀘어라운드 Bold", 14))
-        self.sim4_info_completeButton.clicked.connect(self.sim_card_update)
-
-        self.sim4_info_saveButton = QPushButton("저장", self.sim4_frame_info)
-        self.sim4_info_saveButton.setGeometry(
-            self.sim_charInfo_save_margin,
-            self.sim_charInfo_marginY * 3
-            + self.sim_charInfo_nickname_H
-            + self.sim_charInfo_char_H
-            + self.sim_charInfo_power_H
-            + self.sim_charInfo_save_y,
-            self.sim_charInfo_save_W,
-            self.sim_charInfo_save_H,
-        )
-        self.sim4_info_saveButton.setStyleSheet(
-            f"""QPushButton {{
-            background-color: #FF8282;
-            border: 1px solid {self.sim_input_colors[1]};
-            border-radius: 8px;
-            }}
-            QPushButton:hover {{
-                background-color: #FF6060;
-            }}"""
-        )
-        self.sim4_info_saveButton.setFont(QFont("나눔스퀘어라운드 Bold", 14))
-        self.sim4_info_saveButton.clicked.connect(self.sim_card_save)
-
-        ## 캐릭터 카드
-        self.sim4_frame_card = QFrame(self.sim4_frame)
-        self.sim4_frame_card.setGeometry(
-            self.sim_char_margin * 3 + self.sim_charInfo_W,
-            self.sim_char_margin_y,
-            self.sim_charCard_W,
-            self.sim_charCard_H,
-        )
-        self.sim4_frame_card.setStyleSheet(
-            """QFrame {
-            background-color: #FFFFFF;
-            border: 3px solid #CCCCCC;
-            border-radius: 0px;
-        }"""
-        )
-
-        # 타이틀
-        self.sim4_card_title = QLabel("한월 캐릭터 카드", self.sim4_frame_card)
-        self.sim4_card_title.setGeometry(
-            0,
-            0,
-            self.sim_charCard_W,
-            self.sim_charCard_title_H,
-        )
-        self.sim4_card_title.setStyleSheet(
-            """QLabel {
-            background-color: #CADEFC;
-            border: 3px solid #CCCCCC;
-            border-bottom: 0px solid;
-            border-radius: 0px;
-        }"""
-        )
-        self.sim4_card_title.setFont(QFont("나눔스퀘어라운드 ExtraBold", 18))
-        self.sim4_card_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        # 이미지
-        self.sim4_card_image_bg = QLabel("", self.sim4_frame_card)
-        self.sim4_card_image_bg.setGeometry(
-            self.sim_charCard_image_margin,
-            self.sim_charCard_image_margin + self.sim_charCard_title_H,
-            self.sim_charCard_image_W,
-            self.sim_charCard_image_H,
-        )
-        self.sim4_card_image_bg.setStyleSheet(
-            """QLabel {
-            background-color: transparent;
-            border: 5px solid #AAAAAA;
-            border-radius: 5px;
-        }"""
-        )
-        self.sim4_card_image_bg.setScaledContents(True)
-
-        self.sim4_card_image = QLabel("", self.sim4_frame_card)
-        self.sim4_card_image.setGeometry(
-            self.sim_charCard_image_margin + 15,
-            self.sim_charCard_image_margin + self.sim_charCard_title_H + 15,
-            self.sim_charCard_image_W - 30,  # 126
-            self.sim_charCard_image_H - 30,  # 282
-        )
-        self.sim4_card_image.setStyleSheet(
-            """QLabel {
-            background-color: transparent;
-            border: 0px solid;
-        }"""
-        )
-        self.sim4_card_image.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.sim4_card_image.setScaledContents(True)
-
-        # 캐릭터 정보
-        self.sim4_card_name = QLabel("", self.sim4_frame_card)
-        self.sim4_card_name.setGeometry(
-            self.sim_charCard_name_margin,
-            self.sim_charCard_name_y,
-            self.sim_charCard_name_W,
-            self.sim_charCard_name_H,
-        )
-        self.sim4_card_name.setStyleSheet(
-            """QLabel {
-            background-color: transparent;
-            border: 0px solid;
-        }"""
-        )
-        self.sim4_card_name.setFont(QFont("나눔스퀘어라운드 ExtraBold", 18))
-        self.sim4_card_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        self.sim4_card_job = QLabel("", self.sim4_frame_card)
-        self.sim4_card_job.setGeometry(
-            self.sim_charCard_job_margin,
-            self.sim_charCard_job_y,
-            self.sim_charCard_job_W,
-            self.sim_charCard_job_H,
-        )
-        self.sim4_card_job.setStyleSheet(
-            """QLabel {
-            background-color: transparent;
-            border: 0px solid;
-        }"""
-        )
-        self.sim4_card_job.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
-        self.sim4_card_job.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        self.sim4_card_level = QLabel("", self.sim4_frame_card)
-        self.sim4_card_level.setGeometry(
-            self.sim_charCard_level_margin,
-            self.sim_charCard_level_y,
-            self.sim_charCard_level_W,
-            self.sim_charCard_level_H,
-        )
-        self.sim4_card_level.setStyleSheet(
-            """QLabel {
-            background-color: transparent;
-            border: 0px solid;
-        }"""
-        )
-        self.sim4_card_level.setFont(QFont("나눔스퀘어라운드 Bold", 12))
-        self.sim4_card_level.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        self.sim4_card_name_line = QFrame(self.sim4_frame_card)
-        self.sim4_card_name_line.setGeometry(
-            self.sim_charCard_name_margin + 10,
-            self.sim_charCard_name_y + self.sim_charCard_name_H,
-            self.sim_charCard_name_line_W,
-            1,
-        )
-        self.sim4_card_name_line.setStyleSheet(
-            """QFrame {
-            background-color: #CCCCCC;
-            border: 0px solid;
-        }"""
-        )
-
-        self.sim4_card_info_line = QFrame(self.sim4_frame_card)
-        self.sim4_card_info_line.setGeometry(
-            self.sim_charCard_level_margin + 1,
-            self.sim_charCard_level_y + 12,
-            1,
-            self.sim_charCard_info_line_H,
-        )
-        self.sim4_card_info_line.setStyleSheet(
-            """QFrame {
-            background-color: #CCCCCC;
-            border: 0px solid;
-        }"""
-        )
-
-        # 전투력
-        titles = ["보스데미지", "일반데미지", "보스", "사냥"]
-        self.sim4_card_powers = [[], [], [], []]
-        for i in range(4):
-            frame = QFrame(self.sim4_frame_card)
-            frame.setGeometry(
-                self.sim_charCard_powerFrame_margin,
-                self.sim_charCard_powerFrame_y + self.sim_charCard_powerFrame_H * i,
-                self.sim_charCard_powerFrame_W,
-                self.sim_charCard_powerFrame_H,
-            )
-            frame.setStyleSheet(
-                """QFrame {
-                background-color: transparent;
-                border: 0px solid;
-            }"""
-            )
-            self.sim4_card_powers[i].append(frame)
-
-            title = QLabel(titles[i], frame)
-            title.setStyleSheet(
-                f"""QLabel {{
-                    background-color: rgb({self.sim_colors4[i]});
-                    border: 1px solid rgb({self.sim_colors4[i]});
-                    border-top-left-radius: 4px;
-                    border-top-right-radius: 0px;
-                    border-bottom-left-radius: 4px;
-                    border-bottom-right-radius: 0px;
-                }}"""
-            )
-            title.setGeometry(0, 0, self.sim_charCard_power_title_W, self.sim_charCard_powerFrame_H)
-            title.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
-            title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.sim4_card_powers[i].append(title)
-
-            number = QLabel("", frame)
-            number.setStyleSheet(
-                f"""QLabel {{
-                    background-color: rgba({self.sim_colors4[i]}, 120);
-                    border: 1px solid rgb({self.sim_colors4[i]});
-                    border-left: 0px solid;
-                    border-top-left-radius: 0px;
-                    border-top-right-radius: 4px;
-                    border-bottom-left-radius: 0px;
-                    border-bottom-right-radius: 4px
-                }}"""
-            )
-            number.setGeometry(
-                self.sim_charCard_power_title_W,
-                0,
-                self.sim_charCard_power_number_W,
-                self.sim_charCard_powerFrame_H,
-            )
-            number.setFont(QFont("나눔스퀘어라운드 ExtraBold", 14))
-            number.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.sim4_card_powers[i].append(number)
+        self.sim4_ui = Sim4UI(self.sim_mainFrame, self.shared_data)
 
         # 메인 프레임 크기 조정
         self.sim_mainFrame.setFixedHeight(
-            self.sim4_frame.y() + self.sim4_frame.height() + self.sim_mainFrameMargin,
+            self.sim4_ui.info_frame.y() + self.sim4_ui.info_frame.height() + self.ui_var.sim_mainFrameMargin,
         )
         [i.show() for i in self.page2.findChildren(QWidget)]
         self.updatePosition()
 
     def makeSimulType3(self):
-        if not (self.sim_stat_inputCheck and self.sim_skill_inputCheck and self.sim_simInfo_inputCheck):
+        if not all(self.shared_data.inputCheck.values()):
             self.makeNoticePopup("SimInputError")
             return
 
@@ -900,589 +221,19 @@ class MainWindow(QWidget):
 
         self.shared_data.sim_type = 3
 
-        # print(self.shared_data.info_simInfo)
-        self.sim_powers = detSimulate(
-            self.shared_data,
-            tuple(self.shared_data.info_stats),
-            tuple(self.shared_data.info_skills),
-            tuple(self.shared_data.info_simInfo),
-        )
-        # self.sim_powers = [str(int(i)) for i in self.sim_powers]
-
-        self.widgetList = []
-        self.sim_skill_inputCheck = False
-        self.sim_stat_inputCheck = False
-        comboboxStyle = f"""QComboBox {{ 
-                background-color: {self.sim_input_colors[0]};
-                border: 1px solid {self.sim_input_colors[1]};
-                border-radius: 4px;
-            }}
-            QComboBox::drop-down {{
-                width: 20px;
-                border-left-width: 1px;
-                border-left-color: darkgray;
-                border-left-style: solid;
-            }}
-            QComboBox::down-arrow {{
-                image: url({convertResourcePath("resources\\image\\down_arrow.png").replace("\\", "/")});
-                width: 16px;
-                height: 16px;
-            }}
-            QComboBox QAbstractItemView {{
-                border: 1px solid {self.sim_input_colors[1]};
-            }}"""
-
-        # 스펙업 효율 계산기
-        self.sim3_frame1 = QFrame(self.sim_mainFrame)
-        self.sim3_frame1.setGeometry(
-            0,
-            0,
-            928,
-            self.sim_title_H + (self.sim_widget_D + self.sim_efficiency_frame_H),
-        )
-        self.sim3_frame1.setStyleSheet("QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }")
-        self.widgetList.append(self.sim3_frame1)
-
-        self.sim3_frame1_labelFrame, self.sim3_frame1_label = self.sim_returnTitleFrame(
-            self.sim3_frame1, "스펙업 효율 계산기"
-        )
-        self.widgetList.append(self.sim3_frame1_labelFrame)
-        self.widgetList.append(self.sim3_frame1_label)
-
-        self.sim_efficiency_statL = QComboBox(self.sim3_frame1)
-        self.sim_efficiency_statL.setFont(QFont("나눔스퀘어라운드 Bold", 10))
-        self.sim_efficiency_statL.addItems(self.shared_data.STAT_LIST)
-        self.sim_efficiency_statL.setStyleSheet(comboboxStyle)
-        self.sim_efficiency_statL.setGeometry(
-            self.sim_efficiency_statL_margin,
-            self.sim_label_H + self.sim_widget_D + self.sim_efficiency_statL_y,
-            self.sim_efficiency_statL_W,
-            self.sim_efficiency_statL_H,
-        )
-        self.widgetList.append(self.sim_efficiency_statL)
-        self.sim_efficiency_statL.currentIndexChanged.connect(self.sim_efficiency_Changed)
-
-        self.sim_efficiency_statInput = QLineEdit("10", self.sim3_frame1)
-        self.sim_efficiency_statInput.setFont(QFont("나눔스퀘어라운드 Bold", 14))
-        self.sim_efficiency_statInput.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.sim_efficiency_statInput.setStyleSheet(
-            f"QLineEdit {{ background-color: {self.sim_input_colors[0]}; border: 1px solid {self.sim_input_colors[1]}; border-radius: 4px; }}"
-        )
-        self.sim_efficiency_statInput.setGeometry(
-            self.sim_efficiency_statInput_margin,
-            self.sim_label_H + self.sim_widget_D + self.sim_efficiency_statInput_y,
-            self.sim_efficiency_statInput_W,
-            self.sim_efficiency_statInput_H,
-        )
-        self.sim_efficiency_statInput.setFocus()
-        self.widgetList.append(self.sim_efficiency_statInput)
-        # 데이터 입력시 실행할 함수 연결
-        self.sim_efficiency_statInput.textChanged.connect(self.sim_efficiency_Changed)
-
-        self.sim_efficiency_arrow = QLabel("", self.sim3_frame1)
-        self.sim_efficiency_arrow.setStyleSheet(
-            f"QLabel {{ background-color: transparent; border: 0px solid; }}"
-        )
-        pixmap = QPixmap(convertResourcePath("resources\\image\\lineArrow.png"))
-        pixmap = pixmap.scaled(self.sim_efficiency_arrow_W, self.sim_efficiency_arrow_H)
-        self.sim_efficiency_arrow.setPixmap(pixmap)
-        self.sim_efficiency_arrow.setGeometry(
-            self.sim_efficiency_arrow_margin,
-            self.sim_label_H + self.sim_widget_D + self.sim_efficiency_arrow_y,
-            self.sim_efficiency_arrow_W,
-            self.sim_efficiency_arrow_H,
-        )
-        self.widgetList.append(self.sim_efficiency_arrow)
-
-        self.sim_efficiency_statR = QComboBox(self.sim3_frame1)
-        self.sim_efficiency_statR.setFont(QFont("나눔스퀘어라운드 Bold", 12))
-        self.sim_efficiency_statR.addItems(self.shared_data.STAT_LIST)
-        self.sim_efficiency_statR.setStyleSheet(comboboxStyle)
-        self.sim_efficiency_statR.setGeometry(
-            self.sim_efficiency_statR_margin,
-            self.sim_label_H + self.sim_widget_D + self.sim_efficiency_statR_y,
-            self.sim_efficiency_statR_W,
-            self.sim_efficiency_statR_H,
-        )
-        self.widgetList.append(self.sim_efficiency_statR)
-        self.sim_efficiency_statR.currentIndexChanged.connect(self.sim_efficiency_Changed)
-
-        self.sim_efficiency_power_list = self.sim_makePowerLabels(
-            self.sim3_frame1, ["0"] * 4
-        )  # [[f, t, n], [f, t, n], [f, t, n], [f, t, n]]
-
-        for i, (f, t, n) in enumerate(self.sim_efficiency_power_list):
-            f.setGeometry(
-                self.sim_powerS_margin + (self.sim_powerS_width + self.sim_powerS_D) * i,
-                self.sim_label_H + self.sim_widget_D,
-                self.sim_powerS_width,
-                self.sim_powerS_frame_H,
-            )
-            self.widgetList.append(f)
-            t.setGeometry(
-                0,
-                0,
-                self.sim_powerS_width,
-                self.sim_powerS_title_H,
-            )
-            self.widgetList.append(t)
-            n.setGeometry(
-                0,
-                self.sim_powerS_title_H,
-                self.sim_powerS_width,
-                self.sim_powerS_number_H,
-            )
-            self.widgetList.append(n)
-
-        self.sim_update_efficiency()
-
-        # 추가 스펙업 계산기
-        self.sim3_frame2 = QFrame(self.sim_mainFrame)
-        self.sim3_frame2.setGeometry(
-            0,
-            self.sim3_frame1.y() + self.sim3_frame1.height() + self.sim_main_D,
-            928,
-            self.sim_title_H
-            + (self.sim_widget_D + self.sim_stat_frame_H) * 3
-            + self.sim_main_D
-            + (self.sim_widget_D + self.sim_skill_frame_H) * 2
-            + self.sim_main_D
-            + (self.sim_widget_D + self.sim_powerL_frame_H),
-        )
-        self.sim3_frame2.setStyleSheet("QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }")
-        self.widgetList.append(self.sim3_frame2)
-
-        self.sim3_frame2_labelFrame, self.sim3_frame2_label = self.sim_returnTitleFrame(
-            self.sim3_frame2, "추가 스펙업 계산기"
-        )
-        self.widgetList.append(self.sim3_frame2_labelFrame)
-        self.widgetList.append(self.sim3_frame2_label)
-
-        self.sim_additional_power_list = self.sim_makePowerLabels(
-            self.sim3_frame2, ["0"] * 4, font_size=16
-        )  # [[f, t, n], [f, t, n], [f, t, n], [f, t, n]]
-
-        for i, (f, t, n) in enumerate(self.sim_additional_power_list):
-            f.setGeometry(
-                self.sim_powerL_margin + (self.sim_powerL_width + self.sim_powerL_D) * i,
-                self.sim_label_H
-                + self.sim_widget_D
-                + (self.sim_widget_D + self.sim_stat_frame_H) * 3
-                + self.sim_main_D
-                + (self.sim_widget_D + self.sim_skill_frame_H) * 2
-                + self.sim_main_D,
-                self.sim_powerL_width,
-                self.sim_powerL_frame_H,
-            )
-            self.widgetList.append(f)
-            t.setGeometry(
-                0,
-                0,
-                self.sim_powerL_width,
-                self.sim_powerL_title_H,
-            )
-            self.widgetList.append(t)
-            n.setGeometry(
-                0,
-                self.sim_powerL_title_H,
-                self.sim_powerL_width,
-                self.sim_powerL_number_H,
-            )
-            self.widgetList.append(n)
-
-        self.sim_makeStatInput(self.sim3_frame2)
-
-        margin, count = 21, 6
-        for i in range(18):
-            self.sim_stat_frames[i].move(
-                self.sim_stat_margin + self.sim_stat_width * (i % count) + margin * (i % count),
-                self.sim3_frame2_labelFrame.height()
-                + self.sim_widget_D * ((i // count) + 1)
-                + self.sim_stat_frame_H * (i // count),
-            )
-            self.widgetList.append(self.sim_stat_frames[i])
-            self.sim_stat_labels[i].setGeometry(
-                0,
-                0,
-                self.sim_stat_width,
-                self.sim_stat_label_H,
-            )
-            self.widgetList.append(self.sim_stat_labels[i])
-            self.sim_stat_inputs[i].setGeometry(
-                0, self.sim_stat_label_H, self.sim_stat_width, self.sim_stat_input_H
-            )
-            self.widgetList.append(self.sim_stat_inputs[i])
-
-            self.sim_stat_inputs[i].setText("0")
-
-        self.sim_makeSkillInput(self.sim3_frame2)
-
-        margin, count = 66, 4
-        for i in range(8):
-            self.sim_skill_frames[i].move(
-                self.sim_skill_margin + self.sim_skill_width * (i % count) + margin * (i % count),
-                self.sim3_frame2_labelFrame.height()
-                + self.sim_widget_D * ((i // count) + 1)
-                + self.sim_skill_frame_H * (i // count)
-                + (self.sim_widget_D + self.sim_stat_frame_H) * 3
-                + self.sim_main_D,
-            )
-            self.widgetList.append(self.sim_skill_frames[i])
-            self.sim_skill_names[i].setGeometry(
-                0,
-                0,
-                self.sim_skill_width,
-                self.sim_skill_name_H,
-            )
-            self.widgetList.append(self.sim_skill_names[i])
-            self.sim_skill_levels[i].setGeometry(
-                self.sim_skill_image_Size,
-                self.sim_skill_name_H,
-                self.sim_skill_right_W,
-                self.sim_skill_level_H,
-            )
-            self.widgetList.append(self.sim_skill_levels[i])
-            self.sim_skill_inputs[i].setGeometry(
-                self.sim_skill_image_Size,
-                self.sim_skill_name_H + self.sim_skill_level_H,
-                self.sim_skill_right_W,
-                self.sim_skill_input_H,
-            )
-            self.widgetList.append(self.sim_skill_inputs[i])
-
-            self.sim_skill_inputs[i].setText(str(self.shared_data.info_skills[i]))
-
-        # 잠재능력 계산기
-        self.sim3_frame3 = QFrame(self.sim_mainFrame)
-        self.sim3_frame3.setGeometry(
-            0,
-            self.sim3_frame2.y() + self.sim3_frame2.height() + self.sim_main_D,
-            928,
-            self.sim_title_H + (self.sim_widget_D + self.sim_potential_frame_H),
-        )
-        self.sim3_frame3.setStyleSheet("QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }")
-        self.widgetList.append(self.sim3_frame3)
-
-        self.sim3_frame3_labelFrame, self.sim3_frame3_label = self.sim_returnTitleFrame(
-            self.sim3_frame3, "잠재능력 계산기"
-        )
-        self.widgetList.append(self.sim3_frame3_labelFrame)
-        self.widgetList.append(self.sim3_frame3_label)
-
-        self.sim_potential_stat0 = QComboBox(self.sim3_frame3)
-        self.sim_potential_stat0.setFont(QFont("나눔스퀘어라운드 Bold", 10))
-        self.sim_potential_stat0.addItems(self.shared_data.POTENTIAL_STAT_LIST.keys())
-        self.sim_potential_stat0.setStyleSheet(comboboxStyle)
-        self.sim_potential_stat0.setGeometry(
-            self.sim_potential_stat_margin,
-            self.sim_label_H + self.sim_widget_D,
-            self.sim_potential_stat_W,
-            self.sim_potential_stat_H,
-        )
-        self.sim_potential_stat0.currentIndexChanged.connect(self.sim_potential_update)
-        self.widgetList.append(self.sim_potential_stat0)
-
-        self.sim_potential_stat1 = QComboBox(self.sim3_frame3)
-        self.sim_potential_stat1.setFont(QFont("나눔스퀘어라운드 Bold", 10))
-        self.sim_potential_stat1.addItems(self.shared_data.POTENTIAL_STAT_LIST.keys())
-        self.sim_potential_stat1.setStyleSheet(comboboxStyle)
-        self.sim_potential_stat1.setGeometry(
-            self.sim_potential_stat_margin,
-            self.sim_label_H + self.sim_widget_D + (self.sim_potential_stat_H + self.sim_potential_stat_D),
-            self.sim_potential_stat_W,
-            self.sim_potential_stat_H,
-        )
-        self.sim_potential_stat1.currentIndexChanged.connect(self.sim_potential_update)
-        self.widgetList.append(self.sim_potential_stat1)
-
-        self.sim_potential_stat2 = QComboBox(self.sim3_frame3)
-        self.sim_potential_stat2.setFont(QFont("나눔스퀘어라운드 Bold", 10))
-        self.sim_potential_stat2.addItems(self.shared_data.POTENTIAL_STAT_LIST.keys())
-        self.sim_potential_stat2.setStyleSheet(comboboxStyle)
-        self.sim_potential_stat2.setGeometry(
-            self.sim_potential_stat_margin,
-            self.sim_label_H
-            + self.sim_widget_D
-            + (self.sim_potential_stat_H + self.sim_potential_stat_D) * 2,
-            self.sim_potential_stat_W,
-            self.sim_potential_stat_H,
-        )
-        self.sim_potential_stat2.currentIndexChanged.connect(self.sim_potential_update)
-        self.widgetList.append(self.sim_potential_stat2)
-
-        self.sim_potential_power_list = self.sim_makePowerLabels(
-            self.sim3_frame3, ["0"] * 4
-        )  # [[f, t, n], [f, t, n], [f, t, n], [f, t, n]]
-
-        for i, (f, t, n) in enumerate(self.sim_potential_power_list):
-            f.setGeometry(
-                self.sim_powerM_margin + (self.sim_powerM_width + self.sim_powerM_D) * i,
-                self.sim_label_H + self.sim_widget_D,
-                self.sim_powerM_width,
-                self.sim_powerM_frame_H,
-            )
-            self.widgetList.append(f)
-            t.setGeometry(
-                0,
-                0,
-                self.sim_powerM_width,
-                self.sim_powerM_title_H,
-            )
-            self.widgetList.append(t)
-            n.setGeometry(
-                0,
-                self.sim_powerM_title_H,
-                self.sim_powerM_width,
-                self.sim_powerM_number_H,
-            )
-            self.widgetList.append(n)
-
-        self.sim_potential_update()
-
-        # 잠재능력 옵션 순위표
-        self.sim3_frame4 = QFrame(self.sim_mainFrame)
-        self.sim3_frame4.setGeometry(
-            0,
-            self.sim3_frame3.y() + self.sim3_frame3.height() + self.sim_main_D,
-            928,
-            self.sim_title_H + (self.sim_widget_D + self.sim_potentialRank_frame_H),
-        )
-        self.sim3_frame4.setStyleSheet("QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }")
-        self.widgetList.append(self.sim3_frame4)
-
-        self.sim3_frame4_labelFrame, self.sim3_frame4_label = self.sim_returnTitleFrame(
-            self.sim3_frame4, "잠재능력 옵션 순위표"
-        )
-        self.widgetList.append(self.sim3_frame4_labelFrame)
-        self.widgetList.append(self.sim3_frame4_label)
-
-        titles = ["보스데미지", "일반데미지", "보스", "사냥"]
-        texts = [[], [], [], []]
-        for key, (num, value) in self.shared_data.POTENTIAL_STAT_LIST.items():
-            stats = self.shared_data.info_stats.copy()
-            stats[num] += value
-
-            powers = detSimulate(
-                self.shared_data,
-                tuple(stats),
-                tuple(self.shared_data.info_skills),
-                tuple(self.shared_data.info_simInfo),
-            )
-            diff_powers = [round(powers[i] - self.sim_powers[i], 5) for i in range(4)]
-
-            for i in range(4):
-                texts[i].append([key, diff_powers[i]])
-
-        [texts[i].sort(key=lambda x: x[1], reverse=True) for i in range(4)]
-        for i in range(4):
-            for j in range(len(self.shared_data.POTENTIAL_STAT_LIST)):
-                if texts[i][j][1] == 0:
-                    texts[i][j] = ["", "", ""]
-                else:
-                    texts[i][j][1] = f"+{round(texts[i][j][1])}"
-                    texts[i][j].insert(0, str(j + 1))
-        [texts[i].insert(0, ["순위", "잠재능력", "전투력"]) for i in range(4)]
-
-        colors = ["255, 163, 134", "255, 152, 0", "33, 150, 243", "165, 214, 167"]
-        transparencies = ["140", "89", "77", "179"]
-        self.sim_potentialRank_potentialList = [[], [], [], []]
-        self.sim_potentialRank_powerList = [[], [], [], []]
-        for i in range(4):
-            frame = QFrame(self.sim3_frame4)
-            frame.setGeometry(
-                self.sim_potentialRank_margin + (self.sim_potentialRank_width + self.sim_potentialRank_D) * i,
-                self.sim_label_H + self.sim_widget_D,
-                self.sim_potentialRank_width,
-                self.sim_potentialRank_frame_H,
-            )
-            self.widgetList.append(frame)
-
-            title = QLabel(titles[i], frame)
-            title.setStyleSheet(
-                f"""QLabel {{
-                    background-color: rgb({self.sim_colors4[i]});
-                    border: 1px solid rgb({self.sim_colors4[i]});
-                    border-bottom: 0px solid;
-                    border-top-left-radius: 4px;
-                    border-top-right-radius: 4px;
-                    border-bottom-left-radius: 0px;
-                    border-bottom-right-radius: 0px;
-                }}"""
-            )
-            title.setFont(QFont("나눔스퀘어라운드 ExtraBold", 14))
-            title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            title.setGeometry(
-                0,
-                0,
-                self.sim_potentialRank_width,
-                self.sim_potentialRank_title_H + 1,
-            )
-            self.widgetList.append(title)
-
-            table_frame = QFrame(frame)
-            table_frame.setStyleSheet(
-                f"""QFrame {{
-                    background-color: rgba({self.sim_colors4[i]}, 120);
-                    border-top-left-radius: 0px;
-                    border-top-right-radius: 0px;
-                    border-bottom-left-radius: 4px;
-                    border-bottom-right-radius: 4px
-                }}"""
-            )
-            table_frame.setGeometry(
-                0,
-                self.sim_potentialRank_title_H,
-                self.sim_potentialRank_width,
-                self.sim_potentialRank_ranks_H,
-            )
-            self.widgetList.append(table_frame)
-
-            for j in range(16):
-                rank = QLabel(texts[i][j][0], table_frame)
-                if j == 0:
-                    rank.setStyleSheet(
-                        f"""QLabel {{
-                            background-color: rgba({colors[i]}, {transparencies[i]});
-                            border: 1px solid rgb({self.sim_colors4[i]});
-                            border-top: 0px solid;
-                            border-top-left-radius: 0px;
-                            border-top-right-radius: 0px;
-                            border-bottom-left-radius: 0px;
-                            border-bottom-right-radius: 0px;
-                        }}"""
-                    )
-                elif j == 15:
-                    rank.setStyleSheet(
-                        f"""QLabel {{
-                            background-color: transparent;
-                            border: 1px solid rgb({self.sim_colors4[i]});
-                            border-top: 0px solid;
-                            border-top-left-radius: 0px;
-                            border-top-right-radius: 0px;
-                            border-bottom-left-radius: 4px;
-                            border-bottom-right-radius: 0px;
-                        }}"""
-                    )
-                else:
-                    rank.setStyleSheet(
-                        f"""QLabel {{
-                            background-color: transparent;
-                            border: 1px solid rgb({self.sim_colors4[i]});
-                            border-top: 0px solid;
-                            border-top-left-radius: 0px;
-                            border-top-right-radius: 0px;
-                            border-bottom-left-radius: 0px;
-                            border-bottom-right-radius: 0px;
-                        }}"""
-                    )
-                rank.setFont(QFont("나눔스퀘어라운드 Bold", 10))
-                rank.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                rank.setGeometry(
-                    0,
-                    self.sim_potentialRank_rank_H * j,
-                    self.sim_potentialRank_rank_ranking_W,
-                    self.sim_potentialRank_rank_H,
-                )
-                self.widgetList.append(rank)
-
-                potential = QLabel(texts[i][j][1], table_frame)
-                if j == 0:
-                    potential.setStyleSheet(
-                        f"""QLabel {{
-                            background-color: rgba({colors[i]}, {transparencies[i]});
-                            border: 1px solid rgb({self.sim_colors4[i]});
-                            border-top: 0px solid;
-                            border-left: 0px solid;
-                            border-right: 0px solid;
-                            border-top-left-radius: 0px;
-                            border-top-right-radius: 0px;
-                            border-bottom-left-radius: 0px;
-                            border-bottom-right-radius: 0px;
-                        }}"""
-                    )
-                    potential.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                else:
-                    potential.setStyleSheet(
-                        f"""QLabel {{
-                            background-color: transparent;
-                            border: 1px solid rgb({self.sim_colors4[i]});
-                            border-top: 0px solid;
-                            border-left: 0px solid;
-                            border-right: 0px solid;
-                            border-top-left-radius: 0px;
-                            border-top-right-radius: 0px;
-                            border-bottom-left-radius: 0px;
-                            border-bottom-right-radius: 0px;
-                        }}"""
-                    )
-                    potential.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-                potential.setFont(QFont("나눔스퀘어라운드 Bold", 10))
-                potential.setGeometry(
-                    self.sim_potentialRank_rank_ranking_W,
-                    self.sim_potentialRank_rank_H * j,
-                    self.sim_potentialRank_rank_potential_W,
-                    self.sim_potentialRank_rank_H,
-                )
-                self.widgetList.append(potential)
-                self.sim_potentialRank_potentialList[i].append(potential)
-
-                power = QLabel(texts[i][j][2], table_frame)
-                if j == 0:
-                    power.setStyleSheet(
-                        f"""QLabel {{
-                            background-color: rgba({colors[i]}, {transparencies[i]});
-                            border: 1px solid rgb({self.sim_colors4[i]});
-                            border-top: 0px solid;
-                            border-top-left-radius: 0px;
-                            border-top-right-radius: 0px;
-                            border-bottom-left-radius: 0px;
-                            border-bottom-right-radius: 0px;
-                        }}"""
-                    )
-                elif j == 15:
-                    power.setStyleSheet(
-                        f"""QLabel {{
-                            background-color: transparent;
-                            border: 1px solid rgb({self.sim_colors4[i]});
-                            border-top: 0px solid;
-                            border-top-left-radius: 0px;
-                            border-top-right-radius: 0px;
-                            border-bottom-left-radius: 0px;
-                            border-bottom-right-radius: 4px;
-                        }}"""
-                    )
-                else:
-                    power.setStyleSheet(
-                        f"""QLabel {{
-                            background-color: transparent;
-                            border: 1px solid rgb({self.sim_colors4[i]});
-                            border-top: 0px solid;
-                            border-top-left-radius: 0px;
-                            border-top-right-radius: 0px;
-                            border-bottom-left-radius: 0px;
-                            border-bottom-right-radius: 0px;
-                        }}"""
-                    )
-                power.setFont(QFont("나눔스퀘어라운드 Bold", 10))
-                power.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                power.setGeometry(
-                    self.sim_potentialRank_rank_ranking_W + self.sim_potentialRank_rank_potential_W,
-                    self.sim_potentialRank_rank_H * j,
-                    self.sim_potentialRank_rank_power_W,
-                    self.sim_potentialRank_rank_H,
-                )
-                self.widgetList.append(power)
-                self.sim_potentialRank_powerList[i].append(power)
+        self.sim3_ui = Sim3UI(self.sim_mainFrame, self.shared_data)
 
         # 메인 프레임 크기 조정
         self.sim_mainFrame.setFixedHeight(
-            self.sim3_frame4.y() + self.sim3_frame4.height() + self.sim_mainFrameMargin,
+            self.sim3_ui.potentialRank_frame.y()
+            + self.sim3_ui.potentialRank_frame.height()
+            + self.ui_var.sim_mainFrameMargin,
         )
-        [i.show() for i in self.widgetList]
+        [i.show() for i in self.sim3_ui.widgetList]
         self.updatePosition()
 
     def makeSimulType2(self):
-        if not (self.sim_stat_inputCheck and self.sim_skill_inputCheck and self.sim_simInfo_inputCheck):
+        if not all(self.shared_data.inputCheck.values()):
             self.makeNoticePopup("SimInputError")
             return
 
@@ -1491,352 +242,13 @@ class MainWindow(QWidget):
 
         self.shared_data.sim_type = 2
 
-        self.sim_powers, analysis, resultDet, results = randSimulate(
-            self.shared_data,
-            tuple(self.shared_data.info_stats),
-            tuple(self.shared_data.info_skills),
-            tuple(self.shared_data.info_simInfo),
-        )
-
-        # 전투력
-        self.sim2_frame1 = QFrame(self.sim_mainFrame)
-        self.sim2_frame1.setGeometry(
-            0,
-            0,
-            928,
-            self.sim_title_H + (self.sim_widget_D + self.sim_powerL_frame_H),
-        )
-        self.sim2_frame1.setStyleSheet("QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }")
-
-        self.sim2_frame1_labelFrame, self.sim2_frame1_label = self.sim_returnTitleFrame(
-            self.sim2_frame1, "전투력"
-        )
-        self.sim_power_list = self.sim_makePowerLabels(
-            self.sim2_frame1, self.sim_powers
-        )  # [[f, t, n], [f, t, n], [f, t, n], [f, t, n]]
-
-        for i, (f, t, n) in enumerate(self.sim_power_list):
-            f.setGeometry(
-                self.sim_powerL_margin + (self.sim_powerL_width + self.sim_powerL_D) * i,
-                self.sim_label_H + self.sim_widget_D,
-                self.sim_powerL_width,
-                self.sim_powerL_frame_H,
-            )
-            t.setGeometry(
-                0,
-                0,
-                self.sim_powerL_width,
-                self.sim_powerL_title_H,
-            )
-            n.setGeometry(
-                0,
-                self.sim_powerL_title_H,
-                self.sim_powerL_width,
-                self.sim_powerL_number_H,
-            )
-
-        # 분석
-        self.sim2_frame2 = QFrame(self.sim_mainFrame)
-        self.sim2_frame2.setGeometry(
-            0,
-            self.sim2_frame1.y() + self.sim2_frame1.height() + self.sim_main_D,
-            928,
-            self.sim_title_H
-            + (
-                self.sim_widget_D * 5
-                + self.sim_analysis_frame_H
-                + self.sim_dps_height
-                + self.sim_dmg_height * 3
-            ),
-        )
-        self.sim2_frame2.setStyleSheet("QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }")
-
-        self.sim2_frame2_labelFrame, self.sim2_frame2_label = self.sim_returnTitleFrame(
-            self.sim2_frame2, "분석"
-        )
-
-        details = ["min", "max", "std", "p25", "p50", "p75"]
-
-        self.sim_analysis_list = [
-            [],
-            [],
-            [],
-            [],
-        ]  # [[f, c, t, n, [[f, t, n] * 6]], [f, c, t, n, [[f, t, n] * 6]], [f, c, t, n, [[f, t, n] * 6]], [f, c, t, n, [[f, t, n] * 6]]]
-        for i in range(4):
-            frame = QFrame(self.sim2_frame2)
-            frame.setGeometry(
-                self.sim_analysis_margin + (self.sim_analysis_width + self.sim_analysis_D) * i,
-                self.sim_label_H + self.sim_widget_D,
-                self.sim_analysis_width,
-                self.sim_analysis_frame_H,
-            )
-            frame.setStyleSheet(
-                "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-top-left-radius: 0px; border-top-right-radius: 6px; border-bottom-left-radius: 0px; border-bottom-right-radius: 6px; }"
-            )
-            self.sim_analysis_list[i].append(frame)
-
-            color = QFrame(frame)
-            color.setGeometry(
-                0,
-                0,
-                self.sim_analysis_color_W,
-                self.sim_analysis_frame_H,
-            )
-            color.setStyleSheet(
-                f"QFrame {{ background-color: rgb({self.sim_colors4[i]}); border: 0px solid; border-radius: 0px; border-bottom: 1px solid #CCCCCC; border-left: 1px solid #CCCCCC; border-top: 1px solid #CCCCCC; }}"
-            )
-            self.sim_analysis_list[i].append(color)
-
-            title = QLabel(analysis[i]["title"], frame)
-            title.setGeometry(
-                self.sim_analysis_color_W,
-                0,
-                self.sim_analysis_widthXC,
-                self.sim_analysis_title_H,
-            )
-            title.setStyleSheet("QLabel { background-color: transparent; border: 0px solid; }")
-            title.setFont(QFont("나눔스퀘어라운드 Bold", 14))
-            title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.sim_analysis_list[i].append(title)
-
-            number = QLabel(analysis[i]["number"], frame)
-            number.setGeometry(
-                self.sim_analysis_color_W,
-                self.sim_analysis_title_H,
-                self.sim_analysis_widthXC,
-                self.sim_analysis_number_H,
-            )
-            number.setStyleSheet("QLabel { background-color: transparent; border: 0px solid; }")
-            number.setFont(QFont("나눔스퀘어라운드 ExtraBold", 18))
-            number.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.sim_analysis_list[i].append(number)
-
-            self.sim_analysis_list[i].append([])
-            for j in range(6):
-                self.sim_analysis_list[i][4].append([])
-                detail_frame = QFrame(frame)
-                detail_frame.setGeometry(
-                    self.sim_analysis_color_W
-                    + self.sim_analysis_details_margin
-                    + (self.sim_analysis_details_W + self.sim_analysis_details_margin) * (j % 3)
-                    - 1,
-                    self.sim_analysis_title_H
-                    + self.sim_analysis_number_H
-                    + self.sim_analysis_number_marginH
-                    + self.sim_analysis_details_H * (j // 3),
-                    self.sim_analysis_details_W,
-                    self.sim_analysis_details_H,
-                )
-                detail_frame.setStyleSheet("QFrame { background-color: transparent; border: 0px solid; }")
-                self.sim_analysis_list[i][4][j].append(detail_frame)
-
-                detail_title = QLabel(details[j], detail_frame)
-                detail_title.setGeometry(
-                    0,
-                    0,
-                    self.sim_analysis_detailsT_W,
-                    self.sim_analysis_details_H,
-                )
-                detail_title.setStyleSheet(
-                    "QLabel { background-color: transparent; border: 0px solid; color: #A0A0A0 }"
-                )
-                detail_title.setFont(QFont("나눔스퀘어라운드 ExtraBold", 8))
-                detail_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.sim_analysis_list[i][4][j].append(detail_title)
-
-                detail_number = QLabel(analysis[i][details[j]], detail_frame)
-                detail_number.setGeometry(
-                    self.sim_analysis_detailsT_W,
-                    0,
-                    self.sim_analysis_detailsN_W,
-                    self.sim_analysis_details_H,
-                )
-                detail_number.setStyleSheet("QLabel { background-color: transparent; border: 0px solid; }")
-                detail_number.setFont(QFont("나눔스퀘어라운드 ExtraBold", 8))
-                detail_number.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.sim_analysis_list[i][4][j].append(detail_number)
-
-        ## DPM 분포
-        self.sim_dpsGraph_frame = QFrame(self.sim2_frame2)
-        self.sim_dpsGraph_frame.setGeometry(
-            self.sim_dps_margin,
-            self.sim_label_H + self.sim_analysis_frame_H + self.sim_widget_D * 2,
-            self.sim_dps_width,
-            self.sim_dps_height,
-        )
-        self.sim_dpsGraph_frame.setStyleSheet(
-            "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
-        )
-        data = [sum([i[2] for i in j]) for j in results]
-        self.sim_dpsGraph = DpsDistributionCanvas(self.sim_dpsGraph_frame, data)  # 시뮬레이션 결과
-        self.sim_dpsGraph.move(5, 5)
-        self.sim_dpsGraph.resize(self.sim_dps_width - 10, self.sim_dps_height - 10)
-
-        ## 스킬 비율
-        self.sim_skillRatioGraph_frame = QFrame(self.sim2_frame2)
-        self.sim_skillRatioGraph_frame.setGeometry(
-            self.sim_dps_margin + self.sim_dps_width + self.sim_skillDps_margin,
-            self.sim_label_H + self.sim_analysis_frame_H + self.sim_widget_D * 2,
-            self.sim_skillRatio_width,
-            self.sim_skillRatio_height,
-        )
-        self.sim_skillRatioGraph_frame.setStyleSheet(
-            "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
-        )
-        data = [sum([i[2] for i in resultDet if i[0] == num]) for num in list(range(6)) + [-1]]
-        # data = [round(total_dmgs[i] / sum(total_dmgs) * 100, 1) for i in range(7)]
-        names = []
-        for i in range(6):
-            if i != -1:
-                names.append(
-                    self.shared_data.SKILL_NAME_LIST[self.shared_data.serverID][self.shared_data.jobID][
-                        self.shared_data.selectedSkillList[i]
-                    ]
-                )
-            else:
-                names.append(None)
-        self.sim_skillRatioGraph = SkillDpsRatioCanvas(self.sim_skillRatioGraph_frame, data, names)
-        self.sim_skillRatioGraph.move(10, 10)
-        self.sim_skillRatioGraph.resize(self.sim_skillRatio_width - 20, self.sim_skillRatio_height - 20)
-
-        ## 시간 경과에 따른 피해량
-        self.sim_dmgTime_frame = QFrame(self.sim2_frame2)
-        self.sim_dmgTime_frame.setGeometry(
-            self.sim_dps_margin,
-            self.sim_label_H + self.sim_analysis_frame_H + self.sim_dps_height + self.sim_widget_D * 3,
-            self.sim_dmg_width,
-            self.sim_dmg_height,
-        )
-        self.sim_dmgTime_frame.setStyleSheet(
-            "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
-        )
-
-        timeStep, timeStepCount = 1, 61  # 61이라면 61초까지 시뮬레이션 돌려야함
-        times = [i * timeStep for i in range(timeStepCount)]
-
-        dps_list = []
-        for result in results:
-            dps_list.append([])
-            for i in range(timeStepCount):
-                dps_list[-1].append(sum([j[2] for j in result if i * timeStep <= j[1] < (i + 1) * timeStep]))
-
-        mean_list = [sum([j[i] for j in dps_list]) / len(dps_list) for i in range(timeStepCount)]
-        max_list = [max([j[i] for j in dps_list]) for i in range(timeStepCount)]
-        min_list = [min([j[i] for j in dps_list]) for i in range(timeStepCount)]
-        data = {
-            "time": times,
-            "max": max_list,
-            "mean": mean_list,
-            "min": min_list,
-        }
-        self.sim_dmgTime = DMGCanvas(self.sim_dmgTime_frame, data, "time")  # 시뮬레이션 결과
-        self.sim_dmgTime.move(5, 5)
-        self.sim_dmgTime.resize(self.sim_dmg_width - 10, self.sim_dmg_height - 10)
-
-        ## 누적 피해량
-        self.sim_totalDmg_frame = QFrame(self.sim2_frame2)
-        self.sim_totalDmg_frame.setGeometry(
-            self.sim_dps_margin,
-            self.sim_label_H
-            + self.sim_analysis_frame_H
-            + self.sim_dps_height
-            + self.sim_dmg_height
-            + self.sim_widget_D * 4,
-            self.sim_dmg_width,
-            self.sim_dmg_height,
-        )
-        self.sim_totalDmg_frame.setStyleSheet(
-            "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
-        )
-
-        sums = [sum([i[2] for i in j]) for j in results]
-        max_idx = sums.index(max(sums))
-        min_idx = sums.index(min(sums))
-
-        total_list = []
-        for dps in dps_list:
-            total_list.append([])
-            for i in range(timeStepCount):
-                total = sum([j for j in dps[: i + 1]])
-                total_list[-1].append(total)
-
-        means = [sum([j[i] for j in total_list]) / len(total_list) for i in range(timeStepCount)]
-        data = {
-            "time": times,
-            "max": total_list[max_idx],
-            "mean": means,
-            "min": total_list[min_idx],
-        }
-        self.sim_totalDmg = DMGCanvas(self.sim_totalDmg_frame, data, "cumulative")  # 시뮬레이션 결과
-        self.sim_totalDmg.move(5, 5)
-        self.sim_totalDmg.resize(self.sim_dmg_width - 10, self.sim_dmg_height - 10)
-
-        ## 스킬별 누적 기여도
-        self.sim_skillContribute_frame = QFrame(self.sim2_frame2)
-        self.sim_skillContribute_frame.setGeometry(
-            self.sim_dps_margin,
-            self.sim_label_H
-            + self.sim_analysis_frame_H
-            + self.sim_dps_height
-            + self.sim_dmg_height * 2
-            + self.sim_widget_D * 5,
-            self.sim_dmg_width,
-            self.sim_dmg_height,
-        )
-        self.sim_skillContribute_frame.setStyleSheet(
-            "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
-        )
-
-        skillsData = []
-        for num in list(range(6)) + [-1]:
-            skillsData.append([])
-            for i in range(timeStepCount):
-                skillsData[-1].append(
-                    sum([j[2] for j in resultDet if j[0] == num and j[1] < (i + 1) * timeStep])
-                )
-
-        totalData = []
-        for i in range(timeStepCount):
-            totalData.append(sum([j[2] for j in resultDet if j[1] < (i + 1) * timeStep]))
-
-        data_normalized = []
-        for i in range(7):
-            data_normalized.append([skillsData[i][j] / totalData[j] for j in range(timeStepCount)])
-
-        data_cumsum = [[0.0 for _ in row] for row in data_normalized]
-        for i in range(len(data_normalized)):
-            for j in range(len(data_normalized[0])):
-                data_cumsum[i][j] = sum(row[j] for row in data_normalized[: i + 1])
-
-        names = []
-        for i in range(6):
-            if i != -1:
-                names.append(
-                    self.shared_data.SKILL_NAME_LIST[self.shared_data.serverID][self.shared_data.jobID][
-                        self.shared_data.selectedSkillList[i]
-                    ]
-                )
-            else:
-                names.append(None)
-
-        data = {
-            "time": times,
-            "skills_normalized": data_normalized,
-            "skills_sum": data_cumsum,
-        }
-        self.sim_skillContribute = SkillContributionCanvas(
-            self.sim_skillContribute_frame, data, names
-        )  # 시뮬레이션 결과
-        self.sim_skillContribute.move(5, 5)
-        self.sim_skillContribute.resize(
-            self.sim_dmg_width - 10,
-            self.sim_dmg_height - 10,
-        )
+        self.sim2_ui = Sim2UI(self.sim_mainFrame, self.shared_data)
 
         # 메인 프레임 크기 조정
         self.sim_mainFrame.setFixedHeight(
-            self.sim2_frame2.y() + self.sim2_frame2.height() + self.sim_mainFrameMargin,
+            self.sim2_ui.analysis_frame.y()
+            + self.sim2_ui.analysis_frame.height()
+            + self.ui_var.sim_mainFrameMargin,
         )
         [i.show() for i in self.page2.findChildren(QWidget)]
         self.updatePosition()
@@ -1847,311 +259,23 @@ class MainWindow(QWidget):
 
         self.shared_data.sim_type = 1
 
-        # 캐릭터 스탯
-        self.sim1_frame1 = QFrame(self.sim_mainFrame)
-        self.sim1_frame1.setGeometry(
-            0,
-            0,
-            928,
-            self.sim_title_H + (self.sim_widget_D + self.sim_stat_frame_H) * 3,
-        )
-        self.sim1_frame1.setStyleSheet("QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }")
-
-        self.sim1_frame1_labelFrame, self.sim1_frame1_label = self.sim_returnTitleFrame(
-            self.sim1_frame1, "캐릭터 스탯"
-        )
-        self.sim_makeStatInput(self.sim1_frame1)
-        self.sim_stat_inputs[0].setFocus()
-
-        margin, count = 21, 6
-        for i in range(18):
-            self.sim_stat_frames[i].move(
-                self.sim_stat_margin + self.sim_stat_width * (i % count) + margin * (i % count),
-                self.sim1_frame1_labelFrame.height()
-                + self.sim_widget_D * ((i // count) + 1)
-                + self.sim_stat_frame_H * (i // count),
-            )
-            self.sim_stat_labels[i].setGeometry(
-                0,
-                0,
-                self.sim_stat_width,
-                self.sim_stat_label_H,
-            )
-            self.sim_stat_inputs[i].setGeometry(
-                0, self.sim_stat_label_H, self.sim_stat_width, self.sim_stat_input_H
-            )
-
-            self.sim_stat_inputs[i].setText(str(self.shared_data.info_stats[i]))
-
-        # 스킬 레벨
-        self.sim1_frame2 = QFrame(self.sim_mainFrame)
-        self.sim1_frame2.setGeometry(
-            0,
-            self.sim1_frame1.y() + self.sim1_frame1.height() + self.sim_main_D,
-            928,
-            self.sim_title_H + (self.sim_widget_D + self.sim_skill_frame_H) * 2,
-        )
-        self.sim1_frame2.setStyleSheet("QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }")
-
-        self.sim1_frame2_labelFrame, self.sim1_frame2_label = self.sim_returnTitleFrame(
-            self.sim1_frame2, "스킬 레벨"
-        )
-        self.sim_makeSkillInput(self.sim1_frame2)
-
-        margin, count = 66, 4
-        for i in range(8):
-            self.sim_skill_frames[i].move(
-                self.sim_skill_margin + self.sim_skill_width * (i % count) + margin * (i % count),
-                self.sim1_frame2_labelFrame.height()
-                + self.sim_widget_D * ((i // count) + 1)
-                + self.sim_skill_frame_H * (i // count),
-            )
-            self.sim_skill_names[i].setGeometry(
-                0,
-                0,
-                self.sim_skill_width,
-                self.sim_skill_name_H,
-            )
-            self.sim_skill_levels[i].setGeometry(
-                self.sim_skill_image_Size,
-                self.sim_skill_name_H,
-                self.sim_skill_right_W,
-                self.sim_skill_level_H,
-            )
-            self.sim_skill_inputs[i].setGeometry(
-                self.sim_skill_image_Size,
-                self.sim_skill_name_H + self.sim_skill_level_H,
-                self.sim_skill_right_W,
-                self.sim_skill_input_H,
-            )
-
-            self.sim_skill_inputs[i].setText(str(self.shared_data.info_skills[i]))
-
-        # 추가 정보 입력
-        self.sim1_frame3 = QFrame(self.sim_mainFrame)
-        self.sim1_frame3.setGeometry(
-            0,
-            self.sim1_frame2.y() + self.sim1_frame2.height() + self.sim_main_D,
-            928,
-            self.sim_title_H + (self.sim_widget_D + self.sim_simInfo_frame_H) * 1,
-        )
-        self.sim1_frame3.setStyleSheet("QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }")
-
-        self.sim1_frame3_labelFrame, self.sim1_frame3_label = self.sim_returnTitleFrame(
-            self.sim1_frame3, "추가 정보 입력"
-        )
-        self.sim_makeSimInfoInput(self.sim1_frame3)
-
-        margin = 60
-        for i in range(3):
-            self.sim_simInfo_frames[i].move(
-                self.sim_simInfo_margin + (self.sim_simInfo_width + margin) * i,
-                self.sim1_frame3_labelFrame.height() + self.sim_widget_D,
-            )
-            self.sim_simInfo_labels[i].setGeometry(
-                0,
-                0,
-                self.sim_simInfo_width,
-                self.sim_simInfo_label_H,
-            )
-            self.sim_simInfo_inputs[i].setGeometry(
-                0, self.sim_simInfo_label_H, self.sim_simInfo_width, self.sim_simInfo_input_H
-            )
-
-            self.sim_simInfo_inputs[i].setText(str(self.shared_data.info_simInfo[i]))
+        self.sim1_ui = Sim1UI(self.sim_mainFrame, self.shared_data)
 
         # Tab Order 설정
-        tabOrders = self.sim_stat_inputs + self.sim_skill_inputs + self.sim_simInfo_inputs
+        tabOrders = (
+            self.sim1_ui.stat_inputs.inputs
+            + self.sim1_ui.skill_inputs.inputs
+            + self.sim1_ui.info_inputs.inputs
+        )
         for i in range(len(tabOrders) - 1):
             QWidget.setTabOrder(tabOrders[i], tabOrders[i + 1])
 
         # 메인 프레임 크기 조정
         self.sim_mainFrame.setFixedHeight(
-            self.sim1_frame3.y() + self.sim1_frame3.height() + self.sim_mainFrameMargin,
+            self.sim1_ui.info_frame.y() + self.sim1_ui.info_frame.height() + self.ui_var.sim_mainFrameMargin,
         )
         [i.show() for i in self.page2.findChildren(QWidget)]
         self.updatePosition()
-
-    def sim_loadCharacterInfo(self):
-        self.sim_info_charData = None
-
-        try:
-            data = get_character_info(self.sim4_info_nicknameInput.text())
-        except:
-            self.makeNoticePopup("SimCharLoadError")
-            return
-
-        for i, j in enumerate(data):
-            job, level = j["job"], j["level"]
-            if job == self.shared_data.jobID:
-                self.sim4_info_charButtonList[i].setText(
-                    f"{self.shared_data.JOB_LIST[self.shared_data.serverID][job]} | Lv.{level}"
-                )
-                self.sim4_info_charButtonList[i].setStyleSheet(
-                    f"""QPushButton {{
-                    background-color: #FFFFFF;
-                    border: 1px solid {self.sim_input_colors[1]};
-                    border-radius: 8px;
-                    color: #000000;
-                    }}
-                    QPushButton:hover {{
-                        background-color: #F0F0F0;
-                    }}"""
-                )
-
-                self.sim4_info_charButtonList[i].clicked.connect(
-                    partial(lambda x, y: self.sim_selectCharacter(x, y), i, j)
-                )
-            else:
-                self.sim4_info_charButtonList[i].setText(
-                    f"{self.shared_data.JOB_LIST[self.shared_data.serverID][job]} | Lv.{level}"
-                )
-                self.sim4_info_charButtonList[i].setStyleSheet(
-                    f"""QPushButton {{
-                    background-color: #FFFFFF;
-                    border: 1px solid {self.sim_input_colors[1]};
-                    border-radius: 8px;
-                    color: rgb(153, 153, 153);
-                    }}"""
-                )
-
-                try:
-                    self.sim4_info_charButtonList[i].clicked.disconnect()
-                except:
-                    pass
-
-    def sim_selectCharacter(self, index, data):
-        self.sim_loadCharacterInfo()
-
-        self.sim_info_charData = data
-
-        self.sim4_info_charButtonList[index].setStyleSheet(
-            f"""QPushButton {{
-            background-color: #CCCCCC;
-            border: 1px solid {self.sim_input_colors[1]};
-            border-radius: 8px;
-            color: #000000;
-            }}"""
-        )
-
-    def sim_info_powersClicked(self, num):
-        self.sim_info_powerActive[num] = not self.sim_info_powerActive[num]
-
-        for i in range(4):
-            self.sim4_info_powerButtons[i].setStyleSheet(
-                f"""QPushButton {{
-                background-color: #FFFFFF;
-                border: 1px solid {self.sim_input_colors[1]};
-                border-radius: 5px;
-                color: {"#000000" if self.sim_info_powerActive[i] else "rgb(153, 153, 153)"};
-                }}
-                QPushButton:hover {{
-                    background-color: #F0F0F0;
-                }}"""
-            )
-
-    def sim_card_save(self):
-        if not self.sim_card_updated:
-            self.makeNoticePopup("SimCardNotUpdated")
-            return
-
-        scale_factor = 3
-        original_size = self.sim4_frame_card.size()
-        scaled_size = original_size * scale_factor
-
-        pixmap = QPixmap(scaled_size)
-        pixmap.fill()
-
-        painter = QPainter(pixmap)
-        painter.scale(scale_factor, scale_factor)
-        self.sim4_frame_card.render(painter)
-        painter.end()
-
-        # Open a file dialog to save the image
-        file_dialog = QFileDialog(self)
-        file_dialog.setAcceptMode(QFileDialog.AcceptMode.AcceptSave)
-        file_dialog.setNameFilters(["Images (*.png *.jpg *.bmp)"])
-        file_dialog.setDefaultSuffix("png")
-        if file_dialog.exec():
-            file_path = file_dialog.selectedFiles()[0]
-            pixmap.save(file_path)
-            os.startfile(file_path)
-
-    def sim_card_update(self):
-        if self.sim_info_charData is None:
-            self.makeNoticePopup("SimCardError")
-            return
-
-        if not any(self.sim_info_powerActive):
-            self.makeNoticePopup("SimCardPowerError")
-            return
-
-        name = self.sim4_info_nicknameInput.text()
-        try:
-            name, url = get_character_card_data(name)
-        except:
-            self.makeNoticePopup("SimCardError")
-            return
-
-        pixmap = QPixmap(convertResourcePath("resources\\image\\card_bg.png"))
-        self.sim4_card_image_bg.setPixmap(pixmap)
-        image = requests.get(url).content
-        pixmap = QPixmap()
-        pixmap.loadFromData(image)
-
-        h_ratio = 282 / pixmap.height()
-        width = round(pixmap.width() * h_ratio)
-        dWidth = width - (self.sim_charCard_image_W - 30)
-
-        self.sim4_card_image.setGeometry(
-            self.sim_charCard_image_margin + 15 - dWidth // 2,
-            self.sim_charCard_image_margin + self.sim_charCard_title_H + 15,
-            round(pixmap.width() * h_ratio),
-            self.sim_charCard_image_H - 30,
-        )
-        self.sim4_card_image.setPixmap(pixmap)
-
-        self.adjustFontSize(self.sim4_card_name, name, 18)
-        self.sim4_card_job.setText(
-            self.shared_data.JOB_LIST[self.shared_data.serverID][self.shared_data.jobID]
-        )
-        self.sim4_card_level.setText(f"Lv.{self.sim_info_charData["level"]}")
-
-        countF = self.sim_info_powerActive.count(False)
-        count = 0
-        for i in range(4):
-            if self.sim_info_powerActive[i]:
-                self.sim4_card_powers[i][0].setGeometry(
-                    self.sim_charCard_powerFrame_margin,
-                    self.sim_charCard_powerFrame_y + self.sim_charCard_powerFrame_H * count + 20 * countF,
-                    self.sim_charCard_powerFrame_W,
-                    self.sim_charCard_powerFrame_H,
-                )
-                self.sim4_card_powers[i][2].setText(f"{int(self.sim_powers[i])}")
-
-                self.sim4_card_powers[i][0].show()
-                count += 1
-            else:
-                self.sim4_card_powers[i][0].hide()
-
-        self.sim_card_updated = True
-
-    def sim_returnTitleFrame(self, mainFrame, title):
-        labelFrame = QFrame(mainFrame)
-        labelFrame.setGeometry(0, 0, 928, self.sim_label_H)
-        labelFrame.setStyleSheet(
-            f"QFrame {{ background-color: rgb(255, 255, 255); border: none; border-bottom: 1px solid {self.sim_labelFrame_color}; }}"
-        )
-        label = QLabel(title, labelFrame)
-        label.setGeometry(
-            self.sim_label_x,
-            0,
-            928 - self.sim_label_x,
-            self.sim_label_H,
-        )
-        label.setFont(QFont("나눔스퀘어라운드 Bold", 16))
-
-        return labelFrame, label
 
     def sim_updateNavButton(self, num):
         for i in [0, 1, 2, 3]:
@@ -2161,362 +285,6 @@ class MainWindow(QWidget):
                 QPushButton:hover {{ background-color: rgb(234, 234, 234); }}
                 """
             )
-
-    def sim_makePowerLabels(self, mainframe, texts, font_size=18):
-        titles = ["보스데미지", "일반데미지", "보스", "사냥"]
-        power_list = [[], [], [], []]
-        for i in range(4):
-            frame = QFrame(mainframe)
-            power_list[i].append(frame)
-
-            title = QLabel(titles[i], frame)
-            title.setStyleSheet(
-                f"QLabel {{ background-color: rgb({self.sim_colors4[i]}); border: 1px solid rgb({self.sim_colors4[i]}); border-bottom: 0px solid; border-top-left-radius: 4px; border-top-right-radius: 4px; border-bottom-left-radius: 0px; border-bottom-right-radius: 0px; }}"
-            )
-            title.setFont(QFont("나눔스퀘어라운드 ExtraBold", 14))
-            title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            power_list[i].append(title)
-
-            number = QLabel(texts[i], frame)
-            number.setStyleSheet(
-                f"QLabel {{ background-color: rgba({self.sim_colors4[i]}, 120); border: 1px solid rgb({self.sim_colors4[i]}); border-top: 0px solid; border-top-left-radius: 0px; border-top-right-radius: 0px; border-bottom-left-radius: 4px; border-bottom-right-radius: 4px }}"
-            )
-            number.setFont(QFont("나눔스퀘어라운드 ExtraBold", font_size))
-            number.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            power_list[i].append(number)
-
-        return power_list
-
-    def sim_makeSimInfoInput(self, mainframe):
-        statList = [
-            "몬스터 내공",
-            "보스 내공",
-            "포션 회복량",
-        ]
-
-        self.sim_simInfo_frames = []
-        self.sim_simInfo_labels = []
-        self.sim_simInfo_inputs = []
-        for i in range(len(statList)):
-            frame = QFrame(mainframe)
-            frame.setStyleSheet("QFrame { background-color: transparent; border: 0px solid; }")
-            self.sim_simInfo_frames.append(frame)
-
-            label = QLabel(statList[i], frame)
-            label.setStyleSheet("QLabel { background-color: transparent; border: 0px solid; }")
-            label.setFont(QFont("나눔스퀘어라운드 Bold", 10))
-            self.sim_simInfo_labels.append(label)
-
-            lineEdit = QLineEdit("", frame)
-            lineEdit.setFont(QFont("나눔스퀘어라운드 Bold", 14))
-            lineEdit.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            lineEdit.setStyleSheet(
-                f"QLineEdit {{ background-color: {self.sim_input_colors[0]}; border: 1px solid {self.sim_input_colors[1]}; border-radius: 4px; }}"
-            )
-
-            # 데이터 입력시 실행할 함수 연결
-            lineEdit.textChanged.connect(self.sim_simInfo_inputChanged)
-            self.sim_simInfo_inputs.append(lineEdit)
-
-    def sim_potential_update(self):
-        indexList = [
-            self.sim_potential_stat0.currentText(),
-            self.sim_potential_stat1.currentText(),
-            self.sim_potential_stat2.currentText(),
-        ]
-
-        stats = self.shared_data.info_stats.copy()
-        for i in range(3):
-            num, value = self.shared_data.POTENTIAL_STAT_LIST[indexList[i]]
-            stats[num] += value
-
-        powers = detSimulate(
-            self.shared_data,
-            tuple(stats),
-            tuple(self.shared_data.info_skills),
-            tuple(self.shared_data.info_simInfo),
-        )
-
-        diff_powers = [round(powers[i] - self.sim_powers[i]) for i in range(4)]
-
-        [self.sim_potential_power_list[i][2].setText(f"{diff_powers[i]:+}") for i in range(4)]
-
-    def sim_update_efficiency(self):
-        if self.sim_efficiency_statL.currentIndex() == self.sim_efficiency_statR.currentIndex():
-            [
-                self.sim_efficiency_power_list[i][2].setText(
-                    f"{int(self.sim_efficiency_statInput.text()):.2f}"
-                )
-                for i in range(4)
-            ]
-            return
-
-        stats = self.shared_data.info_stats.copy()
-        stats[self.sim_efficiency_statL.currentIndex()] += int(self.sim_efficiency_statInput.text())
-        powers = detSimulate(
-            self.shared_data,
-            tuple(stats),
-            tuple(self.shared_data.info_skills),
-            tuple(self.shared_data.info_simInfo),
-        )
-        reqStats = getRequiredStat(self.shared_data, powers, self.sim_efficiency_statR.currentIndex())
-
-        [self.sim_efficiency_power_list[i][2].setText(reqStats[i]) for i in range(4)]
-
-    def sim_efficiency_Changed(self):
-        text = self.sim_efficiency_statInput.text()
-        index = self.sim_efficiency_statL.currentIndex()
-        if not text.isdigit():
-            [self.sim_efficiency_power_list[i][2].setText("오류") for i in range(4)]
-            return
-
-        stat = self.shared_data.info_stats[self.sim_efficiency_statL.currentIndex()] + int(text)
-
-        if self.shared_data.STAT_RANGE_LIST[index][0] <= stat:
-            if self.shared_data.STAT_RANGE_LIST[index][1] == None:
-                self.sim_update_efficiency()
-                return
-            else:
-                if stat <= self.shared_data.STAT_RANGE_LIST[index][1]:
-                    self.sim_update_efficiency()
-                    return
-                [self.sim_efficiency_power_list[i][2].setText("오류") for i in range(4)]
-                return
-        [self.sim_efficiency_power_list[i][2].setText("오류") for i in range(4)]
-        return
-
-    def sim_simInfo_inputChanged(self):
-        # 스탯이 정상적으로 입력되었는지 확인
-        def checkInput(num, text) -> bool:
-            if not text.isdigit():
-                return False
-
-            match num:
-                case 0 | 1:
-                    if int(text) == 0:
-                        return False
-                    return True
-                case _:
-                    return True
-
-            return True
-
-        if not False in [checkInput(i, j.text()) for i, j in enumerate(self.sim_simInfo_inputs)]:  # 모두 통과
-            for i in self.sim_simInfo_inputs:  # 통과O면 원래색
-                i.setStyleSheet(
-                    f"QLineEdit {{ background-color: {self.sim_input_colors[0]}; border: 1px solid {self.sim_input_colors[1]}; border-radius: 4px; }}"
-                )
-
-            self.shared_data.info_simInfo = [int(i.text()) for i in self.sim_simInfo_inputs]
-            dataSave(self.shared_data)
-            self.sim_simInfo_inputCheck = True
-
-        else:  # 하나라도 통과X
-            for i, j in enumerate(self.sim_simInfo_inputs):
-                if not checkInput(i, j.text()):  # 통과X면 빨간색
-                    j.setStyleSheet(
-                        f"QLineEdit {{ background-color: {self.sim_input_colors[0]}; border: 2px solid {self.sim_input_colorsRed}; border-radius: 4px; }}"
-                    )
-                else:
-                    j.setStyleSheet(
-                        f"QLineEdit {{ background-color: {self.sim_input_colors[0]}; border: 1px solid {self.sim_input_colors[1]}; border-radius: 4px; }}"
-                    )
-            self.sim_simInfo_inputCheck = False
-
-    def sim_makeSkillInput(self, mainframe):
-        texts = self.shared_data.SKILL_NAME_LIST[self.shared_data.serverID][self.shared_data.jobID]
-
-        self.sim_skill_frames = []
-        self.sim_skill_names = []
-        self.sim_skill_images = []
-        self.sim_skill_levels = []
-        self.sim_skill_inputs = []
-        for i in range(8):
-            frame = QFrame(mainframe)
-            frame.setStyleSheet("QFrame { background-color: transparent; border: 0px solid black; }")
-            self.sim_skill_frames.append(frame)
-
-            name = QLabel(texts[i], frame)
-            name.setStyleSheet(
-                f"QLabel {{ border: 1px solid {self.sim_input_colors[1]}; border-radius: 4px; }}"
-            )
-            name.setFont(QFont("나눔스퀘어라운드 Bold", 14))
-            name.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.sim_skill_names.append(name)
-
-            label = QLabel("레벨", frame)
-            label.setStyleSheet("QLabel { background-color: transparent; border: 0px solid; }")
-            label.setFont(QFont("나눔스퀘어라운드 Bold", 10))
-            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.sim_skill_levels.append(label)
-
-            lineEdit = QLineEdit("", frame)
-            lineEdit.setFont(QFont("나눔스퀘어라운드 Bold", 12))
-            lineEdit.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            lineEdit.setStyleSheet(
-                f"QLineEdit {{ background-color: {self.sim_input_colors[0]}; border: 1px solid {self.sim_input_colors[1]}; border-radius: 4px; }}"
-            )
-
-            # 데이터 입력시 실행할 함수 연결
-            lineEdit.textChanged.connect(self.sim_skill_inputChanged)
-            self.sim_skill_inputs.append(lineEdit)
-
-        for i in range(8):
-            image = QPushButton(self.sim_skill_frames[i])
-            image.setGeometry(
-                0,
-                self.sim_skill_name_H,
-                self.sim_skill_image_Size,
-                self.sim_skill_image_Size,
-            )
-            image.setStyleSheet("QPushButton { background-color: transparent; border: 0px solid; }")
-            pixmap = QPixmap(self.getSkillImage(i))
-            image.setIcon(QIcon(pixmap))
-            image.setIconSize(QSize(self.sim_skill_image_Size, self.sim_skill_image_Size))
-            self.sim_skill_images.append(image)
-
-    def sim_skill_inputChanged(self):
-        # 스킬이 정상적으로 입력되었는지 확인
-        def checkInput(text: str) -> bool:
-            if not text.isdigit():
-                return False
-
-            if int(text) == 0 or int(text) > 30:
-                return False
-
-            return True
-
-        if not False in [checkInput(i.text()) for i in self.sim_skill_inputs]:  # 모두 통과
-            for i in self.sim_skill_inputs:  # 통과O면 원래색
-                i.setStyleSheet(
-                    f"QLineEdit {{ background-color: {self.sim_input_colors[0]}; border: 1px solid {self.sim_input_colors[1]}; border-radius: 4px; }}"
-                )
-
-            if self.shared_data.sim_type == 1:
-                self.shared_data.info_skills = [int(i.text()) for i in self.sim_skill_inputs]
-                dataSave(self.shared_data)
-            self.sim_skill_inputCheck = True
-
-        else:  # 하나라도 통과X
-            for i in self.sim_skill_inputs:
-                if not checkInput(i.text()):  # 통과X면 빨간색
-                    i.setStyleSheet(
-                        f"QLineEdit {{ background-color: {self.sim_input_colors[0]}; border: 2px solid {self.sim_input_colorsRed}; border-radius: 4px; }}"
-                    )
-                else:
-                    i.setStyleSheet(
-                        f"QLineEdit {{ background-color: {self.sim_input_colors[0]}; border: 1px solid {self.sim_input_colors[1]}; border-radius: 4px; }}"
-                    )
-            self.sim_skill_inputCheck = False
-
-        if self.shared_data.sim_type == 3:
-            self.update_additional_power_list()
-
-    def update_additional_power_list(self):
-        if self.sim_skill_inputCheck and self.sim_stat_inputCheck:
-            stats = self.shared_data.info_stats.copy()
-            stats = [stats[i] + int(self.sim_stat_inputs[i].text()) for i in range(len(stats))]
-            skills = self.shared_data.info_skills.copy()
-            skills = [skills[i] + int(self.sim_skill_inputs[i].text()) for i in range(len(skills))]
-
-            powers = detSimulate(
-                self.shared_data, tuple(stats), tuple(skills), tuple(self.shared_data.info_simInfo)
-            )
-
-            diff_powers = [powers[i] - self.sim_powers[i] for i in range(4)]
-
-            [
-                self.sim_additional_power_list[i][2].setText(
-                    f"{int(powers[i]):}\n({round(diff_powers[i]):+}, {round(diff_powers[i] / self.sim_powers[i] * 100, 2):+.1f}%)"
-                )
-                for i in range(4)
-            ]
-        else:
-            [self.sim_additional_power_list[i][2].setText("오류") for i in range(4)]
-
-    def sim_makeStatInput(self, mainframe):
-        self.sim_stat_frames = []
-        self.sim_stat_labels = []
-        self.sim_stat_inputs = []
-        for i in range(len(self.shared_data.STAT_LIST)):
-            frame = QFrame(mainframe)
-            frame.setStyleSheet("QFrame { background-color: transparent; border: 0px solid; }")
-            self.sim_stat_frames.append(frame)
-
-            label = QLabel(self.shared_data.STAT_LIST[i], frame)
-            label.setStyleSheet("QLabel { background-color: transparent; border: 0px solid; }")
-            label.setFont(QFont("나눔스퀘어라운드 Bold", 10))
-            self.sim_stat_labels.append(label)
-
-            lineEdit = QLineEdit("", frame)
-            lineEdit.setFont(QFont("나눔스퀘어라운드 Bold", 14))
-            lineEdit.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            lineEdit.setStyleSheet(
-                f"QLineEdit {{ background-color: {self.sim_input_colors[0]}; border: 1px solid {self.sim_input_colors[1]}; border-radius: 4px; }}"
-            )
-
-            # 데이터 입력시 실행할 함수 연결
-            lineEdit.textChanged.connect(self.sim_stat_inputChanged)
-            self.sim_stat_inputs.append(lineEdit)
-
-    def sim_stat_inputChanged(self):
-        # 스탯이 정상적으로 입력되었는지 확인
-        def checkInput(num, text) -> bool:
-            # 기본데미지 = 공격력 * (근력 + 지력) * (1 + 파괴력 * 0.01) * 내공계수
-            # 0공, 1방, 2파괴력, 3근력, 4지력, 5경도, 6치확, 7치뎀, 8보뎀, 9명중, 10회피, 11상태이상저항, 12내공, 13체력, 14공속, 15포션회복, 16운, 17경험치
-            if self.shared_data.sim_type == 1:
-                if not text.isdigit():
-                    return False
-
-                if self.shared_data.STAT_RANGE_LIST[num][0] <= int(text):
-                    if self.shared_data.STAT_RANGE_LIST[num][1] == None:
-                        return True
-                    else:
-                        if int(text) <= self.shared_data.STAT_RANGE_LIST[num][1]:
-                            return True
-                        return False
-                return False
-            else:  # self.simType == 3
-                try:
-                    value = int(text)
-                except ValueError:
-                    return False
-
-                stat = self.shared_data.info_stats[num] + value
-                if self.shared_data.STAT_RANGE_LIST[num][0] <= stat:
-                    if self.shared_data.STAT_RANGE_LIST[num][1] == None:
-                        return True
-                    else:
-                        if stat <= self.shared_data.STAT_RANGE_LIST[num][1]:
-                            return True
-                        return False
-                return False
-
-        if not False in [checkInput(i, j.text()) for i, j in enumerate(self.sim_stat_inputs)]:  # 모두 digit
-            for i in self.sim_stat_inputs:  # 통과O면 원래색
-                i.setStyleSheet(
-                    f"QLineEdit {{ background-color: {self.sim_input_colors[0]}; border: 1px solid {self.sim_input_colors[1]}; border-radius: 4px; }}"
-                )
-
-            if self.shared_data.sim_type == 1:
-                self.shared_data.info_stats = [int(i.text()) for i in self.sim_stat_inputs]
-                dataSave(self.shared_data)
-            self.sim_stat_inputCheck = True
-
-        else:  # 하나라도 통과X
-            for i, j in enumerate(self.sim_stat_inputs):
-                if not checkInput(i, j.text()):  # 통과X면 빨간색
-                    j.setStyleSheet(
-                        f"QLineEdit {{ background-color: {self.sim_input_colors[0]}; border: 2px solid {self.sim_input_colorsRed}; border-radius: 4px; }}"
-                    )
-                else:  # 통과O면 원래색
-                    j.setStyleSheet(
-                        f"QLineEdit {{ background-color: {self.sim_input_colors[0]}; border: 1px solid {self.sim_input_colors[1]}; border-radius: 4px; }}"
-                    )
-            self.sim_stat_inputCheck = False
-
-        if self.shared_data.sim_type == 3:
-            self.update_additional_power_list()
 
     def keyPressEvent(self, e):  # 키가 눌러졌을 때 실행됨
 
@@ -2566,40 +334,6 @@ class MainWindow(QWidget):
         elif self.recentVersion != self.shared_data.VERSION:
             self.makeNoticePopup("RequireUpdate")
 
-    ## 위젯 크기에 맞는 폰트로 변경
-    def adjustFontSize(self, widget, text, maxSize, font_name="나눔스퀘어라운드 ExtraBold"):
-        widget.setText(text)
-        widget.setFont(QFont(font_name))
-
-        if "\n" in text:
-            text = text.split("\n")[0]
-
-        if widget.width() == 0 or widget.height() == 0 or not text:
-            return
-
-        font = widget.font()
-        font_size = 1
-        font.setPointSize(font_size)
-        metrics = QFontMetrics(font)
-
-        while font_size < maxSize:
-            text_width = metrics.horizontalAdvance(text)
-            text_height = metrics.height()
-
-            if isinstance(widget, QPushButton):
-                text_width += 4
-                text_height += 4
-
-            if text_width > widget.width() or text_height > widget.height():
-                break
-
-            font_size += 1
-            font.setPointSize(font_size)
-            metrics = QFontMetrics(font)
-
-        font.setPointSize(font_size - 1)
-        widget.setFont(font)
-
     ## 위젯 크기에 맞게 텍스트 자름
     def limitText(self, text, widget, margin=40) -> str:
         font_metrics = widget.fontMetrics()
@@ -2616,12 +350,16 @@ class MainWindow(QWidget):
         self.setWindowTitle("데이즈 스킬매크로 " + self.shared_data.VERSION)
         self.setMinimumSize(self.shared_data.DEFAULT_WINDOW_WIDTH, self.shared_data.DEFAULT_WINDOW_HEIGHT)
         # self.setGeometry(0, 0, 960, 540)
+
         self.setStyleSheet("*:focus { outline: none; }")
         self.backPalette = self.palette()
         self.backPalette.setColor(QPalette.ColorRole.Window, QColor(255, 255, 255))
         self.setPalette(self.backPalette)
+
         self.page1 = QFrame(self)
         self.page2 = QFrame(self)
+
+        self.ui_var = UI_Variable()
 
         self.labelCreator = QPushButton("  제작자: 프로데이즈  |  디스코드: prodays", self)
         self.labelCreator.setFont(QFont("나눔스퀘어라운드 Bold", 10))
@@ -2646,14 +384,17 @@ class MainWindow(QWidget):
         self.tabRemoveList = []
         for tabNum in range(len(self.shared_data.tabNames)):
             tabBackground = QLabel("", self.page1)
+
             if tabNum == self.shared_data.recentPreset:
                 tabBackground.setStyleSheet(
                     """background-color: #eeeeff; border-top-left-radius :20px; border-top-right-radius : 20px; border-bottom-left-radius : 0px; border-bottom-right-radius : 0px"""
                 )
+
             else:
                 tabBackground.setStyleSheet(
                     """background-color: #dddddd; border-top-left-radius :20px; border-top-right-radius : 20px; border-bottom-left-radius : 0px; border-bottom-right-radius : 0px"""
                 )
+
             tabBackground.setFixedSize(250, 50)
             tabBackground.move(360 + 250 * tabNum, 20)
             tabBackground.setGraphicsEffect(self.getShadow(5, -2))
@@ -2663,6 +404,7 @@ class MainWindow(QWidget):
             tabButton.setFixedSize(240, 40)
             tabButton.setText(self.limitText(f" {self.shared_data.tabNames[tabNum]}", tabButton))
             tabButton.clicked.connect(partial(lambda x: self.onTabClick(x), tabNum))
+
             if tabNum == self.shared_data.recentPreset:
                 tabButton.setStyleSheet(
                     """
@@ -2674,6 +416,7 @@ class MainWindow(QWidget):
                     }
                 """
                 )
+
             else:
                 tabButton.setStyleSheet(
                     """
@@ -2685,11 +428,13 @@ class MainWindow(QWidget):
                     }
                 """
                 )
+
             tabButton.move(365 + 250 * tabNum, 25)
 
             tabRemoveButton = QPushButton("", self.page1)
             tabRemoveButton.clicked.connect(partial(lambda x: self.onTabRemoveClick(x), tabNum))
             tabRemoveButton.setFont(QFont("나눔스퀘어라운드 ExtraBold", 16))
+
             if tabNum == self.shared_data.recentPreset:
                 tabRemoveButton.setStyleSheet(
                     """
@@ -2701,6 +446,7 @@ class MainWindow(QWidget):
                     }
                 """
                 )
+
             else:
                 tabRemoveButton.setStyleSheet(
                     """
@@ -2712,6 +458,7 @@ class MainWindow(QWidget):
                     }
                 """
                 )
+
             pixmap = QPixmap(convertResourcePath("resources\\image\\x.png"))
             tabRemoveButton.setIcon(QIcon(pixmap))
             tabRemoveButton.setFixedSize(40, 40)
@@ -2734,6 +481,7 @@ class MainWindow(QWidget):
             }
         """
         )
+
         pixmap = QPixmap(convertResourcePath("resources\\image\\plus.png"))
         self.tabAddButton.setIcon(QIcon(pixmap))
         self.tabAddButton.setFixedSize(40, 40)
@@ -2765,8 +513,7 @@ class MainWindow(QWidget):
             button.setStyleSheet("QPushButton { background-color: #bbbbbb; border-radius :10px; }")
             button.clicked.connect(partial(lambda x: self.onSelectableSkillClick(x), i))
             button.setFixedSize(64, 64)
-            pixmap = QPixmap(self.getSkillImage(i))
-            button.setIcon(QIcon(pixmap))
+            button.setIcon(getSkillImage(self.shared_data, i))
             button.setIconSize(QSize(64, 64))
             button.show()
             self.selectableSkillImageButton.append(button)
@@ -2820,11 +567,8 @@ class MainWindow(QWidget):
             )
             button.clicked.connect(partial(lambda x: self.onSelectedSkillClick(x), i))
             button.setFixedSize(64, 64)
-            if self.shared_data.selectedSkillList[i] != -1:
-                pixmap = QPixmap(self.getSkillImage(self.shared_data.selectedSkillList[i]))
-            else:
-                pixmap = QPixmap(convertResourcePath("resources\\image\\emptySkill.png"))
-            button.setIcon(QIcon(pixmap))
+            button.setIcon(getSkillImage(self.shared_data, self.shared_data.selectedSkillList[i]))
+
             button.setIconSize(QSize(64, 64))
             button.show()
             self.selectedSkillImageButton.append(button)
@@ -2928,8 +672,9 @@ class MainWindow(QWidget):
                                 if self.shared_data.setting_type == 1:
                                     self.settingSkillSequences[j].setText(str(k - 1))
             if self.shared_data.setting_type == 1 and self.shared_data.selectedSkillList[num] != -1:
-                pixmap = QPixmap(self.getSkillImage(self.shared_data.selectedSkillList[num], "off"))
-                self.settingSkillImages[self.shared_data.selectedSkillList[num]].setIcon(QIcon(pixmap))
+                self.settingSkillImages[self.shared_data.selectedSkillList[num]].setIcon(
+                    getSkillImage(self.shared_data, self.shared_data.selectedSkillList[num], "off")
+                )
                 self.settingSkillSequences[self.shared_data.selectedSkillList[num]].setText("-")
                 # print(self.shared_data.selectedSkillList)
 
@@ -2974,14 +719,15 @@ class MainWindow(QWidget):
 
         if self.shared_data.selectedSkillList[self.shared_data.is_skill_selecting] != -1:
             if self.shared_data.setting_type == 1:
-                pixmap = QPixmap(
-                    self.getSkillImage(
-                        self.shared_data.selectedSkillList[self.shared_data.is_skill_selecting], "off"
-                    )
-                )
                 self.settingSkillImages[
                     self.shared_data.selectedSkillList[self.shared_data.is_skill_selecting]
-                ].setIcon(QIcon(pixmap))
+                ].setIcon(
+                    getSkillImage(
+                        self.shared_data,
+                        self.shared_data.selectedSkillList[self.shared_data.is_skill_selecting],
+                        "off",
+                    )
+                )
                 self.settingSkillSequences[
                     self.shared_data.selectedSkillList[self.shared_data.is_skill_selecting]
                 ].setText("-")
@@ -3006,12 +752,12 @@ class MainWindow(QWidget):
                                 self.settingSkillSequences[j].setText(str(k - 1))
 
         self.shared_data.selectedSkillList[self.shared_data.is_skill_selecting] = num
-        pixmap = QPixmap(self.getSkillImage(num))
-        self.selectedSkillImageButton[self.shared_data.is_skill_selecting].setIcon(QIcon(pixmap))
+        self.selectedSkillImageButton[self.shared_data.is_skill_selecting].setIcon(
+            getSkillImage(self.shared_data, num)
+        )
 
         if self.shared_data.setting_type == 1:
-            pixmap = QPixmap(self.getSkillImage(num))
-            self.settingSkillImages[num].setIcon(QIcon(pixmap))
+            self.settingSkillImages[num].setIcon(getSkillImage(self.shared_data, num))
 
         self.shared_data.is_skill_selecting = -1
         dataSave(self.shared_data)
@@ -3042,16 +788,21 @@ class MainWindow(QWidget):
             # self.tabAddButton.clicked.connect(self.onTabAddClick)
             skill.setStyleSheet("background-color: transparent;")
             if not self.shared_data.is_activated:
-                pixmap = QPixmap(
-                    self.getSkillImage(
-                        self.shared_data.selectedSkillList[self.shared_data.taskList[i][0]], "off"
+                skill.setIcon(
+                    getSkillImage(
+                        self.shared_data,
+                        self.shared_data.selectedSkillList[self.shared_data.taskList[i][0]],
+                        "off",
                     )
                 )
             else:
-                pixmap = QPixmap(
-                    self.getSkillImage(self.shared_data.selectedSkillList[self.shared_data.taskList[i][0]], 1)
+                skill.setIcon(
+                    getSkillImage(
+                        self.shared_data,
+                        self.shared_data.selectedSkillList[self.shared_data.taskList[i][0]],
+                        1,
+                    )
                 )
-            skill.setIcon(QIcon(pixmap))
             skill.setIconSize(QSize(min(width, height), min(width, height)))
             skill.setFixedSize(width, height)
             skill.move(round((fwidth - width * count) * 0.5) + width * i, 0)
@@ -3445,11 +1196,10 @@ class MainWindow(QWidget):
 
             skill = QPushButton("", self.sidebarFrame)
             if i in self.shared_data.selectedSkillList:
-                pixmap = QPixmap(self.getSkillImage(i))
+                skill.setIcon(getSkillImage(self.shared_data, i))
             else:
-                pixmap = QPixmap(self.getSkillImage(i, "off"))
+                skill.setIcon(getSkillImage(self.shared_data, i, "off"))
 
-            skill.setIcon(QIcon(pixmap))
             skill.setIconSize(QSize(50, 50))
             skill.setStyleSheet("QPushButton { background-color: transparent;}")
             skill.setFixedSize(50, 50)
@@ -3592,8 +1342,7 @@ class MainWindow(QWidget):
             if imageCount <= 3:
                 for k in range(len(j["skills"])):
                     button = QPushButton("", self.sidebarFrame)
-                    pixmap = QPixmap(self.getSkillImage(j["skills"][k][0], j["skills"][k][1]))
-                    button.setIcon(QIcon(pixmap))
+                    button.setIcon(getSkillImage(self.shared_data, j["skills"][k][0], j["skills"][k][1]))
                     button.setIconSize(QSize(48, 48))
                     button.setStyleSheet("QPushButton { background-color: transparent;}")
                     button.setFixedSize(50, 50)
@@ -3603,8 +1352,7 @@ class MainWindow(QWidget):
             elif imageCount <= 6:
                 for k in range(len(j["skills"])):
                     button = QPushButton("", self.sidebarFrame)
-                    pixmap = QPixmap(self.getSkillImage(j["skills"][k][0], j["skills"][k][1]))
-                    button.setIcon(QIcon(pixmap))
+                    button.setIcon(getSkillImage(self.shared_data, j["skills"][k][0], j["skills"][k][1]))
                     button.setIconSize(QSize(24, 24))
                     button.setStyleSheet("QPushButton { background-color: transparent;}")
                     button.setFixedSize(25, 25)
@@ -3617,8 +1365,7 @@ class MainWindow(QWidget):
 
                 for k in range(line1):
                     button = QPushButton("", self.sidebarFrame)
-                    pixmap = QPixmap(self.getSkillImage(j["skills"][k][0], j["skills"][k][1]))
-                    button.setIcon(QIcon(pixmap))
+                    button.setIcon(getSkillImage(self.shared_data, j["skills"][k][0], j["skills"][k][1]))
                     button.setIconSize(QSize(24, 24))
                     button.setStyleSheet("QPushButton { background-color: transparent;}")
                     button.setFixedSize(25, 25)
@@ -3627,8 +1374,9 @@ class MainWindow(QWidget):
                     self.settingSkillPreview.append(button)
                 for k in range(line2):
                     button = QPushButton("", self.sidebarFrame)
-                    pixmap = QPixmap(self.getSkillImage(j["skills"][k + line1][0], j["skills"][k + line1][1]))
-                    button.setIcon(QIcon(pixmap))
+                    button.setIcon(
+                        getSkillImage(self.shared_data, j["skills"][k + line1][0], j["skills"][k + line1][1])
+                    )
                     button.setIconSize(QSize(24, 24))
                     button.setStyleSheet("QPushButton { background-color: transparent;}")
                     button.setFixedSize(25, 25)
@@ -3645,7 +1393,7 @@ class MainWindow(QWidget):
             button.setFixedSize(50, 50)
             button.move(182, 201 + 51 * i)
             button.show()
-            self.adjustFontSize(button, text, 20)
+            adjustFontSize(button, text, 20)
             self.settingSkillKey.append(button)
 
             button = QPushButton("", self.sidebarFrame)
@@ -3764,7 +1512,7 @@ class MainWindow(QWidget):
         self.ButtonLinkKey1 = QPushButton(data["key"], self.sidebarFrame)
         self.ButtonLinkKey1.clicked.connect(lambda: self.setLinkSkillKey(data, 1))
         self.ButtonLinkKey1.setFixedSize(50, 30)
-        self.adjustFontSize(self.ButtonLinkKey1, data["key"], 30)
+        adjustFontSize(self.ButtonLinkKey1, data["key"], 30)
         if data["keyType"] == 0:
             self.ButtonLinkKey1.setStyleSheet("color: #999999;")
         else:
@@ -3786,8 +1534,7 @@ class MainWindow(QWidget):
             skill = QPushButton("", self.sidebarFrame)
             skill.clicked.connect(partial(lambda x: self.editLinkSkillType(x), (data, i)))
             # skill.setStyleSheet("background-color: transparent;")
-            pixmap = QPixmap(self.getSkillImage(j[0], j[1]))
-            skill.setIcon(QIcon(pixmap))
+            skill.setIcon(getSkillImage(self.shared_data, j[0], j[1]))
             skill.setIconSize(QSize(50, 50))
             skill.setFixedSize(50, 50)
             skill.move(40, 281 + 51 * i)
@@ -3888,12 +1635,11 @@ class MainWindow(QWidget):
 
         for i in range(8):
             button = QPushButton("", self.settingPopupFrame)
-            pixmap = QPixmap(
-                self.getSkillImage(i)
+            button.setIcon(
+                getSkillImage(self.shared_data, i)
                 if i in self.shared_data.selectedSkillList
-                else self.getSkillImage(i, "off")
+                else getSkillImage(self.shared_data, i, "off")
             )
-            button.setIcon(QIcon(pixmap))
             button.setIconSize(QSize(40, 40))
             button.clicked.connect(partial(lambda x: self.oneLinkSkillTypePopupClick(x), (data, num, i)))
             button.setFixedSize(40, 40)
@@ -4096,8 +1842,7 @@ class MainWindow(QWidget):
             for i, j in enumerate(data["skills"]):
                 skill = QPushButton("", self.linkSkillPreviewFrame)
                 skill.setStyleSheet("background-color: transparent;")
-                pixmap = QPixmap(self.getSkillImage(j[0], j[1]))
-                skill.setIcon(QIcon(pixmap))
+                skill.setIcon(getSkillImage(self.shared_data, j[0], j[1]))
                 skill.setIconSize(QSize(48, 48))
                 skill.setFixedSize(48, 48)
                 skill.move(x1 + 48 * i, 0)
@@ -4109,8 +1854,7 @@ class MainWindow(QWidget):
             for i, j in enumerate(data["skills"]):
                 skill = QPushButton("", self.linkSkillPreviewFrame)
                 skill.setStyleSheet("background-color: transparent;")
-                pixmap = QPixmap(self.getSkillImage(j[0], j[1]))
-                skill.setIcon(QIcon(pixmap))
+                skill.setIcon(getSkillImage(self.shared_data, j[0], j[1]))
                 skill.setIconSize(QSize(size, size))
                 skill.setFixedSize(size, size)
                 skill.move(size * i, round((48 - size) * 0.5))
@@ -4262,18 +2006,6 @@ class MainWindow(QWidget):
 
         dataSave(self.shared_data)
 
-    ## 스킬 이미지 디렉토리 리턴
-    def getSkillImage(self, num, count=-1):
-        # return convertResourcePath("resources\\emptySkill.png")
-        if count == -1:
-            return convertResourcePath(
-                f"resources\\image\\skill\\{self.shared_data.serverID}\\{self.shared_data.jobID}\\{num}\\{self.shared_data.SKILL_COMBO_COUNT_LIST[self.shared_data.serverID][self.shared_data.jobID][num]}.png"
-            )
-        else:
-            return convertResourcePath(
-                f"resources\\image\\skill\\{self.shared_data.serverID}\\{self.shared_data.jobID}\\{num}\\{count}.png"
-            )
-
     ## 탭 변경
     def changeTab(self, num):
         dataLoad(self.shared_data, num)
@@ -4338,17 +2070,12 @@ class MainWindow(QWidget):
 
         self.cancelSkillSelection()
         for i in range(8):
-            pixmap = QPixmap(self.getSkillImage(i))
-            self.selectableSkillImageButton[i].setIcon(QIcon(pixmap))
+            self.selectableSkillImageButton[i].setIcon(getSkillImage(self.shared_data, i))
             self.selectableSkillImageName[i].setText(
                 self.shared_data.SKILL_NAME_LIST[self.shared_data.serverID][self.shared_data.jobID][i]
             )
         for i in range(6):
-            if self.shared_data.selectedSkillList[i] != -1:
-                pixmap = QPixmap(self.getSkillImage(self.shared_data.selectedSkillList[i]))
-            else:
-                pixmap = QPixmap(convertResourcePath("resources\\image\\emptySkill.png"))
-            self.selectedSkillImageButton[i].setIcon(QIcon(pixmap))
+            self.selectedSkillImageButton[i].setIcon(getSkillImage(self.shared_data.selectedSkillList[i]))
 
         self.buttonServerList.setText(self.shared_data.SERVER_LIST[self.shared_data.serverID])
         self.buttonJobList.setText(
@@ -4815,18 +2542,15 @@ class MainWindow(QWidget):
                 ][self.shared_data.jobID][i]
 
             for i in range(8):
-                pixmap = QPixmap(self.getSkillImage(i))
-                self.selectableSkillImageButton[i].setIcon(QIcon(pixmap))
+                self.selectableSkillImageButton[i].setIcon(getSkillImage(self.shared_data, i))
                 self.selectableSkillImageName[i].setText(
                     self.shared_data.SKILL_NAME_LIST[self.shared_data.serverID][self.shared_data.jobID][i]
                 )
 
             for i in range(6):
-                if self.shared_data.selectedSkillList[i] != -1:
-                    pixmap = QPixmap(self.getSkillImage(self.shared_data.selectedSkillList[i]))
-                else:
-                    pixmap = QPixmap(convertResourcePath("resources\\image\\emptySkill.png"))
-                self.selectedSkillImageButton[i].setIcon(QIcon(pixmap))
+                self.selectedSkillImageButton[i].setIcon(
+                    getSkillImage(self.shared_data, self.shared_data.selectedSkillList[i])
+                )
 
             self.updatePosition()
 
@@ -4964,7 +2688,7 @@ class MainWindow(QWidget):
                     defaultX = 80
             defaultY = 5
 
-            self.adjustFontSize(button, key, 20)
+            adjustFontSize(button, key, 20)
             button.move(
                 defaultX + row * 35,
                 defaultY + column * 35,
@@ -4997,7 +2721,7 @@ class MainWindow(QWidget):
                 """
             )
             button.setFixedSize(width, height)
-            self.adjustFontSize(button, key, 20)
+            adjustFontSize(button, key, 20)
             button.move(x, y)
             button.show()
 
@@ -5709,7 +3433,7 @@ class MainWindow(QWidget):
             return
 
         self.selectedSkillKey[num].setText(key)
-        self.adjustFontSize(self.selectedSkillKey[num], key, 24)
+        adjustFontSize(self.selectedSkillKey[num], key, 24)
         self.shared_data.skillKeys[num] = key
 
         dataSave(self.shared_data)
@@ -5821,7 +3545,7 @@ class MainWindow(QWidget):
             for i, j in enumerate(self.selectedSkillKey):
                 j.move(0, round(72 * (yMultSize + 1)))
                 j.setFixedSize(round(64 * (xMultSize + 1)), round(24 * (yMultSize + 1)))
-                self.adjustFontSize(j, self.shared_data.skillKeys[i], 20)
+                adjustFontSize(j, self.shared_data.skillKeys[i], 20)
 
             if 460 + 200 * len(self.shared_data.tabNames) <= self.width():
                 for tabNum in range(len(self.shared_data.tabNames)):
@@ -5861,52 +3585,60 @@ class MainWindow(QWidget):
         else:  # 레이아웃 1 (계산기)
             deltaWidth = self.width() - self.shared_data.DEFAULT_WINDOW_WIDTH
 
-            self.sim_navFrame.move(self.sim_margin + deltaWidth // 2, self.sim_margin)
-            self.sim_mainFrame.setFixedWidth(self.width() - self.scrollBarWidth - self.sim_margin * 2)
+            self.sim_navFrame.move(self.ui_var.sim_margin + deltaWidth // 2, self.ui_var.sim_margin)
+            self.sim_mainFrame.setFixedWidth(
+                self.width() - self.ui_var.scrollBarWidth - self.ui_var.sim_margin * 2
+            )
             self.sim_mainScrollArea.setFixedSize(
-                self.width() - self.sim_margin,
+                self.width() - self.ui_var.sim_margin,
                 self.height()
                 - self.labelCreator.height()
-                - self.sim_navHeight
-                - self.sim_margin * 2
-                - self.sim_main1_D,
+                - self.ui_var.sim_navHeight
+                - self.ui_var.sim_margin * 2
+                - self.ui_var.sim_main1_D,
             )
 
             if self.shared_data.sim_type == 1:  # 정보 입력
-                self.sim1_frame1.move(deltaWidth // 2, 0)
-                self.sim1_frame2.move(
+                self.sim1_ui.stat_frame.move(deltaWidth // 2, 0)
+                self.sim1_ui.skill_frame.move(
                     deltaWidth // 2,
-                    self.sim1_frame1.y() + self.sim1_frame1.height() + self.sim_main_D,
+                    self.sim1_ui.stat_frame.y() + self.sim1_ui.stat_frame.height() + self.ui_var.sim_main_D,
                 )
-                self.sim1_frame3.move(
+                self.sim1_ui.info_frame.move(
                     deltaWidth // 2,
-                    self.sim1_frame2.y() + self.sim1_frame2.height() + self.sim_main_D,
+                    self.sim1_ui.skill_frame.y() + self.sim1_ui.skill_frame.height() + self.ui_var.sim_main_D,
                 )
 
             elif self.shared_data.sim_type == 2:  # 시뮬레이터
-                self.sim2_frame1.move(deltaWidth // 2, 0)
-                self.sim2_frame2.move(
+                self.sim2_ui.power_frame.move(deltaWidth // 2, 0)
+                self.sim2_ui.analysis_frame.move(
                     deltaWidth // 2,
-                    self.sim2_frame1.y() + self.sim2_frame1.height() + self.sim_main_D,
+                    self.sim2_ui.power_frame.y() + self.sim2_ui.power_frame.height() + self.ui_var.sim_main_D,
                 )
 
             elif self.shared_data.sim_type == 3:  # 스탯 계산기
-                self.sim3_frame1.move(deltaWidth // 2, 0)
-                self.sim3_frame2.move(
+                self.sim3_ui.efficiency_frame.move(deltaWidth // 2, 0)
+                self.sim3_ui.additional_frame.move(
                     deltaWidth // 2,
-                    self.sim3_frame1.y() + self.sim3_frame1.height() + self.sim_main_D,
+                    self.sim3_ui.efficiency_frame.y()
+                    + self.sim3_ui.efficiency_frame.height()
+                    + self.ui_var.sim_main_D,
                 )
-                self.sim3_frame3.move(
+                self.sim3_ui.potential_frame.move(
                     deltaWidth // 2,
-                    self.sim3_frame2.y() + self.sim3_frame2.height() + self.sim_main_D,
+                    self.sim3_ui.additional_frame.y()
+                    + self.sim3_ui.additional_frame.height()
+                    + self.ui_var.sim_main_D,
                 )
-                self.sim3_frame4.move(
+                self.sim3_ui.potentialRank_frame.move(
                     deltaWidth // 2,
-                    self.sim3_frame3.y() + self.sim3_frame3.height() + self.sim_main_D,
+                    self.sim3_ui.potential_frame.y()
+                    + self.sim3_ui.potential_frame.height()
+                    + self.ui_var.sim_main_D,
                 )
 
             elif self.shared_data.sim_type == 4:  # 캐릭터 카드
-                self.sim4_frame.move(deltaWidth // 2, 0)
+                self.sim4_ui.mainframe.move(deltaWidth // 2, 0)
 
         # 항상 업데이트
         self.labelCreator.move(2, self.height() - 25)

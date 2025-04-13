@@ -2,7 +2,10 @@ from .data_manager import convertResourcePath
 
 import matplotlib.pyplot as plt
 from matplotlib import font_manager as fm
+
 from PyQt6.QtGui import QFontDatabase
+from PyQt6.QtGui import QIcon, QPixmap, QFont, QFontMetrics
+from PyQt6.QtWidgets import QPushButton
 
 
 def convert7to5(shared_data, num):
@@ -52,3 +55,58 @@ def set_default_fonts():
     fm.fontManager.addfont(font_path)
     prop = fm.FontProperties(fname=font_path)
     plt.rcParams["font.family"] = prop.get_name()
+
+
+## 스킬 이미지 디렉토리 리턴
+def getSkillImage(shared_data, skill, count=-1):
+    if skill == -1:
+        return QIcon(QPixmap(convertResourcePath(f"resources\\image\\emptySkill.png")))
+
+    count = (
+        count
+        if count != -1
+        else shared_data.SKILL_COMBO_COUNT_LIST[shared_data.serverID][shared_data.jobID][skill]
+    )
+
+    return QIcon(
+        QPixmap(
+            convertResourcePath(
+                f"resources\\image\\skill\\{shared_data.serverID}\\{shared_data.jobID}\\{skill}\\{count}.png"
+            )
+        )
+    )
+
+
+## 위젯 크기에 맞는 폰트로 변경
+def adjustFontSize(widget, text, maxSize, font_name="나눔스퀘어라운드 ExtraBold"):
+    widget.setText(text)
+    widget.setFont(QFont(font_name))
+
+    if "\n" in text:
+        text = text.split("\n")[0]
+
+    if widget.width() == 0 or widget.height() == 0 or not text:
+        return
+
+    font = widget.font()
+    font_size = 1
+    font.setPointSize(font_size)
+    metrics = QFontMetrics(font)
+
+    while font_size < maxSize:
+        text_width = metrics.horizontalAdvance(text)
+        text_height = metrics.height()
+
+        if isinstance(widget, QPushButton):
+            text_width += 4
+            text_height += 4
+
+        if text_width > widget.width() or text_height > widget.height():
+            break
+
+        font_size += 1
+        font.setPointSize(font_size)
+        metrics = QFontMetrics(font)
+
+    font.setPointSize(font_size - 1)
+    widget.setFont(font)
