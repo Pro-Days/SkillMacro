@@ -6,11 +6,11 @@ from .utils.get_character_data import *
 from .utils.misc import *
 from .utils.simulate_macro import *
 from .utils.simul_ui import *
+from .utils.main_ui import *
 
 import os
 import sys
 import copy
-import random
 import requests
 
 from threading import Thread
@@ -29,16 +29,13 @@ from PyQt6.QtGui import (
     QPainter,
     QPalette,
     QTransform,
-    QFontMetrics,
 )
 from PyQt6.QtWidgets import (
     QFrame,
     QLabel,
     QWidget,
     QLineEdit,
-    QComboBox,
     QPushButton,
-    QFileDialog,
     QScrollArea,
     QApplication,
     QStackedLayout,
@@ -52,6 +49,7 @@ class MainWindow(QWidget):
 
         set_default_fonts()
         self.shared_data = SharedData()
+        self.ui_var = UI_Variable()
         self.setWindowIcon(QIcon(QPixmap(convertResourcePath("resources\\image\\icon.ico"))))
 
         dataUpdate()
@@ -65,20 +63,21 @@ class MainWindow(QWidget):
     def activateThread(self):
         Thread(target=check_kb_pressed, args=[self.shared_data], daemon=True).start()
 
-        self.previewTimer = QTimer(self)
-        self.previewTimer.singleShot(100, self.tick)
+        self.preview_timer = QTimer(self)
+        self.preview_timer.singleShot(100, self.tick)
 
-        self.versionTimer = QTimer(self)
-        self.versionTimer.singleShot(100, self.checkVersionThread)
+        self.version_timer = QTimer(self)
+        self.version_timer.singleShot(100, self.checkVersionThread)
 
     def changeLayout(self, num):
-        self.windowLayout.setCurrentIndex(num)
+        self.window_layout.setCurrentIndex(num)
         self.shared_data.layout_type = num
 
         if num == 0:
             self.removeSimulWidgets()
             [i.deleteLater() for i in self.page2.findChildren(QWidget)]
             self.updatePosition()
+
         elif num == 1:
             self.makePage2()
 
@@ -141,7 +140,7 @@ class MainWindow(QWidget):
             self.ui_var.sim_margin + self.ui_var.sim_navHeight + self.ui_var.sim_main1_D,
             self.width() - self.ui_var.scrollBarWidth - self.ui_var.sim_margin * 2,
             self.height()
-            - self.labelCreator.height()
+            - self.creator_label.height()
             - self.ui_var.sim_navHeight
             - self.ui_var.sim_margin * 2
             - self.ui_var.sim_main1_D,
@@ -157,7 +156,7 @@ class MainWindow(QWidget):
             self.ui_var.sim_margin + self.ui_var.sim_navHeight + self.ui_var.sim_main1_D,
             self.width() - self.ui_var.sim_margin,
             self.height()
-            - self.labelCreator.height()
+            - self.creator_label.height()
             - self.ui_var.sim_navHeight
             - self.ui_var.sim_margin * 2
             - self.ui_var.sim_main1_D,
@@ -352,278 +351,37 @@ class MainWindow(QWidget):
         # self.setGeometry(0, 0, 960, 540)
 
         self.setStyleSheet("*:focus { outline: none; }")
-        self.backPalette = self.palette()
-        self.backPalette.setColor(QPalette.ColorRole.Window, QColor(255, 255, 255))
-        self.setPalette(self.backPalette)
+        self.back_palette = self.palette()
+        self.back_palette.setColor(QPalette.ColorRole.Window, QColor(255, 255, 255))
+        self.setPalette(self.back_palette)
 
         self.page1 = QFrame(self)
         self.page2 = QFrame(self)
 
-        self.ui_var = UI_Variable()
-
-        self.labelCreator = QPushButton("  제작자: 프로데이즈  |  디스코드: prodays", self)
-        self.labelCreator.setFont(QFont("나눔스퀘어라운드 Bold", 10))
-        self.labelCreator.setStyleSheet("background-color: transparent; text-align: left; border: 0px;")
-        # self.labelCreator.clicked.connect(
-        #     lambda: open_new("https://github.com/Pro-Days")
-        # )
-        self.labelCreator.setFixedSize(320, 24)
-        self.labelCreator.move(2, self.height() - 25)
+        self.creator_label = QPushButton("  제작자: 프로데이즈  |  디스코드: prodays", self)
+        self.creator_label.setFont(QFont("나눔스퀘어라운드 Bold", 10))
+        self.creator_label.setStyleSheet("background-color: transparent; text-align: left; border: 0px;")
+        self.creator_label.clicked.connect(lambda: open_new("https://github.com/Pro-Days"))
+        self.creator_label.setFixedSize(320, 24)
+        self.creator_label.move(2, self.height() - 25)
 
         # 메인 프레임 생성
-        self.skillBackground = QFrame(self.page1)
-        self.skillBackground.setStyleSheet(
-            """QFrame { background-color: #eeeeff; border-top-left-radius :0px; border-top-right-radius : 30px; border-bottom-left-radius : 30px; border-bottom-right-radius : 30px }"""
-        )
-        self.skillBackground.setFixedSize(560, 450)
-        self.skillBackground.move(360, 69)
-        self.skillBackground.setGraphicsEffect(self.getShadow(0, 5, 20, 100))
+        self.main_macro_ui = MainMacroUI(self.page1, self.shared_data)
 
-        self.tabButtonList = []
-        self.tabList = []
-        self.tabRemoveList = []
-        for tabNum in range(len(self.shared_data.tabNames)):
-            tabBackground = QLabel("", self.page1)
+        # 사이트바
+        self.sidebar = Sidebar(self.page1, self.shared_data)
 
-            if tabNum == self.shared_data.recentPreset:
-                tabBackground.setStyleSheet(
-                    """background-color: #eeeeff; border-top-left-radius :20px; border-top-right-radius : 20px; border-bottom-left-radius : 0px; border-bottom-right-radius : 0px"""
-                )
-
-            else:
-                tabBackground.setStyleSheet(
-                    """background-color: #dddddd; border-top-left-radius :20px; border-top-right-radius : 20px; border-bottom-left-radius : 0px; border-bottom-right-radius : 0px"""
-                )
-
-            tabBackground.setFixedSize(250, 50)
-            tabBackground.move(360 + 250 * tabNum, 20)
-            tabBackground.setGraphicsEffect(self.getShadow(5, -2))
-
-            tabButton = QPushButton("", self.page1)
-            tabButton.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
-            tabButton.setFixedSize(240, 40)
-            tabButton.setText(self.limitText(f" {self.shared_data.tabNames[tabNum]}", tabButton))
-            tabButton.clicked.connect(partial(lambda x: self.onTabClick(x), tabNum))
-
-            if tabNum == self.shared_data.recentPreset:
-                tabButton.setStyleSheet(
-                    """
-                    QPushButton {
-                        background-color: #eeeeff; border-radius: 15px; text-align: left;
-                    }
-                    QPushButton:hover {
-                        background-color: #fafaff;
-                    }
-                """
-                )
-
-            else:
-                tabButton.setStyleSheet(
-                    """
-                    QPushButton {
-                        background-color: #dddddd; border-radius: 15px; text-align: left;
-                    }
-                    QPushButton:hover {
-                        background-color: #eeeeee;
-                    }
-                """
-                )
-
-            tabButton.move(365 + 250 * tabNum, 25)
-
-            tabRemoveButton = QPushButton("", self.page1)
-            tabRemoveButton.clicked.connect(partial(lambda x: self.onTabRemoveClick(x), tabNum))
-            tabRemoveButton.setFont(QFont("나눔스퀘어라운드 ExtraBold", 16))
-
-            if tabNum == self.shared_data.recentPreset:
-                tabRemoveButton.setStyleSheet(
-                    """
-                    QPushButton {
-                        background-color: transparent; border-radius: 20px;
-                    }
-                    QPushButton:hover {
-                        background-color: #fafaff;
-                    }
-                """
-                )
-
-            else:
-                tabRemoveButton.setStyleSheet(
-                    """
-                    QPushButton {
-                        background-color: transparent; border-radius: 20px;
-                    }
-                    QPushButton:hover {
-                        background-color: #eeeeee;
-                    }
-                """
-                )
-
-            pixmap = QPixmap(convertResourcePath("resources\\image\\x.png"))
-            tabRemoveButton.setIcon(QIcon(pixmap))
-            tabRemoveButton.setFixedSize(40, 40)
-            tabRemoveButton.move(565 + 250 * tabNum, 25)
-
-            self.tabButtonList.append(tabButton)
-            self.tabList.append(tabBackground)
-            self.tabRemoveList.append(tabRemoveButton)
-
-        self.tabAddButton = QPushButton("", self.page1)
-        self.tabAddButton.clicked.connect(self.onTabAddClick)
-        self.tabAddButton.setFont(QFont("나눔스퀘어라운드 ExtraBold", 16))
-        self.tabAddButton.setStyleSheet(
-            """
-            QPushButton {
-                background-color: transparent; border-radius: 20px;
-            }
-            QPushButton:hover {
-                background-color: #eeeeee;
-            }
-        """
-        )
-
-        pixmap = QPixmap(convertResourcePath("resources\\image\\plus.png"))
-        self.tabAddButton.setIcon(QIcon(pixmap))
-        self.tabAddButton.setFixedSize(40, 40)
-        self.tabAddButton.move(370 + 250 * len(self.shared_data.tabNames), 25)
-
-        self.shared_data.layout_type = 0
-
-        self.skillPreviewFrame = QFrame(self.skillBackground)
-        self.skillPreviewFrame.setStyleSheet(
-            "QFrame { background-color: #ffffff; border-radius :5px; border: 1px solid black; }"
-        )
-        self.skillPreviewFrame.setFixedSize(288, 48)
-        self.skillPreviewFrame.move(136, 10)
-        self.skillPreviewFrame.show()
-        # self.showSkillPreview()
-
-        self.selectableSkillFrame = []
-        for i in range(8):
-            frame = QFrame(self.skillBackground)
-            frame.setStyleSheet("QFrame { background-color: transparent; border-radius :0px; }")
-            frame.setFixedSize(64, 88)
-            frame.move(50 + 132 * (i % 4), 80 + 120 * (i // 4))
-            frame.show()
-            self.selectableSkillFrame.append(frame)
-        self.selectableSkillImageButton = []
-        self.selectableSkillImageName = []
-        for i, j in enumerate(self.selectableSkillFrame):
-            button = QPushButton(j)
-            button.setStyleSheet("QPushButton { background-color: #bbbbbb; border-radius :10px; }")
-            button.clicked.connect(partial(lambda x: self.onSelectableSkillClick(x), i))
-            button.setFixedSize(64, 64)
-            button.setIcon(getSkillImage(self.shared_data, i))
-            button.setIconSize(QSize(64, 64))
-            button.show()
-            self.selectableSkillImageButton.append(button)
-
-            label = QLabel(
-                self.shared_data.SKILL_NAME_LIST[self.shared_data.serverID][self.shared_data.jobID][i], j
-            )
-            label.setStyleSheet("QLabel { background-color: transparent; border-radius :0px; }")
-            label.setFixedSize(64, 24)
-            label.move(0, 64)
-            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            label.show()
-            self.selectableSkillImageName.append(label)
-
-        self.selectionSkillLine = QFrame(self.skillBackground)
-        self.selectionSkillLine.setStyleSheet("QFrame { background-color: #b4b4b4;}")
-        self.selectionSkillLine.setFixedSize(520, 1)
-        self.selectionSkillLine.move(20, 309)
-        self.selectionSkillLine.show()
-
-        self.selectedSkillFrame = []
-        for i in range(6):
-            frame = QFrame(self.skillBackground)
-            frame.setStyleSheet("QFrame { background-color: transparent; border-radius :0px; }")
-            frame.setFixedSize(64, 96)
-            frame.move(38 + 84 * i, 330)
-            frame.show()
-            self.selectedSkillFrame.append(frame)
-        self.selectedSkillImageButton = []
-        self.selectedSkillKey = []
-        for i, j in enumerate(self.selectedSkillFrame):
-            button = QPushButton(j)
-            # self.selectedSkillColors = [
-            #     "#8BC28C",
-            #     "#FF626C",
-            #     "#96C0FF",
-            #     "#FFA049",
-            #     "#F18AAD",
-            #     "#8E8FE0",
-            # ]
-            self.selectedSkillColors = [
-                "#BBBBBB",
-                "#BBBBBB",
-                "#BBBBBB",
-                "#BBBBBB",
-                "#BBBBBB",
-                "#BBBBBB",
-            ]
-            button.setStyleSheet(
-                f"QPushButton {{ background-color: {self.selectedSkillColors[i]}; border-radius :10px; }}"
-            )
-            button.clicked.connect(partial(lambda x: self.onSelectedSkillClick(x), i))
-            button.setFixedSize(64, 64)
-            button.setIcon(getSkillImage(self.shared_data, self.shared_data.selectedSkillList[i]))
-
-            button.setIconSize(QSize(64, 64))
-            button.show()
-            self.selectedSkillImageButton.append(button)
-
-            button = QPushButton(self.shared_data.skillKeys[i], j)
-            button.clicked.connect(partial(lambda x: self.onSkillKeyClick(x), i))
-            button.setFixedSize(64, 24)
-            button.move(0, 72)
-            button.show()
-            self.selectedSkillKey.append(button)
-
-        ## 사이트바
-        # 설정 레이블
-        self.sidebarFrame = QFrame(self.page1)
-        self.sidebarFrame.setFixedSize(300, 790)
-        self.sidebarFrame.setStyleSheet("QFrame { background-color: #FFFFFF; }")
-        # self.sidebarFrame.setPalette(self.backPalette)
-        self.sidebarScrollArea = QScrollArea(self.page1)
-        self.sidebarScrollArea.setWidget(self.sidebarFrame)
-        self.sidebarScrollArea.setFixedSize(319, self.height() - 24)
-        self.sidebarScrollArea.setStyleSheet(
-            "QScrollArea { background-color: #FFFFFF; border: 0px solid black; border-radius: 10px; }"
-        )
-        self.sidebarScrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
-        # self.sidebarScrollArea.setPalette(self.backPalette)
-        self.sidebarScrollArea.show()
-
-        ## 사이드바 옵션 아이콘
-        self.sidebarOptionFrame = QFrame(self.page1)
-        self.sidebarOptionFrame.setFixedSize(34, 136)
-        self.sidebarOptionFrame.move(320, 20)
-
-        self.sidebarButton0 = self.getSidebarButton(0)
-        self.sidebarButton1 = self.getSidebarButton(1)
-        self.sidebarButton2 = self.getSidebarButton(2)
-        self.sidebarButton3 = self.getSidebarButton(3)
-
-        self.labelSettings = QLabel("", self.sidebarFrame)
-        self.labelSettings.setFont(QFont("나눔스퀘어라운드 ExtraBold", 20))
-        self.labelSettings.setStyleSheet(
-            "border: 0px solid black; border-radius: 10px; background-color: #CADEFC;"
-        )
-        self.labelSettings.setFixedSize(200, 100)
-        self.labelSettings.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.labelSettings.move(50, 20)
-        self.labelSettings.setGraphicsEffect(self.getShadow())
         self.changeSettingTo0()
 
-        self.windowLayout = QStackedLayout()
-        self.windowLayout.addWidget(self.page1)
-        self.windowLayout.addWidget(self.page2)
-        self.setLayout(self.windowLayout)
-        self.windowLayout.setCurrentIndex(0)
+        self.window_layout = QStackedLayout()
+        self.window_layout.addWidget(self.page1)
+        self.window_layout.addWidget(self.page2)
+        self.setLayout(self.window_layout)
+        self.window_layout.setCurrentIndex(0)
 
         self.show()
+
+        self.changeLayout(1)
 
     ## 스킬 장착 취소, 다른 곳 클릭시 실행
     def cancelSkillSelection(self):
@@ -763,7 +521,7 @@ class MainWindow(QWidget):
         dataSave(self.shared_data)
 
     def tick(self):
-        self.previewTimer.singleShot(100, self.tick)
+        self.preview_timer.singleShot(100, self.tick)
         self.showSkillPreview()
 
     ## 스킬 미리보기 프레임에 스킬 아이콘 설정
@@ -3592,7 +3350,7 @@ class MainWindow(QWidget):
             self.sim_mainScrollArea.setFixedSize(
                 self.width() - self.ui_var.sim_margin,
                 self.height()
-                - self.labelCreator.height()
+                - self.creator_label.height()
                 - self.ui_var.sim_navHeight
                 - self.ui_var.sim_margin * 2
                 - self.ui_var.sim_main1_D,
@@ -3641,7 +3399,7 @@ class MainWindow(QWidget):
                 self.sim4_ui.mainframe.move(deltaWidth // 2, 0)
 
         # 항상 업데이트
-        self.labelCreator.move(2, self.height() - 25)
+        self.creator_label.move(2, self.height() - 25)
         for i, j in enumerate(self.shared_data.active_error_popup):
             j[0].move(
                 self.width() - 420,

@@ -13,26 +13,14 @@ from functools import partial
 from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtGui import (
     QFont,
-    QIcon,
-    QColor,
     QPixmap,
     QPainter,
-    QPalette,
-    QTransform,
-    QFontMetrics,
 )
 from PyQt6.QtWidgets import (
     QFrame,
     QLabel,
-    QWidget,
-    QLineEdit,
-    QComboBox,
     QPushButton,
     QFileDialog,
-    QScrollArea,
-    QApplication,
-    QStackedLayout,
-    QGraphicsDropShadowEffect,
 )
 
 
