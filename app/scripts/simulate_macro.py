@@ -1,10 +1,18 @@
+from __future__ import annotations
+
+from .run_macro import initMacro, addTaskList
+
 import random
 import time
 from functools import lru_cache
-from .run_macro import initMacro, addTaskList
+from typing import TYPE_CHECKING
 
 
-def getRequiredStat(shared_data, powers, stat_num):
+if TYPE_CHECKING:
+    from .shared_data import SharedData
+
+
+def getRequiredStat(shared_data: SharedData, powers, stat_num):
     reqStats = []
     reqStats.append(calculateRequiredStat(shared_data, powers[0], stat_num, 0))
     reqStats.append(calculateRequiredStat(shared_data, powers[1], stat_num, 1))
@@ -14,7 +22,7 @@ def getRequiredStat(shared_data, powers, stat_num):
     return reqStats
 
 
-def calculateRequiredStat(shared_data, power, stat_num, power_num):
+def calculateRequiredStat(shared_data: SharedData, power, stat_num, power_num):
     def checkInput(stat, stat_num) -> bool:
         if shared_data.STAT_RANGE_LIST[stat_num][0] <= stat:
             if shared_data.STAT_RANGE_LIST[stat_num][1] == None:
@@ -29,7 +37,7 @@ def calculateRequiredStat(shared_data, power, stat_num, power_num):
         shared_data.SKILL_COMBO_COUNT_LIST,
         shared_data.serverID,
         shared_data.jobID,
-        shared_data.selectedSkillList,
+        shared_data.equipped_skills,
         shared_data.SKILL_ATTACK_DATA,
         shared_data.NAEGONG_DIFF,
         shared_data.COEF_BOSS_DMG,
@@ -41,7 +49,10 @@ def calculateRequiredStat(shared_data, power, stat_num, power_num):
     stats = shared_data.info_stats.copy()
     baseStat = shared_data.info_stats[stat_num]
     current_power = detSimulate(
-        shared_data, tuple(stats), tuple(shared_data.info_skills), tuple(shared_data.info_simInfo)
+        shared_data,
+        tuple(stats),
+        tuple(shared_data.info_skills),
+        tuple(shared_data.info_simInfo),
     )[power_num]
 
     # 1씩 증가시키며 범위 알아내기
@@ -57,7 +68,10 @@ def calculateRequiredStat(shared_data, power, stat_num, power_num):
             stats[stat_num] = int(stats[stat_num])
 
         current_power = detSimulate(
-            shared_data, tuple(stats), tuple(shared_data.info_skills), tuple(shared_data.info_simInfo)
+            shared_data,
+            tuple(stats),
+            tuple(shared_data.info_skills),
+            tuple(shared_data.info_simInfo),
         )[power_num]
 
         if current_power >= power:
@@ -85,7 +99,10 @@ def calculateRequiredStat(shared_data, power, stat_num, power_num):
             stats[stat_num] = int(stats[stat_num])
         # print(tuple(stats), tuple(shared_data.info_skills), tuple(shared_data.info_simInfo))
         current_power = detSimulate(
-            shared_data, tuple(stats), tuple(shared_data.info_skills), tuple(shared_data.info_simInfo)
+            shared_data,
+            tuple(stats),
+            tuple(shared_data.info_skills),
+            tuple(shared_data.info_simInfo),
         )[power_num]
 
         # print(f"{low=}, {high=}, {mid=}")
@@ -101,7 +118,9 @@ def calculateRequiredStat(shared_data, power, stat_num, power_num):
     return f"{(low + high) * 0.5:.1f}"
 
 
-def runSimul(attackDetails, buffDetails, stats, boss, simInfo, naegongDiff, deterministic=False):
+def runSimul(
+    attackDetails, buffDetails, stats, boss, simInfo, naegongDiff, deterministic=False
+):
     def getStatus(stats, nowTime, buff_list):
         status = list(stats).copy()
         for buff in buff_list:
@@ -174,7 +193,9 @@ def runSimul(attackDetails, buffDetails, stats, boss, simInfo, naegongDiff, dete
     ## 시뮬레이션 시작
     for attack in attackDetails:
         status = getStatus(stats, attack[1], buffInfo)
-        dmg = round(getDMG(status, boss, naegong, naegongDiff, deterministic) * attack[2], 5)
+        dmg = round(
+            getDMG(status, boss, naegong, naegongDiff, deterministic) * attack[2], 5
+        )
         attacks.append([attack[0], attack[1], dmg])
 
     # if deterministic:
@@ -186,16 +207,27 @@ def runSimulBatch(batch_args):
     return [runSimul(*args) for args in batch_args]
 
 
-def randSimulate(shared_data, stats: tuple, skillLevels: tuple, simInfo: tuple):
+def randSimulate(
+    shared_data: SharedData, stats: tuple, skillLevels: tuple, simInfo: tuple
+):
     return simulateMacro(shared_data, stats, skillLevels, simInfo, random.random())
 
 
 @lru_cache(maxsize=1024)
-def detSimulate(shared_data, stats: tuple, skillLevels: tuple, simInfo: tuple):
+def detSimulate(
+    shared_data: SharedData, stats: tuple, skillLevels: tuple, simInfo: tuple
+):
     return simulateMacro(shared_data, stats, skillLevels, simInfo, 1)
 
 
-def simulateMacro(shared_data, stats: tuple, skillLevels: tuple, simInfo: tuple, randomSeed):
+# 61초 -> 60초로 변경, 처음 0일 때 총 데미지를 0으로 설정
+def simulateMacro(
+    shared_data: SharedData,
+    stats: tuple,
+    skillLevels: tuple,
+    simInfo: tuple,
+    randomSeed,
+):
     def calculate_percentile(data, percentile):
         data_sorted = sorted(data)
         rank = (percentile * 0.01) * (len(data) - 1) + 1
@@ -235,9 +267,9 @@ def simulateMacro(shared_data, stats: tuple, skillLevels: tuple, simInfo: tuple,
 
             if (simulatedSkills[num - i][0] == skill[0]) and (
                 simulatedSkills[num - i][2]
-                < shared_data.SKILL_COMBO_COUNT_LIST[shared_data.serverID][shared_data.jobID][
-                    shared_data.selectedSkillList[skill[0]]
-                ]
+                < shared_data.SKILL_COMBO_COUNT_LIST[shared_data.serverID][
+                    shared_data.jobID
+                ][shared_data.equipped_skills[skill[0]]]
             ):
                 simulatedSkills[num].append(simulatedSkills[num - i][2] + 1)
                 break
@@ -268,12 +300,12 @@ def simulateMacro(shared_data, stats: tuple, skillLevels: tuple, simInfo: tuple,
             continue
 
         # 스킬
-        skillLevels = [0] * 8  # temp: shared_data.info_skills -> info_skills = 0 * 8
+        skillLevels = [0] * 8  # type: ignore / temp: shared_data.info_skills -> info_skills = 0 * 8
 
         # [[0.0, [0, 0.5]], [0.1, [0, 0.5]], [0.2, [0, 0.5]], [0.3, [0, 0.5]], [0.4, [0, 0.5]]]
         skills = shared_data.SKILL_ATTACK_DATA[shared_data.serverID][shared_data.jobID][
-            shared_data.selectedSkillList[attack[0]]
-        ][skillLevels[shared_data.selectedSkillList[attack[0]]]][attack[2]]
+            shared_data.equipped_skills[attack[0]]
+        ][skillLevels[shared_data.equipped_skills[attack[0]]]][attack[2]]
 
         for skill in skills:
             # [time, [type(0: damage, 1: buff), [buff_type, buff_value, buff_duration] or damage_value]]
@@ -307,9 +339,23 @@ def simulateMacro(shared_data, stats: tuple, skillLevels: tuple, simInfo: tuple,
     ## 전투력
     # 기본데미지 = 공격력 * (근력 + 지력) * (1 + 파괴력 * 0.01) * 내공계수
     # 0공, 1방, 2파괴력, 3근력, 4지력, 5경도, 6치확, 7치뎀, 8보뎀, 9명중, 10회피, 11상태이상저항, 12내공, 13체력, 14공속, 15포션회복, 16운, 17경험치
-    boss_attacks = runSimul(attackDetails, buffDetails, stats, True, simInfo, naegongDiff, deterministic=True)
+    boss_attacks = runSimul(
+        attackDetails,
+        buffDetails,
+        stats,
+        True,
+        simInfo,
+        naegongDiff,
+        deterministic=True,
+    )
     normal_attacks = runSimul(
-        attackDetails, buffDetails, stats, False, simInfo, naegongDiff, deterministic=True
+        attackDetails,
+        buffDetails,
+        stats,
+        False,
+        simInfo,
+        naegongDiff,
+        deterministic=True,
     )
     sum_BossDMG = sum([i[2] for i in boss_attacks])
     sum_NormalDMG = sum([i[2] for i in normal_attacks])
@@ -320,7 +366,7 @@ def simulateMacro(shared_data, stats: tuple, skillLevels: tuple, simInfo: tuple,
     # 초당 회복량 = 체력 * 자연회복 * 0.2 + 포션회복 * 0.5
     recovery = stats[13] * 0.1 * 0.2 + simInfo[2] * (1 + stats[15] * 0.01) * 0.5
 
-    powers = [
+    powers: list[float] = [
         sum_BossDMG * shared_data.COEF_BOSS_DMG,  # 보스데미지
         sum_NormalDMG * shared_data.COEF_NORMAL_DMG,  # 일반데미지
         sum_BossDMG * shared_data.COEF_BOSS_DMG  # 보스데미지
@@ -341,15 +387,21 @@ def simulateMacro(shared_data, stats: tuple, skillLevels: tuple, simInfo: tuple,
     if randomSeed == 1:
         return powers
 
-    powers = [str(int(i)) for i in powers]
+    str_powers = [str(int(i)) for i in powers]
 
     # start_time = time.time()
 
     simuls_boss = []
     simuls_normal = []
-    for i in range(1000):  # 1000회일 경우 멀티프로세싱보다 단일쓰레드에서 실행하는 것이 빠름
-        simuls_boss.append(runSimul(attackDetails, buffDetails, stats, True, simInfo, naegongDiff))
-        simuls_normal.append(runSimul(attackDetails, buffDetails, stats, False, simInfo, naegongDiff))
+    for i in range(
+        1000
+    ):  # 1000회일 경우 멀티프로세싱보다 단일쓰레드에서 실행하는 것이 빠름
+        simuls_boss.append(
+            runSimul(attackDetails, buffDetails, stats, True, simInfo, naegongDiff)
+        )
+        simuls_normal.append(
+            runSimul(attackDetails, buffDetails, stats, False, simInfo, naegongDiff)
+        )
 
     # iterations = 1000
     # batch_size = 100  # 한번에 처리할 작업 개수
@@ -433,16 +485,16 @@ def simulateMacro(shared_data, stats: tuple, skillLevels: tuple, simInfo: tuple,
         },
     ]
 
-    return powers, analysis, boss_attacks, simuls_boss
+    return str_powers, analysis, boss_attacks, simuls_boss
 
 
 # 매크로 시뮬레이션 => 스킬 리스트
-def getSimulatedSKillList(shared_data, cooltimeReduce):
+def getSimulatedSKillList(shared_data: SharedData, cooltimeReduce):
     # 실제와 다른 경우가 있어서 시뮬레이션 진행할 때 옵션 추가해야함
     def use(skill, additionalTime=0):
         usedSkillList.append([skill, (elapsedTime + additionalTime)])
 
-        minusSkillCount[0], minusSkillCount[1] = (skill, additionalTime)
+        minusSkillCount[0], minusSkillCount[1] = (skill, additionalTime)  # type: ignore
         # availableSkillCount[skill] -= 1
 
         # print(f"{(elapsedTime + additionalTime) * 0.001:.3f} - {skill}")
@@ -464,7 +516,7 @@ def getSimulatedSKillList(shared_data, cooltimeReduce):
     # 스킬 사용 가능 횟수 : [3, 2, 2, 1, 3, 3]
     availableSkillCount = [
         shared_data.SKILL_COMBO_COUNT_LIST[shared_data.serverID][shared_data.jobID][
-            shared_data.selectedSkillList[i]
+            shared_data.equipped_skills[i]
         ]
         for i in range(shared_data.USABLE_SKILL_COUNT[shared_data.serverID])
     ]
@@ -473,9 +525,9 @@ def getSimulatedSKillList(shared_data, cooltimeReduce):
         addTaskList(shared_data)
 
         # 스킬 사용
-        if len(shared_data.taskList) != 0 and simWaitTime == 0:
-            skill = shared_data.taskList[0][0]  # skill = slot
-            doClick = shared_data.taskList[0][1]  # T, F
+        if len(shared_data.task_list) != 0 and simWaitTime == 0:
+            skill = shared_data.task_list[0][0]  # skill = slot
+            doClick = shared_data.task_list[0][1]  # T, F
 
             if shared_data.selected_item_slot != skill:
                 if doClick:  # press -> delay -> click => use
@@ -498,21 +550,21 @@ def getSimulatedSKillList(shared_data, cooltimeReduce):
 
                     simWaitTime = shared_data.delay
 
-            shared_data.taskList.pop(0)
+            shared_data.task_list.pop(0)
 
         for skill in range(shared_data.USABLE_SKILL_COUNT[shared_data.serverID]):  # 0~6
             if (
                 availableSkillCount[skill]
-                < shared_data.SKILL_COMBO_COUNT_LIST[shared_data.serverID][shared_data.jobID][
-                    shared_data.selectedSkillList[skill]
-                ]
+                < shared_data.SKILL_COMBO_COUNT_LIST[shared_data.serverID][
+                    shared_data.jobID
+                ][shared_data.equipped_skills[skill]]
             ):  # 스킬 사용해서 쿨타임 기다리는 중이면
                 skillCoolTimers[skill] += int(shared_data.UNIT_TIME * 100)
 
                 if skillCoolTimers[skill] >= int(
-                    shared_data.SKILL_COOLTIME_LIST[shared_data.serverID][shared_data.jobID][
-                        shared_data.selectedSkillList[skill]
-                    ]
+                    shared_data.SKILL_COOLTIME_LIST[shared_data.serverID][
+                        shared_data.jobID
+                    ][shared_data.equipped_skills[skill]]
                     * (100 - cooltimeReduce)
                 ):  # 쿨타임이 지나면
                     shared_data.preparedSkillList[2].append(skill)  # 대기열에 추가
@@ -522,11 +574,13 @@ def getSimulatedSKillList(shared_data, cooltimeReduce):
                     # print(f"{(elapsedTime) * 0.001:.3f} - {skill} 쿨타임")
 
         if minusSkillCount[1] == 0:
-            availableSkillCount[minusSkillCount[0]] -= 1
+            availableSkillCount[minusSkillCount[0]] -= 1  # type: ignore
             minusSkillCount = [None, None]
 
         if minusSkillCount[1] != None:
-            minusSkillCount[1] = max(0, minusSkillCount[1] - int(shared_data.UNIT_TIME * 1000))
+            minusSkillCount[1] = max(  # type: ignore
+                0, minusSkillCount[1] - int(shared_data.UNIT_TIME * 1000)
+            )
         simWaitTime = max(0, simWaitTime - int(shared_data.UNIT_TIME * 1000))
         elapsedTime += int(shared_data.UNIT_TIME * 1000)
 

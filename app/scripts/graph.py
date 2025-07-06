@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 
 
 class DpsDistributionCanvas(FigureCanvas):
@@ -57,7 +57,9 @@ class DpsDistributionCanvas(FigureCanvas):
             xy=(0, 0),
             xytext=(-24, 10),
             textcoords="offset points",
-            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="black", lw=1, alpha=0.5),
+            bbox=dict(
+                boxstyle="round,pad=0.3", fc="white", ec="black", lw=1, alpha=0.5
+            ),
             # arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=0"),
         )
         annotation.set_visible(False)
@@ -187,9 +189,21 @@ class SkillDpsRatioCanvas(FigureCanvas):
     def plot(self):
         # Data for the pie chart
         data = [i for i in self.data if i != 0]
-        labels = [f"{self.skill_name[i]}" for i, j in enumerate(self.data) if j != 0 and i != 6]
+        labels = [
+            f"{self.skill_name[i]}"
+            for i, j in enumerate(self.data)
+            if j != 0 and i != 6
+        ]
         labels.append(f"평타")
-        colors = ["#EF9A9A", "#90CAF9", "#A5D6A7", "#FFEB3B", "#CE93D8", "#F0B070", "#2196F3"]
+        colors = [
+            "#EF9A9A",
+            "#90CAF9",
+            "#A5D6A7",
+            "#FFEB3B",
+            "#CE93D8",
+            "#F0B070",
+            "#2196F3",
+        ]
 
         # Plotting the pie chart
         wedges, texts, autotexts = self.ax.pie(
@@ -277,7 +291,9 @@ class DMGCanvas(FigureCanvas):
             xy=(0, 0),
             xytext=(-24, 10),
             textcoords="offset points",
-            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="black", lw=1, alpha=0.5),
+            bbox=dict(
+                boxstyle="round,pad=0.3", fc="white", ec="black", lw=1, alpha=0.5
+            ),
         )
         self.annotation.set_visible(False)
 
@@ -332,7 +348,15 @@ class SkillContributionCanvas(FigureCanvas):
         self.plot()
 
     def plot(self):
-        colors = ["#EF9A9A", "#90CAF9", "#A5D6A7", "#FFEB3B", "#CE93D8", "#F0B070", "#2196F3"]
+        colors = [
+            "#EF9A9A",
+            "#90CAF9",
+            "#A5D6A7",
+            "#FFEB3B",
+            "#CE93D8",
+            "#F0B070",
+            "#2196F3",
+        ]
 
         data_normLast = [i[-1] for i in self.data["skills_normalized"]]
         data_0idx = [i for i, j in enumerate(data_normLast) if j == 0]
@@ -366,7 +390,9 @@ class SkillContributionCanvas(FigureCanvas):
             )  # 바로 위 선의 색상 사용
 
         # 맨 아래 영역 채우기
-        self.ax.fill_between(self.data["time"], 0, self.data["skills_sum"][0], color=colors[0])
+        self.ax.fill_between(
+            self.data["time"], 0, self.data["skills_sum"][0], color=colors[0]
+        )
 
         self.ax.set_title("스킬별 기여도")
         self.ax.set_xlabel("시간 (초)")
@@ -388,7 +414,9 @@ class SkillContributionCanvas(FigureCanvas):
             xy=(0, 0),
             xytext=(-24, 10),
             textcoords="offset points",
-            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="black", lw=1, alpha=0.5),
+            bbox=dict(
+                boxstyle="round,pad=0.3", fc="white", ec="black", lw=1, alpha=0.5
+            ),
         )
         self.annotation.set_visible(False)
 
@@ -406,7 +434,9 @@ class SkillContributionCanvas(FigureCanvas):
 
             values = []
             for i in reversed(range(self.skillCount)):
-                values.append(f"{self.skill_names[i]}: {self.data["skills_normalized"][i][index] * 100:.1f}%")
+                values.append(
+                    f"{self.skill_names[i]}: {self.data["skills_normalized"][i][index] * 100:.1f}%"
+                )
 
             self.annotation.set_text(f"시간: {closest_x:.1f}\n\n" + "\n".join(values))
 

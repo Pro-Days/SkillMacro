@@ -1,9 +1,21 @@
+from __future__ import annotations
+
 import os
 import json
+from typing import TYPE_CHECKING
+
+
+if TYPE_CHECKING:
+    from .shared_data import SharedData
+
 
 dataVersion = 3
 
-local_appdata = os.environ.get("LOCALAPPDATA")
+local_appdata = os.environ.get("LOCALAPPDATA", "")
+
+if not local_appdata:
+    raise EnvironmentError("LOCALAPPDATA environment variable is not set.")
+
 data_path = os.path.join(local_appdata, "ProDays")
 fileDir = os.path.join(data_path, "SkillMacro.json")
 
@@ -21,7 +33,7 @@ def convertResourcePath(relative_path):
     return os.path.join(base_path, relative_path)
 
 
-def dataLoad(shared_data, num=-1):
+def data_load(shared_data: SharedData, num=-1):
     """
     실행, 탭 변경 시 데이터 로드
     """
@@ -39,11 +51,12 @@ def dataLoad(shared_data, num=-1):
 
                 ## name
                 shared_data.tabNames = [
-                    jsonObject["preset"][i]["name"] for i in range(len(jsonObject["preset"]))
+                    jsonObject["preset"][i]["name"]
+                    for i in range(len(jsonObject["preset"]))
                 ]
 
                 ## skills
-                shared_data.selectedSkillList = data["skills"]["activeSkills"]
+                shared_data.equipped_skills = data["skills"]["activeSkills"]
                 shared_data.skillKeys = data["skills"]["skillKeys"]
 
                 ## settings
@@ -77,9 +90,11 @@ def dataLoad(shared_data, num=-1):
                 shared_data.ifUseSkill = [data["usageSettings"][i][0] for i in range(8)]
                 shared_data.ifUseSole = [data["usageSettings"][i][1] for i in range(8)]
                 shared_data.comboCount = [data["usageSettings"][i][2] for i in range(8)]
-                shared_data.skillPriority = [data["usageSettings"][i][3] for i in range(8)]
+                shared_data.skill_priority = [
+                    data["usageSettings"][i][3] for i in range(8)
+                ]
 
-                shared_data.linkSkillList = data["linkSettings"]
+                shared_data.link_skills = data["linkSettings"]
 
                 ## info
                 shared_data.info_stats = data["info"]["stats"]
@@ -87,10 +102,10 @@ def dataLoad(shared_data, num=-1):
                 shared_data.info_simInfo = data["info"]["simInfo"]
         else:
             dataMake()
-            dataLoad(shared_data)
+            data_load(shared_data)
     except:
         dataMake()
-        dataLoad(shared_data)
+        data_load(shared_data)
 
 
 def dataMake():
@@ -117,14 +132,14 @@ def dataMake():
                     "mouseClickType": 0,
                 },
                 "usageSettings": [
-                    [True, True, 3, None],
-                    [True, True, 2, None],
-                    [True, True, 2, None],
-                    [True, True, 1, None],
-                    [True, True, 3, None],
-                    [True, True, 1, None],
-                    [True, True, 1, None],
-                    [True, True, 3, None],
+                    [True, True, 3, 0],
+                    [True, True, 2, 0],
+                    [True, True, 2, 0],
+                    [True, True, 1, 0],
+                    [True, True, 3, 0],
+                    [True, True, 1, 0],
+                    [True, True, 1, 0],
+                    [True, True, 3, 0],
                 ],
                 "linkSettings": [],
                 "info": {
@@ -139,10 +154,10 @@ def dataMake():
     os.makedirs(data_path, exist_ok=True)  # 폴더가 없으면 생성
 
     with open(fileDir, "w", encoding="UTF8") as f:
-        json.dump(jsonObject, f)
+        json.dump(jsonObject, f, ensure_ascii=False)
 
 
-def dataSave(shared_data):
+def dataSave(shared_data: SharedData):
     """
     데이터 저장
     """
@@ -155,7 +170,7 @@ def dataSave(shared_data):
 
     data["name"] = shared_data.tabNames[shared_data.recentPreset]
 
-    data["skills"]["activeSkills"] = shared_data.selectedSkillList
+    data["skills"]["activeSkills"] = shared_data.equipped_skills
     data["skills"]["skillKeys"] = shared_data.skillKeys
 
     data["settings"]["serverID"] = shared_data.serverID
@@ -172,16 +187,16 @@ def dataSave(shared_data):
         data["usageSettings"][i][0] = shared_data.ifUseSkill[i]
         data["usageSettings"][i][1] = shared_data.ifUseSole[i]
         data["usageSettings"][i][2] = shared_data.comboCount[i]
-        data["usageSettings"][i][3] = shared_data.skillPriority[i]
+        data["usageSettings"][i][3] = shared_data.skill_priority[i]
 
-    data["linkSettings"] = shared_data.linkSkillList
+    data["linkSettings"] = shared_data.link_skills
 
     data["info"]["stats"] = shared_data.info_stats
     data["info"]["skills"] = shared_data.info_skills
     data["info"]["simInfo"] = shared_data.info_simInfo
 
     with open(fileDir, "w", encoding="UTF8") as f:
-        json.dump(jsonObject, f)
+        json.dump(jsonObject, f, ensure_ascii=False)
 
 
 def dataRemove(num):
@@ -195,7 +210,7 @@ def dataRemove(num):
     jsonObject["preset"].pop(num)
 
     with open(fileDir, "w", encoding="UTF8") as f:
-        json.dump(jsonObject, f)
+        json.dump(jsonObject, f, ensure_ascii=False)
 
 
 def dataAdd():
@@ -222,14 +237,14 @@ def dataAdd():
                 "mouseClickType": 0,
             },
             "usageSettings": [
-                [True, True, 3, None],
-                [True, True, 2, None],
-                [True, True, 2, None],
-                [True, True, 1, None],
-                [True, True, 3, None],
-                [True, True, 1, None],
-                [True, True, 1, None],
-                [True, True, 3, None],
+                [True, True, 3, 0],
+                [True, True, 2, 0],
+                [True, True, 2, 0],
+                [True, True, 1, 0],
+                [True, True, 3, 0],
+                [True, True, 1, 0],
+                [True, True, 1, 0],
+                [True, True, 3, 0],
             ],
             "linkSettings": [],
             "info": {
@@ -241,10 +256,10 @@ def dataAdd():
     )
 
     with open(fileDir, "w", encoding="UTF8") as f:
-        json.dump(jsonObject, f)
+        json.dump(jsonObject, f, ensure_ascii=False)
 
 
-def dataUpdate():
+def data_update():
     """
     데이터 업데이트
     """
@@ -254,9 +269,9 @@ def dataUpdate():
 
         for i in range(len(jsonObject["preset"])):
             for j in range(len(jsonObject["preset"][i]["linkSettings"])):
-                jsonObject["preset"][i]["linkSettings"][j]["useType"] = jsonObject["preset"][i][
-                    "linkSettings"
-                ][j].pop("type")
+                jsonObject["preset"][i]["linkSettings"][j]["useType"] = jsonObject[
+                    "preset"
+                ][i]["linkSettings"][j].pop("type")
                 jsonObject["preset"][i]["linkSettings"][j]["keyType"] = 1
 
         for i in range(len(jsonObject["preset"])):
@@ -269,7 +284,7 @@ def dataUpdate():
         os.makedirs(data_path, exist_ok=True)  # 폴더가 없으면 생성
 
         with open(fileDir, "w", encoding="UTF8") as f:
-            json.dump(jsonObject, f)
+            json.dump(jsonObject, f, ensure_ascii=False)
 
     try:
         with open(fileDir, "r", encoding="UTF8") as f:

@@ -19,6 +19,9 @@ pyinstaller -w --clean -i="./app/resources/image/icon.ico" --add-data "app;app" 
 pyinstaller --upx-dir "upx" -F -w --clean -i="./app/resources/image/icon.ico" --add-data "app;app" SkillMacro.py
 pyinstaller --upx-dir "upx" -w --clean -i="./app/resources/image/icon.ico" --add-data "app;app" SkillMacro.py
 
+upx를 사용하지 않는 것도 고려해야함.
+upx때문에 실행 속도가 느려지고, 바이러스로 오탐될 가능성이 증가할 수 있음.
+
 python==3.12.3
 pyinstaller==6.9.0
 (onefile은 2, installer는 0이지만 설치하면 6)
@@ -54,6 +57,11 @@ pip uninstall -r requirements_temp.txt -y
 궁수류 : 빙궁 / 귀궁
 #####
 * 직업 시스템에서 무기 수집형으로 바뀔 가능성 높음
+
+
+제공되는 스킬 정보 사용 / 직접 쿨타임을 입력 하는 모드 바꿀 수 있게
+Mojang API를 이용해서 직접 계정으로 로그인 후 로그인 검증을 람다에서 수행
+- 위키피디아에 파이썬 라이브러리가 있음.
 
 
 

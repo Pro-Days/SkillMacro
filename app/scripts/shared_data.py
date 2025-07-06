@@ -2,15 +2,14 @@ import json
 from dataclasses import dataclass
 from .data_manager import convertResourcePath
 from typing import Final
+import time
 
 
+# 공유 데이터 클래스
 @dataclass(unsafe_hash=True)
 class SharedData:
     # 상수 설정
     VERSION = "3.1.0-beta.1"
-
-    DEFAULT_WINDOW_WIDTH = 960
-    DEFAULT_WINDOW_HEIGHT = 540
 
     # ICON = QIcon(QPixmap(convertResourcePath("resources\\image\\icon\\icon.ico")))
     # ICON_ON = QIcon(QPixmap(convertResourcePath("resources\\image\\icon\\icon_on.ico")))
@@ -27,7 +26,10 @@ class SharedData:
     COEF_NORMAL = 0.7
 
     UNIT_TIME = 0.05  # 1tick
-    IS_AFK_ENABLED = True  # AFK 모드 활성화 여부: 정식 버전에서는 True로 변경
+    IS_AFK_ENABLED = False  # AFK 모드 활성화 여부: 정식 버전에서는 True로 변경
+    IS_VERSION_CHECK_ENABLED = (
+        False  # 버전 확인 모드 활성화 여부: 정식 버전에서는 True로 변경
+    )
     MIN_DELAY = 50
     MAX_DELAY = 1000
     MIN_COOLTIME = 0
@@ -204,7 +206,9 @@ class SharedData:
     ]
     USABLE_SKILL_COUNT = [6]  # 장착 가능한 스킬 개수
 
-    with open(convertResourcePath("resources\\data\\skill_data.json"), "r", encoding="utf-8") as f:
+    with open(
+        convertResourcePath("resources\\data\\skill_data.json"), "r", encoding="utf-8"
+    ) as f:
         skill_data = json.load(f)
 
     SKILL_NAME_LIST = skill_data["Names"]
@@ -226,21 +230,75 @@ class SharedData:
     is_activated = False
     loop_num = 0
     selected_item_slot = -1
-    is_skill_selecting = -1
-    setting_type = -1
+    selected_skill = -1  # 클릭해서 선택된 장착 가능 스킬칸
+    sidebar_type = -1
     layout_type = 0  # 0: 스킬, 1: 시뮬레이터
     active_popup = ""
     active_error_popup = []
     active_error_popup_count = 0
-    skill_preview_list = []
+    preview_skills = []
 
     powers = []
     inputCheck = {"stat": False, "skill": False, "simInfo": False}
     card_updated = False
 
+    recent_version: str = "0.0.0"  # 최근 버전 정보
+    update_url: str = ""  # 업데이트 URL
+
+    # 매크로 데이터 초기화
+    recentPreset = 0
+    tabNames = []
+    equipped_skills = []  # 장착된 스킬 목록, 각 스킬의 인덱스가 저장됨
+    skillKeys = []
+    serverID = 0
+    jobID = 0
+    activeDelaySlot = 0
+    inputDelay = 0
+    delay = 0
+    activeCooltimeSlot = 0
+    inputCooltime = 0
+    cooltimeReduce = 0
+    activeStartKeySlot = 0
+    inputStartKey = ""
+    startKey = "F9"
+    activeMouseClickSlot = 0
+    ifUseSkill = [False] * 8
+    ifUseSole = [False] * 8
+    comboCount = [0] * 8
+    skill_priority = [0] * 8  # 스킬 우선순위, 0: 지정되지 않음
+    link_skills = []
+    info_stats = [0] * len(STAT_LIST)
+    info_skills = [0] * len(SKILL_NAME_LIST)
+    info_simInfo = [0] * len(SIM_INFO_LIST)
+
+    task_list = []  # 매크로 실행 중 실행할 스킬 목록
+    preparedSkillList = []  # 준비된 스킬 리스트
+    preparedSkillCountList = []  # 준비된 스킬 개수 리스트
+    preparedlink_skills = []  # 준비된 연계스킬리스트
+
+    preparedSkillComboList = []  # 스킬 콤보 리스트
+
+    preparedLinkSkillList = []  # 준비된 연계 스킬 목록
+
+    linkSkillRequirementList = []
+    linkSkillComboRequirementList = []
+    usingLinkSkillList = []  # 사용하는 모든 연계 스킬
+    usingLinkSkillComboList = []  # 사용하는 연계 스킬의 콤보 개수
+
+    skillSequences = []
+    usinglink_skills = []
+
+    afkTime0: float = 0.0  # AFK 모드 시작 시간
+
+    skillCoolTimers = []  # 스킬 쿨타임 타이머
+    availableSkillCount = []
+
 
 @dataclass
 class UI_Variable:
+    DEFAULT_WINDOW_WIDTH = 960
+    DEFAULT_WINDOW_HEIGHT = 540
+
     sim_colors4 = [
         "255, 130, 130",  # #FF8282
         "255, 230, 140",  # #FFE68C
@@ -369,7 +427,9 @@ class UI_Variable:
     sim_potentialRank_title_H = 50
     sim_potentialRank_rank_H = 25
     sim_potentialRank_ranks_H = sim_potentialRank_rank_H * 16
-    sim_potentialRank_frame_H = sim_potentialRank_title_H + sim_potentialRank_rank_H * 16
+    sim_potentialRank_frame_H = (
+        sim_potentialRank_title_H + sim_potentialRank_rank_H * 16
+    )
     sim_potentialRank_rank_ranking_W = 30
     sim_potentialRank_rank_potential_W = 115
     sim_potentialRank_rank_power_W = 60
@@ -416,7 +476,9 @@ class UI_Variable:
     sim_charInfo_complete_H = 40
 
     sim_charInfo_save_y = sim_charInfo_complete_y
-    sim_charInfo_save_margin = sim_charInfo_complete_margin + sim_charInfo_complete_W + 24
+    sim_charInfo_save_margin = (
+        sim_charInfo_complete_margin + sim_charInfo_complete_W + 24
+    )
     sim_charInfo_save_W = 120
     sim_charInfo_save_H = 40
 
@@ -445,7 +507,9 @@ class UI_Variable:
     sim_charCard_name_line_W = 146
     sim_charCard_info_line_H = 16
 
-    sim_charCard_powerFrame_margin = sim_charCard_image_margin + sim_charCard_image_W + 10
+    sim_charCard_powerFrame_margin = (
+        sim_charCard_image_margin + sim_charCard_image_W + 10
+    )
     sim_charCard_powerFrame_y = sim_charCard_job_y + sim_charCard_job_H + 15
     sim_charCard_powerFrame_W = 166
     sim_charCard_powerFrame_H = 40
