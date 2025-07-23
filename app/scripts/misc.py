@@ -1,66 +1,101 @@
 from __future__ import annotations
 
-from .data_manager import convertResourcePath
+import os
 
 import matplotlib.pyplot as plt
 from matplotlib import font_manager as fm
 
-from typing import Optional, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING
 
 from PyQt6.QtGui import QFontDatabase
-from PyQt6.QtGui import QIcon, QPixmap, QFont, QFontMetrics
-from PyQt6.QtWidgets import QPushButton, QWidget, QLabel
+from PyQt6.QtGui import QPixmap, QFontMetrics
+from PyQt6.QtWidgets import QPushButton, QLabel
+
+
+from .custom_classes import CustomFont
 
 
 if TYPE_CHECKING:
-    from .main_window import MainWindow
     from .shared_data import SharedData
 
 
-def convert7to5(shared_data: SharedData, num: int) -> Optional[int]:
-    for x, y in enumerate(shared_data.equipped_skills):  # x: 0~5, y: 0~7
-        if y == num:
-            return x
+def convert_skill_name_to_slot(shared_data: SharedData, skill_name: str) -> int:
+    """
+    스킬 이름을 슬롯 번호로 변환
+    """
+
+    return (
+        shared_data.equipped_skills.index(skill_name)
+        if skill_name in shared_data.equipped_skills
+        else -1
+    )
 
 
-def isKeyUsing(shared_data: SharedData, key: str) -> bool:
+def is_key_used(shared_data: SharedData, key: str) -> bool:
     """
     키가 사용중인지 확인
     """
 
+    # "\n"이 포함되어 있으면 "_"로 대체
     key = key.replace("\n", "_")
-    usingKey = []
 
-    if shared_data.activeStartKeySlot == 1:
-        usingKey.append(shared_data.inputStartKey)
+    # 사용중인 키 목록
+    used_keys: list[str] = []
+
+    # 시작 키
+    if shared_data.start_key_type == 1:
+        used_keys.append(shared_data.start_key_input)
     else:
-        usingKey.append("F9")
+        used_keys.append("F9")
 
-    for i in shared_data.skillKeys:
-        usingKey.append(i)
+    # 스킬 사용 키
+    used_keys.extend(shared_data.skill_keys)
 
-    for i in shared_data.link_skills:
-        if i["keyType"] == 1:
-            usingKey.append(i["key"])
+    # 연계 스킬 키
+    used_keys.extend(
+        [
+            link_skill["key"]
+            for link_skill in shared_data.link_skills
+            if link_skill["keyType"] == 1
+        ]
+    )
 
     # if self.settingType == 3:
     #     usingKey.append(self.ButtonLinkKey1.text())
 
     # print(usingKey, key)
 
-    return key in usingKey
+    return key in used_keys
 
 
-def set_default_fonts():
+def convert_resource_path(relative_path: str) -> str:
+    """
+    리소스 경로 변경
+    """
+
+    base_path: str = os.path.dirname(os.path.abspath(__file__))
+    base_path = os.path.dirname(base_path)
+
+    return os.path.join(base_path, relative_path)
+
+
+def set_default_fonts() -> None:
     """
     기본 폰트 설정
     """
 
     # "나눔스퀘어라운드 ExtraBold"
-    QFontDatabase.addApplicationFont(convertResourcePath("resources\\font\\NSR_B.ttf"))
-    QFontDatabase.addApplicationFont(convertResourcePath("resources\\font\\NSR_EB.ttf"))
+    QFontDatabase.addApplicationFont(
+        convert_resource_path("resources\\font\\NSR_B.ttf")
+    )
+    QFontDatabase.addApplicationFont(
+        convert_resource_path("resources\\font\\NSR_EB.ttf")
+    )
+    QFontDatabase.addApplicationFont(
+        convert_resource_path("resources\\font\\NotoSansKR-Regular.ttf")
+    )
 
-    font_path = convertResourcePath("resources\\font\\NSR_B.ttf")
+    font_path = convert_resource_path("resources\\font\\NotoSansKR-Regular.ttf")
     fm.fontManager.addfont(font_path)
     prop = fm.FontProperties(fname=font_path)
     plt.rcParams["font.family"] = prop.get_name()
@@ -69,61 +104,66 @@ def set_default_fonts():
 
 
 def get_skill_pixmap(
-    shared_data: SharedData, skill: int, state: Union[str, int] = -1
+    shared_data: SharedData, skill_name: str, state: int = -1
 ) -> QPixmap:
     """
     스킬 아이콘 반환
-    skill: -1이면 빈 스킬 아이콘 반환
-    state: -1이면 해당 스킬의 최대 카운트 반환, "off"이면 비활성화 아이콘 반환
+
+    skill == ""이면 빈 스킬 아이콘 반환
+    state == -1이면 해당 스킬의 최대 카운트 반환, -2이면 비활성화 아이콘 반환
     """
 
-    if skill == -1:
-        return QPixmap(convertResourcePath(f"resources\\image\\emptySkill.png"))
+    if not skill_name:
+        return QPixmap(convert_resource_path(f"resources\\image\\emptySkill.png"))
 
     # count가 -1이면 shared_data에서 해당 스킬의 최대 카운트 가져오기
     if state == -1:
-        state = shared_data.SKILL_COMBO_COUNT_LIST[shared_data.serverID][  # type: ignore
-            shared_data.jobID
-        ][
-            skill
-        ]
+        state = get_skill_details(shared_data, skill_name)["max_combo_count"]
 
+    skill_id: int = get_available_skills(shared_data).index(skill_name)
+
+    # state가 -2이면 비활성화 아이콘 반환
     return QPixmap(
-        convertResourcePath(
-            f"resources\\image\\skill\\{shared_data.serverID}\\{shared_data.jobID}\\{skill}\\{state}.png"
+        convert_resource_path(
+            f"resources\\image\\skills\\{shared_data.server_ID}\\{shared_data.job_ID}\\{skill_id}\\{state if state != -2 else 'off'}.png"
         )
     )
 
 
 ## 위젯 크기에 맞는 폰트로 변경
-def adjustFontSize(
-    widget: Union[QPushButton, QLabel],
+def adjust_font_size(
+    widget: QPushButton | QLabel,
     text: str,
     maxSize: int,
     font_name="나눔스퀘어라운드 ExtraBold",
-):
+) -> None:
+    # 텍스트 설정
     widget.setText(text)
-    widget.setFont(QFont(font_name))
 
+    # "\n"이 포함되어 있으면 첫 줄만 사용
     if "\n" in text:
         text = text.split("\n")[0]
 
+    # 위젯 크기가 0이거나 텍스트가 비어있으면 폰트 조정하지 않음
     if widget.width() == 0 or widget.height() == 0 or not text:
         return
 
-    font = widget.font()
+    # 폰트 설정
     font_size = 1
-    font.setPointSize(font_size)
+    font = CustomFont(font_size)
     metrics = QFontMetrics(font)
 
+    # 폰트 크기를 증가시키면서 위젯 크기에 맞는지 확인
     while font_size < maxSize:
-        text_width = metrics.horizontalAdvance(text)
-        text_height = metrics.height()
+        text_width: int = metrics.horizontalAdvance(text)
+        text_height: int = metrics.height()
 
+        # QPushButton이면 여백을 추가
         if isinstance(widget, QPushButton):
             text_width += 4
             text_height += 4
 
+        # 위젯 크기를 초과하면 중지
         if text_width > widget.width() or text_height > widget.height():
             break
 
@@ -131,11 +171,14 @@ def adjustFontSize(
         font.setPointSize(font_size)
         metrics = QFontMetrics(font)
 
+    # 폰트 크기 설정
     font.setPointSize(font_size - 1)
     widget.setFont(font)
 
 
-def limit_text(text: str, widget: QWidget, margin: int = 40) -> str:
+def adjust_text_length(
+    text: str, widget: QPushButton | QLabel, margin: int = 40
+) -> str:
     """
     위젯 크기에 맞게 텍스트를 자름
     """
@@ -150,50 +193,56 @@ def limit_text(text: str, widget: QWidget, margin: int = 40) -> str:
     return ""
 
 
-def clear_equipped_skill(master: MainWindow, shared_data: SharedData, skill: int):
+def set_var_to_ClassVar(var: list | dict, value: list | dict) -> None:
     """
-    장착된 스킬 초기화
+    SharedData 클래스의 변수에 값을 설정
     """
 
-    # 연계스킬 수동 사용으로 변경
-    for i, j in enumerate(shared_data.link_skills):
-        for k in j["skills"]:
-            if k[0] == skill:
-                shared_data.link_skills[i][
-                    "useType"
-                ] = 1  # 나중에 useType -> use_auto: bool 변경
+    if isinstance(var, list) and isinstance(value, list):
+        var.clear()
+        for v in value:
+            var.append(v)
 
-    # 스킬 사용 우선순위 리로드
-    prev_priority: int = shared_data.skill_priority[skill]
+    elif isinstance(var, dict) and isinstance(value, dict):
+        var.clear()
+        for key, v in value.items():
+            var[key] = v
 
-    # 해제되는 스킬의 우선순위가 있다면
-    if prev_priority:
-        shared_data.skill_priority[skill] = 0
+    else:
+        raise TypeError("var와 value는 모두 list 또는 dict여야 합니다.")
 
-        # 해당 스킬보다 높은 우선순위의 스킬들 우선순위 -1
-        for j, k in enumerate(shared_data.skill_priority):
-            if k > prev_priority:
-                shared_data.skill_priority[j] -= 1
 
-                if shared_data.sidebar_type == 2:
-                    master.get_sidebar().skill_sequence[j].setText(str(k - 1))
+def get_available_skills(shared_data: SharedData) -> list[str]:
+    """
+    서버, 직업에 따라 사용 가능한 스킬 목록 반환
+    """
 
-    # 스킬 연계설정이라면 -> 리로드
-    if shared_data.sidebar_type == 3:
-        master.get_sidebar().delete_sidebar_3()
-        shared_data.sidebar_type = -1
-        master.get_sidebar().change_sidebar_to_3()
+    return shared_data.skill_data[shared_data.server_ID]["jobs"][shared_data.job_ID][
+        "skills"
+    ]
 
-    # 사이드바가 스킬 사용설정이라면
-    if shared_data.sidebar_type == 2:
-        master.get_sidebar().skill_icons[skill].setIcon(
-            QIcon(
-                get_skill_pixmap(
-                    shared_data=shared_data,
-                    skill=skill,
-                    state="off",
-                )
-            )
-        )
 
-        master.get_sidebar().skill_sequence[skill].setText("-")
+def get_every_skills(shared_data: SharedData) -> list[str]:
+    """
+    서버의 모든 스킬 목록 반환
+    """
+
+    skills: list[str] = sum(
+        [
+            skills["skills"]
+            for job, skills in shared_data.skill_data[shared_data.server_ID][
+                "jobs"
+            ].items()
+        ],
+        [],
+    )
+
+    return skills
+
+
+def get_skill_details(shared_data: SharedData, skill_name: str) -> dict:
+    """
+    서버, 직업에 따른 스킬 상세 정보 반환
+    """
+
+    return shared_data.skill_data[shared_data.server_ID]["skill_details"][skill_name]

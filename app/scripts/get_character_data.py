@@ -3,9 +3,9 @@ import requests
 
 def get_character_info(name):
     return [
-        {"job": 0, "level": 200},
-        {"job": 2, "level": 190},
-        {"job": 0, "level": 180},
+        {"job": "검호", "level": 200},
+        {"job": "살수", "level": 190},
+        {"job": "매화", "level": 180},
     ]
 
 

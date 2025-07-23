@@ -10,6 +10,7 @@ class DpsDistributionCanvas(FigureCanvas):
         super().__init__(self.fig)
         self.setParent(parent)
         self.data = data
+        self._cids = []  # 이벤트 연결 ID를 저장할 리스트
         self.plot()
 
     def plot(self):
@@ -65,28 +66,38 @@ class DpsDistributionCanvas(FigureCanvas):
         annotation.set_visible(False)
 
         def on_hover(event):
-            # Check if the cursor is in the plot area
-            if event.inaxes == self.ax:
-                for bar in bars:
-                    bar.set_facecolor(self.colors["normal"])
-                for i in range(center_start, center_start + 5):
-                    bars[i].set_facecolor(self.colors["center5"])
-                bars[median_idx].set_facecolor(self.colors["median"])
+            try:
+                # Check if the cursor is in the plot area
+                if event.inaxes == self.ax:
+                    for bar in bars:
+                        bar.set_facecolor(self.colors["normal"])
+                    for i in range(center_start, center_start + 5):
+                        bars[i].set_facecolor(self.colors["center5"])
+                    bars[median_idx].set_facecolor(self.colors["median"])
 
-                # Find the bar under the cursor
-                for i, bar in enumerate(bars):
-                    if bar.contains(event)[0]:
-                        bar.set_facecolor(self.colors["cursor"])
-                        bin_val = bins[i]
-                        count_val = counts[i]
-                        annotation.xy = (event.xdata, event.ydata)
-                        annotation.set_text(
-                            f"상한 {bin_val + (bins[1]-bins[0]):.1f}\n하한 {bin_val:.1f}\n횟수 {int(count_val)}"
-                        )
-                        if not annotation._visible:
-                            annotation.set_visible(True)
-                        self.draw()
-                        break
+                    # Find the bar under the cursor
+                    for i, bar in enumerate(bars):
+                        if bar.contains(event)[0]:
+                            bar.set_facecolor(self.colors["cursor"])
+                            bin_val = bins[i]
+                            count_val = counts[i]
+                            annotation.xy = (event.xdata, event.ydata)
+                            annotation.set_text(
+                                f"상한 {bin_val + (bins[1]-bins[0]):.1f}\n하한 {bin_val:.1f}\n횟수 {int(count_val)}"
+                            )
+                            if not annotation._visible:
+                                annotation.set_visible(True)
+                            self.draw()
+                            break
+                    else:
+                        if annotation._visible:
+                            annotation.set_visible(False)
+                            for bar in bars:
+                                bar.set_facecolor(self.colors["normal"])
+                            for i in range(center_start, center_start + 5):
+                                bars[i].set_facecolor(self.colors["center5"])
+                            bars[median_idx].set_facecolor(self.colors["median"])
+                            self.draw()
                 else:
                     if annotation._visible:
                         annotation.set_visible(False)
@@ -95,25 +106,22 @@ class DpsDistributionCanvas(FigureCanvas):
                         for i in range(center_start, center_start + 5):
                             bars[i].set_facecolor(self.colors["center5"])
                         bars[median_idx].set_facecolor(self.colors["median"])
-                        self.draw()
-            else:
-                if annotation._visible:
-                    annotation.set_visible(False)
-                    for bar in bars:
-                        bar.set_facecolor(self.colors["normal"])
-                    for i in range(center_start, center_start + 5):
-                        bars[i].set_facecolor(self.colors["center5"])
-                    bars[median_idx].set_facecolor(self.colors["median"])
-                    self.draw()
+
+            except Exception as e:
+                print(f"Error in on_hover: {e}")
 
         def on_figure_leave(event):
-            annotation.set_visible(False)
-            for bar in bars:
-                bar.set_facecolor(self.colors["normal"])
-            for i in range(center_start, center_start + 5):
-                bars[i].set_facecolor(self.colors["center5"])
-            bars[median_idx].set_facecolor(self.colors["median"])
-            self.draw()
+            try:
+                annotation.set_visible(False)
+                for bar in bars:
+                    bar.set_facecolor(self.colors["normal"])
+                for i in range(center_start, center_start + 5):
+                    bars[i].set_facecolor(self.colors["center5"])
+                bars[median_idx].set_facecolor(self.colors["median"])
+                self.draw()
+
+            except Exception as e:
+                print(f"Error in on_figure_leave: {e}")
 
         self.mpl_connect("motion_notify_event", on_hover)
         self.mpl_connect("figure_leave_event", on_figure_leave)
@@ -188,11 +196,9 @@ class SkillDpsRatioCanvas(FigureCanvas):
 
     def plot(self):
         # Data for the pie chart
-        data = [i for i in self.data if i != 0]
+        data = [i for i in self.data if i]
         labels = [
-            f"{self.skill_name[i]}"
-            for i, j in enumerate(self.data)
-            if j != 0 and i != 6
+            f"{self.skill_name[i]}" for i, j in enumerate(self.data) if j and i != 6
         ]
         labels.append(f"평타")
         colors = [
@@ -343,7 +349,7 @@ class SkillContributionCanvas(FigureCanvas):
         self.resize(600, 400)
 
         self.data = data
-        self.skill_names = names
+        self.skill_names = names.copy()
 
         self.plot()
 
@@ -359,13 +365,16 @@ class SkillContributionCanvas(FigureCanvas):
         ]
 
         data_normLast = [i[-1] for i in self.data["skills_normalized"]]
-        data_0idx = [i for i, j in enumerate(data_normLast) if j == 0]
+
+        # 데미지가 0인 스킬 제거
+        data_0idx = [i for i, j in enumerate(data_normLast) if not j]
         data_0idx.sort(reverse=True)
 
         for i in data_0idx:
             self.data["skills_normalized"].pop(i)
             self.data["skills_sum"].pop(i)
             self.skill_names.pop(i)
+
         self.skill_names.append("평타")
 
         self.skillCount = len(self.data["skills_normalized"])

@@ -1,27 +1,39 @@
 from __future__ import annotations
 
-from .data_manager import dataSave
-from .misc import get_skill_pixmap, convertResourcePath, adjustFontSize
+from .data_manager import save_data
+from .misc import (
+    get_skill_pixmap,
+    adjust_font_size,
+    get_available_skills,
+    convert_resource_path,
+    set_var_to_ClassVar,
+)
 from .shared_data import UI_Variable
-from .simulate_macro import randSimulate, detSimulate, getRequiredStat
+from .simulate_macro import randSimulate, detSimulate, get_req_stats
 from .graph import (
     DpsDistributionCanvas,
     SkillDpsRatioCanvas,
     DMGCanvas,
     SkillContributionCanvas,
 )
-from .custom_widgets import *
+from .custom_classes import (
+    CustomFont,
+    CustomLineEdit,
+    CustomComboBox,
+    SimResult,
+    SimAnalysis,
+)
 from .get_character_data import get_character_info, get_character_card_data
 
-import os
 import requests
+import os
 from functools import partial
 from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 
 from PyQt6.QtCore import QSize, Qt
-from PyQt6.QtGui import QFont, QPixmap, QPainter, QIcon
+from PyQt6.QtGui import QPixmap, QPainter, QIcon
 from PyQt6.QtWidgets import (
     QFrame,
     QLabel,
@@ -45,9 +57,9 @@ class SimUI:
         parent: QFrame,
         shared_data: SharedData,
     ):
-        self.shared_data = shared_data
-        self.parent = parent
-        self.master = master
+        self.shared_data: SharedData = shared_data
+        self.parent: QFrame = parent
+        self.master: MainWindow = master
 
         self.ui_var = UI_Variable()
 
@@ -96,7 +108,7 @@ class SimUI:
                 }}
                 """
             )
-            button.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
+            button.setFont(CustomFont(12))
 
             self.sim_nav_buttons.append(button)
 
@@ -118,7 +130,7 @@ class SimUI:
             }
             """
         )
-        pixmap: QPixmap = QPixmap(convertResourcePath("resources\\image\\x.png"))
+        pixmap: QPixmap = QPixmap(convert_resource_path("resources\\image\\x.png"))
         button.setIcon(QIcon(pixmap))
         button.setIconSize(QSize(15, 15))
 
@@ -187,7 +199,7 @@ class SimUI:
         """
 
         # 콤보박스 오류 수정
-        if self.shared_data.sim_type == 3:
+        if self.shared_data.sim_page_type == 3:
             comboboxList: list[QComboBox] = [
                 self.sim3_ui.efficiency_statL,
                 self.sim3_ui.efficiency_statR,
@@ -200,7 +212,7 @@ class SimUI:
                 i.hidePopup()
 
         [i.deleteLater() for i in self.sim_main_frame.findChildren(QWidget)]
-        self.shared_data.sim_type = 0
+        self.shared_data.sim_page_type = 0
 
         # plt 그래프 모두 닫기
         plt.close("all")
@@ -212,14 +224,14 @@ class SimUI:
         """
 
         # 입력값 체크
-        if not all(self.shared_data.inputCheck.values()):
+        if not all(self.shared_data.is_input_valid.values()):
             self.master.get_popup_manager().make_notice_popup("SimInputError")
             return
 
         self.remove_simul_widgets()
         self.sim_update_nav_button(3)
 
-        self.shared_data.sim_type = 4
+        self.shared_data.sim_page_type = 4
 
         self.sim4_ui = Sim4UI(self.sim_main_frame, self.shared_data)
 
@@ -239,14 +251,14 @@ class SimUI:
         """
 
         # 입력값 체크
-        if not all(self.shared_data.inputCheck.values()):
+        if not all(self.shared_data.is_input_valid.values()):
             self.master.get_popup_manager().make_notice_popup("SimInputError")
             return
 
         self.remove_simul_widgets()
         self.sim_update_nav_button(2)
 
-        self.shared_data.sim_type = 3
+        self.shared_data.sim_page_type = 3
 
         self.sim3_ui = Sim3UI(self.sim_main_frame, self.shared_data)
 
@@ -266,14 +278,14 @@ class SimUI:
         """
 
         # 입력값 체크
-        if not all(self.shared_data.inputCheck.values()):
+        if not all(self.shared_data.is_input_valid.values()):
             self.master.get_popup_manager().make_notice_popup("SimInputError")
             return
 
         self.remove_simul_widgets()
         self.sim_update_nav_button(1)
 
-        self.shared_data.sim_type = 2
+        self.shared_data.sim_page_type = 2
 
         self.sim2_ui = Sim2UI(self.sim_main_frame, self.shared_data)
 
@@ -295,7 +307,7 @@ class SimUI:
         self.remove_simul_widgets()
         self.sim_update_nav_button(0)
 
-        self.shared_data.sim_type = 1
+        self.shared_data.sim_page_type = 1
 
         self.sim1_ui = Sim1UI(self.sim_main_frame, self.shared_data)
 
@@ -317,6 +329,7 @@ class SimUI:
         [i.show() for i in self.parent.findChildren(QWidget)]
 
         self.update_position()
+        self.master.get_popup_manager().update_position()
 
     def sim_update_nav_button(self, num: int) -> None:  # simul_ui로 이동
         """
@@ -358,7 +371,7 @@ class SimUI:
             - self.ui_var.sim_main1_D,
         )
 
-        if self.shared_data.sim_type == 1:  # 정보 입력
+        if self.shared_data.sim_page_type == 1:  # 정보 입력
             self.sim1_ui.stat_frame.move(deltaWidth // 2, 0)
             self.sim1_ui.skill_frame.move(
                 deltaWidth // 2,
@@ -373,7 +386,7 @@ class SimUI:
                 + self.ui_var.sim_main_D,
             )
 
-        elif self.shared_data.sim_type == 2:  # 시뮬레이터
+        elif self.shared_data.sim_page_type == 2:  # 시뮬레이터
             self.sim2_ui.power_frame.move(deltaWidth // 2, 0)
             self.sim2_ui.analysis_frame.move(
                 deltaWidth // 2,
@@ -382,7 +395,7 @@ class SimUI:
                 + self.ui_var.sim_main_D,
             )
 
-        elif self.shared_data.sim_type == 3:  # 스탯 계산기
+        elif self.shared_data.sim_page_type == 3:  # 스탯 계산기
             self.sim3_ui.efficiency_frame.move(deltaWidth // 2, 0)
             self.sim3_ui.additional_frame.move(
                 deltaWidth // 2,
@@ -403,7 +416,7 @@ class SimUI:
                 + self.ui_var.sim_main_D,
             )
 
-        elif self.shared_data.sim_type == 4:  # 캐릭터 카드
+        elif self.shared_data.sim_page_type == 4:  # 캐릭터 카드
             self.sim4_ui.mainframe.move(deltaWidth // 2, 0)
 
 
@@ -430,7 +443,7 @@ class Sim1UI:
             "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
         )
 
-        self.stat_title = Title(self.stat_frame, "캐릭터 스탯")
+        self.stat_title = Title(parent=self.stat_frame, text="캐릭터 스탯")
         self.stat_inputs = StatInput(
             self.stat_frame, self.shared_data, self.stat_inputChanged
         )
@@ -458,7 +471,9 @@ class Sim1UI:
                 self.ui_var.sim_stat_width,
                 self.ui_var.sim_stat_input_H,
             )
-            self.stat_inputs.inputs[i].setText(str(self.shared_data.info_stats[i]))
+            self.stat_inputs.inputs[i].setText(
+                str(self.shared_data.info_stats.get_stat_from_index(i))
+            )
 
         # 스킬 레벨
         self.skill_frame = QFrame(self.parent)
@@ -506,7 +521,13 @@ class Sim1UI:
                 self.ui_var.sim_skill_input_H,
             )
 
-            self.skill_inputs.inputs[i].setText(str(self.shared_data.info_skills[i]))
+            self.skill_inputs.inputs[i].setText(
+                str(
+                    self.shared_data.info_skill_levels[
+                        get_available_skills(self.shared_data)[i]
+                    ]
+                )
+            )
 
         # 추가 정보 입력
         self.info_frame = QFrame(self.parent)
@@ -546,18 +567,28 @@ class Sim1UI:
                 self.ui_var.sim_simInfo_input_H,
             )
 
-            self.info_inputs.inputs[i].setText(str(self.shared_data.info_simInfo[i]))
+            self.info_inputs.inputs[i].setText(
+                str(
+                    self.shared_data.info_sim_details[
+                        list(self.shared_data.SIM_DETAILS.keys())[i]
+                    ]
+                )
+            )
 
     def stat_inputChanged(self):
         # 스탯이 정상적으로 입력되었는지 확인
-        def checkInput(num, text) -> bool:
+        def checkInput(num: int, text: str) -> bool:
             if not text.isdigit():
                 return False
 
             return (
-                self.shared_data.STAT_RANGE_LIST[num][0]
+                self.shared_data.STAT_RANGES[list(self.shared_data.STATS.keys())[num]][
+                    0
+                ]
                 <= int(text)
-                <= self.shared_data.STAT_RANGE_LIST[num][1]
+                <= self.shared_data.STAT_RANGES[
+                    list(self.shared_data.STATS.keys())[num]
+                ][1]
             )
 
         if not False in [
@@ -568,11 +599,11 @@ class Sim1UI:
                     f"QLineEdit {{ background-color: {self.ui_var.sim_input_colors[0]}; border: 1px solid {self.ui_var.sim_input_colors[1]}; border-radius: 4px; }}"
                 )
 
-            self.shared_data.info_stats = [
-                int(i.text()) for i in self.stat_inputs.inputs
-            ]
-            dataSave(self.shared_data)
-            self.shared_data.inputCheck["stat"] = True
+            for i, j in enumerate(self.stat_inputs.inputs):
+                self.shared_data.info_stats.set_stat_from_index(i, int(j.text()))
+
+            save_data(self.shared_data)
+            self.shared_data.is_input_valid["stat"] = True
 
         else:  # 하나라도 통과X
             for i, j in enumerate(self.stat_inputs.inputs):
@@ -585,7 +616,7 @@ class Sim1UI:
                         f"QLineEdit {{ background-color: {self.ui_var.sim_input_colors[0]}; border: 1px solid {self.ui_var.sim_input_colors[1]}; border-radius: 4px; }}"
                     )
 
-            self.shared_data.inputCheck["stat"] = False
+            self.shared_data.is_input_valid["stat"] = False
 
     def skill_inputChanged(self):
         # 스킬이 정상적으로 입력되었는지 확인
@@ -603,11 +634,12 @@ class Sim1UI:
                     f"QLineEdit {{ background-color: {self.ui_var.sim_input_colors[0]}; border: 1px solid {self.ui_var.sim_input_colors[1]}; border-radius: 4px; }}"
                 )
 
-            self.shared_data.info_skills = [
-                int(i.text()) for i in self.skill_inputs.inputs
-            ]
-            dataSave(self.shared_data)
-            self.shared_data.inputCheck["skill"] = True
+            for i, j in enumerate(self.skill_inputs.inputs):
+                self.shared_data.info_skill_levels[
+                    get_available_skills(self.shared_data)[i]
+                ] = int(j.text())
+            save_data(self.shared_data)
+            self.shared_data.is_input_valid["skill"] = True
 
         else:  # 하나라도 통과X
             for i in self.skill_inputs.inputs:
@@ -620,7 +652,7 @@ class Sim1UI:
                         f"QLineEdit {{ background-color: {self.ui_var.sim_input_colors[0]}; border: 1px solid {self.ui_var.sim_input_colors[1]}; border-radius: 4px; }}"
                     )
 
-            self.shared_data.inputCheck["skill"] = False
+            self.shared_data.is_input_valid["skill"] = False
 
     def simInfo_inputChanged(self):
         # 스탯이 정상적으로 입력되었는지 확인
@@ -642,11 +674,12 @@ class Sim1UI:
                     f"QLineEdit {{ background-color: {self.ui_var.sim_input_colors[0]}; border: 1px solid {self.ui_var.sim_input_colors[1]}; border-radius: 4px; }}"
                 )
 
-            self.shared_data.info_simInfo = [
-                int(i.text()) for i in self.info_inputs.inputs
-            ]
-            dataSave(self.shared_data)
-            self.shared_data.inputCheck["simInfo"] = True
+            for i, j in enumerate(self.info_inputs.inputs):
+                self.shared_data.info_sim_details[
+                    list(self.shared_data.SIM_DETAILS.keys())[i]
+                ] = int(j.text())
+            save_data(self.shared_data)
+            self.shared_data.is_input_valid["simInfo"] = True
 
         else:  # 하나라도 통과X
             for i, j in enumerate(self.info_inputs.inputs):
@@ -659,7 +692,7 @@ class Sim1UI:
                         f"QLineEdit {{ background-color: {self.ui_var.sim_input_colors[0]}; border: 1px solid {self.ui_var.sim_input_colors[1]}; border-radius: 4px; }}"
                     )
 
-            self.shared_data.inputCheck["simInfo"] = False
+            self.shared_data.is_input_valid["simInfo"] = False
 
 
 class Sim2UI:
@@ -672,28 +705,33 @@ class Sim2UI:
         self.makeSim2UI()
 
     def makeSim2UI(self):
-        powers, analysis, resultDet, results = randSimulate(
+        sim_result: SimResult = randSimulate(
             self.shared_data,
-            tuple(self.shared_data.info_stats),
-            tuple(self.shared_data.info_skills),
-            tuple(self.shared_data.info_simInfo),
+            self.shared_data.info_stats,
+            self.shared_data.info_sim_details,
         )
+        powers = sim_result.powers
+        analysis = sim_result.analysis
+        resultDet = sim_result.deterministic_boss_attacks
+        results = sim_result.random_boss_attacks
+        str_powers = sim_result.str_powers
 
-        self.shared_data.powers = powers  # type: ignore
+        for i, power in enumerate(powers):
+            self.shared_data.powers[i] = power
 
-        timeStep, timeStepCount = 1, 61  # 61이라면 61초까지 시뮬레이션 돌려야함
-        times = [i * timeStep for i in range(timeStepCount)]
+        timeStep, timeStepCount = 1, 60  # 60초까지 시뮬레이션
+        times = [i * timeStep for i in range(timeStepCount + 1)]
 
         dps_list = []
-        for result in results:  # type: ignore
-            dps_list.append([])
+        for result in results:
+            dps_list.append([0.0])
             for i in range(timeStepCount):
                 dps_list[-1].append(
                     sum(
                         [
-                            j[2]
+                            j.damage
                             for j in result
-                            if i * timeStep <= j[1] < (i + 1) * timeStep
+                            if i * timeStep <= j.time < (i + 1) * timeStep
                         ]
                     )
                 )
@@ -712,7 +750,7 @@ class Sim2UI:
         )
 
         self.power_title = Title(self.power_frame, "전투력")
-        self.power_labels = PowerLabels(self.power_frame, self.shared_data, powers)
+        self.power_labels = PowerLabels(self.power_frame, self.shared_data, str_powers)
 
         for i in range(len(self.power_labels.frames)):
             frame = self.power_labels.frames[i]
@@ -760,7 +798,9 @@ class Sim2UI:
         self.analysis_title = Title(self.analysis_frame, "분석")
         self.analysis_details = [
             AnalysisDetails(
-                self.analysis_frame, analysis[i], self.shared_data.POWER_DETAILS  # type: ignore
+                self.analysis_frame,
+                analysis[i],
+                self.shared_data.POWER_DETAILS,
             )
             for i in range(4)
         ]
@@ -791,7 +831,7 @@ class Sim2UI:
             "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
         )
 
-        sums = [sum([i[2] for i in j]) for j in results]  # type: ignore
+        sums = [sum([i.damage for i in j]) for j in results]
 
         self.dpsGraph = DpsDistributionCanvas(
             self.dpsGraph_frame, sums
@@ -817,24 +857,14 @@ class Sim2UI:
             "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
         )
 
-        data = [
-            sum([i[2] for i in resultDet if i[0] == num])  # type: ignore
-            for num in list(range(6)) + [-1]
+        ratio_data: list[float] = [
+            sum([i.damage for i in resultDet if i.skill_name == skill_name])
+            for skill_name in self.shared_data.equipped_skills + ["평타"]
         ]
         # data = [round(total_dmgs[i] / sum(total_dmgs) * 100, 1) for i in range(7)]
-        names = []
-        for i in range(6):  # ?????
-            if i != -1:
-                names.append(
-                    self.shared_data.SKILL_NAME_LIST[self.shared_data.serverID][
-                        self.shared_data.jobID
-                    ][self.shared_data.equipped_skills[i]]
-                )
-            else:
-                names.append(None)
 
         self.skillRatioGraph = SkillDpsRatioCanvas(
-            self.skillRatioGraph_frame, data, names
+            self.skillRatioGraph_frame, ratio_data, self.shared_data.equipped_skills
         )
         self.skillRatioGraph.move(10, 10)
         self.skillRatioGraph.resize(
@@ -859,12 +889,12 @@ class Sim2UI:
 
         data = {
             "time": times,
-            "max": [max([j[i] for j in dps_list]) for i in range(timeStepCount)],
+            "max": [max([j[i] for j in dps_list]) for i in range(timeStepCount + 1)],
             "mean": [
                 sum([j[i] for j in dps_list]) / len(dps_list)
-                for i in range(timeStepCount)
+                for i in range(timeStepCount + 1)
             ],
-            "min": [min([j[i] for j in dps_list]) for i in range(timeStepCount)],
+            "min": [min([j[i] for j in dps_list]) for i in range(timeStepCount + 1)],
         }
         self.dmgTime = DMGCanvas(self.dmgTime_frame, data, "time")  # 시뮬레이션 결과
         self.dmgTime.move(5, 5)
@@ -891,13 +921,13 @@ class Sim2UI:
         total_list = []
         for dps in dps_list:
             total_list.append([])
-            for i in range(timeStepCount):
+            for i in range(timeStepCount + 1):
                 total = sum([j for j in dps[: i + 1]])
                 total_list[-1].append(total)
 
         means = [
             sum([j[i] for j in total_list]) / len(total_list)
-            for i in range(timeStepCount)
+            for i in range(timeStepCount + 1)
         ]
         data = {
             "time": times,
@@ -931,15 +961,16 @@ class Sim2UI:
         )
 
         skillsData = []
-        for num in list(range(6)) + [-1]:
+        for skill_name in self.shared_data.equipped_skills + ["평타"]:
             skillsData.append([])
-            for i in range(timeStepCount):
+            for i in range(timeStepCount + 1):
                 skillsData[-1].append(
                     sum(
                         [
-                            j[2]
-                            for j in resultDet  # type: ignore
-                            if j[0] == num and j[1] < (i + 1) * timeStep
+                            j.damage
+                            for j in resultDet
+                            if j.skill_name == skill_name
+                            and j.time < (i + 1) * timeStep
                         ]
                     )
                 )
@@ -948,15 +979,15 @@ class Sim2UI:
         # for i in range(timeStepCount):
         #     totalData.append(sum([j[2] for j in resultDet if j[1] < (i + 1) * timeStep]))
         totalData = [
-            sum([j[2] for j in resultDet if j[1] < (i + 1) * timeStep])  # type: ignore
-            for i in range(timeStepCount)
+            sum([j.damage for j in resultDet if j.time < (i + 1) * timeStep])
+            for i in range(timeStepCount + 1)
         ]
 
         # data_normalized = []
         # for i in range(7):
         #     data_normalized.append([skillsData[i][j] / totalData[j] for j in range(timeStepCount)])
         data_normalized = [
-            [skillsData[i][j] / totalData[j] for j in range(timeStepCount)]
+            [skillsData[i][j] / totalData[j] for j in range(timeStepCount + 1)]
             for i in range(7)
         ]
 
@@ -965,24 +996,13 @@ class Sim2UI:
             for j in range(len(data_normalized[0])):
                 data_cumsum[i][j] = sum(row[j] for row in data_normalized[: i + 1])
 
-        names = []
-        for i in range(6):  # ?????
-            if i != -1:
-                names.append(
-                    self.shared_data.SKILL_NAME_LIST[self.shared_data.serverID][
-                        self.shared_data.jobID
-                    ][self.shared_data.equipped_skills[i]]
-                )
-            else:
-                names.append(None)
-
         data = {
             "time": times,
             "skills_normalized": data_normalized,
             "skills_sum": data_cumsum,
         }
         self.skillContribute = SkillContributionCanvas(
-            self.skillContribute_frame, data, names
+            self.skillContribute_frame, data, self.shared_data.equipped_skills
         )  # 시뮬레이션 결과
         self.skillContribute.move(5, 5)
         self.skillContribute.resize(
@@ -1001,17 +1021,19 @@ class Sim3UI:
         self.makeSim3UI()
 
     def makeSim3UI(self):
-        self.shared_data.powers = detSimulate(  # type: ignore
+        powers = detSimulate(
             self.shared_data,
-            tuple(self.shared_data.info_stats),
-            tuple(self.shared_data.info_skills),
-            tuple(self.shared_data.info_simInfo),
-        )
+            self.shared_data.info_stats,
+            self.shared_data.info_sim_details,
+        ).powers
+
+        for i, power in enumerate(powers):
+            self.shared_data.powers[i] = power
 
         self.widgetList = []
 
-        self.shared_data.inputCheck["stat"] = False
-        self.shared_data.inputCheck["skill"] = False
+        self.shared_data.is_input_valid["stat"] = False
+        self.shared_data.is_input_valid["skill"] = False
 
         ## 스펙업 효율 계산기
         self.efficiency_frame = QFrame(self.parent)
@@ -1033,7 +1055,9 @@ class Sim3UI:
 
         # 왼쪽 콤보박스
         self.efficiency_statL = CustomComboBox(
-            self.efficiency_frame, self.shared_data.STAT_LIST, self.efficiency_Changed
+            self.efficiency_frame,
+            list(self.shared_data.STATS.values()),
+            self.efficiency_Changed,
         )
         self.efficiency_statL.setGeometry(
             self.ui_var.sim_efficiency_statL_margin,
@@ -1066,7 +1090,7 @@ class Sim3UI:
             f"QLabel {{ background-color: transparent; border: 0px solid; }}"
         )
         self.efficiency_arrow.setPixmap(
-            QPixmap(convertResourcePath("resources\\image\\lineArrow.png")).scaled(
+            QPixmap(convert_resource_path("resources\\image\\lineArrow.png")).scaled(
                 self.ui_var.sim_efficiency_arrow_W, self.ui_var.sim_efficiency_arrow_H
             )
         )
@@ -1082,7 +1106,9 @@ class Sim3UI:
 
         # 오른쪽 콤보박스
         self.efficiency_statR = CustomComboBox(
-            self.efficiency_frame, self.shared_data.STAT_LIST, self.efficiency_Changed
+            self.efficiency_frame,
+            list(self.shared_data.STATS.values()),
+            self.efficiency_Changed,
         )
         self.efficiency_statR.setGeometry(
             self.ui_var.sim_efficiency_statR_margin,
@@ -1260,7 +1286,11 @@ class Sim3UI:
             )
 
             self.additional_skills.inputs[i].setText(
-                str(self.shared_data.info_skills[i])
+                str(
+                    self.shared_data.info_skill_levels[
+                        get_available_skills(self.shared_data)[i]
+                    ]
+                )
             )
 
             self.widgetList.append(self.additional_skills.frames[i])
@@ -1290,7 +1320,7 @@ class Sim3UI:
 
         self.potential_stat0 = CustomComboBox(
             self.potential_frame,
-            self.shared_data.POTENTIAL_STAT_LIST.keys(),
+            list(self.shared_data.POTENTIAL_STATS.keys()),
             self.potential_update,
         )
         self.potential_stat0.setGeometry(
@@ -1303,7 +1333,7 @@ class Sim3UI:
 
         self.potential_stat1 = CustomComboBox(
             self.potential_frame,
-            self.shared_data.POTENTIAL_STAT_LIST.keys(),
+            list(self.shared_data.POTENTIAL_STATS.keys()),
             self.potential_update,
         )
         self.potential_stat1.setGeometry(
@@ -1318,7 +1348,7 @@ class Sim3UI:
 
         self.potential_stat2 = CustomComboBox(
             self.potential_frame,
-            self.shared_data.POTENTIAL_STAT_LIST.keys(),
+            list(self.shared_data.POTENTIAL_STATS.keys()),
             self.potential_update,
         )
         self.potential_stat2.setGeometry(
@@ -1455,18 +1485,19 @@ class Sim3UI:
             return
 
         stats = self.shared_data.info_stats.copy()
-        stats[self.efficiency_statL.currentIndex()] += int(
-            self.efficiency_statInput.text()
+        stats.add_stat_from_index(
+            self.efficiency_statL.currentIndex(), int(self.efficiency_statInput.text())
         )
 
         powers = detSimulate(
             self.shared_data,
-            tuple(stats),
-            tuple(self.shared_data.info_skills),
-            tuple(self.shared_data.info_simInfo),
-        )
-        reqStats = getRequiredStat(
-            self.shared_data, powers, self.efficiency_statR.currentIndex()
+            stats,
+            self.shared_data.info_sim_details,
+        ).powers
+        reqStats = get_req_stats(
+            self.shared_data,
+            powers,
+            list(self.shared_data.STATS.keys())[self.efficiency_statR.currentIndex()],
         )
 
         [self.efficiency_power_labels.numbers[i].setText(reqStats[i]) for i in range(4)]
@@ -1474,22 +1505,21 @@ class Sim3UI:
     def efficiency_Changed(self):
         text = self.efficiency_statInput.text()
         index = self.efficiency_statL.currentIndex()
+        stat_name = list(self.shared_data.STATS.keys())[index]
 
         if not text.isdigit():
             [self.efficiency_power_labels.labels[i].setText("오류") for i in range(4)]
             return
 
-        stat = self.shared_data.info_stats[self.efficiency_statL.currentIndex()] + int(
-            text
-        )
+        stat = self.shared_data.info_stats.get_stat_from_name(stat_name) + int(text)
 
-        if self.shared_data.STAT_RANGE_LIST[index][0] <= stat:
-            if self.shared_data.STAT_RANGE_LIST[index][1] == None:
+        if self.shared_data.STAT_RANGES[stat_name][0] <= stat:
+            if self.shared_data.STAT_RANGES[stat_name][1] == None:
                 self.update_efficiency()
                 return
 
             else:
-                if stat <= self.shared_data.STAT_RANGE_LIST[index][1]:
+                if stat <= self.shared_data.STAT_RANGES[stat_name][1]:
                     self.update_efficiency()
                     return
 
@@ -1511,12 +1541,14 @@ class Sim3UI:
             except ValueError:
                 return False
 
-            stat = self.shared_data.info_stats[num] + value
+            stat_name = list(self.shared_data.STATS.keys())[num]
+
+            stat = self.shared_data.info_stats.get_stat_from_name(stat_name) + value
 
             return (
-                self.shared_data.STAT_RANGE_LIST[num][0]
+                self.shared_data.STAT_RANGES[stat_name][0]
                 <= stat
-                <= self.shared_data.STAT_RANGE_LIST[num][1]
+                <= self.shared_data.STAT_RANGES[stat_name][1]
             )
 
         if not False in [
@@ -1527,7 +1559,7 @@ class Sim3UI:
                     f"QLineEdit {{ background-color: {self.ui_var.sim_input_colors[0]}; border: 1px solid {self.ui_var.sim_input_colors[1]}; border-radius: 4px; }}"
                 )
 
-            self.shared_data.inputCheck["stat"] = True
+            self.shared_data.is_input_valid["stat"] = True
             self.update_additional_power_list()
 
         else:  # 하나라도 통과X
@@ -1542,66 +1574,72 @@ class Sim3UI:
                         f"QLineEdit {{ background-color: {self.ui_var.sim_input_colors[0]}; border: 1px solid {self.ui_var.sim_input_colors[1]}; border-radius: 4px; }}"
                     )
 
-            self.shared_data.inputCheck["stat"] = False
+            self.shared_data.is_input_valid["stat"] = False
 
     def skill_inputChanged(self):
         # 스킬이 정상적으로 입력되었는지 확인
-        def checkInput(text: str) -> bool:
+        def checkInput(i: int, text: str) -> bool:
             if not text.isdigit():
                 return False
 
-            return 1 <= int(text) <= 30
+            return (
+                1
+                <= int(text)
+                <= self.shared_data.MAX_SKILL_LEVEL[self.shared_data.server_ID]
+            )
 
         if not False in [
-            checkInput(i.text()) for i in self.additional_skills.inputs
+            checkInput(i, j.text()) for i, j in enumerate(self.additional_skills.inputs)
         ]:  # 모두 통과
             for i in self.additional_skills.inputs:  # 통과O면 원래색
                 i.setStyleSheet(
                     f"QLineEdit {{ background-color: {self.ui_var.sim_input_colors[0]}; border: 1px solid {self.ui_var.sim_input_colors[1]}; border-radius: 4px; }}"
                 )
 
-            self.shared_data.inputCheck["skill"] = True
+            self.shared_data.is_input_valid["skill"] = True
             self.update_additional_power_list()
 
         else:  # 하나라도 통과X
-            for i in self.additional_skills.inputs:
-                if not checkInput(i.text()):  # 통과X면 빨간색
-                    i.setStyleSheet(
+            for i, j in enumerate(self.additional_skills.inputs):
+                if not checkInput(i, j.text()):  # 통과X면 빨간색
+                    j.setStyleSheet(
                         f"QLineEdit {{ background-color: {self.ui_var.sim_input_colors[0]}; border: 2px solid {self.ui_var.sim_input_colorsRed}; border-radius: 4px; }}"
                     )
                 else:
-                    i.setStyleSheet(
+                    j.setStyleSheet(
                         f"QLineEdit {{ background-color: {self.ui_var.sim_input_colors[0]}; border: 1px solid {self.ui_var.sim_input_colors[1]}; border-radius: 4px; }}"
                     )
 
-            self.shared_data.inputCheck["skill"] = False
+            self.shared_data.is_input_valid["skill"] = False
 
     def update_additional_power_list(self):
-        if all(self.shared_data.inputCheck.values()):
+        if all(self.shared_data.is_input_valid.values()):
             stats = self.shared_data.info_stats.copy()
-            stats = [
-                stats[i] + int(self.additional_stats.inputs[i].text())
-                for i in range(len(stats))
-            ]
+            for i in self.additional_stats.inputs:
+                stats.add_stat_from_index(
+                    self.additional_stats.inputs.index(i), int(i.text())
+                )
+            # stats = [
+            #     stats[i] + int(self.additional_stats.inputs[i].text())
+            #     for i in range(len(stats))
+            # ]
 
-            skills = self.shared_data.info_skills.copy()
-            skills = [
-                skills[i] + int(self.additional_skills.inputs[i].text())
-                for i in range(len(skills))
-            ]
+            skills: dict[str, int] = self.shared_data.info_skill_levels.copy()
+            for i, j in enumerate(self.additional_skills.inputs):
+                skills[get_available_skills(self.shared_data)[i]] = int(j.text())
 
             powers = detSimulate(
                 self.shared_data,
-                tuple(stats),
-                tuple(skills),
-                tuple(self.shared_data.info_simInfo),
-            )
+                stats,
+                self.shared_data.info_sim_details,
+                skills,
+            ).powers
 
             diff_powers = [powers[i] - self.shared_data.powers[i] for i in range(4)]
 
             [
                 self.additional_power_labels.numbers[i].setText(
-                    f"{int(powers[i]):}\n({round(diff_powers[i]):+}, {round(diff_powers[i] / self.shared_data.powers[i] * 100, 2):+.1f}%)"  # type: ignore
+                    f"{int(powers[i]):}\n({round(diff_powers[i]):+}, {round(diff_powers[i] / self.shared_data.powers[i] * 100, 2):+.1f}%)"
                 )
                 for i in range(4)
             ]
@@ -1618,15 +1656,14 @@ class Sim3UI:
 
         stats = self.shared_data.info_stats.copy()
         for i in range(3):
-            num, value = self.shared_data.POTENTIAL_STAT_LIST[indexList[i]]
-            stats[num] += value
+            stat, value = self.shared_data.POTENTIAL_STATS[indexList[i]]
+            stats.add_stat_from_name(stat, value)
 
         powers = detSimulate(
             self.shared_data,
-            tuple(stats),
-            tuple(self.shared_data.info_skills),
-            tuple(self.shared_data.info_simInfo),
-        )
+            stats,
+            self.shared_data.info_sim_details,
+        ).powers
 
         diff_powers = [round(powers[i] - self.shared_data.powers[i]) for i in range(4)]
 
@@ -1646,14 +1683,15 @@ class Sim4UI:
         self.makeSim4UI()
 
     def makeSim4UI(self):
-        self.shared_data.card_updated = False
+        self.shared_data.is_card_updated = False
 
-        self.shared_data.powers = detSimulate(  # type: ignore
+        powers = detSimulate(
             self.shared_data,
-            tuple(self.shared_data.info_stats),
-            tuple(self.shared_data.info_skills),
-            tuple(self.shared_data.info_simInfo),
-        )
+            self.shared_data.info_stats,
+            self.shared_data.info_sim_details,
+        ).powers
+        for i, power in enumerate(powers):
+            self.shared_data.powers[i] = power
         # self.sim_powers = [str(int(i)) for i in self.sim_powers]
 
         self.name = ""
@@ -1722,7 +1760,7 @@ class Sim4UI:
             border: 0px solid;
         }"""
         )
-        self.info_name_label.setFont(QFont("나눔스퀘어라운드 Bold", 14))
+        self.info_name_label.setFont(CustomFont(14))
         self.info_name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.info_name_input = CustomLineEdit(self.info_name_frame, None, "", 12)
@@ -1751,7 +1789,7 @@ class Sim4UI:
                 background-color: #60A060;
             }}"""
         )
-        self.info_name_button.setFont(QFont("나눔스퀘어라운드 Bold", 10))
+        self.info_name_button.setFont(CustomFont(10))
         self.info_name_button.clicked.connect(self.load_char_info)
 
         # 캐릭터 선택
@@ -1784,7 +1822,7 @@ class Sim4UI:
             border: 0px solid;
         }"""
         )
-        self.info_char_label.setFont(QFont("나눔스퀘어라운드 Bold", 14))
+        self.info_char_label.setFont(CustomFont(14))
         self.info_char_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.info_char_buttons = []
@@ -1808,7 +1846,7 @@ class Sim4UI:
                 border-radius: 8px;
                 }}"""
             )
-            button.setFont(QFont("나눔스퀘어라운드 Bold", 10))
+            button.setFont(CustomFont(10))
 
             self.info_char_buttons.append(button)
 
@@ -1845,7 +1883,7 @@ class Sim4UI:
             border: 0px solid;
         }"""
         )
-        self._info_power_label.setFont(QFont("나눔스퀘어라운드 Bold", 14))
+        self._info_power_label.setFont(CustomFont(14))
         self._info_power_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.info_power_buttons = []
@@ -1874,7 +1912,7 @@ class Sim4UI:
                     background-color: #F0F0F0;
                 }}"""
             )
-            button.setFont(QFont("나눔스퀘어라운드 Bold", 10))
+            button.setFont(CustomFont(10))
             button.clicked.connect(partial(lambda x: self.info_powers_clicked(x), i))
 
             self.info_power_buttons.append(button)
@@ -1901,7 +1939,7 @@ class Sim4UI:
                 background-color: #60A060;
             }}"""
         )
-        self.info_complete_button.setFont(QFont("나눔스퀘어라운드 Bold", 14))
+        self.info_complete_button.setFont(CustomFont(14))
         self.info_complete_button.clicked.connect(self.card_update)
 
         self.info_save_button = QPushButton("저장", self.info_frame)
@@ -1925,7 +1963,7 @@ class Sim4UI:
                 background-color: #FF6060;
             }}"""
         )
-        self.info_save_button.setFont(QFont("나눔스퀘어라운드 Bold", 14))
+        self.info_save_button.setFont(CustomFont(14))
         self.info_save_button.clicked.connect(self.card_save)
 
         ## 캐릭터 카드
@@ -1960,7 +1998,7 @@ class Sim4UI:
             border-radius: 0px;
         }"""
         )
-        self.card_title.setFont(QFont("나눔스퀘어라운드 ExtraBold", 18))
+        self.card_title.setFont(CustomFont(18))
         self.card_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # 이미지
@@ -2012,7 +2050,7 @@ class Sim4UI:
             border: 0px solid;
         }"""
         )
-        self.card_name.setFont(QFont("나눔스퀘어라운드 ExtraBold", 18))
+        self.card_name.setFont(CustomFont(18))
         self.card_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.card_job = QLabel("", self.card_frame)
@@ -2028,7 +2066,7 @@ class Sim4UI:
             border: 0px solid;
         }"""
         )
-        self.card_job.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
+        self.card_job.setFont(CustomFont(12))
         self.card_job.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.card_level = QLabel("", self.card_frame)
@@ -2044,7 +2082,7 @@ class Sim4UI:
             border: 0px solid;
         }"""
         )
-        self.card_level.setFont(QFont("나눔스퀘어라운드 Bold", 12))
+        self.card_level.setFont(CustomFont(12))
         self.card_level.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.card_name_line = QFrame(self.card_frame)
@@ -2110,7 +2148,7 @@ class Sim4UI:
                 self.ui_var.sim_charCard_power_title_W,
                 self.ui_var.sim_charCard_powerFrame_H,
             )
-            title.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
+            title.setFont(CustomFont(12))
             title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
             number = QLabel("", frame)
@@ -2131,7 +2169,7 @@ class Sim4UI:
                 self.ui_var.sim_charCard_power_number_W,
                 self.ui_var.sim_charCard_powerFrame_H,
             )
-            number.setFont(QFont("나눔스퀘어라운드 ExtraBold", 14))
+            number.setFont(CustomFont(14))
             number.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
             self.card_powers[i].append(frame)
@@ -2149,10 +2187,8 @@ class Sim4UI:
 
         for i, j in enumerate(data):
             job, level = j["job"], j["level"]
-            if job == self.shared_data.jobID:
-                self.info_char_buttons[i].setText(
-                    f"{self.shared_data.JOB_LIST[self.shared_data.serverID][job]} | Lv.{level}"
-                )
+            if job == self.shared_data.job_ID:
+                self.info_char_buttons[i].setText(f"{job} | Lv.{level}")
                 self.info_char_buttons[i].setStyleSheet(
                     f"""QPushButton {{
                     background-color: #FFFFFF;
@@ -2169,9 +2205,7 @@ class Sim4UI:
                     partial(lambda x, y: self.select_char(x, y), i, j)
                 )
             else:
-                self.info_char_buttons[i].setText(
-                    f"{self.shared_data.JOB_LIST[self.shared_data.serverID][job]} | Lv.{level}"
-                )
+                self.info_char_buttons[i].setText(f"{job} | Lv.{level}")
                 self.info_char_buttons[i].setStyleSheet(
                     f"""QPushButton {{
                     background-color: #FFFFFF;
@@ -2217,7 +2251,7 @@ class Sim4UI:
             )
 
     def card_save(self):
-        if not self.shared_data.card_updated:
+        if not self.shared_data.is_card_updated:
             return
 
         scale_factor = 3
@@ -2244,11 +2278,11 @@ class Sim4UI:
 
     def card_update(self):
         if self.info_char_data is None:
-            self.shared_data.card_updated = False
+            self.shared_data.is_card_updated = False
             return
 
         if not any(self.info_power_display):
-            self.shared_data.card_updated = False
+            self.shared_data.is_card_updated = False
             return
 
         self.name = self.info_name_input.text()
@@ -2256,13 +2290,13 @@ class Sim4UI:
             try:
                 self.real_name, url = get_character_card_data(self.name)
             except:
-                self.shared_data.card_updated = False
+                self.shared_data.is_card_updated = False
                 return
 
             self.char_image = requests.get(url).content
             self.prev_name = self.name
 
-        pixmap = QPixmap(convertResourcePath("resources\\image\\card_bg.png"))
+        pixmap = QPixmap(convert_resource_path("resources\\image\\card_bg.png"))
         self.card_image_bg.setPixmap(pixmap)
         pixmap = QPixmap()
         pixmap.loadFromData(self.char_image)
@@ -2281,11 +2315,9 @@ class Sim4UI:
         )
         self.card_image.setPixmap(pixmap)
 
-        adjustFontSize(self.card_name, self.real_name, 18)
-        self.card_job.setText(
-            self.shared_data.JOB_LIST[self.shared_data.serverID][self.shared_data.jobID]
-        )
-        self.card_level.setText(f"Lv.{self.info_char_data["level"]}")
+        adjust_font_size(self.card_name, self.real_name, 18)
+        self.card_job.setText(self.shared_data.job_ID)
+        self.card_level.setText(f"Lv.{self.info_char_data['level']}")
 
         countF = self.info_power_display.count(False)
         count = 0
@@ -2307,7 +2339,7 @@ class Sim4UI:
             else:
                 self.card_powers[i][0].hide()
 
-        self.shared_data.card_updated = True
+        self.shared_data.is_card_updated = True
 
 
 class StatInput:
@@ -2317,17 +2349,17 @@ class StatInput:
         self.inputs = []
 
         # 스탯 입력창 생성
-        for i in range(len(shared_data.STAT_LIST)):
+        for i in range(len(list(shared_data.STATS.values()))):
             frame = QFrame(mainframe)
             frame.setStyleSheet(
                 "QFrame { background-color: transparent; border: 0px solid; }"
             )
 
-            label = QLabel(shared_data.STAT_LIST[i], frame)
+            label = QLabel(list(shared_data.STATS.values())[i], frame)
             label.setStyleSheet(
                 "QLabel { background-color: transparent; border: 0px solid; }"
             )
-            label.setFont(QFont("나눔스퀘어라운드 Bold", 10))
+            label.setFont(CustomFont(10))
 
             lineEdit = CustomLineEdit(frame, connected_function)
 
@@ -2340,7 +2372,9 @@ class SkillInput:
     def __init__(self, mainframe, shared_data: SharedData, connected_function):
         ui_var = UI_Variable()
 
-        texts = shared_data.SKILL_NAME_LIST[shared_data.serverID][shared_data.jobID]
+        texts = shared_data.skill_data[shared_data.server_ID]["jobs"][
+            shared_data.job_ID
+        ]["skills"]
 
         self.frames = []
         self.names = []
@@ -2358,14 +2392,14 @@ class SkillInput:
             name.setStyleSheet(
                 f"QLabel {{ border: 1px solid {ui_var.sim_input_colors[1]}; border-radius: 4px; }}"
             )
-            name.setFont(QFont("나눔스퀘어라운드 Bold", 14))
+            name.setFont(CustomFont(14))
             name.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
             label = QLabel("레벨", frame)
             label.setStyleSheet(
                 "QLabel { background-color: transparent; border: 0px solid; }"
             )
-            label.setFont(QFont("나눔스퀘어라운드 Bold", 10))
+            label.setFont(CustomFont(10))
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
             lineEdit = CustomLineEdit(frame, connected_function)
@@ -2380,7 +2414,13 @@ class SkillInput:
             image.setStyleSheet(
                 "QPushButton { background-color: transparent; border: 0px solid; }"
             )
-            image.setIcon(QIcon(get_skill_pixmap(shared_data, i)))
+            image.setIcon(
+                QIcon(
+                    get_skill_pixmap(
+                        shared_data, skill_name=get_available_skills(shared_data)[i]
+                    )
+                )
+            )
             image.setIconSize(
                 QSize(ui_var.sim_skill_image_Size, ui_var.sim_skill_image_Size)
             )
@@ -2398,17 +2438,17 @@ class SimInfoInput:
         self.labels = []
         self.inputs = []
 
-        for i in range(len(shared_data.SIM_INFO_LIST)):
+        for i in range(len(shared_data.SIM_DETAILS)):
             frame = QFrame(mainframe)
             frame.setStyleSheet(
                 "QFrame { background-color: transparent; border: 0px solid; }"
             )
 
-            label = QLabel(shared_data.SIM_INFO_LIST[i], frame)
+            label = QLabel(list(shared_data.SIM_DETAILS.values())[i], frame)
             label.setStyleSheet(
                 "QLabel { background-color: transparent; border: 0px solid; }"
             )
-            label.setFont(QFont("나눔스퀘어라운드 Bold", 10))
+            label.setFont(CustomFont(10))
 
             lineEdit = CustomLineEdit(frame, connected_function)
 
@@ -2432,14 +2472,14 @@ class PowerLabels:
             label.setStyleSheet(
                 f"QLabel {{ background-color: rgb({ui_var.sim_colors4[i]}); border: 1px solid rgb({ui_var.sim_colors4[i]}); border-bottom: 0px solid; border-top-left-radius: 4px; border-top-right-radius: 4px; border-bottom-left-radius: 0px; border-bottom-right-radius: 0px; }}"
             )
-            label.setFont(QFont("나눔스퀘어라운드 ExtraBold", 14))
+            label.setFont(CustomFont(14))
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
             number = QLabel(texts[i], frame)
             number.setStyleSheet(
                 f"QLabel {{ background-color: rgba({ui_var.sim_colors4[i]}, 120); border: 1px solid rgb({ui_var.sim_colors4[i]}); border-top: 0px solid; border-top-left-radius: 0px; border-top-right-radius: 0px; border-bottom-left-radius: 4px; border-bottom-right-radius: 4px }}"
             )
-            number.setFont(QFont("나눔스퀘어라운드 ExtraBold", font_size))
+            number.setFont(CustomFont(font_size))
             number.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
             self.frames.append(frame)
@@ -2448,7 +2488,7 @@ class PowerLabels:
 
 
 class AnalysisDetails:
-    def __init__(self, mainframe, analysis, details):
+    def __init__(self, mainframe, analysis: SimAnalysis, details):
         ui_var = UI_Variable()
 
         self.frame = QFrame(mainframe)
@@ -2464,7 +2504,7 @@ class AnalysisDetails:
             ui_var.sim_analysis_frame_H,
         )
 
-        self.title = QLabel(analysis["title"], self.frame)
+        self.title = QLabel(analysis.title, self.frame)
         self.title.setGeometry(
             ui_var.sim_analysis_color_W,
             0,
@@ -2474,10 +2514,10 @@ class AnalysisDetails:
         self.title.setStyleSheet(
             "QLabel { background-color: transparent; border: 0px solid; }"
         )
-        self.title.setFont(QFont("나눔스퀘어라운드 Bold", 14))
+        self.title.setFont(CustomFont(14))
         self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        self.number = QLabel(analysis["number"], self.frame)
+        self.number = QLabel(analysis.value, self.frame)
         self.number.setGeometry(
             ui_var.sim_analysis_color_W,
             ui_var.sim_analysis_title_H,
@@ -2487,7 +2527,7 @@ class AnalysisDetails:
         self.number.setStyleSheet(
             "QLabel { background-color: transparent; border: 0px solid; }"
         )
-        self.number.setFont(QFont("나눔스퀘어라운드 ExtraBold", 18))
+        self.number.setFont(CustomFont(18))
         self.number.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.detail_frames = []
@@ -2523,10 +2563,10 @@ class AnalysisDetails:
             detail_title.setStyleSheet(
                 "QLabel { background-color: transparent; border: 0px solid; color: #A0A0A0 }"
             )
-            detail_title.setFont(QFont("나눔스퀘어라운드 ExtraBold", 8))
+            detail_title.setFont(CustomFont(8))
             detail_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-            detail_number = QLabel(analysis[details[i]], detail_frame)
+            detail_number = QLabel(analysis.get_data_from_str(details[i]), detail_frame)
             detail_number.setGeometry(
                 ui_var.sim_analysis_detailsT_W,
                 0,
@@ -2536,7 +2576,7 @@ class AnalysisDetails:
             detail_number.setStyleSheet(
                 "QLabel { background-color: transparent; border: 0px solid; }"
             )
-            detail_number.setFont(QFont("나눔스퀘어라운드 ExtraBold", 8))
+            detail_number.setFont(CustomFont(8))
             detail_number.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
             self.detail_frames.append(detail_frame)
@@ -2574,7 +2614,7 @@ class PotentialRank:
                     border-bottom-right-radius: 0px;
                 }}"""
             )
-            title.setFont(QFont("나눔스퀘어라운드 ExtraBold", 14))
+            title.setFont(CustomFont(14))
             title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
             table_frame = QFrame(frame)
@@ -2604,7 +2644,7 @@ class PotentialRank:
                         border-bottom-right-radius: 0px;
                     }}"""
                 rank.setStyleSheet(rank_style)
-                rank.setFont(QFont("나눔스퀘어라운드 Bold", 10))
+                rank.setFont(CustomFont(10))
                 rank.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
                 label = QLabel(texts[i][j][1], table_frame)
@@ -2621,7 +2661,7 @@ class PotentialRank:
                     }}"""
                 label.setStyleSheet(label_style)
                 label.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-                label.setFont(QFont("나눔스퀘어라운드 Bold", 10))
+                label.setFont(CustomFont(10))
 
                 power = QLabel(texts[i][j][2], table_frame)
                 power_style = f"""QLabel {{
@@ -2634,25 +2674,24 @@ class PotentialRank:
                             border-bottom-right-radius: {"4" if j == 15 else "0"}px;
                         }}"""
                 power.setStyleSheet(power_style)
-                power.setFont(QFont("나눔스퀘어라운드 Bold", 10))
+                power.setFont(CustomFont(10))
                 power.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
                 self.ranks[i].append(rank)
                 self.labels[i].append(label)
                 self.powers[i].append(power)
 
-    def get_potential_rank(self, shared_data):
+    def get_potential_rank(self, shared_data: SharedData):
         texts = [[], [], [], []]
-        for key, (num, value) in shared_data.POTENTIAL_STAT_LIST.items():
+        for key, (stat, value) in shared_data.POTENTIAL_STATS.items():
             stats = shared_data.info_stats.copy()
-            stats[num] += value
+            stats.add_stat_from_name(stat, value)
 
             powers = detSimulate(
                 shared_data,
-                tuple(stats),
-                tuple(shared_data.info_skills),
-                tuple(shared_data.info_simInfo),
-            )
+                stats,
+                shared_data.info_sim_details,
+            ).powers
             diff_powers = [
                 round(powers[i] - shared_data.powers[i], 5) for i in range(4)
             ]
@@ -2663,7 +2702,7 @@ class PotentialRank:
         [texts[i].sort(key=lambda x: x[1], reverse=True) for i in range(4)]
 
         for i in range(4):
-            for j in range(len(shared_data.POTENTIAL_STAT_LIST)):
+            for j in range(len(shared_data.POTENTIAL_STATS)):
                 if texts[i][j][1] == 0:
                     texts[i][j] = ["", "", ""]
                 else:
@@ -2692,4 +2731,4 @@ class Title:
             928 - ui_var.sim_label_x,
             ui_var.sim_label_H,
         )
-        self.label.setFont(QFont("나눔스퀘어라운드 Bold", 16))
+        self.label.setFont(CustomFont(16))

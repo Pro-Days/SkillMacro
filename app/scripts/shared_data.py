@@ -1,43 +1,74 @@
+from __future__ import annotations
+
 import json
 from dataclasses import dataclass
-from .data_manager import convertResourcePath
-from typing import Final
-import time
+from typing import Any, TYPE_CHECKING, ClassVar
+
+from .misc import convert_resource_path
+
+
+if TYPE_CHECKING:
+    from .custom_classes import SkillImage
 
 
 # 공유 데이터 클래스
-@dataclass(unsafe_hash=True)
+# SharedData가 여러번 선언된다면, 리스트로 초기화된 변수들은 모든 SharedData 인스턴스에서 공유되어 오류가 발생할 수 있음
+@dataclass(eq=False)
 class SharedData:
-    # 상수 설정
-    VERSION = "3.1.0-beta.1"
+    # 현재 프로그램 버전
+    VERSION: str = "3.1.0-beta.2"
 
-    # ICON = QIcon(QPixmap(convertResourcePath("resources\\image\\icon\\icon.ico")))
-    # ICON_ON = QIcon(QPixmap(convertResourcePath("resources\\image\\icon\\icon_on.ico")))
+    # 전투력 계수
+    COEF_BOSS_DMG: float = 1.0
+    COEF_NORMAL_DMG: float = 1.3
+    COEF_BOSS: float = 0.0002
+    COEF_NORMAL: float = 0.7
 
-    # pag.PAUSE = 0.01  # pag click delay 설정
+    # 매크로 단위 시간
+    UNIT_TIME: float = 0.05  # 1tick
 
-    # 이 계수를 조정하여 time.sleep과 실제 시간 간의 괴리를 조정
-    SLEEP_COEFFICIENT_NORMAL = 0.975
-    SLEEP_COEFFICIENT_UNIT = 0.97
+    # AFK 모드 활성화 여부: 정식 버전에서는 True로 변경
+    IS_AFK_ENABLED: bool = False
+    # 버전 확인 모드 활성화 여부: 정식 버전에서는 True로 변경
+    IS_VERSION_CHECK_ENABLED: bool = False
 
-    COEF_BOSS_DMG = 1.0
-    COEF_NORMAL_DMG = 1.3
-    COEF_BOSS = 0.0002
-    COEF_NORMAL = 0.7
+    # 딜레이 설정
+    MIN_DELAY: int = 50
+    MAX_DELAY: int = 1000
+    DEFAULT_DELAY: int = 150
 
-    UNIT_TIME = 0.05  # 1tick
-    IS_AFK_ENABLED = False  # AFK 모드 활성화 여부: 정식 버전에서는 True로 변경
-    IS_VERSION_CHECK_ENABLED = (
-        False  # 버전 확인 모드 활성화 여부: 정식 버전에서는 True로 변경
-    )
-    MIN_DELAY = 50
-    MAX_DELAY = 1000
-    MIN_COOLTIME = 0
-    MAX_COOLTIME = 50
+    # 쿨타임 감소 스탯 설정
+    MIN_COOLTIME_REDUCTION: int = 0
+    MAX_COOLTIME_REDUCTION: int = 50
+    DEFAULT_COOLTIME_REDUCTION: int = 0
+
+    # 시작 키 설정
+    DEFAULT_START_KEY = "F9"
+
+    STAT_RANGES: ClassVar[dict[str, tuple[int, int]]] = {
+        "ATK": (1, 10000),
+        "DEF": (1, 10000),
+        "PWR": (0, 10000),
+        "STR": (1, 10000),
+        "INT": (1, 10000),
+        "RES": (1, 10000),
+        "CRIT_RATE": (0, 10000),
+        "CRIT_DMG": (0, 10000),
+        "BOSS_DMG": (0, 10000),
+        "ACC": (0, 10000),
+        "DODGE": (0, 10000),
+        "STATUS_RES": (0, 10000),
+        "NAEGONG": (0, 10000),
+        "HP": (1, 10000),
+        "ATK_SPD": (0, MAX_COOLTIME_REDUCTION),
+        "POT_HEAL": (0, 10000),
+        "LUK": (0, 10000),
+        "EXP": (0, 10000),
+    }
 
     # 내공 차이에 의한 데미지 배수 (몹-나)
     # 내공 1당 5%의 데미지 차이일 가능성 높음, 5차이 이상부터는 데미지 0
-    NAEGONG_DIFF = {
+    NAEGONG_DIFF: ClassVar[dict[tuple[int, int], float]] = {
         (6, 1000): 0.0,
         (5, 5): 0.3,
         (4, 4): 0.5,
@@ -56,87 +87,69 @@ class SharedData:
         (-1000, -26): 1.5,
     }
 
-    STAT_LIST = [
-        "공격력",
-        "방어력",
-        "파괴력",
-        "근력",
-        "지력",
-        "경도",
-        "치명타확률",
-        "치명타데미지",
-        "보스데미지",
-        "명중률",
-        "회피율",
-        "상태이상저항",
-        "내공",
-        "체력",
-        "공격속도",
-        "포션회복량",
-        "운",
-        "경험치획득량",
-    ]
-    STAT_RANGE_LIST = [
-        [1, 10000],
-        [1, 10000],
-        [0, 10000],
-        [1, 10000],
-        [1, 10000],
-        [1, 10000],
-        [0, 10000],
-        [0, 10000],
-        [0, 10000],
-        [0, 10000],
-        [0, 10000],
-        [0, 10000],
-        [0, 10000],
-        [1, 10000],
-        [0, MAX_COOLTIME],
-        [0, 10000],
-        [0, 10000],
-        [0, 10000],
-    ]
-    POTENTIAL_STAT_LIST = {
-        "내공 +3": [12, 3],
-        "내공 +2": [12, 2],
-        "내공 +1": [12, 1],
-        "경도 +3": [5, 3],
-        "경도 +2": [5, 2],
-        "경도 +1": [5, 1],
-        "치명타확률 +3": [6, 3],
-        "치명타확률 +2": [6, 2],
-        "치명타확률 +1": [6, 1],
-        "치명타데미지 +4": [7, 4],
-        "치명타데미지 +3": [7, 3],
-        "치명타데미지 +2": [7, 2],
-        "보스데미지 +3": [8, 3],
-        "보스데미지 +2": [8, 2],
-        "보스데미지 +1": [8, 1],
-        "상태이상저항 +6": [11, 6],
-        "상태이상저항 +4": [11, 4],
-        "상태이상저항 +2": [11, 2],
-        "체력 +6": [13, 6],
-        "체력 +4": [13, 4],
-        "체력 +2": [13, 2],
-        "공격속도 +3": [14, 3],
-        "공격속도 +2": [14, 2],
-        "공격속도 +1": [14, 1],
-        "포션회복량 +6": [15, 6],
-        "포션회복량 +4": [15, 4],
-        "포션회복량 +2": [15, 2],
-        "운 +6": [16, 6],
-        "운 +4": [16, 4],
-        "운 +2": [16, 2],
+    # 스탯 목록
+    STATS: ClassVar[dict[str, str]] = {
+        "ATK": "공격력",
+        "DEF": "방어력",
+        "PWR": "파괴력",
+        "STR": "근력",
+        "INT": "지력",
+        "RES": "경도",
+        "CRIT_RATE": "치명타확률",
+        "CRIT_DMG": "치명타데미지",
+        "BOSS_DMG": "보스데미지",
+        "ACC": "명중률",
+        "DODGE": "회피율",
+        "STATUS_RES": "상태이상저항",
+        "NAEGONG": "내공",
+        "HP": "체력",
+        "ATK_SPD": "공격속도",
+        "POT_HEAL": "포션회복력",
+        "LUK": "운",
+        "EXP": "경험치획득량",
     }
-    SIM_INFO_LIST = [
-        "몬스터 내공",
-        "보스 내공",
-        "포션 회복량",
-    ]
-    POWER_TITLES = ["보스데미지", "일반데미지", "보스", "사냥"]
-    POWER_DETAILS = ["min", "max", "std", "p25", "p50", "p75"]
+    POTENTIAL_STATS: ClassVar[dict[str, tuple[str, int]]] = {
+        "내공 +3": ("NAEGONG", 3),
+        "내공 +2": ("NAEGONG", 2),
+        "내공 +1": ("NAEGONG", 1),
+        "경도 +3": ("RES", 3),
+        "경도 +2": ("RES", 2),
+        "경도 +1": ("RES", 1),
+        "치명타확률 +3": ("CRIT_RATE", 3),
+        "치명타확률 +2": ("CRIT_RATE", 2),
+        "치명타확률 +1": ("CRIT_RATE", 1),
+        "치명타데미지 +4": ("CRIT_DMG", 4),
+        "치명타데미지 +3": ("CRIT_DMG", 3),
+        "치명타데미지 +2": ("CRIT_DMG", 2),
+        "보스데미지 +3": ("BOSS_DMG", 3),
+        "보스데미지 +2": ("BOSS_DMG", 2),
+        "보스데미지 +1": ("BOSS_DMG", 1),
+        "상태이상저항 +6": ("STATUS_RES", 6),
+        "상태이상저항 +4": ("STATUS_RES", 4),
+        "상태이상저항 +2": ("STATUS_RES", 2),
+        "체력 +6": ("HP", 6),
+        "체력 +4": ("HP", 4),
+        "체력 +2": ("HP", 2),
+        "공격속도 +3": ("ATK_SPD", 3),
+        "공격속도 +2": ("ATK_SPD", 2),
+        "공격속도 +1": ("ATK_SPD", 1),
+        "포션회복량 +6": ("POT_HEAL", 6),
+        "포션회복량 +4": ("POT_HEAL", 4),
+        "포션회복량 +2": ("POT_HEAL", 2),
+        "운 +6": ("LUK", 6),
+        "운 +4": ("LUK", 4),
+        "운 +2": ("LUK", 2),
+    }
+    SIM_DETAILS: ClassVar[dict[str, str]] = {
+        "NORMAL_NAEGONG": "몬스터 내공",
+        "BOSS_NAEGONG": "보스 내공",
+        "POTION_HEAL": "포션 회복량",
+    }
 
-    KEY_DICT = {
+    POWER_TITLES: ClassVar[list[str]] = ["보스데미지", "일반데미지", "보스", "사냥"]
+    POWER_DETAILS: ClassVar[list[str]] = ["min", "max", "std", "p25", "p50", "p75"]
+
+    KEY_DICT: ClassVar[dict[str, str]] = {
         "f1": "F1",
         "f2": "F2",
         "f3": "F3",
@@ -198,103 +211,246 @@ class SharedData:
         "delete": "Delete",
         "end": "End",
     }
-    SERVER_LIST = [
-        "한월 RPG",
-    ]
-    JOB_LIST = [
-        ["검호", "매화", "살수", "도제", "술사", "도사", "빙궁", "귀궁"],
-    ]
-    USABLE_SKILL_COUNT = [6]  # 장착 가능한 스킬 개수
 
+    SERVERS: ClassVar[list[str]] = ["한월 RPG"]
+    JOBS: ClassVar[dict[str, list[str]]] = {
+        "한월 RPG": ["검호", "매화", "살수", "도제", "술사", "도사", "빙궁", "귀궁"],
+    }
+
+    DEFAULT_SERVER_ID: str = "한월 RPG"
+    DEFAULT_JOB_ID: str = "검호"
+
+    # 장착 가능한 스킬 개수
+    USABLE_SKILL_COUNT: ClassVar[dict[str, int]] = {"한월 RPG": 6}
+
+    # 스킬 레벨 최대값
+    MAX_SKILL_LEVEL: ClassVar[dict[str, int]] = {"한월 RPG": 5}
+
+    ################################
+
+    # ICON = QIcon(QPixmap(convertResourcePath("resources\\image\\icon\\icon.ico")))
+    # ICON_ON = QIcon(QPixmap(convertResourcePath("resources\\image\\icon\\icon_on.ico")))
+
+    # pag.PAUSE = 0.01  # pag click delay 설정
+
+    # 이 계수를 조정하여 time.sleep과 실제 시간 간의 괴리를 조정
+    SLEEP_COEFFICIENT_NORMAL = 0.975
+    SLEEP_COEFFICIENT_UNIT = 0.97
+
+    # 스킬 데이터
+    # 프로그램 실행 시 데이터를 다운로드받는 방식으로 변경
     with open(
-        convertResourcePath("resources\\data\\skill_data.json"), "r", encoding="utf-8"
+        convert_resource_path("resources\\data\\skill_data.json"), "r", encoding="utf-8"
     ) as f:
         skill_data = json.load(f)
 
-    SKILL_NAME_LIST = skill_data["Names"]
-
     # skillAttackData[serverID][jobID][skill][level:임시로 하나만][combo][attackNum]:
     # [time, [type(0: damage, 1: buff), [buff_type, buff_value, buff_duration] or damage_value]]
-    SKILL_ATTACK_DATA = skill_data["AttackData"]
-
-    SKILL_COOLTIME_LIST = skill_data["CooltimeList"]
-
-    SKILL_COMBO_COUNT_LIST = skill_data["ComboCounts"]
-
-    IS_SKILL_CASTING = skill_data["IsSkillCasting"]
+    # SKILL_ATTACK_DATA = skill_data["AttackData"]
+    # SKILL_COOLTIME_LIST = skill_data["CooltimeList"]
+    # SKILL_COMBO_COUNT_LIST = skill_data["ComboCounts"]
+    # IS_SKILL_CASTING = skill_data["IsSkillCasting"]
 
     # 변수 초기화
-    sim_type = 0
-    active_error_popup_count = 0
-    is_tab_remove_popup_activated = False
-    is_activated = False
-    loop_num = 0
-    selected_item_slot = -1
-    selected_skill = -1  # 클릭해서 선택된 장착 가능 스킬칸
-    sidebar_type = -1
-    layout_type = 0  # 0: 스킬, 1: 시뮬레이터
-    active_popup = ""
-    active_error_popup = []
-    active_error_popup_count = 0
-    preview_skills = []
 
-    powers = []
-    inputCheck = {"stat": False, "skill": False, "simInfo": False}
-    card_updated = False
+    # 계산기 페이지 번호
+    sim_page_type: int = 0
+
+    # 매크로가 실행중인지
+    is_activated: bool = False
+
+    # 매크로 실행 번호
+    loop_num: int = 0
+
+    # 매크로 실행 중 게임 내에서 선택된 아이템 슬롯. -1이면 모르는 상태.
+    selected_item_slot: int = -1
+
+    # 프로그램 내에서 클릭해서 선택된 장착 가능 스킬칸
+    selected_skill: int = -1
+
+    # 사이드바 페이지 번호
+    sidebar_type: int = -1
+
+    # 0: 스킬, 1: 시뮬레이터
+    layout_type: int = 0
+
+    # 팝업 정보
+    # 현재 활성화된 팝업 이름
+    active_popup: str = ""
+    # 활성화된 팝업 리스트
+    active_error_popup: ClassVar[list[list]] = []
+    active_error_popup_count: int = 0  # len으로 변경
+    is_tab_remove_popup_activated: bool = False
+
+    preview_skills: ClassVar[list[SkillImage]] = []
+
+    powers: ClassVar[list[float]] = [0.0, 0.0, 0.0, 0.0]
+    is_input_valid: ClassVar[dict[str, bool]] = {
+        "stat": False,
+        "skill": False,
+        "simInfo": False,
+    }
+    is_card_updated: bool = False
 
     recent_version: str = "0.0.0"  # 최근 버전 정보
     update_url: str = ""  # 업데이트 URL
 
     # 매크로 데이터 초기화
-    recentPreset = 0
-    tabNames = []
-    equipped_skills = []  # 장착된 스킬 목록, 각 스킬의 인덱스가 저장됨
-    skillKeys = []
-    serverID = 0
-    jobID = 0
-    activeDelaySlot = 0
-    inputDelay = 0
-    delay = 0
-    activeCooltimeSlot = 0
-    inputCooltime = 0
-    cooltimeReduce = 0
-    activeStartKeySlot = 0
-    inputStartKey = ""
-    startKey = "F9"
-    activeMouseClickSlot = 0
-    ifUseSkill = [False] * 8
-    ifUseSole = [False] * 8
-    comboCount = [0] * 8
-    skill_priority = [0] * 8  # 스킬 우선순위, 0: 지정되지 않음
-    link_skills = []
-    info_stats = [0] * len(STAT_LIST)
-    info_skills = [0] * len(SKILL_NAME_LIST)
-    info_simInfo = [0] * len(SIM_INFO_LIST)
 
-    task_list = []  # 매크로 실행 중 실행할 스킬 목록
-    preparedSkillList = []  # 준비된 스킬 리스트
-    preparedSkillCountList = []  # 준비된 스킬 개수 리스트
-    preparedlink_skills = []  # 준비된 연계스킬리스트
+    # 최근에 선택된 프리셋 번호
+    recent_preset = 0
 
-    preparedSkillComboList = []  # 스킬 콤보 리스트
+    # 탭 이름들
+    tab_names: ClassVar[list[str]] = []
 
-    preparedLinkSkillList = []  # 준비된 연계 스킬 목록
+    # 장착된 스킬 목록, 각 스킬의 이름이 저장됨.
+    equipped_skills: ClassVar[list[str]] = []
 
-    linkSkillRequirementList = []
-    linkSkillComboRequirementList = []
-    usingLinkSkillList = []  # 사용하는 모든 연계 스킬
-    usingLinkSkillComboList = []  # 사용하는 연계 스킬의 콤보 개수
+    # 스킬 사용 키 목록
+    skill_keys: ClassVar[list[str]] = []
 
-    skillSequences = []
-    usinglink_skills = []
+    # 서버 ID와 직업 ID
+    # 기본값은 첫 번째 직업
+    server_ID: str = SERVERS[0]
+    job_ID: str = JOBS[server_ID][0]
 
-    afkTime0: float = 0.0  # AFK 모드 시작 시간
+    # 딜레이 설정: 0이면 기본, 1이면 직접입력
+    delay_type: int = 0
+    # 입력된 딜레이
+    delay_input: int = 0
+    # 사용되는 딜레이
+    delay: int = DEFAULT_DELAY
 
-    skillCoolTimers = []  # 스킬 쿨타임 타이머
-    availableSkillCount = []
+    # 쿨타임 감소 스탯 설정: 0이면 기본, 1이면 직접입력
+    cooltime_reduction_type: int = 0
+    # 입력된 쿨타임 감소 스탯
+    cooltime_reduction_input: int = 0
+    # 사용되는 쿨타임 감소 스탯
+    cooltime_reduction: int = 0
+
+    # 시작키 설정: 0이면 기본, 1이면 직접입력
+    start_key_type: int = 0
+    # 입력된 시작키
+    start_key_input: str = ""
+    # 사용되는 시작키
+    start_key: str = DEFAULT_START_KEY
+
+    # 마우스 클릭 설정: 0이면 스킬 사용시에만, 1이면 평타도 사용
+    mouse_click_type: int = 0
+
+    # -- 스킬 사용설정 --
+
+    # 사용 여부
+    is_use_skill: ClassVar[dict[str, bool]] = {
+        skill: False for skill in skill_data[server_ID]["jobs"][job_ID]["skills"]
+    }
+    # 단독 사용
+    is_use_sole: ClassVar[dict[str, bool]] = {
+        skill: False for skill in skill_data[server_ID]["jobs"][job_ID]["skills"]
+    }
+    # 콤보 횟수
+    combo_count: ClassVar[dict[str, int]] = {
+        skill: 0 for skill in skill_data[server_ID]["jobs"][job_ID]["skills"]
+    }
+    # 우선 순위
+    skill_priority: ClassVar[dict[str, int]] = {
+        skill: 0 for skill in skill_data[server_ID]["jobs"][job_ID]["skills"]
+    }  # 스킬 우선순위, 0: 지정되지 않음
+
+    link_skills: ClassVar[list[dict[str, Any]]] = []
+    """
+    [
+        { "useType": 1, "keyType": 0, "key": "A", "skills": [[0, 1]] },
+        { "useType": 1, "keyType": 0, "key": "A", "skills": [[0, 1]] }
+    ]
+    ->
+    [
+        { "useType": "auto", "keyType": "on", "key": "A", "skills": [{"name": "스킬1", "count": 1}] },
+        { "useType": "manual", "keyType": "off", "key": "B", "skills": [{"name": "스킬1", "count": 1}] }
+    ]
+    """
+
+    # 매크로 실행 중 실행할 스킬 목록
+    task_list: ClassVar[list[int]] = []
+
+    # 준비된 스킬 리스트
+    prepared_skills: ClassVar[list[list[int]]] = []
+    # 준비된 스킬 개수 리스트
+    prepared_skill_counts: ClassVar[list[list[int]]] = []
+
+    # 준비된 연계스킬 리스트
+    prepared_link_skill_indices: ClassVar[list[int]] = []
+
+    # 준비된 스킬 개수 리스트
+    prepared_skill_combos: ClassVar[list[int]] = []
+
+    # 연계스킬 수행에 필요한 스킬 정보 리스트
+    link_skills_requirements: ClassVar[list[list[int]]] = []
+    link_skills_combo_requirements: ClassVar[list[list[int]]] = []
+
+    # 매크로 작동 중 사용하는 연계스킬 리스트
+    using_link_skills: ClassVar[list[list[int]]] = []
+    using_link_skill_combos: ClassVar[list[list[int]]] = []
+
+    # 연계가 아닌 스킬의 사용 순서
+    skill_sequence: ClassVar[list[int]] = []
+
+    afk_started_time: float = 0.0  # AFK 모드 시작 시간
+
+    skill_cooltime_timers: ClassVar[list[float]] = []  # 스킬 쿨타임 타이머
+    available_skill_counts: ClassVar[list[int]] = []
+
+    # 시뮬레이션 정보
+    # 스탯
+    from .custom_classes import Stats
+
+    info_stats: Stats = Stats()
+    # 스킬 레벨
+    info_skill_levels: ClassVar[dict[str, int]] = {}
+    # 기타 시뮬레이션 세부정보
+    info_sim_details: ClassVar[dict[str, int]] = {}
+
+    info_stats_counts: int = 18
+    info_skill_levels_counts: int = 8
+    info_sim_details_counts: int = 3
+
+    def __get_hashable_representation__(self):
+        data_to_hash = (
+            self.equipped_skills,
+            self.server_ID,
+            self.job_ID,
+            self.delay,
+            self.cooltime_reduction,
+            self.is_use_skill,
+            self.is_use_sole,
+            self.skill_priority,
+            self.link_skills,
+            self.info_stats,
+            self.info_skill_levels,
+            self.info_sim_details,
+        )
+
+        return json.dumps(
+            data_to_hash,
+            sort_keys=True,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+
+    def __hash__(self) -> int:
+        return hash(self.__get_hashable_representation__())
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, SharedData):
+            return NotImplemented
+
+        return (
+            self.__get_hashable_representation__()
+            == other.__get_hashable_representation__()
+        )
 
 
-@dataclass
+@dataclass(frozen=True)
 class UI_Variable:
     DEFAULT_WINDOW_WIDTH = 960
     DEFAULT_WINDOW_HEIGHT = 540
@@ -529,7 +685,7 @@ class UI_Variable:
             border-left-style: solid;
         }}
         QComboBox::down-arrow {{
-            image: url({convertResourcePath("resources\\image\\down_arrow.png").replace("\\", "/")});
+            image: url({convert_resource_path("resources\\image\\down_arrow.png").replace("\\", "/")});
             width: 16px;
             height: 16px;
         }}

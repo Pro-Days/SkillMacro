@@ -1,20 +1,17 @@
 import os
 import requests
-from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtGui import QFont, QIcon, QPixmap
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QFont, QPixmap
 from PyQt6.QtWidgets import (
     QFrame,
     QLabel,
     QPushButton,
     QLineEdit,
-    QListWidget,
-    QListWidgetItem,
     QVBoxLayout,
     QHBoxLayout,
     QGridLayout,
     QMessageBox,
     QDialog,
-    QFileDialog,
     QScrollArea,
     QWidget,
 )
@@ -38,7 +35,9 @@ class Sharing:
         """매크로 공유 서비스를 위한 UI 위젯 생성"""
         # 메인 프레임 생성
         self.sharing_frame = QFrame(parent_frame)
-        self.sharing_frame.setStyleSheet("QFrame { background-color: rgb(29, 29, 29); border: 0px solid; }")
+        self.sharing_frame.setStyleSheet(
+            "QFrame { background-color: rgb(29, 29, 29); border: 0px solid; }"
+        )
 
         # 레이아웃 설정
         main_layout = QVBoxLayout(self.sharing_frame)
@@ -95,7 +94,9 @@ class Sharing:
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
         scroll_area.setWidget(self.macro_list_container)
-        scroll_area.setStyleSheet("QScrollArea { border: none; background-color: #1d1d1d; }")
+        scroll_area.setStyleSheet(
+            "QScrollArea { border: none; background-color: #1d1d1d; }"
+        )
 
         main_layout.addWidget(scroll_area)
 
@@ -166,7 +167,9 @@ class Sharing:
     def _create_macro_card(self, macro):
         """개별 매크로 카드 생성"""
         card = QFrame()
-        card.setStyleSheet("QFrame { background-color: #222222; border-radius: 5px; padding: 10px; }")
+        card.setStyleSheet(
+            "QFrame { background-color: #222222; border-radius: 5px; padding: 10px; }"
+        )
         card.setFixedSize(600, 180)  # 카드 크기 조절
 
         card_layout = QVBoxLayout(card)
@@ -191,9 +194,13 @@ class Sharing:
             pixmap = QPixmap(os.path.join("app/resources/image/skill", icon_path))
             if pixmap.isNull():
                 # 이미지가 없을 경우 대체 이미지 또는 색상 사용
-                icon_label.setStyleSheet("background-color: #333333; border-radius: 5px;")
+                icon_label.setStyleSheet(
+                    "background-color: #333333; border-radius: 5px;"
+                )
             else:
-                icon_label.setPixmap(pixmap.scaled(50, 50, Qt.AspectRatioMode.KeepAspectRatio))
+                icon_label.setPixmap(
+                    pixmap.scaled(50, 50, Qt.AspectRatioMode.KeepAspectRatio)
+                )
 
             icon_layout.addWidget(icon_label, 0, Qt.AlignmentFlag.AlignCenter)
             icons_layout.addWidget(icon_frame)
@@ -270,7 +277,9 @@ class Sharing:
         def do_upload():
             filename = filename_input.text().strip()
             if not filename:
-                self._show_message("경고", "파일 이름을 입력하세요.", QMessageBox.Icon.Warning)
+                self._show_message(
+                    "경고", "파일 이름을 입력하세요.", QMessageBox.Icon.Warning
+                )
                 return
 
             # 데이터는 실제 애플리케이션에서 가져와야 함
@@ -281,11 +290,15 @@ class Sharing:
 
             if result and result.get("status") == "success":
                 self._show_message(
-                    "성공", "매크로가 성공적으로 업로드되었습니다.", QMessageBox.Icon.Information
+                    "성공",
+                    "매크로가 성공적으로 업로드되었습니다.",
+                    QMessageBox.Icon.Information,
                 )
                 dialog.accept()
             else:
-                self._show_message("오류", "매크로 업로드에 실패했습니다.", QMessageBox.Icon.Critical)
+                self._show_message(
+                    "오류", "매크로 업로드에 실패했습니다.", QMessageBox.Icon.Critical
+                )
 
         upload_btn.clicked.connect(do_upload)
 
@@ -294,7 +307,9 @@ class Sharing:
     def _handle_download(self):
         """매크로 다운로드 처리"""
         # 실제 구현에서는 선택된 매크로를 다운로드
-        self._show_message("정보", "선택한 매크로를 다운로드합니다.", QMessageBox.Icon.Information)
+        self._show_message(
+            "정보", "선택한 매크로를 다운로드합니다.", QMessageBox.Icon.Information
+        )
 
         # 여기서는 모의 다운로드만 구현
         self.status_label.setText("매크로 다운로드 중...")
@@ -316,11 +331,16 @@ class Sharing:
         """Lambda 함수에 API 요청을 보내고 응답을 처리하는 함수"""
 
         headers = {"Content-Type": "application/json"}
-        lambda_url = "https://khgusinpp5jsnynzhicbyid3k40ezcrf.lambda-url.ap-northeast-2.on.aws/"
+        lambda_url = (
+            "https://khgusinpp5jsnynzhicbyid3k40ezcrf.lambda-url.ap-northeast-2.on.aws/"
+        )
 
         try:
             response = requests.post(
-                lambda_url, headers=headers, json=payload, timeout=10  # Set a reasonable timeout
+                lambda_url,
+                headers=headers,
+                json=payload,
+                timeout=10,  # Set a reasonable timeout
             )
 
             response.raise_for_status()
@@ -333,12 +353,22 @@ class Sharing:
     # ================ Data Operations Functions ================
     def upload_file(self, username, password, data, filename):
         """S3에 파일을 업로드하는 함수 - 인증 필요"""
-        payload = {"username": username, "password": password, "data": data, "filename": filename}
+        payload = {
+            "username": username,
+            "password": password,
+            "data": data,
+            "filename": filename,
+        }
         return self._handle_remote_request(payload)
 
     def delete_file(self, username, password, filename):
         """S3 파일을 삭제하는 함수 - 인증 필요"""
-        payload = {"username": username, "password": password, "action": "delete_file", "filename": filename}
+        payload = {
+            "username": username,
+            "password": password,
+            "action": "delete_file",
+            "filename": filename,
+        }
         return self._handle_remote_request(payload)
 
     def login(self, username, password):
@@ -354,7 +384,11 @@ class Sharing:
 
     def download_macro_file(self, owner, filename):
         """macro_data 디렉토리의 파일을 인증 없이 다운로드하는 함수"""
-        payload = {"action": "download_file_no_auth", "owner": owner, "filename": filename}
+        payload = {
+            "action": "download_file_no_auth",
+            "owner": owner,
+            "filename": filename,
+        }
         return self._handle_remote_request(payload)
 
     def download_skill_file(self):

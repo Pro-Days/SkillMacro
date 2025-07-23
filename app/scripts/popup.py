@@ -1,17 +1,23 @@
 from __future__ import annotations
 
-from .custom_widgets import CustomShadowEffect
-from .misc import (
-    convertResourcePath,
-    adjustFontSize,
-    isKeyUsing,
-    get_skill_pixmap,
-    limit_text,
-)
-from .data_manager import dataSave
+from .misc import convert_resource_path
 
-from PyQt6.QtWidgets import QFrame, QPushButton, QLabel, QLineEdit, QWidget
-from PyQt6.QtGui import QFont, QPixmap, QIcon, QTransform
+from .custom_classes import CustomShadowEffect
+from .misc import (
+    adjust_font_size,
+    is_key_used,
+    get_skill_pixmap,
+    adjust_text_length,
+    get_available_skills,
+    get_skill_details,
+    get_every_skills,
+    set_var_to_ClassVar,
+)
+from .data_manager import save_data
+from .custom_classes import CustomFont
+
+from PyQt6.QtWidgets import QFrame, QPushButton, QLabel, QLineEdit
+from PyQt6.QtGui import QPixmap, QIcon, QTransform
 from PyQt6.QtCore import Qt, QSize
 
 from webbrowser import open_new
@@ -38,7 +44,7 @@ class PopupManager:
         self.shared_data = shared_data
 
     ## 알림 창 생성
-    def make_notice_popup(self, e):  # popup으로 이동
+    def make_notice_popup(self, e: str) -> None:  # popup으로 이동
         """
         MacroIsRunning: 매크로 작동중
         editingLinkSkill: 연계스킬 수정중
@@ -89,7 +95,7 @@ class PopupManager:
                 icon = "error"
 
             case "cooltimeInputError":
-                text = f"쿨타임은 {self.shared_data.MIN_COOLTIME}~{self.shared_data.MAX_COOLTIME}까지의 수를 입력해야 합니다."
+                text = f"쿨타임은 {self.shared_data.MIN_COOLTIME_REDUCTION}~{self.shared_data.MAX_COOLTIME_REDUCTION}까지의 수를 입력해야 합니다."
                 icon = "error"
 
             case "StartKeyChangeError":
@@ -101,7 +107,7 @@ class PopupManager:
                 icon = "warning"
 
                 button = QPushButton("다운로드 링크", noticePopup)
-                button.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
+                button.setFont(CustomFont(12))
                 button.setStyleSheet(
                     """
                                 QPushButton {
@@ -162,7 +168,7 @@ class PopupManager:
         noticePopupIcon.setStyleSheet("background-color: transparent;")
         noticePopupIcon.setFixedSize(24, 24)
         noticePopupIcon.move(13, 15)
-        pixmap = QPixmap(convertResourcePath(f"resources\\image\\{icon}.png"))
+        pixmap = QPixmap(convert_resource_path(f"resources\\image\\{icon}.png"))
         noticePopupIcon.setIcon(QIcon(pixmap))
         noticePopupIcon.setIconSize(QSize(24, 24))
         noticePopupIcon.show()
@@ -172,7 +178,7 @@ class PopupManager:
         noticePopupLabel.setAlignment(
             Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
         )
-        noticePopupLabel.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
+        noticePopupLabel.setFont(CustomFont(12))
         noticePopupLabel.setStyleSheet("background-color: white; border-radius: 10px;")
         noticePopupLabel.setFixedSize(304, frameHeight - 24)
         noticePopupLabel.move(48, 12)
@@ -196,11 +202,11 @@ class PopupManager:
         noticePopupRemove.move(355, 12)
         noticePopupRemove.clicked.connect(
             partial(
-                lambda x: self.removeNoticePopup(x),
+                lambda x: self.close_notice_popup(x),
                 self.shared_data.active_error_popup_count,
             )
         )
-        pixmap = QPixmap(convertResourcePath("resources\\image\\x.png"))
+        pixmap = QPixmap(convert_resource_path("resources\\image\\x.png"))
         noticePopupRemove.setIcon(QIcon(pixmap))
         noticePopupRemove.setIconSize(QSize(24, 24))
         noticePopupRemove.show()
@@ -211,7 +217,7 @@ class PopupManager:
         self.shared_data.active_error_popup_count += 1
 
     ## 알림 창 제거
-    def removeNoticePopup(self, num=-1):
+    def close_notice_popup(self, num=-1):
         if num != -1:
             for i, j in enumerate(self.shared_data.active_error_popup):
                 if num == j[2]:
@@ -226,7 +232,7 @@ class PopupManager:
         self.update_position()
 
     ## 모든 팝업창 제거
-    def disablePopup(self):
+    def close_popup(self):
         if self.shared_data.active_popup == "":
             return
         else:
@@ -234,12 +240,12 @@ class PopupManager:
         self.shared_data.active_popup = ""
 
     ## 팝업창 할당
-    def activatePopup(self, text):
-        self.disablePopup()
+    def activatePopup(self, text: str) -> None:
+        self.close_popup()
         self.shared_data.active_popup = text
 
     ## 인풋 팝업 생성
-    def makePopupInput(self, popup_type):
+    def makePopupInput(self, popup_type: str, var: int | None = None) -> None:
         match popup_type:
             case "delay":
                 x = 140
@@ -255,8 +261,8 @@ class PopupManager:
 
                 frame = self.master.get_sidebar().frame
 
-            case ("tabName", _):
-                x = 360 + 200 * self.shared_data.recentPreset
+            case "tabName":
+                x = 360 + 200 * self.shared_data.recent_preset
                 y = 80
                 width = 200
 
@@ -276,19 +282,16 @@ class PopupManager:
 
         match popup_type:
             case "delay":
-                default = str(self.shared_data.inputDelay)
+                default = str(self.shared_data.delay_input)
 
             case "cooltime":
-                default = str(self.shared_data.inputCooltime)
+                default = str(self.shared_data.cooltime_reduction_input)
 
-            case ("tabName", _):
-                default = self.shared_data.tabNames[self.shared_data.recentPreset]
-
-            case _:
-                return
+            case "tabName":
+                default = self.shared_data.tab_names[self.shared_data.recent_preset]
 
         self.settingPopupInput = QLineEdit(default, self.settingPopupFrame)
-        self.settingPopupInput.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
+        self.settingPopupInput.setFont(CustomFont(12))
         self.settingPopupInput.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.settingPopupInput.setStyleSheet(
             "border: 1px solid black; border-radius: 10px;"
@@ -298,9 +301,9 @@ class PopupManager:
         self.settingPopupInput.setFocus()
 
         self.settingPopupButton = QPushButton("적용", self.settingPopupFrame)
-        self.settingPopupButton.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
+        self.settingPopupButton.setFont(CustomFont(12))
         self.settingPopupButton.clicked.connect(
-            lambda: self.onInputPopupClick(popup_type)
+            lambda: self.on_input_popup_clicked(popup_type, var)
         )
         self.settingPopupButton.setStyleSheet(
             """
@@ -323,7 +326,7 @@ class PopupManager:
         self.update_position()
 
     ## 인풋 팝업 확인 클릭시 실행
-    def onInputPopupClick(self, input_type):
+    def on_input_popup_clicked(self, input_type: str, var: int | None = None) -> None:
         text = self.settingPopupInput.text()
 
         match input_type:
@@ -332,52 +335,57 @@ class PopupManager:
                     text = int(text)
 
                 except:
-                    self.disablePopup()
+                    self.close_popup()
                     self.make_notice_popup("delayInputError")
                     return
 
                 if not (
                     self.shared_data.MIN_DELAY <= text <= self.shared_data.MAX_DELAY
                 ):
-                    self.disablePopup()
+                    self.close_popup()
                     self.make_notice_popup("delayInputError")
                     return
 
                 self.master.get_sidebar().buttonInputDelay.setText(str(text))
-                self.shared_data.inputDelay = text
+                self.shared_data.delay_input = text
                 self.shared_data.delay = text
 
             case "cooltime":
                 try:
                     text = int(text)
 
-                except:
-                    self.disablePopup()
+                except Exception:
+                    self.close_popup()
                     self.make_notice_popup("cooltimeInputError")
                     return
 
                 if not (
-                    self.shared_data.MIN_COOLTIME
+                    self.shared_data.MIN_COOLTIME_REDUCTION
                     <= text
-                    <= self.shared_data.MAX_COOLTIME
+                    <= self.shared_data.MAX_COOLTIME_REDUCTION
                 ):
-                    self.disablePopup()
+                    self.close_popup()
                     self.make_notice_popup("cooltimeInputError")
                     return
 
                 self.master.get_sidebar().buttonInputCooltime.setText(str(text))
-                self.shared_data.inputCooltime = text
-                self.shared_data.cooltimeReduce = text
+                self.shared_data.cooltime_reduction_input = text
+                self.shared_data.cooltime_reduction = text
 
-            case ("tabName", _):
-                limit_text(
-                    " " + text, self.master.get_main_ui().tab_buttons[input_type[1]]
+            case "tabName":
+                if var is None:
+                    self.close_popup()
+                    return
+
+                self.master.get_main_ui().tab_buttons[var].setText(
+                    adjust_text_length(
+                        " " + text, self.master.get_main_ui().tab_buttons[var]
+                    )
                 )
-                # self.master.get_main_ui().tab_buttons[input_type[1]].setText(" " + text)
-                self.shared_data.tabNames[input_type[1]] = text
+                self.shared_data.tab_names[var] = text
 
-        dataSave(self.shared_data)
-        self.disablePopup()
+        save_data(self.shared_data)
+        self.close_popup()
 
         # self.update()
         self.update_position()
@@ -432,7 +440,7 @@ class PopupManager:
 
             defaultY = 5
 
-            adjustFontSize(button, key, 20)
+            adjust_font_size(button, key, 20)
             button.move(
                 defaultX + row * 35,
                 defaultY + column * 35,
@@ -471,7 +479,7 @@ class PopupManager:
                 """
             )
             button.setFixedSize(width, height)
-            adjustFontSize(button, key, 20)
+            adjust_font_size(button, key, 20)
             button.move(x, y)
             button.show()
 
@@ -568,13 +576,13 @@ class PopupManager:
                     5,
                     30,
                     30,
-                    isKeyUsing(self.shared_data, key),
+                    is_key_used(self.shared_data, key),
                 )
 
         row = 0
         column = 1
         for key in k1:
-            makePresetKey(key, row, column, isKeyUsing(self.shared_data, key))
+            makePresetKey(key, row, column, is_key_used(self.shared_data, key))
             row += 1
         makeKey(
             "Back",
@@ -591,12 +599,12 @@ class PopupManager:
             75,
             40,
             30,
-            isKeyUsing(self.shared_data, "Tab"),
+            is_key_used(self.shared_data, "Tab"),
         )
         row = 0
         column += 1
         for key in k2:
-            makePresetKey(key, row, column, isKeyUsing(self.shared_data, key))
+            makePresetKey(key, row, column, is_key_used(self.shared_data, key))
             row += 1
 
         makeKey(
@@ -610,7 +618,7 @@ class PopupManager:
         row = 0
         column += 1
         for key in k3:
-            makePresetKey(key, row, column, isKeyUsing(self.shared_data, key))
+            makePresetKey(key, row, column, is_key_used(self.shared_data, key))
             row += 1
         makeKey(
             "Enter",
@@ -618,7 +626,7 @@ class PopupManager:
             110,
             55,
             30,
-            isKeyUsing(self.shared_data, "Enter"),
+            is_key_used(self.shared_data, "Enter"),
         )
 
         makeKey(
@@ -627,12 +635,12 @@ class PopupManager:
             145,
             70,
             30,
-            isKeyUsing(self.shared_data, "Shift"),
+            is_key_used(self.shared_data, "Shift"),
         )
         row = 0
         column += 1
         for key in k4:
-            makePresetKey(key, row, column, isKeyUsing(self.shared_data, key))
+            makePresetKey(key, row, column, is_key_used(self.shared_data, key))
             row += 1
         makeKey(
             "Shift",
@@ -640,7 +648,7 @@ class PopupManager:
             145,
             70,
             30,
-            isKeyUsing(self.shared_data, "Shift"),
+            is_key_used(self.shared_data, "Shift"),
         )
 
         makeKey(
@@ -649,7 +657,7 @@ class PopupManager:
             180,
             45,
             30,
-            isKeyUsing(self.shared_data, "Ctrl"),
+            is_key_used(self.shared_data, "Ctrl"),
         )
         makeImageKey(
             "Window",
@@ -657,7 +665,7 @@ class PopupManager:
             180,
             45,
             30,
-            convertResourcePath("resources\\image\\window.png"),
+            convert_resource_path("resources\\image\\window.png"),
             32,
             0,
             True,
@@ -668,7 +676,7 @@ class PopupManager:
             180,
             45,
             30,
-            isKeyUsing(self.shared_data, "Alt"),
+            is_key_used(self.shared_data, "Alt"),
         )
         makeKey(
             "Space",
@@ -676,7 +684,7 @@ class PopupManager:
             180,
             145,
             30,
-            isKeyUsing(self.shared_data, "Space"),
+            is_key_used(self.shared_data, "Space"),
         )
         makeKey(
             "Alt",
@@ -684,7 +692,7 @@ class PopupManager:
             180,
             45,
             30,
-            isKeyUsing(self.shared_data, "Alt"),
+            is_key_used(self.shared_data, "Alt"),
         )
         makeImageKey(
             "Window",
@@ -692,7 +700,7 @@ class PopupManager:
             180,
             45,
             30,
-            convertResourcePath("resources\\image\\window.png"),
+            convert_resource_path("resources\\image\\window.png"),
             32,
             0,
             True,
@@ -711,7 +719,7 @@ class PopupManager:
             180,
             45,
             30,
-            isKeyUsing(self.shared_data, "Ctrl"),
+            is_key_used(self.shared_data, "Ctrl"),
         )
 
         k5 = [
@@ -727,7 +735,7 @@ class PopupManager:
                     5 + 35 * i1,
                     30,
                     30,
-                    isKeyUsing(self.shared_data, j2),
+                    is_key_used(self.shared_data, j2),
                 )
 
         makeImageKey(
@@ -736,10 +744,10 @@ class PopupManager:
             145,
             30,
             30,
-            convertResourcePath("resources\\image\\arrow.png"),
+            convert_resource_path("resources\\image\\arrow.png"),
             16,
             0,
-            isKeyUsing(self.shared_data, "Up"),
+            is_key_used(self.shared_data, "Up"),
         )
         makeImageKey(
             "Left",
@@ -747,10 +755,10 @@ class PopupManager:
             180,
             30,
             30,
-            convertResourcePath("resources\\image\\arrow.png"),
+            convert_resource_path("resources\\image\\arrow.png"),
             16,
             270,
-            isKeyUsing(self.shared_data, "Left"),
+            is_key_used(self.shared_data, "Left"),
         )
         makeImageKey(
             "Down",
@@ -758,10 +766,10 @@ class PopupManager:
             180,
             30,
             30,
-            convertResourcePath("resources\\image\\arrow.png"),
+            convert_resource_path("resources\\image\\arrow.png"),
             16,
             180,
-            isKeyUsing(self.shared_data, "Down"),
+            is_key_used(self.shared_data, "Down"),
         )
         makeImageKey(
             "Right",
@@ -769,16 +777,16 @@ class PopupManager:
             180,
             30,
             30,
-            convertResourcePath("resources\\image\\arrow.png"),
+            convert_resource_path("resources\\image\\arrow.png"),
             16,
             90,
-            isKeyUsing(self.shared_data, "Right"),
+            is_key_used(self.shared_data, "Right"),
         )
 
     ## 시작키 설정용 가상키보드 키 클릭시 실행
     def onStartKeyPopupKeyboardClick(self, key, disabled):
         if self.shared_data.is_activated:
-            self.disablePopup()
+            self.close_popup()
             self.make_notice_popup("MacroIsRunning")
             return
 
@@ -792,16 +800,16 @@ class PopupManager:
             return
 
         self.master.get_sidebar().buttonInputStartKey.setText(key)
-        self.shared_data.inputStartKey = key
-        self.shared_data.startKey = key
+        self.shared_data.start_key_input = key
+        self.shared_data.start_key = key
 
-        dataSave(self.shared_data)
-        self.disablePopup()
+        save_data(self.shared_data)
+        self.close_popup()
 
     ## 링크스킬 단축키용 가상키보드 키 클릭시 실행
     def onLinkSkillKeyPopupKeyboardClick(self, key, disabled, data):
         if self.shared_data.is_activated:
-            self.disablePopup()
+            self.close_popup()
             self.make_notice_popup("MacroIsRunning")
             return
 
@@ -814,7 +822,7 @@ class PopupManager:
         if disabled:
             return
 
-        self.disablePopup()
+        self.close_popup()
 
         data["key"] = key
         data["keyType"] = 1
@@ -823,7 +831,7 @@ class PopupManager:
     ## 스킬 단축키용 가상키보드 키 클릭시 실행
     def onSkillKeyPopupKeyboardClick(self, key, disabled, num):
         if self.shared_data.is_activated:
-            self.disablePopup()
+            self.close_popup()
             self.make_notice_popup("MacroIsRunning")
             return
 
@@ -837,11 +845,11 @@ class PopupManager:
             return
 
         self.master.get_main_ui().equipped_skill_keys[num].setText(key)
-        adjustFontSize(self.master.get_main_ui().equipped_skill_keys[num], key, 24)
-        self.shared_data.skillKeys[num] = key
+        adjust_font_size(self.master.get_main_ui().equipped_skill_keys[num], key, 24)
+        self.shared_data.skill_keys[num] = key
 
-        dataSave(self.shared_data)
-        self.disablePopup()
+        save_data(self.shared_data)
+        self.close_popup()
 
     def update_position(self):
         for i, j in enumerate(self.shared_data.active_error_popup):
@@ -860,25 +868,23 @@ class PopupManager:
         self.settingPopupFrame.setStyleSheet(
             "background-color: white; border-radius: 10px;"
         )
-        self.settingPopupFrame.setFixedSize(
-            130, 5 + 35 * len(self.shared_data.SERVER_LIST)
-        )
+        self.settingPopupFrame.setFixedSize(130, 5 + 35 * len(self.shared_data.SERVERS))
         self.settingPopupFrame.move(25, 240)
         self.settingPopupFrame.setGraphicsEffect(CustomShadowEffect(0, 5, 30, 150))
         self.settingPopupFrame.show()
 
-        for i in range(len(self.shared_data.SERVER_LIST)):
+        for i in range(len(self.shared_data.SERVERS)):
             self.settingServerButton = QPushButton(
-                self.shared_data.SERVER_LIST[i], self.settingPopupFrame
+                self.shared_data.SERVERS[i], self.settingPopupFrame
             )
-            self.settingServerButton.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
+            self.settingServerButton.setFont(CustomFont(12))
             self.settingServerButton.clicked.connect(
                 partial(lambda x: self.onServerPopupClick(x), i)
             )
             self.settingServerButton.setStyleSheet(
                 f"""
                             QPushButton {{
-                                background-color: {"white" if i != self.shared_data.serverID else "#dddddd"}; border-radius: 10px;
+                                background-color: {"white" if i != self.shared_data.server_ID else "#dddddd"}; border-radius: 10px;
                             }}
                             QPushButton:hover {{
                                 background-color: #cccccc;
@@ -894,11 +900,11 @@ class PopupManager:
     ## 사이드바 서버 목록 팝업창 클릭시 실행
     def onServerPopupClick(self, num):
         if self.shared_data.is_activated:
-            self.disablePopup()
+            self.close_popup()
             self.make_notice_popup("MacroIsRunning")
             return
 
-        self.disablePopup()
+        self.close_popup()
 
     ## 사이드바 설정 - 직업 클릭
     def make_job_popup(self):
@@ -909,25 +915,25 @@ class PopupManager:
             "background-color: white; border-radius: 10px;"
         )
         self.settingPopupFrame.setFixedSize(
-            130, 5 + 35 * len(self.shared_data.JOB_LIST[self.shared_data.serverID])
+            130, 5 + 35 * len(self.shared_data.JOBS[self.shared_data.server_ID])
         )
         self.settingPopupFrame.move(145, 240)
         self.settingPopupFrame.setGraphicsEffect(CustomShadowEffect(0, 5, 30, 150))
         self.settingPopupFrame.show()
 
-        for i in range(len(self.shared_data.JOB_LIST[self.shared_data.serverID])):
+        for i in range(len(self.shared_data.JOBS[self.shared_data.server_ID])):
             self.settingJobButton = QPushButton(
-                self.shared_data.JOB_LIST[self.shared_data.serverID][i],
+                self.shared_data.JOBS[self.shared_data.server_ID][i],
                 self.settingPopupFrame,
             )
-            self.settingJobButton.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
+            self.settingJobButton.setFont(CustomFont(12))
             self.settingJobButton.clicked.connect(
                 partial(lambda x: self.onJobPopupClick(x), i)
             )
             self.settingJobButton.setStyleSheet(
                 f"""
                             QPushButton {{
-                                background-color: {"white" if i != self.shared_data.jobID else "#dddddd"}; border-radius: 10px;
+                                background-color: {"white" if i != self.shared_data.job_ID else "#dddddd"}; border-radius: 10px;
                             }}
                             QPushButton:hover {{
                                 background-color: #cccccc;
@@ -943,35 +949,43 @@ class PopupManager:
     ## 사이드바 직업 목록 팝업창 클릭시 실행
     def onJobPopupClick(self, num):
         if self.shared_data.is_activated:
-            self.disablePopup()
+            self.close_popup()
             self.make_notice_popup("MacroIsRunning")
             return
 
-        if self.shared_data.jobID != num:
-            self.shared_data.jobID = num
-            self.shared_data.equipped_skills = [-1, -1, -1, -1, -1, -1]
-            self.shared_data.skill_priority = [0] * 8
-            self.shared_data.link_skills = []
+        job_name = self.shared_data.JOBS[self.shared_data.server_ID][num]
 
-            self.master.sidebar.buttonJobList.setText(
-                self.shared_data.JOB_LIST[self.shared_data.serverID][num]
+        if self.shared_data.job_ID != job_name:
+            self.shared_data.job_ID = job_name
+
+            for i in range(len(self.shared_data.equipped_skills)):
+                self.shared_data.equipped_skills[i] = ""
+
+            set_var_to_ClassVar(
+                self.shared_data.skill_priority,
+                {i: 0 for i in get_every_skills(self.shared_data)},
             )
+            self.shared_data.link_skills.clear()
 
-            for i in range(8):
-                self.shared_data.comboCount[i] = (  # type: ignore
-                    self.shared_data.SKILL_COMBO_COUNT_LIST[self.shared_data.serverID][
-                        self.shared_data.jobID
-                    ][i]
-                )
+            self.master.sidebar.buttonJobList.setText(job_name)
+
+            for skill in get_available_skills(self.shared_data):
+                self.shared_data.combo_count[skill] = get_skill_details(
+                    self.shared_data, skill
+                )["max_combo_count"]
 
             for i in range(8):
                 self.master.get_main_ui().equippable_skill_buttons[i].setIcon(
-                    QIcon(get_skill_pixmap(self.shared_data, i))
+                    QIcon(
+                        get_skill_pixmap(
+                            self.shared_data, get_available_skills(self.shared_data)[i]
+                        )
+                    )
                 )
                 self.master.get_main_ui().equippable_skill_names[i].setText(
-                    self.shared_data.SKILL_NAME_LIST[self.shared_data.serverID][
-                        self.shared_data.jobID
-                    ][i]
+                    self.shared_data.skill_data[self.shared_data.server_ID]["jobs"][
+                        self.shared_data.job_ID
+                    ]["skills"][i]
                 )
 
             for i in range(6):
@@ -985,18 +999,20 @@ class PopupManager:
 
             self.master.get_main_ui().update_position()
 
-            dataSave(self.shared_data)
-        self.disablePopup()
+            save_data(self.shared_data)
+        self.close_popup()
 
     ## 스킬 사용설정 -> 콤보 횟수 클릭
     def onSkillComboCountsClick(self, num):
-        combo = self.shared_data.SKILL_COMBO_COUNT_LIST[self.shared_data.serverID][
-            self.shared_data.jobID
-        ][num]
+        skill_name = get_available_skills(self.shared_data)[num]
+
+        combo = get_skill_details(self.shared_data, skill_name)["max_combo_count"]
+
         if self.shared_data.active_popup == "SkillComboCounts":
-            self.disablePopup()
+            self.close_popup()
             return
-        self.disablePopup()
+
+        self.close_popup()
         self.activatePopup("SkillComboCounts")
 
         self.settingPopupFrame = QFrame(self.master.get_sidebar().frame)
@@ -1014,7 +1030,7 @@ class PopupManager:
             button.clicked.connect(
                 partial(lambda x: self.onSkillComboCountsPopupClick(x), (num, i))
             )
-            button.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
+            button.setFont(CustomFont(12))
             button.setFixedSize(32, 32)
             button.move(36 * i - 32, 4)
             button.show()
@@ -1023,13 +1039,17 @@ class PopupManager:
     def onSkillComboCountsPopupClick(self, var):
         num, count = var
 
-        self.shared_data.comboCount[num] = count
+        skill_name = get_available_skills(self.shared_data)[num]
+
+        self.shared_data.combo_count[skill_name] = count
         self.master.get_sidebar().settingSkillComboCounts[num].setText(
-            f"{count} / {self.shared_data.SKILL_COMBO_COUNT_LIST[self.shared_data.serverID][self.shared_data.jobID][num]}"
+            f"{count} / {get_skill_details(
+            self.shared_data, skill_name
+        )["max_combo_count"]}"
         )
 
-        dataSave(self.shared_data)
-        self.disablePopup()
+        save_data(self.shared_data)
+        self.close_popup()
 
     def change_link_skill_type(self, var: tuple[dict, int]) -> None:
         """
@@ -1040,7 +1060,7 @@ class PopupManager:
         num: int = var[1]
 
         if self.shared_data.active_popup == "editLinkSkillType":
-            self.disablePopup()
+            self.close_popup()
             return
 
         self.activatePopup("editLinkSkillType")
@@ -1060,7 +1080,9 @@ class PopupManager:
                 QIcon(
                     get_skill_pixmap(self.shared_data, i)
                     if i in self.shared_data.equipped_skills
-                    else get_skill_pixmap(self.shared_data, i, "off")
+                    else get_skill_pixmap(
+                        self.shared_data, get_available_skills(self.shared_data)[i], -2
+                    )
                 )
             )
             button.setIconSize(QSize(40, 40))
@@ -1081,13 +1103,14 @@ class PopupManager:
         data, num = var
 
         if self.shared_data.active_popup == "editLinkSkillCount":
-            self.disablePopup()
+            self.close_popup()
             return
         self.activatePopup("editLinkSkillCount")
 
-        count = self.shared_data.SKILL_COMBO_COUNT_LIST[self.shared_data.serverID][
-            self.shared_data.jobID
-        ][data["skills"][num][0]]
+        count = get_skill_details(
+            self.shared_data,
+            data["skills"][num]["name"],
+        )["max_combo_count"]
 
         self.settingPopupFrame = QFrame(self.master.get_sidebar().frame)
         self.settingPopupFrame.setStyleSheet(
@@ -1100,7 +1123,7 @@ class PopupManager:
 
         for i in range(1, count + 1):
             button = QPushButton(str(i), self.settingPopupFrame)
-            button.setFont(QFont("나눔스퀘어라운드 ExtraBold", 12))
+            button.setFont(CustomFont(12))
             button.clicked.connect(
                 partial(
                     lambda x: self.master.get_sidebar().onLinkSkillCountPopupClick(x),
