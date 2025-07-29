@@ -30,8 +30,6 @@ import sys
 from functools import partial
 from typing import TYPE_CHECKING
 
-import matplotlib.pyplot as plt
-
 from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtGui import QPixmap, QPainter, QIcon
 from PyQt6.QtWidgets import (
@@ -213,10 +211,6 @@ class SimUI:
 
         [i.deleteLater() for i in self.sim_main_frame.findChildren(QWidget)]
         self.shared_data.sim_page_type = 0
-
-        # plt 그래프 모두 닫기
-        plt.close("all")
-        plt.clf()
 
     def make_simul_page4(self) -> None:
         """

@@ -2,9 +2,6 @@ from __future__ import annotations
 
 import os
 
-import matplotlib.pyplot as plt
-from matplotlib import font_manager as fm
-
 from typing import TYPE_CHECKING
 
 from PyQt6.QtGui import QFontDatabase
@@ -94,11 +91,6 @@ def set_default_fonts() -> None:
     QFontDatabase.addApplicationFont(
         convert_resource_path("resources\\font\\NotoSansKR-Regular.ttf")
     )
-
-    font_path = convert_resource_path("resources\\font\\NotoSansKR-Regular.ttf")
-    fm.fontManager.addfont(font_path)
-    prop = fm.FontProperties(fname=font_path)
-    plt.rcParams["font.family"] = prop.get_name()
 
     # print(QFontDatabase.families())
 
