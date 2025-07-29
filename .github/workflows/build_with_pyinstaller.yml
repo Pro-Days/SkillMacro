@@ -15,4 +15,4 @@ jobs:
           spec: 'SkillMacro.py'
           requirements: 'requirements.txt'
           upload_exe_with_name: 'SkillMacro'
-          options: -F, -w, --upx-dir ".\upx", -i ".\app\resources\image\icon.ico", --add-data "app;app"
+          options: -F, -w, -i ".\app\resources\image\icon.ico", --add-data "app;app"
