@@ -643,9 +643,13 @@ def getSimulatedSKillList(
 
     # 스킬 사용 가능 횟수 : [3, 2, 2, 1, 3, 3]
     available_skill_counts: list[int] = [
-        get_skill_details(
-            shared_data=shared_data, skill_name=shared_data.equipped_skills[i]
-        )["max_combo_count"]
+        (
+            get_skill_details(
+                shared_data=shared_data, skill_name=shared_data.equipped_skills[i]
+            )["max_combo_count"]
+            if shared_data.equipped_skills[i]
+            else 0
+        )
         for i in range(shared_data.USABLE_SKILL_COUNT[shared_data.server_ID])
     ]
 
@@ -694,6 +698,10 @@ def getSimulatedSKillList(
 
         # 스킬 쿨타임
         for slot in range(shared_data.USABLE_SKILL_COUNT[shared_data.server_ID]):  # 0~6
+            # 스킬이 장착되어있지 않으면 continue
+            if not shared_data.equipped_skills[slot]:
+                continue
+
             # 스킬 사용해서 쿨타임 기다리는 중이면
             if (
                 available_skill_counts[slot]
@@ -742,7 +750,7 @@ def getSimulatedSKillList(
         # 현재 시간 증가
         elapsed_time += int(shared_data.UNIT_TIME * 1000)
 
-    used_skills = [skill for skill in used_skills if skill.time <= 61000]
+    used_skills = [skill for skill in used_skills if skill.time <= 60000]
 
     # 1초 이내에 같은 스킬 사용 => 콤보
     for num, skill in enumerate(used_skills):

@@ -6,7 +6,6 @@ from .misc import (
     adjust_font_size,
     get_available_skills,
     convert_resource_path,
-    set_var_to_ClassVar,
 )
 from .shared_data import UI_Variable
 from .simulate_macro import randSimulate, detSimulate, get_req_stats
@@ -27,6 +26,7 @@ from .get_character_data import get_character_info, get_character_card_data
 
 import requests
 import os
+import sys
 from functools import partial
 from typing import TYPE_CHECKING
 
@@ -293,9 +293,9 @@ class SimUI:
         self.sim_main_frame.setFixedHeight(
             self.sim2_ui.analysis_frame.y()
             + self.sim2_ui.analysis_frame.height()
-            + self.ui_var.sim_mainFrameMargin,
+            + self.ui_var.sim_mainFrameMargin
         )
-        [i.show() for i in self.parent.findChildren(QWidget)]
+        # [i.show() for i in self.parent.findChildren(QWidget)]
 
         self.update_position()
 
@@ -748,6 +748,7 @@ class Sim2UI:
         self.power_frame.setStyleSheet(
             "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
         )
+        self.power_frame.show()
 
         self.power_title = Title(self.power_frame, "전투력")
         self.power_labels = PowerLabels(self.power_frame, self.shared_data, str_powers)
@@ -794,6 +795,7 @@ class Sim2UI:
         self.analysis_frame.setStyleSheet(
             "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
         )
+        self.analysis_frame.show()
 
         self.analysis_title = Title(self.analysis_frame, "분석")
         self.analysis_details = [
@@ -830,16 +832,18 @@ class Sim2UI:
         self.dpsGraph_frame.setStyleSheet(
             "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
         )
+        self.dpsGraph_frame.show()
 
-        sums = [sum([i.damage for i in j]) for j in results]
+        sums: list[float] = [sum([i.damage for i in j]) for j in results]
 
-        self.dpsGraph = DpsDistributionCanvas(
+        self.dpmGraph: DpsDistributionCanvas = DpsDistributionCanvas(
             self.dpsGraph_frame, sums
         )  # 시뮬레이션 결과
-        self.dpsGraph.move(5, 5)
-        self.dpsGraph.resize(
-            self.ui_var.sim_dps_width - 10, self.ui_var.sim_dps_height - 10
+        self.dpmGraph.move(20, 20)
+        self.dpmGraph.resize(
+            self.ui_var.sim_dps_width - 40, self.ui_var.sim_dps_height - 40
         )
+        self.dpmGraph.show()
 
         ## 스킬 비율
         self.skillRatioGraph_frame = QFrame(self.analysis_frame)
@@ -856,6 +860,7 @@ class Sim2UI:
         self.skillRatioGraph_frame.setStyleSheet(
             "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
         )
+        self.skillRatioGraph_frame.show()
 
         ratio_data: list[float] = [
             sum([i.damage for i in resultDet if i.skill_name == skill_name])
@@ -871,6 +876,7 @@ class Sim2UI:
             self.ui_var.sim_skillRatio_width - 20,
             self.ui_var.sim_skillRatio_height - 20,
         )
+        self.skillRatioGraph.show()
 
         ## 시간 경과에 따른 피해량
         self.dmgTime_frame = QFrame(self.analysis_frame)
@@ -886,6 +892,7 @@ class Sim2UI:
         self.dmgTime_frame.setStyleSheet(
             "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
         )
+        self.dmgTime_frame.show()
 
         data = {
             "time": times,
@@ -896,11 +903,15 @@ class Sim2UI:
             ],
             "min": [min([j[i] for j in dps_list]) for i in range(timeStepCount + 1)],
         }
-        self.dmgTime = DMGCanvas(self.dmgTime_frame, data, "time")  # 시뮬레이션 결과
-        self.dmgTime.move(5, 5)
+
+        self.dmgTime = DMGCanvas(
+            self.dmgTime_frame, data, "시간 경과에 따른 피해량"
+        )  # 시뮬레이션 결과
+        self.dmgTime.move(20, 20)
         self.dmgTime.resize(
-            self.ui_var.sim_dmg_width - 10, self.ui_var.sim_dmg_height - 10
+            self.ui_var.sim_dmg_width - 40, self.ui_var.sim_dmg_height - 40
         )
+        self.dmgTime.show()
 
         ## 누적 피해량
         self.totalDmg_frame = QFrame(self.analysis_frame)
@@ -917,6 +928,7 @@ class Sim2UI:
         self.totalDmg_frame.setStyleSheet(
             "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
         )
+        self.totalDmg_frame.show()
 
         total_list = []
         for dps in dps_list:
@@ -929,20 +941,22 @@ class Sim2UI:
             sum([j[i] for j in total_list]) / len(total_list)
             for i in range(timeStepCount + 1)
         ]
+        # 각 시간대별 최대, 평균, 최소 피해량
         data = {
             "time": times,
-            "max": total_list[sums.index(max(sums))],
+            "max": [max([j[i] for j in total_list]) for i in range(timeStepCount + 1)],
             "mean": means,
-            "min": total_list[sums.index(min(sums))],
+            "min": [min([j[i] for j in total_list]) for i in range(timeStepCount + 1)],
         }
 
         self.totalDmg = DMGCanvas(
-            self.totalDmg_frame, data, "cumulative"
+            self.totalDmg_frame, data, "누적 피해량"
         )  # 시뮬레이션 결과
-        self.totalDmg.move(5, 5)
+        self.totalDmg.move(20, 20)
         self.totalDmg.resize(
-            self.ui_var.sim_dmg_width - 10, self.ui_var.sim_dmg_height - 10
+            self.ui_var.sim_dmg_width - 40, self.ui_var.sim_dmg_height - 40
         )
+        self.totalDmg.show()
 
         ## 스킬별 누적 기여도
         self.skillContribute_frame = QFrame(self.analysis_frame)
@@ -959,6 +973,7 @@ class Sim2UI:
         self.skillContribute_frame.setStyleSheet(
             "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
         )
+        self.skillContribute_frame.show()
 
         skillsData = []
         for skill_name in self.shared_data.equipped_skills + ["평타"]:
@@ -987,7 +1002,7 @@ class Sim2UI:
         # for i in range(7):
         #     data_normalized.append([skillsData[i][j] / totalData[j] for j in range(timeStepCount)])
         data_normalized = [
-            [skillsData[i][j] / totalData[j] for j in range(timeStepCount + 1)]
+            [skillsData[i][j] / totalData[j] * 100 for j in range(timeStepCount + 1)]
             for i in range(7)
         ]
 
@@ -998,17 +1013,17 @@ class Sim2UI:
 
         data = {
             "time": times,
-            "skills_normalized": data_normalized,
-            "skills_sum": data_cumsum,
+            "data": data_normalized,
         }
         self.skillContribute = SkillContributionCanvas(
-            self.skillContribute_frame, data, self.shared_data.equipped_skills
+            self.skillContribute_frame, data, self.shared_data.equipped_skills.copy()
         )  # 시뮬레이션 결과
-        self.skillContribute.move(5, 5)
+        self.skillContribute.move(20, 20)
         self.skillContribute.resize(
-            self.ui_var.sim_dmg_width - 10,
-            self.ui_var.sim_dmg_height - 10,
+            self.ui_var.sim_dmg_width - 40,
+            self.ui_var.sim_dmg_height - 40,
         )
+        self.skillContribute.show()
 
 
 class Sim3UI:
@@ -2467,6 +2482,7 @@ class PowerLabels:
 
         for i in range(4):
             frame = QFrame(mainframe)
+            frame.show()
 
             label = QLabel(shared_data.POWER_TITLES[i], frame)
             label.setStyleSheet(
@@ -2474,6 +2490,7 @@ class PowerLabels:
             )
             label.setFont(CustomFont(14))
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            label.show()
 
             number = QLabel(texts[i], frame)
             number.setStyleSheet(
@@ -2481,6 +2498,7 @@ class PowerLabels:
             )
             number.setFont(CustomFont(font_size))
             number.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            number.show()
 
             self.frames.append(frame)
             self.labels.append(label)
@@ -2495,6 +2513,7 @@ class AnalysisDetails:
         self.frame.setStyleSheet(
             "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-top-left-radius: 0px; border-top-right-radius: 6px; border-bottom-left-radius: 0px; border-bottom-right-radius: 6px; }"
         )
+        self.frame.show()
 
         self.color = QFrame(self.frame)
         self.color.setGeometry(
@@ -2503,6 +2522,7 @@ class AnalysisDetails:
             ui_var.sim_analysis_color_W,
             ui_var.sim_analysis_frame_H,
         )
+        self.color.show()
 
         self.title = QLabel(analysis.title, self.frame)
         self.title.setGeometry(
@@ -2516,6 +2536,7 @@ class AnalysisDetails:
         )
         self.title.setFont(CustomFont(14))
         self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.title.show()
 
         self.number = QLabel(analysis.value, self.frame)
         self.number.setGeometry(
@@ -2529,6 +2550,7 @@ class AnalysisDetails:
         )
         self.number.setFont(CustomFont(18))
         self.number.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.number.show()
 
         self.detail_frames = []
         self.detail_labels = []
@@ -2552,6 +2574,7 @@ class AnalysisDetails:
             detail_frame.setStyleSheet(
                 "QFrame { background-color: transparent; border: 0px solid; }"
             )
+            detail_frame.show()
 
             detail_title = QLabel(details[i], detail_frame)
             detail_title.setGeometry(
@@ -2565,6 +2588,7 @@ class AnalysisDetails:
             )
             detail_title.setFont(CustomFont(8))
             detail_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            detail_title.show()
 
             detail_number = QLabel(analysis.get_data_from_str(details[i]), detail_frame)
             detail_number.setGeometry(
@@ -2578,6 +2602,7 @@ class AnalysisDetails:
             )
             detail_number.setFont(CustomFont(8))
             detail_number.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            detail_number.show()
 
             self.detail_frames.append(detail_frame)
             self.detail_labels.append(detail_title)
@@ -2723,6 +2748,7 @@ class Title:
         self.frame.setStyleSheet(
             "QFrame { background-color: rgb(255, 255, 255); border: none; border-bottom: 1px solid #bbbbbb; }"
         )
+        self.frame.show()
 
         self.label = QLabel(text, self.frame)
         self.label.setGeometry(
@@ -2732,3 +2758,4 @@ class Title:
             ui_var.sim_label_H,
         )
         self.label.setFont(CustomFont(16))
+        self.label.show()
