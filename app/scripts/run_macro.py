@@ -17,30 +17,26 @@ if TYPE_CHECKING:
 print_info = False  # 디버깅용
 
 
+"""
+is_pressed -> on_press으로 변경하기
+
+"""
+
+
 def checking_kb_thread(shared_data: SharedData) -> NoReturn:
     while True:
-        key: int | str = kb.read_key()
-
-        if isinstance(key, int):
-            continue
-
-        convertedKey: str = (
-            shared_data.KEY_DICT[key] if key in shared_data.KEY_DICT else key
-        )
-
-        # 링크스킬에 사용되는 키 리스트
-        linkKeys: list[str] = [
-            link_skill["key"]
-            for link_skill in shared_data.link_skills
-            if link_skill["keyType"] == "on"
-        ]
-
         # 매크로 실행중일 때 키보드 입력이 있으면 잠수 시간 초기화
-        if shared_data.is_activated:
+        if shared_data.is_activated and kb.is_pressed():  # type: ignore
             shared_data.afk_started_time = time.time()
 
         # 매크로 시작/중지
-        if convertedKey == shared_data.start_key:
+        key: str = (
+            shared_data.KEY_DICT[shared_data.start_key]
+            if shared_data.start_key in shared_data.KEY_DICT
+            else shared_data.start_key
+        )
+        if kb.is_pressed(key):
+            # if convertedKey == shared_data.start_key:
             if shared_data.is_activated:  # On -> Off
                 shared_data.is_activated = False
 
@@ -61,11 +57,15 @@ def checking_kb_thread(shared_data: SharedData) -> NoReturn:
 
             time.sleep(0.5 * shared_data.SLEEP_COEFFICIENT_NORMAL)
 
+            # 다음 루프 실행
+            continue
+
         # 연계스킬 사용
-        elif convertedKey in linkKeys and not shared_data.is_activated:
+        if not shared_data.is_activated:
             for link_skill in shared_data.link_skills:
                 # 연계스킬 키가 눌렸다면
-                if convertedKey == link_skill["key"]:
+                if kb.is_pressed(shared_data.KEY_DICT[link_skill["key"]]):
+                    # if convertedKey == link_skill["key"]:
                     # 연계스킬에 사용되는 스킬 이름들
                     skills: list[str] = [
                         skill["name"] for skill in link_skill["skills"]
