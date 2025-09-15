@@ -264,7 +264,7 @@ class MainWindow(QWidget):
 
         self.show()
 
-        # self.change_layout(1)
+        self.change_layout(1)
 
     def tick(self) -> None:  # main_ui로 이동
         """

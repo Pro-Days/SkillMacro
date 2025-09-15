@@ -2,54 +2,76 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 
+from PyQt6.QtWidgets import QWidget
+
+import numpy
+
 
 class DpsDistributionCanvas(FigureCanvas):
 
-    def __init__(self, parent, data):
+    def __init__(self, parent: QWidget, data: list[float]) -> None:
+        # init
         self.fig, self.ax = plt.subplots()
         super().__init__(self.fig)
+
+        # 부모 위젯 설정
         self.setParent(parent)
-        self.data = data
-        self._cids = []  # 이벤트 연결 ID를 저장할 리스트
+
+        # 데이터 저장
+        self.data: list[float] = data
+
+        # 그래프 그리기
         self.plot()
 
-    def plot(self):
-        self.colors = {
+    def plot(self) -> None:
+        self.colors: dict[str, str] = {
             "median": "#4070FF",
             "center5": "#75A2FC",
             "cursor": "#BAD0FD",
             "normal": "#F38181",
         }
 
-        n_bins = 15
-        counts, bins = self.custom_histogram(self.data, n_bins)
-        bin_width = 0.9 * (bins[1] - bins[0])
+        # 막대 개수
+        self.n_bins = 15
+
+        # 히스토그램 데이터 생성
+        counts, bins = numpy.histogram(self.data, bins=self.n_bins)
+        # counts, bins = self.custom_histogram()
+
+        # 막대 너비
+        bin_width: float = 0.9 * (bins[1] - bins[0])
+
+        # 막대 그래프 그리기
         bars = self.ax.bar(bins[:-1], counts, width=bin_width, align="edge", bottom=0)
 
-        # Customizing the plot similar to the image
+        # 타이틀 설정
         self.ax.set_title("DPM 분포")
+
+        # y축 눈금을 정수로 설정
         self.ax.yaxis.set_major_locator(mtick.MaxNLocator(integer=True))
-        # self.ax.set_xlabel("DPS")
+        # self.ax.set_xlabel("DPM")
         # self.ax.set_ylabel("반복 횟수")
 
+        # 테두리 제거
         self.ax.spines["top"].set_visible(False)
         self.ax.spines["right"].set_visible(False)
         self.ax.spines["left"].set_visible(False)
 
+        # 배경색 설정
         self.ax.set_facecolor("#F8F8F8")
         self.fig.set_facecolor("#F8F8F8")
 
-        # Change colors of the bars
+        # 막대 색상 설정
         for bar in bars:
             bar.set_facecolor(self.colors["normal"])
 
-        # Center 5 bars
-        center_start = len(bars) // 2 - 2
+        # 중앙 5개 막대 색상 변경
+        center_start = 5
         for i in range(center_start, center_start + 5):
             bars[i].set_facecolor(self.colors["center5"])
 
-        # Highest bar
-        median_idx = self.find_median_index(self.data, bins)
+        # 중앙값 막대 색상 변경
+        median_idx: int = self.find_median_index(bins)
         bars[median_idx].set_facecolor(self.colors["median"])
 
         # Create the annotation
@@ -127,55 +149,60 @@ class DpsDistributionCanvas(FigureCanvas):
         self.mpl_connect("figure_leave_event", on_figure_leave)
         self.draw()
 
-    def calculate_median(self, data):
-        """
-        Calculate the median of a list of numbers without using numpy.
-        """
-        sorted_data = sorted(data)
-        n = len(sorted_data)
+    # def calculate_median(self, data):
+    #     """
+    #     Calculate the median of a list of numbers without using numpy.
+    #     """
+    #     sorted_data = sorted(data)
+    #     n = len(sorted_data)
 
-        if n % 2 == 1:  # Odd number of elements
-            return sorted_data[n // 2]
-        else:  # Even number of elements
-            mid1, mid2 = sorted_data[n // 2 - 1], sorted_data[n // 2]
-            return (mid1 + mid2) / 2
+    #     if n % 2 == 1:  # Odd number of elements
+    #         return sorted_data[n // 2]
+    #     else:  # Even number of elements
+    #         mid1, mid2 = sorted_data[n // 2 - 1], sorted_data[n // 2]
+    #         return (mid1 + mid2) / 2
 
-    def custom_digitize(self, value, bins):
-        """
-        Find the index of the bin into which the value falls.
-        Equivalent to numpy.digitize.
-        """
-        for idx, b in enumerate(bins):
-            if value <= b:
-                return idx
-        return len(bins)
+    # def custom_digitize(self, value, bins) -> int:
+    #     """
+    #     Find the index of the bin into which the value falls.
+    #     Equivalent to numpy.digitize.
+    #     """
+    #     for idx, b in enumerate(bins):
+    #         if value <= b:
+    #             return idx
+    #     return len(bins)
 
-    def find_median_index(self, data, bins):
+    def find_median_index(self, bins) -> int:
         """
-        Find the index of the bin where the median of data falls.
+        중앙값이 속하는 막대의 인덱스를 반환
         """
-        median_val = self.calculate_median(data)
-        median_idx = self.custom_digitize(median_val, bins) - 1
+
+        # 중앙값 계산
+        median_val: float = float(numpy.median(self.data))
+
+        # 중앙값이 속하는 막대 인덱스 계산
+        median_idx: int = int(numpy.digitize(median_val, bins)) - 1
+
         return median_idx
 
-    def custom_histogram(self, data, n_bins):
-        """
-        Create a histogram with specified number of bins without using numpy.
-        """
-        min_val, max_val = min(data), max(data)
-        bin_width = (max_val - min_val) / n_bins
-        bins = [min_val + i * bin_width for i in range(n_bins + 1)]
-        counts = [0] * n_bins
+    # def custom_histogram(self):
+    #     """
+    #     numpy
+    #     """
+    #     min_val, max_val = min(self.data), max(self.data)
+    #     bin_width = (max_val - min_val) / self.n_bins
+    #     bins = [min_val + i * bin_width for i in range(self.n_bins + 1)]
+    #     counts = [0] * self.n_bins
 
-        for value in data:
-            for i in range(n_bins):
-                if bins[i] <= value < bins[i + 1]:
-                    counts[i] += 1
-                    break
-            if value == max_val:  # Include the rightmost edge
-                counts[-1] += 1
+    #     for value in self.data:
+    #         for i in range(self.n_bins):
+    #             if bins[i] <= value < bins[i + 1]:
+    #                 counts[i] += 1
+    #                 break
+    #         if value == max_val:  # Include the rightmost edge
+    #             counts[-1] += 1
 
-        return counts, bins
+    #     return counts, bins
 
     def wheelEvent(self, event):
         """Override wheelEvent to propagate to the parent widget."""

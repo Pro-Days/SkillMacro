@@ -831,7 +831,7 @@ class Sim2UI:
             "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
         )
 
-        sums = [sum([i.damage for i in j]) for j in results]
+        sums: list[float] = [sum([i.damage for i in j]) for j in results]
 
         self.dpsGraph = DpsDistributionCanvas(
             self.dpsGraph_frame, sums
