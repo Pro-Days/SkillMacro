@@ -25,8 +25,10 @@ is_pressed -> on_press으로 변경하기
 def checking_kb_thread(shared_data: SharedData) -> NoReturn:
     while True:
         # 매크로 실행중일 때 키보드 입력이 있으면 잠수 시간 초기화
-        if shared_data.is_activated and kb.is_pressed():  # type: ignore
-            shared_data.afk_started_time = time.time()
+        # if shared_data.is_activated and kb.is_pressed("a"):  # type: ignore
+        #     shared_data.afk_started_time = time.time()
+
+        # print(kb.is_pressed("a"))
 
         # 매크로 시작/중지
         # print(shared_data.KEY_DICT.get(shared_data.start_key, shared_data.start_key))

@@ -30,8 +30,6 @@ import sys
 from functools import partial
 from typing import TYPE_CHECKING
 
-# import matplotlib.pyplot as plt
-
 from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtGui import QPixmap, QPainter, QIcon
 from PyQt6.QtWidgets import (
@@ -191,7 +189,7 @@ class SimUI:
         # self.sim_mainScrollArea.setPalette(self.backPalette)
         self.sim_main_ScrollArea.show()
 
-        # self.make_simul_page1()
+        self.make_simul_page1()
 
     def remove_simul_widgets(self) -> None:
         """
@@ -213,10 +211,6 @@ class SimUI:
 
         [i.deleteLater() for i in self.sim_main_frame.findChildren(QWidget)]
         self.shared_data.sim_page_type = 0
-
-        # plt.close("all")
-        print("clf")
-        # plt.clf()
 
     def make_simul_page4(self) -> None:
         """
@@ -2482,6 +2476,7 @@ class PowerLabels:
 
         for i in range(4):
             frame = QFrame(mainframe)
+            frame.show()
 
             label = QLabel(shared_data.POWER_TITLES[i], frame)
             label.setStyleSheet(
@@ -2489,6 +2484,7 @@ class PowerLabels:
             )
             label.setFont(CustomFont(14))
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            label.show()
 
             number = QLabel(texts[i], frame)
             number.setStyleSheet(
@@ -2496,6 +2492,7 @@ class PowerLabels:
             )
             number.setFont(CustomFont(font_size))
             number.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            number.show()
 
             self.frames.append(frame)
             self.labels.append(label)
@@ -2510,6 +2507,7 @@ class AnalysisDetails:
         self.frame.setStyleSheet(
             "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-top-left-radius: 0px; border-top-right-radius: 6px; border-bottom-left-radius: 0px; border-bottom-right-radius: 6px; }"
         )
+        self.frame.show()
 
         self.color = QFrame(self.frame)
         self.color.setGeometry(
@@ -2518,6 +2516,7 @@ class AnalysisDetails:
             ui_var.sim_analysis_color_W,
             ui_var.sim_analysis_frame_H,
         )
+        self.color.show()
 
         self.title = QLabel(analysis.title, self.frame)
         self.title.setGeometry(
@@ -2531,6 +2530,7 @@ class AnalysisDetails:
         )
         self.title.setFont(CustomFont(14))
         self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.title.show()
 
         self.number = QLabel(analysis.value, self.frame)
         self.number.setGeometry(
@@ -2544,6 +2544,7 @@ class AnalysisDetails:
         )
         self.number.setFont(CustomFont(18))
         self.number.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.number.show()
 
         self.detail_frames = []
         self.detail_labels = []
@@ -2567,6 +2568,7 @@ class AnalysisDetails:
             detail_frame.setStyleSheet(
                 "QFrame { background-color: transparent; border: 0px solid; }"
             )
+            detail_frame.show()
 
             detail_title = QLabel(details[i], detail_frame)
             detail_title.setGeometry(
@@ -2580,6 +2582,7 @@ class AnalysisDetails:
             )
             detail_title.setFont(CustomFont(8))
             detail_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            detail_title.show()
 
             detail_number = QLabel(analysis.get_data_from_str(details[i]), detail_frame)
             detail_number.setGeometry(
@@ -2593,6 +2596,7 @@ class AnalysisDetails:
             )
             detail_number.setFont(CustomFont(8))
             detail_number.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            detail_number.show()
 
             self.detail_frames.append(detail_frame)
             self.detail_labels.append(detail_title)
@@ -2738,6 +2742,7 @@ class Title:
         self.frame.setStyleSheet(
             "QFrame { background-color: rgb(255, 255, 255); border: none; border-bottom: 1px solid #bbbbbb; }"
         )
+        self.frame.show()
 
         self.label = QLabel(text, self.frame)
         self.label.setGeometry(
@@ -2747,3 +2752,4 @@ class Title:
             ui_var.sim_label_H,
         )
         self.label.setFont(CustomFont(16))
+        self.label.show()
