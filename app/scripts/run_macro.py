@@ -19,7 +19,6 @@ print_info = False  # 디버깅용
 
 """
 is_pressed -> on_press으로 변경하기
-
 """
 
 
@@ -30,55 +29,68 @@ def checking_kb_thread(shared_data: SharedData) -> NoReturn:
             shared_data.afk_started_time = time.time()
 
         # 매크로 시작/중지
-        key: str = (
-            shared_data.KEY_DICT[shared_data.start_key]
-            if shared_data.start_key in shared_data.KEY_DICT
-            else shared_data.start_key
-        )
-        if kb.is_pressed(key):
-            # if convertedKey == shared_data.start_key:
-            if shared_data.is_activated:  # On -> Off
-                shared_data.is_activated = False
+        # print(shared_data.KEY_DICT.get(shared_data.start_key, shared_data.start_key))
+        # if kb.is_pressed(
+        #     shared_data.KEY_DICT.get(shared_data.start_key, shared_data.start_key)
+        # ):
+        #     # if convertedKey == shared_data.start_key:
+        #     # On -> Off
+        #     if shared_data.is_activated:
+        #         shared_data.is_activated = False
 
-                # self.setWindowIcon(self.icon)  # 윈도우 아이콘 변경 (자주 변경하면 중지됨)
+        #         # self.setWindowIcon(self.icon)  # 윈도우 아이콘 변경 (자주 변경하면 중지됨)
 
-            else:  # Off -> On
-                shared_data.is_activated = True
+        #     # Off -> On
+        #     else:
+        #         shared_data.is_activated = True
 
-                # self.setWindowIcon(self.icon_on)  # 윈도우 아이콘 변경 (자주 변경하면 중지됨)
+        #         # self.setWindowIcon(self.icon_on)  # 윈도우 아이콘 변경 (자주 변경하면 중지됨)
 
-                # 매크로 번호 증가
-                shared_data.loop_num += 1
-                shared_data.selected_item_slot = -1
-                Thread(
-                    target=running_macro_thread,
-                    args=[shared_data, shared_data.loop_num],
-                ).start()
+        #         # 매크로 번호 증가
+        #         shared_data.loop_num += 1
 
-            time.sleep(0.5 * shared_data.SLEEP_COEFFICIENT_NORMAL)
+        #         # 선택된 아이템 슬롯을 모르는 상태(-1)로 설정
+        #         shared_data.selected_item_slot = -1
 
-            # 다음 루프 실행
-            continue
+        #         # 매크로 쓰레드 시작
+        #         Thread(
+        #             target=running_macro_thread,
+        #             args=[shared_data, shared_data.loop_num],
+        #         ).start()
+
+        #     # 매크로 실행/중지 이후에는 잠시 키 입력 무시
+        #     time.sleep(0.5 * shared_data.SLEEP_COEFFICIENT_NORMAL)
+
+        #     # 다음 루프로 넘어감
+        #     # 키가 중복될 수 없기 때문에 다음 코드가 작동될 수 없음
+        #     continue
 
         # 연계스킬 사용
-        if not shared_data.is_activated:
-            for link_skill in shared_data.link_skills:
-                # 연계스킬 키가 눌렸다면
-                if kb.is_pressed(shared_data.KEY_DICT[link_skill["key"]]):
-                    # if convertedKey == link_skill["key"]:
-                    # 연계스킬에 사용되는 스킬 이름들
-                    skills: list[str] = [
-                        skill["name"] for skill in link_skill["skills"]
-                    ]
+        # for link_skill in shared_data.link_skills:
+        #     # 연계스킬 키가 눌렸다면
+        #     if kb.is_pressed(
+        #         shared_data.KEY_DICT.get(link_skill["key"], link_skill["key"])
+        #     ):
+        #         # if convertedKey == link_skill["key"]:
+        #         # 연계스킬에 사용되는 스킬 이름들
+        #         skills: list[str] = [skill["name"] for skill in link_skill["skills"]]
 
-                    # 연계스킬에 필요한 스킬이 모두 장착되어 있는지 확인
-                    if all(skill in shared_data.equipped_skills for skill in skills):
-                        Thread(
-                            target=useLinkSkill,
-                            args=[shared_data, link_skill, shared_data.loop_num],
-                        ).start()
+        #         # 연계스킬에 필요한 스킬이 모두 장착되어 있는지 확인
+        #         # link_skill 클래스와 skill 클래스로 바꾼다면 더 깔끔해질 듯
+        #         if all(skill in shared_data.equipped_skills for skill in skills):
+        #             # 연계스킬 쓰레드 시작
+        #             Thread(
+        #                 target=useLinkSkill,
+        #                 args=[shared_data, link_skill, shared_data.loop_num],
+        #             ).start()
+        #             break
+        # else:
+        #     # 연계스킬도 실행되지 않았으면 0.05초 슬립
+        #     time.sleep(0.05 * shared_data.SLEEP_COEFFICIENT_NORMAL)
+        #     continue
 
-            time.sleep(0.25 * shared_data.SLEEP_COEFFICIENT_NORMAL)
+        # 연계스킬이 실행되었으면 0.25초 슬립
+        time.sleep(0.25 * shared_data.SLEEP_COEFFICIENT_NORMAL)
 
 
 def running_macro_thread(shared_data: SharedData, loop_num: int) -> None:
