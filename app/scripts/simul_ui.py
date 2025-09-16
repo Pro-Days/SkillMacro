@@ -896,7 +896,9 @@ class Sim2UI:
             ],
             "min": [min([j[i] for j in dps_list]) for i in range(timeStepCount + 1)],
         }
-        self.dmgTime = DMGCanvas(self.dmgTime_frame, data, "time")  # 시뮬레이션 결과
+        self.dmgTime = DMGCanvas(
+            self.dmgTime_frame, data, "시간 경과에 따른 피해량"
+        )  # 시뮬레이션 결과
         self.dmgTime.move(5, 5)
         self.dmgTime.resize(
             self.ui_var.sim_dmg_width - 10, self.ui_var.sim_dmg_height - 10
@@ -937,7 +939,7 @@ class Sim2UI:
         }
 
         self.totalDmg = DMGCanvas(
-            self.totalDmg_frame, data, "cumulative"
+            self.totalDmg_frame, data, "누적 피해량"
         )  # 시뮬레이션 결과
         self.totalDmg.move(5, 5)
         self.totalDmg.resize(
