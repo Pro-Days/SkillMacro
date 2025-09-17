@@ -26,7 +26,7 @@ python==3.12.3
 pyinstaller==6.9.0
 (onefile은 2, installer는 0이지만 설치하면 6)
 
-pip install -r requirements_m.txt
+pip install -r requirements.txt
 
 pip freeze > requirements_temp.txt
 pip uninstall -r requirements_temp.txt -y
