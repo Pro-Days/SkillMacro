@@ -398,8 +398,8 @@ def simulateMacro(
         skill_levels_tuple=skill_levels_tuple,
     )
 
-    # print(attackDetails)
-    # print(buffDetails)
+    # print(attack_details)
+    # print(buff_details)
 
     # 공격 시뮬레이션 실행
     boss_attacks: list[SimAttack] = execute_simulation(
@@ -656,8 +656,9 @@ def getSimulatedSKillList(
     # 스킬 레벨
     skill_levels: dict[str, int] = dict(skill_levels_tuple)
 
-    # 60초보다 더 길게 시뮬레이션
-    while elapsed_time <= 62000:  # 65000
+    # 60초 미만 시뮬레이션
+    # 0초를 포함하기 때문
+    while elapsed_time < 60000:
         add_task_list(shared_data)
 
         # 스킬 사용
@@ -750,7 +751,7 @@ def getSimulatedSKillList(
         # 현재 시간 증가
         elapsed_time += int(shared_data.UNIT_TIME * 1000)
 
-    used_skills = [skill for skill in used_skills if skill.time <= 60000]
+    used_skills = [skill for skill in used_skills if skill.time < 60000]
 
     # 1초 이내에 같은 스킬 사용 => 콤보
     for num, skill in enumerate(used_skills):
@@ -788,7 +789,7 @@ def getSimulatedSKillList(
     # 1초는 임시로 설정한 값이며, 실제 서버에서의 콤보 시간을 설정해야 함.
     # ms 단위로 사용
     delay: int = int((100 - cooltimeReduce) * 10 * 1)
-    for t in range(0, 61000, delay):
+    for t in range(0, 60000, delay):
         # 평타는 스킬 번호 -1로 설정
         used_skills.append(SimSkill(skill=-1, time=t, combo=0))
 

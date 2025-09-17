@@ -178,7 +178,7 @@ class DpsDistributionCanvas(FigureCanvas):
 
                 self.annotation.xy = (event.xdata, event.ydata)
                 self.annotation.set_text(
-                    f"상한 {bin_val + (self.bins[1]-self.bins[0]):.1f}\n하한 {bin_val:.1f}\n횟수 {int(count_val)}"
+                    f"상한 {bin_val + (self.bins[1]-self.bins[0]):,.1f}\n하한 {bin_val:,.1f}\n횟수 {int(count_val):,}"
                 )
 
                 if not self.annotation._visible:
@@ -257,7 +257,9 @@ class DpsDistributionCanvas(FigureCanvas):
 
 
 class SkillDpsRatioCanvas(FigureCanvas):
-    def __init__(self, parent: QWidget, data: list[float], skill_name: str) -> None:
+    def __init__(
+        self, parent: QWidget, data: list[float], skill_names: list[str]
+    ) -> None:
         # init
         fig, self.ax = plt.subplots()
         super().__init__(fig)
@@ -270,7 +272,7 @@ class SkillDpsRatioCanvas(FigureCanvas):
 
         # 데이터 저장
         self.data = data
-        self.skill_name = skill_name
+        self.skill_names: list[str] = skill_names
 
         # 그래프 그리기
         self.plot()
@@ -281,7 +283,7 @@ class SkillDpsRatioCanvas(FigureCanvas):
 
         # 레이블 설정
         labels: list[str] = [
-            f"{self.skill_name[i]}" for i, j in enumerate(self.data) if j and i != 6
+            f"{self.skill_names[i]}" for i, j in enumerate(self.data) if j and i != 6
         ] + ["평타"]
 
         # colors 설정: 나중에 색 추가해야함
@@ -329,9 +331,7 @@ class SkillDpsRatioCanvas(FigureCanvas):
 
 
 class DMGCanvas(FigureCanvas):
-    def __init__(
-        self, parent: QWidget, data: dict[str, list[float]], title: str
-    ) -> None:
+    def __init__(self, parent: QWidget, data: dict, title: str) -> None:
         # init
         fig, self.ax = plt.subplots()
         super().__init__(fig)
@@ -386,7 +386,7 @@ class DMGCanvas(FigureCanvas):
         self.ax.set_ylim(bottom=0)
 
         # x축 범위를 0~60으로 설정
-        self.ax.set_xlim(left=0, right=60)
+        self.ax.set_xlim(left=-0.5, right=60.5)
 
         # 범례 표시
         self.ax.legend()
@@ -480,7 +480,7 @@ class DMGCanvas(FigureCanvas):
         # 주석 업데이트
         # 텍스트를 먼저 설정
         self.annotation.set_text(
-            f"시간 {closest_x:.1f}\n최대 {max_val:.1f}\n평균 {mean_val:.1f}\n최소 {min_val:.1f}"
+            f"시간 {closest_x:.1f}\n최대 {max_val:,.1f}\n평균 {mean_val:,.1f}\n최소 {min_val:,.1f}"
         )
 
         # 주석 위치 설정
@@ -513,9 +513,7 @@ class DMGCanvas(FigureCanvas):
 
 
 class SkillContributionCanvas(FigureCanvas):
-    def __init__(
-        self, parent: QWidget, data: dict[str, list[list[float]]], names: list[str]
-    ) -> None:
+    def __init__(self, parent: QWidget, data: dict, names: list[str]) -> None:
         # init
         fig, self.ax = plt.subplots(figsize=(8, 6))
         super().__init__(fig)
@@ -633,6 +631,8 @@ class SkillContributionCanvas(FigureCanvas):
                 [],
                 "o",
                 color=color,
+                markeredgecolor="gray",
+                markeredgewidth=0.5,
                 markersize=6,
                 visible=False,
                 zorder=10,

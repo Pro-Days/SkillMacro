@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from app.scripts.custom_classes import SimAttack
+from app.scripts.shared_data import SharedData
+
 from .data_manager import save_data
 from .misc import (
     get_skill_pixmap,
@@ -696,45 +699,32 @@ class Sim1UI:
 
 
 class Sim2UI:
-    def __init__(self, parent, shared_data: SharedData):
-        self.shared_data = shared_data
-        self.parent = parent
+    def __init__(self, parent: QWidget, shared_data: SharedData) -> None:
+        self.shared_data: SharedData = shared_data
+        self.parent: QWidget = parent
 
         self.ui_var = UI_Variable()
 
         self.makeSim2UI()
 
-    def makeSim2UI(self):
+    def makeSim2UI(self) -> None:
         sim_result: SimResult = randSimulate(
             self.shared_data,
             self.shared_data.info_stats,
             self.shared_data.info_sim_details,
         )
-        powers = sim_result.powers
-        analysis = sim_result.analysis
-        resultDet = sim_result.deterministic_boss_attacks
-        results = sim_result.random_boss_attacks
-        str_powers = sim_result.str_powers
+        powers: list[float] = sim_result.powers
+        analysis: list[SimAnalysis] = sim_result.analysis
+        resultDet: list[SimAttack] = sim_result.deterministic_boss_attacks
+        results: list[list[SimAttack]] = sim_result.random_boss_attacks
+        str_powers: list[str] = sim_result.str_powers
 
         for i, power in enumerate(powers):
             self.shared_data.powers[i] = power
 
-        timeStep, timeStepCount = 1, 60  # 60초까지 시뮬레이션
-        times = [i * timeStep for i in range(timeStepCount + 1)]
-
-        dps_list = []
-        for result in results:
-            dps_list.append([0.0])
-            for i in range(timeStepCount):
-                dps_list[-1].append(
-                    sum(
-                        [
-                            j.damage
-                            for j in result
-                            if i * timeStep <= j.time < (i + 1) * timeStep
-                        ]
-                    )
-                )
+        # 60초까지 1초 간격 시뮬레이션
+        timeStep, timeStepCount = 1, 60
+        times: list[int] = [i * timeStep for i in range(timeStepCount + 1)]
 
         # 전투력
         self.power_frame = QFrame(self.parent)
@@ -831,10 +821,12 @@ class Sim2UI:
             "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
         )
 
-        sums: list[float] = [sum([i.damage for i in j]) for j in results]
+        sums_for_results: list[float] = [
+            sum([i.damage for i in result]) for result in results
+        ]
 
         self.dpsGraph = DpsDistributionCanvas(
-            self.dpsGraph_frame, sums
+            self.dpsGraph_frame, sums_for_results
         )  # 시뮬레이션 결과
         self.dpsGraph.move(5, 5)
         self.dpsGraph.resize(
@@ -858,7 +850,7 @@ class Sim2UI:
         )
 
         ratio_data: list[float] = [
-            sum([i.damage for i in resultDet if i.skill_name == skill_name])
+            sum([skill.damage for skill in resultDet if skill.skill_name == skill_name])
             for skill_name in self.shared_data.equipped_skills + ["평타"]
         ]
         # data = [round(total_dmgs[i] / sum(total_dmgs) * 100, 1) for i in range(7)]
@@ -887,14 +879,35 @@ class Sim2UI:
             "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
         )
 
+        dmg_sec_for_results: list[list[float]] = [
+            [0.0]
+            + [
+                sum(
+                    [
+                        j.damage
+                        for j in result
+                        if i * timeStep <= j.time < (i + 1) * timeStep
+                    ]
+                )
+                for i in range(timeStepCount)
+            ]
+            for result in results
+        ]
+
         data = {
             "time": times,
-            "max": [max([j[i] for j in dps_list]) for i in range(timeStepCount + 1)],
-            "mean": [
-                sum([j[i] for j in dps_list]) / len(dps_list)
+            "max": [
+                max([j[i] for j in dmg_sec_for_results])
                 for i in range(timeStepCount + 1)
             ],
-            "min": [min([j[i] for j in dps_list]) for i in range(timeStepCount + 1)],
+            "mean": [
+                sum([j[i] for j in dmg_sec_for_results]) / len(dmg_sec_for_results)
+                for i in range(timeStepCount + 1)
+            ],
+            "min": [
+                min([j[i] for j in dmg_sec_for_results])
+                for i in range(timeStepCount + 1)
+            ],
         }
         self.dmgTime = DMGCanvas(
             self.dmgTime_frame, data, "시간 경과에 따른 피해량"
@@ -920,22 +933,19 @@ class Sim2UI:
             "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
         )
 
-        total_list = []
-        for dps in dps_list:
-            total_list.append([])
-            for i in range(timeStepCount + 1):
-                total = sum([j for j in dps[: i + 1]])
-                total_list[-1].append(total)
-
-        means = [
-            sum([j[i] for j in total_list]) / len(total_list)
-            for i in range(timeStepCount + 1)
+        total_list: list[list[float]] = [
+            [sum([j for j in dmg_sec[: i + 1]]) for i in range(timeStepCount + 1)]
+            for dmg_sec in dmg_sec_for_results
         ]
+
         data = {
             "time": times,
-            "max": total_list[sums.index(max(sums))],
-            "mean": means,
-            "min": total_list[sums.index(min(sums))],
+            "max": [max([j[i] for j in total_list]) for i in range(timeStepCount + 1)],
+            "mean": [
+                sum([j[i] for j in total_list]) / len(total_list)
+                for i in range(timeStepCount + 1)
+            ],
+            "min": [min([j[i] for j in total_list]) for i in range(timeStepCount + 1)],
         }
 
         self.totalDmg = DMGCanvas(
@@ -962,38 +972,39 @@ class Sim2UI:
             "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
         )
 
-        skillsData = []
-        for skill_name in self.shared_data.equipped_skills + ["평타"]:
-            skillsData.append([])
-            for i in range(timeStepCount + 1):
-                skillsData[-1].append(
-                    sum(
-                        [
-                            j.damage
-                            for j in resultDet
-                            if j.skill_name == skill_name
-                            and j.time < (i + 1) * timeStep
-                        ]
-                    )
+        skillsData: list[list[float]] = [
+            [0.0]
+            + [
+                sum(
+                    [
+                        j.damage
+                        for j in resultDet
+                        if j.skill_name == skill_name and j.time < (i + 1) * timeStep
+                    ]
                 )
+                for i in range(timeStepCount)
+            ]
+            for skill_name in self.shared_data.equipped_skills + ["평타"]
+        ]
 
         # totalData = []
         # for i in range(timeStepCount):
         #     totalData.append(sum([j[2] for j in resultDet if j[1] < (i + 1) * timeStep]))
-        totalData = [
+        totalData: list[float] = [0.0] + [
             sum([j.damage for j in resultDet if j.time < (i + 1) * timeStep])
-            for i in range(timeStepCount + 1)
+            for i in range(timeStepCount)
         ]
 
         # data_normalized = []
         # for i in range(7):
         #     data_normalized.append([skillsData[i][j] / totalData[j] for j in range(timeStepCount)])
-        data_normalized = [
-            [skillsData[i][j] / totalData[j] for j in range(timeStepCount + 1)]
+        data_normalized: list[list[float]] = [
+            [0.0]
+            + [skillsData[i][j] / totalData[j] for j in range(1, timeStepCount + 1)]
             for i in range(7)
         ]
 
-        data_cumsum = [[0.0 for _ in row] for row in data_normalized]
+        data_cumsum: list[list[float]] = [[0.0 for _ in row] for row in data_normalized]
         for i in range(len(data_normalized)):
             for j in range(len(data_normalized[0])):
                 data_cumsum[i][j] = sum(row[j] for row in data_normalized[: i + 1])
