@@ -1,4 +1,4 @@
-name: Package exe with PyInstaller - Windows
+name: Package exe with PyInstaller - No UPX
 
 on:
   workflow_dispatch:
