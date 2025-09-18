@@ -18,68 +18,67 @@ print_info = False  # 디버깅용
 
 
 def checking_kb_thread(shared_data: SharedData) -> NoReturn:
-    pass
-    # while True:
-    #     key: int | str = kb.read_key()
+    while True:
+        key: int | str = kb.read_key()
 
-    #     if isinstance(key, int):
-    #         continue
+        if isinstance(key, int):
+            continue
 
-    #     convertedKey: str = (
-    #         shared_data.KEY_DICT[key] if key in shared_data.KEY_DICT else key
-    #     )
+        convertedKey: str = (
+            shared_data.KEY_DICT[key] if key in shared_data.KEY_DICT else key
+        )
 
-    #     # 링크스킬에 사용되는 키 리스트
-    #     linkKeys: list[str] = [
-    #         link_skill["key"]
-    #         for link_skill in shared_data.link_skills
-    #         if link_skill["keyType"] == "on"
-    #     ]
+        # 링크스킬에 사용되는 키 리스트
+        linkKeys: list[str] = [
+            link_skill["key"]
+            for link_skill in shared_data.link_skills
+            if link_skill["keyType"] == "on"
+        ]
 
-    #     # 매크로 실행중일 때 키보드 입력이 있으면 잠수 시간 초기화
-    #     if shared_data.is_activated:
-    #         shared_data.afk_started_time = time.time()
+        # 매크로 실행중일 때 키보드 입력이 있으면 잠수 시간 초기화
+        if shared_data.is_activated:
+            shared_data.afk_started_time = time.time()
 
-    #     # 매크로 시작/중지
-    #     if convertedKey == shared_data.start_key:
-    #         if shared_data.is_activated:  # On -> Off
-    #             shared_data.is_activated = False
+        # 매크로 시작/중지
+        if convertedKey == shared_data.start_key:
+            if shared_data.is_activated:  # On -> Off
+                shared_data.is_activated = False
 
-    #             # self.setWindowIcon(self.icon)  # 윈도우 아이콘 변경 (자주 변경하면 중지됨)
+                # self.setWindowIcon(self.icon)  # 윈도우 아이콘 변경 (자주 변경하면 중지됨)
 
-    #         else:  # Off -> On
-    #             shared_data.is_activated = True
+            else:  # Off -> On
+                shared_data.is_activated = True
 
-    #             # self.setWindowIcon(self.icon_on)  # 윈도우 아이콘 변경 (자주 변경하면 중지됨)
+                # self.setWindowIcon(self.icon_on)  # 윈도우 아이콘 변경 (자주 변경하면 중지됨)
 
-    #             # 매크로 번호 증가
-    #             shared_data.loop_num += 1
-    #             shared_data.selected_item_slot = -1
-    #             Thread(
-    #                 target=running_macro_thread,
-    #                 args=[shared_data, shared_data.loop_num],
-    #             ).start()
+                # 매크로 번호 증가
+                shared_data.loop_num += 1
+                shared_data.selected_item_slot = -1
+                Thread(
+                    target=running_macro_thread,
+                    args=[shared_data, shared_data.loop_num],
+                ).start()
 
-    #         time.sleep(0.5 * shared_data.SLEEP_COEFFICIENT_NORMAL)
+            time.sleep(0.5 * shared_data.SLEEP_COEFFICIENT_NORMAL)
 
-    #     # 연계스킬 사용
-    #     elif convertedKey in linkKeys and not shared_data.is_activated:
-    #         for link_skill in shared_data.link_skills:
-    #             # 연계스킬 키가 눌렸다면
-    #             if convertedKey == link_skill["key"]:
-    #                 # 연계스킬에 사용되는 스킬 이름들
-    #                 skills: list[str] = [
-    #                     skill["name"] for skill in link_skill["skills"]
-    #                 ]
+        # 연계스킬 사용
+        elif convertedKey in linkKeys and not shared_data.is_activated:
+            for link_skill in shared_data.link_skills:
+                # 연계스킬 키가 눌렸다면
+                if convertedKey == link_skill["key"]:
+                    # 연계스킬에 사용되는 스킬 이름들
+                    skills: list[str] = [
+                        skill["name"] for skill in link_skill["skills"]
+                    ]
 
-    #                 # 연계스킬에 필요한 스킬이 모두 장착되어 있는지 확인
-    #                 if all(skill in shared_data.equipped_skills for skill in skills):
-    #                     Thread(
-    #                         target=useLinkSkill,
-    #                         args=[shared_data, link_skill, shared_data.loop_num],
-    #                     ).start()
+                    # 연계스킬에 필요한 스킬이 모두 장착되어 있는지 확인
+                    if all(skill in shared_data.equipped_skills for skill in skills):
+                        Thread(
+                            target=useLinkSkill,
+                            args=[shared_data, link_skill, shared_data.loop_num],
+                        ).start()
 
-    #         time.sleep(0.25 * shared_data.SLEEP_COEFFICIENT_NORMAL)
+            time.sleep(0.25 * shared_data.SLEEP_COEFFICIENT_NORMAL)
 
 
 def running_macro_thread(shared_data: SharedData, loop_num: int) -> None:
