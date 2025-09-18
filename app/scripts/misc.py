@@ -84,19 +84,12 @@ def set_default_fonts() -> None:
     기본 폰트 설정
     """
 
-    # "나눔스퀘어라운드 ExtraBold"
-    QFontDatabase.addApplicationFont(
-        convert_resource_path("resources\\font\\NSR_B.ttf")
-    )
-    QFontDatabase.addApplicationFont(
-        convert_resource_path("resources\\font\\NSR_EB.ttf")
-    )
-    QFontDatabase.addApplicationFont(
-        convert_resource_path("resources\\font\\NotoSansKR-Regular.ttf")
-    )
+    font_path: str = convert_resource_path("resources\\font\\NotoSansKR-Regular.ttf")
 
-    font_path = convert_resource_path("resources\\font\\NotoSansKR-Regular.ttf")
+    QFontDatabase.addApplicationFont(font_path)
+
     fm.fontManager.addfont(font_path)
+
     prop = fm.FontProperties(fname=font_path)
     plt.rcParams["font.family"] = prop.get_name()
 
