@@ -24,6 +24,7 @@ upx때문에 실행 속도가 느려지고, 바이러스로 오탐될 가능성�
 
 python==3.12.3
 pyinstaller==6.9.0
+6.9.0은 실행이 안됨. 6.16.0으로 업그레이드
 (onefile은 2, installer는 0이지만 설치하면 6)
 
 pip install -r requirements.txt

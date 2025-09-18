@@ -605,7 +605,7 @@ class SkillContributionCanvas(FigureCanvas):
         # y축 레이블 포맷 설정
         self.ax.yaxis.set_major_formatter(mtick.PercentFormatter(1.0))
         # x축 범위를 0부터 60으로 설정
-        self.ax.set_xlim(left=0, right=60)
+        self.ax.set_xlim(left=-0.5, right=60.5)
 
         # 범례 표시
         self.ax.legend()
