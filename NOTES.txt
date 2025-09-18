@@ -16,8 +16,11 @@ pyinstaller -w --clean -i="./resource/icon.ico" --add-data "resource;resource" S
 pyinstaller -F -w --clean -i="./app/resources/image/icon.ico" --add-data "app;app" SkillMacro.py
 pyinstaller -w --clean -i="./app/resources/image/icon.ico" --add-data "app;app" SkillMacro.py
 
+
 pyinstaller --upx-dir "upx" -F -w --clean -i="./app/resources/image/icon.ico" --add-data "app;app" SkillMacro.py
 pyinstaller --upx-dir "upx" -w --clean -i="./app/resources/image/icon.ico" --add-data "app;app" SkillMacro.py
+
+pyinstaller -F -w --clean -i="./app/resources/image/icon.ico" --add-data "app;app" --optimize 2 SkillMacro.py
 
 upx를 사용하지 않는 것도 고려해야함.
 upx때문에 실행 속도가 느려지고, 바이러스로 오탐될 가능성이 증가할 수 있음.
@@ -85,6 +88,10 @@ sidebar2의 스킬들을 장착한 스킬들만 표시되도록 변경
 시뮬레이션에서 결정론적인 수치들 계산하고, 나머지는 실시간으로 그래프 그리기
 
 누적 피해량에 스킬별로 색 채운 그래프
+
+QColorDialog 이용 -> 아이콘 색 변경
+
+python flag.optimize, pyinstaller optimize
 
 ---------
 
