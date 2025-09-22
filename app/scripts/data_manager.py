@@ -22,12 +22,17 @@ data_version = 3
 
 local_appdata: str = os.environ.get("LOCALAPPDATA", default="")
 
-data_path: str = os.path.join(local_appdata, "ProDays")
-file_dir: str = os.path.join(data_path, "SkillMacro.json")
-
-# 이전에 사용하던 경로 "C:\\PDFiles\\PDSkillMacro.json"
 data_path_legacy = "C:\\PDFiles"
 file_dir_legacy = "C:\\PDFiles\\PDSkillMacro.json"
+
+if local_appdata:
+    data_path: str = os.path.join(local_appdata, "ProDays")
+    file_dir: str = os.path.join(data_path, "SkillMacro.json")
+
+else:
+    # 이전에 사용하던 경로 "C:\\PDFiles\\PDSkillMacro.json"
+    data_path: str = data_path_legacy
+    file_dir: str = file_dir_legacy
 
 
 def load_data(shared_data: SharedData, num: int = -1) -> None:
@@ -36,7 +41,6 @@ def load_data(shared_data: SharedData, num: int = -1) -> None:
 
     :param shared_data: SharedData 인스턴스
     :param num: 탭 번호, -1이면 최근 탭
-
     """
 
     try:

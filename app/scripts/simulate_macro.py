@@ -280,10 +280,6 @@ def execute_simulation(
     return attacks
 
 
-def run_simulation_batch(batch_args) -> list[list[SimAttack]]:
-    return [execute_simulation(*args) for args in batch_args]
-
-
 # 최소, 최대, 평균, 표준편차 등을 계산하는 확률론적 시뮬레이션
 def randSimulate(
     shared_data: SharedData,
@@ -463,56 +459,28 @@ def simulateMacro(
 
     # 1000회 시뮬레이션 실행
     # 1000회일 경우 멀티프로세싱보다 단일쓰레드에서 실행하는 것이 빠름
-    random_boss_attacks: list[list[SimAttack]] = []
-    random_normal_attacks: list[list[SimAttack]] = []
-    for _ in range(1000):
-        random_boss_attacks.append(
-            execute_simulation(
-                shared_data=shared_data,
-                attack_details=attack_details,
-                buff_details=buff_details,
-                stats=stats,
-                is_boss=True,
-                mob_naegong=sim_details["BOSS_NAEGONG"],
-            )
+    random_boss_attacks: list[list[SimAttack]] = [
+        execute_simulation(
+            shared_data=shared_data,
+            attack_details=attack_details,
+            buff_details=buff_details,
+            stats=stats,
+            is_boss=True,
+            mob_naegong=sim_details["BOSS_NAEGONG"],
         )
-        random_normal_attacks.append(
-            execute_simulation(
-                shared_data=shared_data,
-                attack_details=attack_details,
-                buff_details=buff_details,
-                stats=stats,
-                is_boss=False,
-                mob_naegong=sim_details["NORMAL_NAEGONG"],
-            )
-        )
-
-    """
-    # 멀티프로세싱을 사용하여 시뮬레이션 실행
-    
-    iterations = 1000
-    batch_size = 100  # 한번에 처리할 작업 개수
-    num_processes = multiprocessing.cpu_count()
-
-    boss_args = [(attackDetails, buffDetails, stats, True, simInfo, naegongDiff) for _ in range(iterations)]
-    normal_args = [
-        (attackDetails, buffDetails, stats, False, simInfo, naegongDiff) for _ in range(iterations)
+        for _ in range(1000)
     ]
-
-    # 작업을 배치로 나눔
-    boss_batches = [boss_args[i : i + batch_size] for i in range(0, len(boss_args), batch_size)]
-    normal_batches = [normal_args[i : i + batch_size] for i in range(0, len(normal_args), batch_size)]
-
-    with multiprocessing.Pool(processes=num_processes) as pool:
-        simuls_boss = pool.map(runSimulBatch, boss_batches)
-        simuls_normal = pool.map(runSimulBatch, normal_batches)
-
-    # Flatten 결과 리스트
-    simuls_boss = [result for batch in simuls_boss for result in batch]
-    simuls_normal = [result for batch in simuls_normal for result in batch]
-    """
-
-    # print(f"실행 시간: {time.time() - start_time:.2f}초")
+    random_normal_attacks: list[list[SimAttack]] = [
+        execute_simulation(
+            shared_data=shared_data,
+            attack_details=attack_details,
+            buff_details=buff_details,
+            stats=stats,
+            is_boss=False,
+            mob_naegong=sim_details["NORMAL_NAEGONG"],
+        )
+        for _ in range(1000)
+    ]
 
     # 총 데미지 계산
     total_boss_damages: list[float] = [
@@ -525,32 +493,32 @@ def simulateMacro(
     ]
 
     # 보스 데미지 통계
-    min_boss_damage = min(total_boss_damages)
-    max_boss_damage = max(total_boss_damages)
-    std_boss_damage = calculate_std(total_boss_damages)
-    p25_boss_damage = calculate_percentile(total_boss_damages, 25)
-    p50_boss_damage = calculate_percentile(total_boss_damages, 50)
-    p75_boss_damage = calculate_percentile(total_boss_damages, 75)
+    min_boss_damage: float = min(total_boss_damages)
+    max_boss_damage: float = max(total_boss_damages)
+    std_boss_damage: float = calculate_std(total_boss_damages)
+    p25_boss_damage: float = calculate_percentile(total_boss_damages, 25)
+    p50_boss_damage: float = calculate_percentile(total_boss_damages, 50)
+    p75_boss_damage: float = calculate_percentile(total_boss_damages, 75)
 
     # 일반 데미지 통계
-    min_normal_damage = min(total_normal_damages)
-    max_normal_damage = max(total_normal_damages)
-    std_normal_damage = calculate_std(total_normal_damages)
-    p25_normal_damage = calculate_percentile(total_normal_damages, 25)
-    p50_normal_damage = calculate_percentile(total_normal_damages, 50)
-    p75_normal_damage = calculate_percentile(total_normal_damages, 75)
+    min_normal_damage: float = min(total_normal_damages)
+    max_normal_damage: float = max(total_normal_damages)
+    std_normal_damage: float = calculate_std(total_normal_damages)
+    p25_normal_damage: float = calculate_percentile(total_normal_damages, 25)
+    p50_normal_damage: float = calculate_percentile(total_normal_damages, 50)
+    p75_normal_damage: float = calculate_percentile(total_normal_damages, 75)
 
     # 시뮬레이션 결과 반환
     analysis: list[SimAnalysis] = [
         SimAnalysis(
             title="초당 보스피해량",
-            value=f"{int(total_boss_damage / 61)}",
-            min=f"{int(min_boss_damage / 61)}",
-            max=f"{int(max_boss_damage / 61)}",
-            std=f"{std_boss_damage / 61:.1f}",
-            p25=f"{int(p25_boss_damage / 61)}",
-            p50=f"{int(p50_boss_damage / 61)}",
-            p75=f"{int(p75_boss_damage / 61)}",
+            value=f"{int(total_boss_damage / 60)}",
+            min=f"{int(min_boss_damage / 60)}",
+            max=f"{int(max_boss_damage / 60)}",
+            std=f"{std_boss_damage / 60:.1f}",
+            p25=f"{int(p25_boss_damage / 60)}",
+            p50=f"{int(p50_boss_damage / 60)}",
+            p75=f"{int(p75_boss_damage / 60)}",
         ),
         SimAnalysis(
             title="총 보스피해량",
@@ -564,13 +532,13 @@ def simulateMacro(
         ),
         SimAnalysis(
             title="초당 피해량",
-            value=f"{int(total_normal_damage / 61)}",
-            min=f"{int(min_normal_damage / 61)}",
-            max=f"{int(max_normal_damage / 61)}",
-            std=f"{std_normal_damage / 61:.1f}",
-            p25=f"{int(p25_normal_damage / 61)}",
-            p50=f"{int(p50_normal_damage / 61)}",
-            p75=f"{int(p75_normal_damage / 61)}",
+            value=f"{int(total_normal_damage / 60)}",
+            min=f"{int(min_normal_damage / 60)}",
+            max=f"{int(max_normal_damage / 60)}",
+            std=f"{std_normal_damage / 60:.1f}",
+            p25=f"{int(p25_normal_damage / 60)}",
+            p50=f"{int(p50_normal_damage / 60)}",
+            p75=f"{int(p75_normal_damage / 60)}",
         ),
         SimAnalysis(
             title="총 피해량",

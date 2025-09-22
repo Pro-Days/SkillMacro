@@ -298,7 +298,7 @@ class SharedData:
     # 매크로 데이터 초기화
 
     # 최근에 선택된 프리셋 번호
-    recent_preset = 0
+    recent_preset: int = 0
 
     # 탭 이름들
     tab_names: ClassVar[list[str]] = []
@@ -414,7 +414,7 @@ class SharedData:
     info_skill_levels_counts: int = 8
     info_sim_details_counts: int = 3
 
-    def __get_hashable_representation__(self):
+    def __get_hashable_representation__(self) -> str:
         data_to_hash = (
             self.equipped_skills,
             self.server_ID,
