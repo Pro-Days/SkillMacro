@@ -20,15 +20,24 @@ pyinstaller -w --clean -i="./app/resources/image/icon.ico" --add-data "app;app" 
 pyinstaller --upx-dir "upx" -F -w --clean -i="./app/resources/image/icon.ico" --add-data "app;app" SkillMacro.py
 pyinstaller --upx-dir "upx" -w --clean -i="./app/resources/image/icon.ico" --add-data "app;app" SkillMacro.py
 
+# 기본
+pyinstaller -F -w --clean -i="./app/resources/image/icon.ico" --add-data "app;app" SkillMacro.py
+
+# optimize 옵션
 pyinstaller -F -w --clean -i="./app/resources/image/icon.ico" --add-data "app;app" --optimize 2 SkillMacro.py
+
+# optimize & upx
+pyinstaller --upx-dir "upx" -F -w --clean -i="./app/resources/image/icon.ico" --add-data "app;app" --optimize 2 SkillMacro.py
 
 upx를 사용하지 않는 것도 고려해야함.
 upx때문에 실행 속도가 느려지고, 바이러스로 오탐될 가능성이 증가할 수 있음.
 
 python==3.12.3
 pyinstaller==6.9.0
-6.9.0은 실행이 안됨. 6.16.0으로 업그레이드
 (onefile은 2, installer는 0이지만 설치하면 6)
+
+6.9.0은 실행이 안됨. 6.16.0으로 업그레이드
+=> 3/71
 
 pip install -r requirements.txt
 

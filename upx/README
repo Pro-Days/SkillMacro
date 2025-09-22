@@ -8,7 +8,7 @@
 
 
                     The Ultimate Packer for eXecutables
-   Copyright (c) 1996-2024 Markus Oberhumer, Laszlo Molnar & John Reiser
+   Copyright (c) 1996-2025 Markus Oberhumer, Laszlo Molnar & John Reiser
                            https://upx.github.io
 
 
@@ -85,9 +85,9 @@ THE FUTURE
 COPYRIGHT
 =========
 
-Copyright (C) 1996-2024 Markus Franz Xaver Johannes Oberhumer
-Copyright (C) 1996-2024 Laszlo Molnar
-Copyright (C) 2000-2024 John F. Reiser
+Copyright (C) 1996-2025 Markus Franz Xaver Johannes Oberhumer
+Copyright (C) 1996-2025 Laszlo Molnar
+Copyright (C) 2000-2025 John F. Reiser
 
 UPX is distributed with full source code under the terms of the
 GNU General Public License v2+; either under the pure GPLv2+ (see
