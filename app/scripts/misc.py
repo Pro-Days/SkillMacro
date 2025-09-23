@@ -106,6 +106,8 @@ def get_skill_pixmap(
     state == -1이면 해당 스킬의 최대 카운트 반환, -2이면 비활성화 아이콘 반환
     """
 
+    return QPixmap(convert_resource_path(f"resources\\image\\emptySkill.png"))
+
     if not skill_name:
         return QPixmap(convert_resource_path(f"resources\\image\\emptySkill.png"))
 

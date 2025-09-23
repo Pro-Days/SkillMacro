@@ -700,6 +700,7 @@ class SkillContributionCanvas(FigureCanvas):
                 f"{self.skill_names[i]} {self.data["skills_normalized"][i][index] * 100:.1f}%"
             )
 
+        # 인덱스가 바뀌었을 때만 텍스트 업데이트
         self.annotation.set_text(f"시간 {closest_x:.1f}\n\n" + "\n".join(values))
 
         # 주석 위치 설정
