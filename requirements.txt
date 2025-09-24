@@ -5,3 +5,4 @@ requests==2.32.3
 PyQt6==6.7.0
 pyqtgraph==0.13.7
 numpy==2.3.2
+pynput==1.8.1

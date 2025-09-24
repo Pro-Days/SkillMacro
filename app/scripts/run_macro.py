@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import copy
 import time
-import keyboard as kb
-import pyautogui as pag
+from pynput import keyboard, mouse
 from threading import Thread
 from typing import TYPE_CHECKING, NoReturn
+
+from PyQt6.QtCore import QThread, pyqtSignal
 
 from .misc import convert_skill_name_to_slot, get_skill_details, set_var_to_ClassVar
 
@@ -18,78 +19,136 @@ print_info = False  # 디버깅용
 
 
 """
-is_pressed -> on_press으로 변경하기
+pynput을 사용한 키보드 감지
 """
+
+# 전역 변수로 키 상태 추적
+pressed_keys = set()
+any_key_pressed = False
+
+
+def on_press(key):
+    global pressed_keys, any_key_pressed
+    try:
+        # 일반 키의 경우
+        if hasattr(key, "char") and key.char:
+            pressed_keys.add(key.char.lower())
+        else:
+            # 특수 키의 경우
+            pressed_keys.add(str(key).replace("Key.", ""))
+        any_key_pressed = True
+    except AttributeError:
+        # 알 수 없는 키의 경우
+        pressed_keys.add(str(key))
+        any_key_pressed = True
+
+
+def on_release(key):
+    global pressed_keys, any_key_pressed
+    try:
+        # 일반 키의 경우
+        if hasattr(key, "char") and key.char:
+            pressed_keys.discard(key.char.lower())
+        else:
+            # 특수 키의 경우
+            pressed_keys.discard(str(key).replace("Key.", ""))
+    except AttributeError:
+        # 알 수 없는 키의 경우
+        pressed_keys.discard(str(key))
+
+
+def is_key_pressed(key_name: str) -> bool:
+    """특정 키가 눌려있는지 확인"""
+    global pressed_keys
+    # 키 이름을 소문자로 변환하여 확인
+    key_lower = key_name.lower()
+
+    # 특수 키 매핑
+    special_keys = {
+        "space": "space",
+        "enter": "enter",
+        "shift": "shift",
+        "ctrl": "ctrl",
+        "alt": "alt",
+        "tab": "tab",
+        "up": "up",
+        "down": "down",
+        "left": "left",
+        "right": "right",
+        "page_up": "page_up",
+        "page_down": "page_down",
+    }
+
+    if key_lower in special_keys:
+        return special_keys[key_lower] in pressed_keys
+    else:
+        return key_lower in pressed_keys
 
 
 def checking_kb_thread(shared_data: SharedData) -> NoReturn:
-    while True:
-        # 매크로 실행중일 때 키보드 입력이 있으면 잠수 시간 초기화
-        # if shared_data.is_activated and kb.is_pressed("a"):  # type: ignore
-        #     shared_data.afk_started_time = time.time()
+    global any_key_pressed
 
-        # print(kb.is_pressed("a"))
+    # 키보드 리스너 시작
+    listener = keyboard.Listener(on_press=on_press, on_release=on_release)
+    listener.start()
+
+    while True:
+        # 매크로 실행중일 때 아무 키보드 입력이 있으면 잠수 시간 초기화
+        if shared_data.is_activated and any_key_pressed:
+            shared_data.afk_started_time = time.time()
+            any_key_pressed = False  # 플래그 리셋
 
         # 매크로 시작/중지
-        # print(shared_data.KEY_DICT.get(shared_data.start_key, shared_data.start_key))
-        # if kb.is_pressed(
-        #     shared_data.KEY_DICT.get(shared_data.start_key, shared_data.start_key)
-        # ):
-        #     # if convertedKey == shared_data.start_key:
-        #     # On -> Off
-        #     if shared_data.is_activated:
-        #         shared_data.is_activated = False
+        start_key = shared_data.KEY_DICT.get(
+            shared_data.start_key, shared_data.start_key
+        )
+        if is_key_pressed(start_key):
+            # On -> Off
+            if shared_data.is_activated:
+                shared_data.is_activated = False
 
-        #         # self.setWindowIcon(self.icon)  # 윈도우 아이콘 변경 (자주 변경하면 중지됨)
+            # Off -> On
+            else:
+                shared_data.is_activated = True
 
-        #     # Off -> On
-        #     else:
-        #         shared_data.is_activated = True
+                # 매크로 번호 증가
+                shared_data.loop_num += 1
 
-        #         # self.setWindowIcon(self.icon_on)  # 윈도우 아이콘 변경 (자주 변경하면 중지됨)
+                # 선택된 아이템 슬롯을 모르는 상태(-1)로 설정
+                shared_data.selected_item_slot = -1
 
-        #         # 매크로 번호 증가
-        #         shared_data.loop_num += 1
+                # 매크로 쓰레드 시작
+                Thread(
+                    target=running_macro_thread,
+                    args=[shared_data, shared_data.loop_num],
+                ).start()
 
-        #         # 선택된 아이템 슬롯을 모르는 상태(-1)로 설정
-        #         shared_data.selected_item_slot = -1
+            # 매크로 실행/중지 이후에는 잠시 키 입력 무시
+            time.sleep(0.5 * shared_data.SLEEP_COEFFICIENT_NORMAL)
 
-        #         # 매크로 쓰레드 시작
-        #         Thread(
-        #             target=running_macro_thread,
-        #             args=[shared_data, shared_data.loop_num],
-        #         ).start()
-
-        #     # 매크로 실행/중지 이후에는 잠시 키 입력 무시
-        #     time.sleep(0.5 * shared_data.SLEEP_COEFFICIENT_NORMAL)
-
-        #     # 다음 루프로 넘어감
-        #     # 키가 중복될 수 없기 때문에 다음 코드가 작동될 수 없음
-        #     continue
+            # 다음 루프로 넘어감
+            continue
 
         # 연계스킬 사용
-        # for link_skill in shared_data.link_skills:
-        #     # 연계스킬 키가 눌렸다면
-        #     if kb.is_pressed(
-        #         shared_data.KEY_DICT.get(link_skill["key"], link_skill["key"])
-        #     ):
-        #         # if convertedKey == link_skill["key"]:
-        #         # 연계스킬에 사용되는 스킬 이름들
-        #         skills: list[str] = [skill["name"] for skill in link_skill["skills"]]
+        for link_skill in shared_data.link_skills:
+            # 연계스킬 키가 눌렸다면
+            link_key = shared_data.KEY_DICT.get(link_skill["key"], link_skill["key"])
+            if link_key and is_key_pressed(link_key):
+                # 연계스킬에 사용되는 스킬 이름들
+                skills: list[str] = [skill["name"] for skill in link_skill["skills"]]
 
-        #         # 연계스킬에 필요한 스킬이 모두 장착되어 있는지 확인
-        #         # link_skill 클래스와 skill 클래스로 바꾼다면 더 깔끔해질 듯
-        #         if all(skill in shared_data.equipped_skills for skill in skills):
-        #             # 연계스킬 쓰레드 시작
-        #             Thread(
-        #                 target=useLinkSkill,
-        #                 args=[shared_data, link_skill, shared_data.loop_num],
-        #             ).start()
-        #             break
-        # else:
-        #     # 연계스킬도 실행되지 않았으면 0.05초 슬립
-        #     time.sleep(0.05 * shared_data.SLEEP_COEFFICIENT_NORMAL)
-        #     continue
+                # 연계스킬에 필요한 스킬이 모두 장착되어 있는지 확인
+                if all(skill in shared_data.equipped_skills for skill in skills):
+                    # 연계스킬 쓰레드 시작
+                    Thread(
+                        target=useLinkSkill,
+                        args=[shared_data, link_skill, shared_data.loop_num],
+                    ).start()
+                    break
+        else:
+            # 연계스킬도 실행되지 않았으면 0.05초 슬립
+            time.sleep(0.05 * shared_data.SLEEP_COEFFICIENT_NORMAL)
+            continue
 
         # 연계스킬이 실행되었으면 0.25초 슬립
         time.sleep(0.25 * shared_data.SLEEP_COEFFICIENT_NORMAL)
@@ -174,8 +233,11 @@ def running_macro_thread(shared_data: SharedData, loop_num: int) -> None:
 
 
 def clicking_mouse_thread(shared_data: SharedData, loop_num: int) -> None:
+    # pynput 마우스 컨트롤러 생성
+    mouse_controller = mouse.Controller()
+
     while shared_data.is_activated and shared_data.loop_num == loop_num:
-        pag.click()
+        mouse_controller.click(mouse.Button.left)
 
         time.sleep(shared_data.delay * 0.001)
 
@@ -406,14 +468,35 @@ def init_macro(shared_data: SharedData) -> None:
 
 
 def use_skill(shared_data: SharedData, loop_num: int) -> int:
+    # pynput 키보드 컨트롤러 생성
+    kbd_controller = keyboard.Controller()
 
     def press(key: str) -> None:
         if shared_data.is_activated and shared_data.loop_num == loop_num:
-            kb.press(key)
+            # 키 문자열을 pynput Key 객체로 변환
+            try:
+                if len(key) == 1:
+                    # 일반 문자
+                    kbd_controller.press(key)
+                    kbd_controller.release(key)
+                else:
+                    # 특수 키
+                    special_key = getattr(keyboard.Key, key.lower(), None)
+                    if special_key:
+                        kbd_controller.press(special_key)
+                        kbd_controller.release(special_key)
+                    else:
+                        # 알 수 없는 키는 문자로 처리
+                        kbd_controller.press(key)
+                        kbd_controller.release(key)
+            except Exception as e:
+                print(f"키 입력 오류: {key}, {e}")
 
     def click() -> None:
         if shared_data.is_activated and shared_data.loop_num == loop_num:
-            pag.click()
+            # pynput 마우스 컨트롤러 사용
+            mouse_controller = mouse.Controller()
+            mouse_controller.click(mouse.Button.left)
 
     def use(skill: int) -> None:
         # 스킬 스택이 모두 찬 상태일 때 쿨타임 시작
@@ -470,14 +553,12 @@ def use_skill(shared_data: SharedData, loop_num: int) -> int:
             press(key=key)
 
     # print(
-    #     f"{time.time() - self.startTime - pag.PAUSE if doClick else time.time() - self.startTime:.3f} - {skill}"
+    #     f"{time.time() - self.startTime - 0.1 if doClick else time.time() - self.startTime:.3f} - {skill}"
     # )
 
-    # 스킬 사용에 걸린 시간
+    # 스킬 사용에 걸린 시간 (pynput에는 PAUSE가 없음)
     sleeped_time: float = (
-        (shared_data.delay * 0.001 * shared_data.SLEEP_COEFFICIENT_NORMAL - pag.PAUSE)
-        if is_click
-        else shared_data.delay * 0.001 * shared_data.SLEEP_COEFFICIENT_NORMAL
+        shared_data.delay * 0.001 * shared_data.SLEEP_COEFFICIENT_NORMAL
     )
 
     time.sleep(sleeped_time)
@@ -486,13 +567,35 @@ def use_skill(shared_data: SharedData, loop_num: int) -> int:
 
 
 def useLinkSkill(shared_data: SharedData, num, loop_num: int) -> None:
+    # pynput 키보드 컨트롤러 생성
+    kbd_controller = keyboard.Controller()
+
     def press(key: str) -> None:
         if shared_data.loop_num == loop_num:
-            kb.press(key)
+            # 키 문자열을 pynput Key 객체로 변환
+            try:
+                if len(key) == 1:
+                    # 일반 문자
+                    kbd_controller.press(key)
+                    kbd_controller.release(key)
+                else:
+                    # 특수 키
+                    special_key = getattr(keyboard.Key, key.lower(), None)
+                    if special_key:
+                        kbd_controller.press(special_key)
+                        kbd_controller.release(special_key)
+                    else:
+                        # 알 수 없는 키는 문자로 처리
+                        kbd_controller.press(key)
+                        kbd_controller.release(key)
+            except Exception as e:
+                print(f"키 입력 오류: {key}, {e}")
 
     def click() -> None:
         if shared_data.loop_num == loop_num:
-            pag.click()
+            # pynput 마우스 컨트롤러 사용
+            mouse_controller = mouse.Controller()
+            mouse_controller.click(mouse.Button.left)
 
     def useSkill(slot: int) -> int:
         skill: int = task_list.pop(0)
@@ -780,3 +883,168 @@ def print_macro_info(shared_data: SharedData, brief=False) -> None:
             shared_data.link_skills_combo_requirements,
         )
         print("준비된 연계스킬리스트:", shared_data.prepared_link_skill_indices)
+
+
+class KeyboardMonitorThread(QThread):
+    """
+    QThread를 상속한 키보드 모니터링 클래스
+    """
+
+    # 시그널 정의
+    key_pressed = pyqtSignal(str)  # 키가 눌렸을 때
+    macro_toggle = pyqtSignal(bool)  # 매크로 상태 변경
+    link_skill_triggered = pyqtSignal(dict)  # 연계스킬 트리거
+
+    def __init__(self, shared_data: SharedData):
+        super().__init__()
+        self.shared_data: SharedData = shared_data
+        self.running = True
+
+        # 키 상태 추적 변수
+        self.pressed_keys = set()
+        self.any_key_pressed = False
+
+        # 키보드 리스너
+        self.listener = None
+
+    def on_press(self, key):
+        """키가 눌렸을 때 호출되는 콜백"""
+        try:
+            # 일반 키의 경우
+            if hasattr(key, "char") and key.char:
+                self.pressed_keys.add(key.char.lower())
+                self.key_pressed.emit(key.char.lower())
+            else:
+                # 특수 키의 경우
+                key_name = str(key).replace("Key.", "")
+                self.pressed_keys.add(key_name)
+                self.key_pressed.emit(key_name)
+            self.any_key_pressed = True
+        except AttributeError:
+            # 알 수 없는 키의 경우
+            key_name = str(key)
+            self.pressed_keys.add(key_name)
+            self.key_pressed.emit(key_name)
+            self.any_key_pressed = True
+
+    def on_release(self, key):
+        """키가 떼어졌을 때 호출되는 콜백"""
+        try:
+            # 일반 키의 경우
+            if hasattr(key, "char") and key.char:
+                self.pressed_keys.discard(key.char.lower())
+            else:
+                # 특수 키의 경우
+                self.pressed_keys.discard(str(key).replace("Key.", ""))
+        except AttributeError:
+            # 알 수 없는 키의 경우
+            self.pressed_keys.discard(str(key))
+
+    def is_key_pressed(self, key_name: str) -> bool:
+        """특정 키가 눌려있는지 확인"""
+        # 키 이름을 소문자로 변환하여 확인
+        key_lower = key_name.lower()
+
+        # 특수 키 매핑
+        special_keys = {
+            "space": "space",
+            "enter": "enter",
+            "shift": "shift",
+            "ctrl": "ctrl",
+            "alt": "alt",
+            "tab": "tab",
+            "up": "up",
+            "down": "down",
+            "left": "left",
+            "right": "right",
+            "page_up": "page_up",
+            "page_down": "page_down",
+        }
+
+        if key_lower in special_keys:
+            return special_keys[key_lower] in self.pressed_keys
+        else:
+            return key_lower in self.pressed_keys
+
+    def run(self):
+        """QThread의 메인 실행 함수"""
+        # 키보드 리스너 시작
+        self.listener = keyboard.Listener(
+            on_press=self.on_press, on_release=self.on_release
+        )
+        self.listener.start()
+
+        while self.running:
+            # 매크로 실행중일 때 아무 키보드 입력이 있으면 잠수 시간 초기화
+            if self.shared_data.is_activated and self.any_key_pressed:
+                self.shared_data.afk_started_time = time.time()
+                self.any_key_pressed = False  # 플래그 리셋
+
+            # 매크로 시작/중지
+            start_key = self.shared_data.KEY_DICT.get(
+                self.shared_data.start_key, self.shared_data.start_key
+            )
+            if self.is_key_pressed(start_key):
+                # 매크로 상태 토글
+                new_state = not self.shared_data.is_activated
+                self.shared_data.is_activated = new_state
+                self.macro_toggle.emit(new_state)
+
+                if new_state:
+                    # 매크로 번호 증가
+                    self.shared_data.loop_num += 1
+                    # 선택된 아이템 슬롯을 모르는 상태(-1)로 설정
+                    self.shared_data.selected_item_slot = -1
+                    # 매크로 쓰레드 시작
+                    Thread(
+                        target=running_macro_thread,
+                        args=[self.shared_data, self.shared_data.loop_num],
+                    ).start()
+
+                # 매크로 실행/중지 이후에는 잠시 키 입력 무시
+                time.sleep(0.5 * self.shared_data.SLEEP_COEFFICIENT_NORMAL)
+                continue
+
+            # 연계스킬 사용
+            for link_skill in self.shared_data.link_skills:
+                # 연계스킬 키가 눌렸다면
+                link_key = self.shared_data.KEY_DICT.get(
+                    link_skill["key"], link_skill["key"]
+                )
+                if link_key and self.is_key_pressed(link_key):
+                    # 연계스킬에 사용되는 스킬 이름들
+                    skills: list[str] = [
+                        skill["name"] for skill in link_skill["skills"]
+                    ]
+
+                    # 연계스킬에 필요한 스킬이 모두 장착되어 있는지 확인
+                    if all(
+                        skill in self.shared_data.equipped_skills for skill in skills
+                    ):
+                        # 연계스킬 트리거 시그널 발생
+                        self.link_skill_triggered.emit(link_skill)
+                        # 연계스킬 쓰레드 시작
+                        Thread(
+                            target=useLinkSkill,
+                            args=[
+                                self.shared_data,
+                                link_skill,
+                                self.shared_data.loop_num,
+                            ],
+                        ).start()
+                        break
+            else:
+                # 연계스킬도 실행되지 않았으면 0.05초 슬립
+                time.sleep(0.05 * self.shared_data.SLEEP_COEFFICIENT_NORMAL)
+                continue
+
+            # 연계스킬이 실행되었으면 0.25초 슬립
+            time.sleep(0.25 * self.shared_data.SLEEP_COEFFICIENT_NORMAL)
+
+    def stop(self):
+        """쓰레드 종료"""
+        self.running = False
+        if self.listener:
+            self.listener.stop()
+        self.quit()
+        self.wait()

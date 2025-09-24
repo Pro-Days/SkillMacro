@@ -215,7 +215,6 @@ class SimUI:
         self.shared_data.sim_page_type = 0
 
         # plt.close("all")
-        print("clf")
         # plt.clf()
 
     def make_simul_page4(self) -> None:
