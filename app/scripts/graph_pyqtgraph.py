@@ -193,6 +193,8 @@ class DpsDistributionCanvas(pg.PlotWidget):
         """
 
         # 기존 막대 제거
+        # 이 부분에서 "RuntimeError: wrapped C/C++ object of type BarGraphItem has been deleted"
+        # 에러가 발생하는 듯함.
         self.removeItem(self.bars[index])
 
         # 새 막대 생성

@@ -66,8 +66,6 @@ class MainWindow(QWidget):
         # 서브 쓰레드 활성화
         self.activate_thread()
 
-        print("Main window initialized.")
-
     def activate_thread(self) -> None:
         """
         서브 쓰레드 활성화

@@ -212,19 +212,20 @@ class SharedData:
         "end": "End",
     }
 
-    SERVERS: ClassVar[list[str]] = ["한월 RPG"]
+    SERVERS: ClassVar[list[str]] = ["name"]
     JOBS: ClassVar[dict[str, list[str]]] = {
-        "한월 RPG": ["검호", "매화", "살수", "도제", "술사", "도사", "빙궁", "귀궁"],
+        "name": ["a", "매화", "살수", "도제", "술사", "도사", "빙궁", "귀궁"],
     }
 
-    DEFAULT_SERVER_ID: str = "한월 RPG"
-    DEFAULT_JOB_ID: str = "검호"
+    DEFAULT_SERVER_ID: str = "name"
+    # DEFAULT_SERVER_ID: str = "한월 RPG"
+    DEFAULT_JOB_ID: str = "a"
 
     # 장착 가능한 스킬 개수
-    USABLE_SKILL_COUNT: ClassVar[dict[str, int]] = {"한월 RPG": 6}
+    USABLE_SKILL_COUNT: ClassVar[dict[str, int]] = {"name": 6}
 
     # 스킬 레벨 최대값
-    MAX_SKILL_LEVEL: ClassVar[dict[str, int]] = {"한월 RPG": 5}
+    MAX_SKILL_LEVEL: ClassVar[dict[str, int]] = {"name": 5}
 
     ################################
 

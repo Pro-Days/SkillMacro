@@ -97,6 +97,8 @@ Sim2에서 마우스가 그래프 밖에 있을 때 모든 그래프의 mouseEve
 
 link_skill 클래스 생성
 
+pyqtgraph에서 마우스를 빠르게 이동시켜 annotation 위에 마우스가 올라가면 annotation 업데이트가 안됨.
+
 ---------
 
 
