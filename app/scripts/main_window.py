@@ -255,7 +255,7 @@ class MainWindow(QWidget):
 
         self.sidebar.change_sidebar_to_1()
 
-        self.window_layout: QStackedLayout = QStackedLayout()
+        self.window_layout: QStackedLayout = QStackedLayout()  # QStackedWidget으로 변경
         self.window_layout.addWidget(self.page1)  # 메인 페이지
         self.window_layout.addWidget(self.page2)  # 시뮬레이션 페이지
 

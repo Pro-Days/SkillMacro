@@ -1,7 +1,8 @@
 keyboard==0.13.5
-matplotlib==3.9.0
-numpy==2.2.2
 pillow==11.1.0
 PyAutoGUI==0.9.54
 requests==2.32.3
 PyQt6==6.7.0
+pyqtgraph==0.13.7
+numpy==2.3.2
+pynput==1.8.1

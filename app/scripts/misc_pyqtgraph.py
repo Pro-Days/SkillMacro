@@ -81,14 +81,16 @@ def set_default_fonts() -> None:
     기본 폰트 설정
     """
 
-    font_path: str = convert_resource_path("resources\\font\\NotoSansKR-Regular.ttf")
-
-    QFontDatabase.addApplicationFont(font_path)
-
-    fm.fontManager.addfont(font_path)
-
-    prop = fm.FontProperties(fname=font_path)
-    plt.rcParams["font.family"] = prop.get_name()
+    # "나눔스퀘어라운드 ExtraBold"
+    QFontDatabase.addApplicationFont(
+        convert_resource_path("resources\\font\\NSR_B.ttf")
+    )
+    QFontDatabase.addApplicationFont(
+        convert_resource_path("resources\\font\\NSR_EB.ttf")
+    )
+    QFontDatabase.addApplicationFont(
+        convert_resource_path("resources\\font\\NotoSansKR-Regular.ttf")
+    )
 
     # print(QFontDatabase.families())
 
@@ -102,8 +104,6 @@ def get_skill_pixmap(
     skill == ""이면 빈 스킬 아이콘 반환
     state == -1이면 해당 스킬의 최대 카운트 반환, -2이면 비활성화 아이콘 반환
     """
-
-    return QPixmap(convert_resource_path(f"resources\\image\\emptySkill.png"))
 
     if not skill_name:
         return QPixmap(convert_resource_path(f"resources\\image\\emptySkill.png"))
