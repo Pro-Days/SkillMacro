@@ -85,11 +85,6 @@ def set_default_fonts() -> None:
 
     QFontDatabase.addApplicationFont(font_path)
 
-    fm.fontManager.addfont(font_path)
-
-    prop = fm.FontProperties(fname=font_path)
-    plt.rcParams["font.family"] = prop.get_name()
-
     # print(QFontDatabase.families())
 
 

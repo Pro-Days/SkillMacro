@@ -135,12 +135,12 @@ class SimUI:
         self.layout = QStackedLayout(self.main_frame)
 
         self.UI1 = Sim1UI(self.main_frame, self.shared_data)
-        self.UI2 = Sim2UI(self.main_frame, self.shared_data)
-        self.UI3 = Sim3UI(self.main_frame, self.shared_data)
-        self.UI4 = Sim4UI(self.main_frame, self.shared_data)
-        # self.layout.addWidget()
+        # self.UI2 = Sim2UI(self.main_frame, self.shared_data)
+        # self.UI3 = Sim3UI(self.main_frame, self.shared_data)
+        # self.UI4 = Sim4UI(self.main_frame, self.shared_data)
+        self.layout.addWidget(self.UI1)
 
-        self.make_simul_page1()
+        # self.make_simul_page1()
 
     def remove_simul_widgets(self) -> None:
         """
@@ -279,7 +279,7 @@ class SimUI:
         border_widths[num] = 2
 
         for i in [0, 1, 2, 3]:
-            self.sim_nav_buttons[i].setStyleSheet(
+            self.nav.buttons[i].setStyleSheet(
                 f"""
                 QPushButton {{
                     background-color: rgb(255, 255, 255); border: none; border-bottom: {border_widths[i]}px solid #9180F7;
@@ -293,7 +293,7 @@ class SimUI:
     def update_position(self) -> None:
         deltaWidth = self.master.width() - self.ui_var.DEFAULT_WINDOW_WIDTH
 
-        self.sim_nav_frame.move(
+        self.nav.frame.move(
             self.ui_var.sim_margin + deltaWidth // 2, self.ui_var.sim_margin
         )
         self.main_frame.setFixedWidth(
@@ -311,26 +311,26 @@ class SimUI:
         )
 
         if self.shared_data.sim_page_type == 1:  # 정보 입력
-            self.sim1_ui.stat_frame.move(deltaWidth // 2, 0)
-            self.sim1_ui.skill_frame.move(
+            self.sim1_ui.stats.move(deltaWidth // 2, 0)
+            self.sim1_ui.skills.move(
                 deltaWidth // 2,
-                self.sim1_ui.stat_frame.y()
-                + self.sim1_ui.stat_frame.height()
+                self.sim1_ui.stats.y()
+                + self.sim1_ui.stats.height()
                 + self.ui_var.sim_main_D,
             )
-            self.sim1_ui.info_frame.move(
+            self.sim1_ui.infos.move(
                 deltaWidth // 2,
-                self.sim1_ui.skill_frame.y()
-                + self.sim1_ui.skill_frame.height()
+                self.sim1_ui.skills.y()
+                + self.sim1_ui.skills.height()
                 + self.ui_var.sim_main_D,
             )
 
         elif self.shared_data.sim_page_type == 2:  # 시뮬레이터
-            self.sim2_ui.power_frame.move(deltaWidth // 2, 0)
-            self.sim2_ui.analysis_frame.move(
+            self.sim2_ui.power.move(deltaWidth // 2, 0)
+            self.sim2_ui.analysis.move(
                 deltaWidth // 2,
-                self.sim2_ui.power_frame.y()
-                + self.sim2_ui.power_frame.height()
+                self.sim2_ui.power.y()
+                + self.sim2_ui.power.height()
                 + self.ui_var.sim_main_D,
             )
 
@@ -362,21 +362,27 @@ class SimUI:
 class Sim1UI(QFrame):
     def __init__(self, parent: QFrame, shared_data: SharedData):
         super().__init__(parent)
-        self.shared_data: SharedData = shared_data
 
-        self.ui_var = UI_Variable()
+        self.shared_data: SharedData = shared_data
+        self.ui_var: UI_Variable = UI_Variable()
 
         # 스텟
         self.stats = self.Stat(self, self.shared_data)
 
         # 스킬 입력
-        self.skills = self.Skill(self, self.shared_data, self.stats)
+        self.skills = self.Skill(
+            self, self.shared_data, self.stats.y() + self.stats.height()
+        )
 
         # 추가 정보 입력
-        self.infos = self.Info(self, self.shared_data, self.skills)
+        self.infos = self.Info(
+            self, self.shared_data, self.skills.y() + self.skills.height()
+        )
+
+        self.setGeometry(0, 0, 928, self.infos.y() + self.infos.height())
 
         # Tab Order 설정
-        tab_orders = (
+        tab_orders: list[CustomLineEdit] = (
             self.stats.input.inputs + self.skills.input.inputs + self.infos.input.inputs
         )
         for i in range(len(tab_orders) - 1):
@@ -444,6 +450,7 @@ class Sim1UI(QFrame):
 
                 return a <= int(text) <= b
 
+            # for 1개로 변경하기
             # 모두 digit 이고 범위 내에 있으면
             if all(checkInput(i, j.text()) for i, j in enumerate(self.input.inputs)):
                 # 통과O면 원래색
@@ -477,17 +484,15 @@ class Sim1UI(QFrame):
             self.shared_data.is_input_valid["stat"] = False
 
     class Skill(QFrame):
-        def __init__(
-            self, parent: QFrame, shared_data: SharedData, stat: Sim1UI.Stat
-        ) -> None:
+        def __init__(self, parent: QFrame, shared_data: SharedData, y: int) -> None:
             super().__init__(parent)
 
             self.shared_data: SharedData = shared_data
-            self.ui_var = UI_Variable()
+            self.ui_var: UI_Variable = UI_Variable()
 
             self.setGeometry(
                 0,
-                stat.y() + stat.height() + self.ui_var.sim_main_D,
+                y + self.ui_var.sim_main_D,
                 928,
                 self.ui_var.sim_title_H
                 + (self.ui_var.sim_widget_D + self.ui_var.sim_skill_frame_H) * 2,
@@ -508,6 +513,8 @@ class Sim1UI(QFrame):
                     + self.ui_var.sim_widget_D * ((i // count) + 1)
                     + self.ui_var.sim_skill_frame_H * (i // count),
                 )
+
+                # *args으로 변경 가능?
                 self.input.names[i].setGeometry(
                     0,
                     0,
@@ -573,9 +580,7 @@ class Sim1UI(QFrame):
             self.shared_data.is_input_valid["skill"] = False
 
     class Info(QFrame):
-        def __init__(
-            self, parent: QFrame, shared_data: SharedData, skill: Sim1UI.Skill
-        ) -> None:
+        def __init__(self, parent: QFrame, shared_data: SharedData, y: int) -> None:
             super().__init__(parent)
 
             self.shared_data: SharedData = shared_data
@@ -583,7 +588,7 @@ class Sim1UI(QFrame):
 
             self.setGeometry(
                 0,
-                skill.y() + skill.height() + self.ui_var.sim_main_D,
+                y + self.ui_var.sim_main_D,
                 928,
                 self.ui_var.sim_title_H
                 + (self.ui_var.sim_widget_D + self.ui_var.sim_simInfo_frame_H) * 1,

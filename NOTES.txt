@@ -120,6 +120,8 @@ QColorDialog 이용 -> 아이콘 색 변경
 
 python flag.optimize, pyinstaller optimize
 
+절대 좌표 방식 -> QHBoxLayout, QVBoxLayout, QGridLayout으로 변경
+
 ---------
 
 
