@@ -10,7 +10,7 @@ from .misc import (
 from .shared_data import UI_Variable
 from .simulate_macro import randSimulate, detSimulate, get_req_stats
 from .graph import (
-    DpsDistributionCanvas,
+    DpmDistributionCanvas,
     SkillDpsRatioCanvas,
     DMGCanvas,
     SkillContributionCanvas,
@@ -830,7 +830,7 @@ class Sim2UI:
 
         sums: list[float] = [sum([i.damage for i in j]) for j in results]
 
-        self.dpmGraph: DpsDistributionCanvas = DpsDistributionCanvas(
+        self.dpmGraph: DpmDistributionCanvas = DpmDistributionCanvas(
             self.dpsGraph_frame, sums
         )  # 시뮬레이션 결과
         self.dpmGraph.move(20, 20)

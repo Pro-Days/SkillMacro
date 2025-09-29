@@ -122,6 +122,8 @@ python flag.optimize, pyinstaller optimize
 
 절대 좌표 방식 -> QHBoxLayout, QVBoxLayout, QGridLayout으로 변경
 
+코드를 수정하지 않고 json 파일만 수정하면 서버, 스킬 데이터 모두 변하게 수정(기본값, 목록 등을 json에 포함)
+
 ---------
 
 

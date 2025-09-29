@@ -109,7 +109,8 @@ class MainWindow(QWidget):
             pass
 
         elif num == 1:
-            self.sim_ui.make_simul_page1()
+            # self.sim_ui.make_simul_page1()
+            self.popup_manager.update_position()
 
         elif num == 2:
             pass

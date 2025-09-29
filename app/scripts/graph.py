@@ -8,7 +8,7 @@ from PyQt6.QtGui import QBrush, QPainter, QFont
 from .custom_classes import CustomFont
 
 
-class DpsDistributionCanvas(pg.PlotWidget):
+class DpmDistributionCanvas(pg.PlotWidget):
     def __init__(self, parent: QWidget, data: list[float]) -> None:
         super().__init__(parent=parent)
 

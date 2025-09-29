@@ -13,7 +13,7 @@ from .misc import (
 from .shared_data import UI_Variable
 from .simulate_macro import randSimulate, detSimulate, get_req_stats
 from .graph import (
-    DpsDistributionCanvas,
+    DpmDistributionCanvas,
     SkillDpsRatioCanvas,
     DMGCanvas,
     SkillContributionCanvas,
@@ -62,6 +62,8 @@ class SimUI:
         shared_data: SharedData,
     ):
         self.shared_data: SharedData = shared_data
+
+        # parent: page2
         self.parent: QFrame = parent
         self.master: MainWindow = master
 
@@ -76,11 +78,16 @@ class SimUI:
 
         self.nav: Navigation = Navigation(self.parent)
 
-        self.nav.buttons[0].clicked.connect(self.make_simul_page1)
-        self.nav.buttons[1].clicked.connect(self.make_simul_page2)
-        self.nav.buttons[2].clicked.connect(self.make_simul_page3)
-        self.nav.buttons[3].clicked.connect(self.make_simul_page4)
+        self.nav.buttons[0].clicked.connect(lambda: self.change_layout(0))
+        self.nav.buttons[1].clicked.connect(lambda: self.change_layout(1))
+        self.nav.buttons[2].clicked.connect(lambda: self.change_layout(2))
+        self.nav.buttons[3].clicked.connect(lambda: self.change_layout(3))
         self.nav.buttons[4].clicked.connect(lambda: self.master.change_layout(0))
+        # self.nav.buttons[0].clicked.connect(self.make_simul_page1)
+        # self.nav.buttons[1].clicked.connect(self.make_simul_page2)
+        # self.nav.buttons[2].clicked.connect(self.make_simul_page3)
+        # self.nav.buttons[3].clicked.connect(self.make_simul_page4)
+        # self.nav.buttons[4].clicked.connect(lambda: self.master.change_layout(0))
 
         # 메인 프레임
         self.main_frame: QFrame = QFrame(self.parent)
@@ -132,157 +139,205 @@ class SimUI:
         self.scroll_area.show()
 
         # 페이지 레이아웃 설정
+        # 페이지를 전환할 때마다 새로 만들지 말고
+        # 레이아웃을 전환하는 방식으로 변경
         self.layout = QStackedLayout(self.main_frame)
 
         self.UI1 = Sim1UI(self.main_frame, self.shared_data)
-        # self.UI2 = Sim2UI(self.main_frame, self.shared_data)
+        self.UI2 = Sim2UI(self.main_frame, self.shared_data)
         # self.UI3 = Sim3UI(self.main_frame, self.shared_data)
         # self.UI4 = Sim4UI(self.main_frame, self.shared_data)
         self.layout.addWidget(self.UI1)
+        self.layout.addWidget(self.UI2)
+
+        self.layout.setCurrentIndex(0)
+
+        self.main_frame.setFixedHeight(
+            self.layout.currentWidget().height() + self.ui_var.sim_mainFrameMargin
+        )
 
         # self.make_simul_page1()
 
-    def remove_simul_widgets(self) -> None:
-        """
-        시뮬레이션 페이지 모든 위젯 제거
-        """
+    ## change_layout 시작
+    # def remove_simul_widgets(self) -> None:
+    #     """
+    #     시뮬레이션 페이지 모든 위젯 제거
+    #     """
 
-        # 콤보박스 오류 수정
-        if self.shared_data.sim_page_type == 3:
-            comboboxList: list[QComboBox] = [
-                self.sim3_ui.efficiency_statL,
-                self.sim3_ui.efficiency_statR,
-                self.sim3_ui.potential_stat0,
-                self.sim3_ui.potential_stat1,
-                self.sim3_ui.potential_stat2,
-            ]
-            for i in comboboxList:
-                i.showPopup()
-                i.hidePopup()
+    #     # 콤보박스 오류 수정
+    #     if self.shared_data.sim_page_type == 3:
+    #         comboboxList: list[QComboBox] = [
+    #             self.sim3_ui.efficiency_statL,
+    #             self.sim3_ui.efficiency_statR,
+    #             self.sim3_ui.potential_stat0,
+    #             self.sim3_ui.potential_stat1,
+    #             self.sim3_ui.potential_stat2,
+    #         ]
+    #         for i in comboboxList:
+    #             i.showPopup()
+    #             i.hidePopup()
 
-        [i.deleteLater() for i in self.main_frame.findChildren(QWidget)]
-        self.shared_data.sim_page_type = 0
+    #     [i.deleteLater() for i in self.main_frame.findChildren(QWidget)]
+    #     self.shared_data.sim_page_type = 0
 
-        # plt.close("all")
-        # plt.clf()
+    #     # plt.close("all")
+    #     # plt.clf()
 
-    def make_simul_page4(self) -> None:
-        """
-        시뮬레이션 - 캐릭터 카드 페이지 생성
-        """
+    # def make_simul_page4(self) -> None:
+    #     """
+    #     시뮬레이션 - 캐릭터 카드 페이지 생성
+    #     """
 
-        # 입력값 체크
-        if not all(self.shared_data.is_input_valid.values()):
+    #     # 입력값 체크
+    #     if not all(self.shared_data.is_input_valid.values()):
+    #         self.master.get_popup_manager().make_notice_popup("SimInputError")
+    #         return
+
+    #     self.remove_simul_widgets()
+    #     self.sim_update_nav_button(3)
+
+    #     self.shared_data.sim_page_type = 4
+
+    #     self.sim4_ui = Sim4UI(self.main_frame, self.shared_data)
+
+    #     # 메인 프레임 크기 조정
+    #     self.main_frame.setFixedHeight(
+    #         self.sim4_ui.info_frame.y()
+    #         + self.sim4_ui.info_frame.height()
+    #         + self.ui_var.sim_mainFrameMargin,
+    #     )
+    #     [i.show() for i in self.parent.findChildren(QWidget)]
+
+    #     self.update_position()
+
+    # def make_simul_page3(self) -> None:
+    #     """
+    #     시뮬레이션 - 스탯 계산기 페이지 생성
+    #     """
+
+    #     # 입력값 체크
+    #     if not all(self.shared_data.is_input_valid.values()):
+    #         self.master.get_popup_manager().make_notice_popup("SimInputError")
+    #         return
+
+    #     self.remove_simul_widgets()
+    #     self.sim_update_nav_button(2)
+
+    #     self.shared_data.sim_page_type = 3
+
+    #     self.sim3_ui = Sim3UI(self.main_frame, self.shared_data)
+
+    #     # 메인 프레임 크기 조정
+    #     self.main_frame.setFixedHeight(
+    #         self.sim3_ui.potentialRank_frame.y()
+    #         + self.sim3_ui.potentialRank_frame.height()
+    #         + self.ui_var.sim_mainFrameMargin,
+    #     )
+    #     [i.show() for i in self.sim3_ui.widgetList]
+
+    #     self.update_position()
+
+    # def make_simul_page2(self) -> None:
+    #     """
+    #     시뮬레이션 - 시뮬레이터 페이지 생성
+    #     """
+
+    #     # 입력값 체크
+    #     if not all(self.shared_data.is_input_valid.values()):
+    #         self.master.get_popup_manager().make_notice_popup("SimInputError")
+    #         return
+
+    #     self.remove_simul_widgets()
+    #     self.sim_update_nav_button(1)
+
+    #     self.shared_data.sim_page_type = 2
+
+    #     self.sim2_ui = Sim2UI(self.main_frame, self.shared_data)
+
+    #     # 메인 프레임 크기 조정
+    #     self.main_frame.setFixedHeight(
+    #         self.sim2_ui.analysis_frame.y()
+    #         + self.sim2_ui.analysis_frame.height()
+    #         + self.ui_var.sim_mainFrameMargin
+    #     )
+    #     # [i.show() for i in self.parent.findChildren(QWidget)]
+
+    #     self.update_position()
+
+    # def make_simul_page1(self) -> None:
+    #     """
+    #     시뮬레이션 - 정보 입력 페이지 생성
+    #     """
+
+    #     self.remove_simul_widgets()
+    #     self.sim_update_nav_button(0)
+
+    #     self.shared_data.sim_page_type = 1
+
+    #     self.sim1_ui = Sim1UI(self.main_frame, self.shared_data)
+
+    #     # 메인 프레임 크기 조정
+    #     self.main_frame.setFixedHeight(
+    #         self.sim1_ui.infos.y()
+    #         + self.sim1_ui.infos.height()
+    #         + self.ui_var.sim_mainFrameMargin,
+    #     )
+    #     [i.show() for i in self.parent.findChildren(QWidget)]
+
+    #     self.update_position()
+    #     self.master.get_popup_manager().update_position()
+
+    # def sim_update_nav_button(self, num: int) -> None:  # simul_ui로 이동
+    #     """
+    #     시뮬레이션 - 내비게이션 버튼 색 업데이트
+    #     """
+
+    #     border_widths = [0, 0, 0, 0]
+    #     border_widths[num] = 2
+
+    #     for i in [0, 1, 2, 3]:
+    #         self.nav.buttons[i].setStyleSheet(
+    #             f"""
+    #             QPushButton {{
+    #                 background-color: rgb(255, 255, 255); border: none; border-bottom: {border_widths[i]}px solid #9180F7;
+    #             }}
+    #             QPushButton:hover {{
+    #                 background-color: rgb(234, 234, 234);
+    #             }}
+    #             """
+    #         )
+    ## change_layout 끝
+
+    def change_layout(self, index: int) -> None:
+        # 입력값 확인
+        if index in (2, 3) and not all(self.shared_data.is_input_valid.values()):
             self.master.get_popup_manager().make_notice_popup("SimInputError")
             return
 
-        self.remove_simul_widgets()
-        self.sim_update_nav_button(3)
+        # 네비게이션 버튼 색 변경
+        self.update_nav(index)
 
-        self.shared_data.sim_page_type = 4
+        # 레이아웃 변경
+        self.layout.setCurrentIndex(index)
 
-        self.sim4_ui = Sim4UI(self.main_frame, self.shared_data)
-
-        # 메인 프레임 크기 조정
-        self.main_frame.setFixedHeight(
-            self.sim4_ui.info_frame.y()
-            + self.sim4_ui.info_frame.height()
-            + self.ui_var.sim_mainFrameMargin,
-        )
-        [i.show() for i in self.parent.findChildren(QWidget)]
-
+        # 나중에 삭제
         self.update_position()
 
-    def make_simul_page3(self) -> None:
+    def update_nav(self, index: int) -> None:
         """
-        시뮬레이션 - 스탯 계산기 페이지 생성
-        """
-
-        # 입력값 체크
-        if not all(self.shared_data.is_input_valid.values()):
-            self.master.get_popup_manager().make_notice_popup("SimInputError")
-            return
-
-        self.remove_simul_widgets()
-        self.sim_update_nav_button(2)
-
-        self.shared_data.sim_page_type = 3
-
-        self.sim3_ui = Sim3UI(self.main_frame, self.shared_data)
-
-        # 메인 프레임 크기 조정
-        self.main_frame.setFixedHeight(
-            self.sim3_ui.potentialRank_frame.y()
-            + self.sim3_ui.potentialRank_frame.height()
-            + self.ui_var.sim_mainFrameMargin,
-        )
-        [i.show() for i in self.sim3_ui.widgetList]
-
-        self.update_position()
-
-    def make_simul_page2(self) -> None:
-        """
-        시뮬레이션 - 시뮬레이터 페이지 생성
+        내비게이션 버튼 색 업데이트
         """
 
-        # 입력값 체크
-        if not all(self.shared_data.is_input_valid.values()):
-            self.master.get_popup_manager().make_notice_popup("SimInputError")
-            return
+        widths: list[int] = [0] * 4
 
-        self.remove_simul_widgets()
-        self.sim_update_nav_button(1)
+        # index에 해당하는 버튼만 색
+        widths[index] = 2
 
-        self.shared_data.sim_page_type = 2
-
-        self.sim2_ui = Sim2UI(self.main_frame, self.shared_data)
-
-        # 메인 프레임 크기 조정
-        self.main_frame.setFixedHeight(
-            self.sim2_ui.analysis_frame.y()
-            + self.sim2_ui.analysis_frame.height()
-            + self.ui_var.sim_mainFrameMargin
-        )
-        # [i.show() for i in self.parent.findChildren(QWidget)]
-
-        self.update_position()
-
-    def make_simul_page1(self) -> None:
-        """
-        시뮬레이션 - 정보 입력 페이지 생성
-        """
-
-        self.remove_simul_widgets()
-        self.sim_update_nav_button(0)
-
-        self.shared_data.sim_page_type = 1
-
-        self.sim1_ui = Sim1UI(self.main_frame, self.shared_data)
-
-        # 메인 프레임 크기 조정
-        self.main_frame.setFixedHeight(
-            self.sim1_ui.infos.y()
-            + self.sim1_ui.infos.height()
-            + self.ui_var.sim_mainFrameMargin,
-        )
-        [i.show() for i in self.parent.findChildren(QWidget)]
-
-        self.update_position()
-        self.master.get_popup_manager().update_position()
-
-    def sim_update_nav_button(self, num: int) -> None:  # simul_ui로 이동
-        """
-        시뮬레이션 - 내비게이션 버튼 색 업데이트
-        """
-
-        border_widths = [0, 0, 0, 0]
-        border_widths[num] = 2
-
-        for i in [0, 1, 2, 3]:
+        for i in range(4):
             self.nav.buttons[i].setStyleSheet(
                 f"""
                 QPushButton {{
-                    background-color: rgb(255, 255, 255); border: none; border-bottom: {border_widths[i]}px solid #9180F7;
+                    background-color: rgb(255, 255, 255); border: none; border-bottom: {widths[i]}px solid #9180F7;
                 }}
                 QPushButton:hover {{
                     background-color: rgb(234, 234, 234);
@@ -291,11 +346,9 @@ class SimUI:
             )
 
     def update_position(self) -> None:
-        deltaWidth = self.master.width() - self.ui_var.DEFAULT_WINDOW_WIDTH
+        deltaWidth: int = (self.master.width() - self.ui_var.DEFAULT_WINDOW_WIDTH) // 2
 
-        self.nav.frame.move(
-            self.ui_var.sim_margin + deltaWidth // 2, self.ui_var.sim_margin
-        )
+        self.nav.frame.move(self.ui_var.sim_margin + deltaWidth, self.ui_var.sim_margin)
         self.main_frame.setFixedWidth(
             self.master.width()
             - self.ui_var.scrollBarWidth
@@ -310,53 +363,57 @@ class SimUI:
             - self.ui_var.sim_main1_D,
         )
 
-        if self.shared_data.sim_page_type == 1:  # 정보 입력
-            self.sim1_ui.stats.move(deltaWidth // 2, 0)
-            self.sim1_ui.skills.move(
-                deltaWidth // 2,
-                self.sim1_ui.stats.y()
-                + self.sim1_ui.stats.height()
+        if self.layout.currentIndex() == 0:
+            self.UI1.stats.move(deltaWidth, 0)
+            self.UI1.skills.move(
+                deltaWidth,
+                self.UI1.stats.y() + self.UI1.stats.height() + self.ui_var.sim_main_D,
+            )
+            self.UI1.infos.move(
+                deltaWidth,
+                self.UI1.skills.y() + self.UI1.skills.height() + self.ui_var.sim_main_D,
+            )
+
+            self.main_frame.setFixedHeight(
+                self.UI1.height() + self.ui_var.sim_mainFrameMargin
+            )
+            print(self.UI1.height())
+
+        elif self.layout.currentIndex() == 1:
+            self.UI2.power.move(deltaWidth, 0)
+            self.UI2.analysis.move(
+                deltaWidth,
+                self.UI2.power.y() + self.UI2.power.height() + self.ui_var.sim_main_D,
+            )
+
+            self.main_frame.setFixedHeight(
+                self.UI2.height() + self.ui_var.sim_mainFrameMargin
+            )
+            print(self.UI2.height())
+
+        elif self.layout.currentIndex() == 2:
+            self.UI3.efficiency_frame.move(deltaWidth, 0)
+            self.UI3.additional_frame.move(
+                deltaWidth,
+                self.UI3.efficiency_frame.y()
+                + self.UI3.efficiency_frame.height()
                 + self.ui_var.sim_main_D,
             )
-            self.sim1_ui.infos.move(
-                deltaWidth // 2,
-                self.sim1_ui.skills.y()
-                + self.sim1_ui.skills.height()
+            self.UI3.potential_frame.move(
+                deltaWidth,
+                self.UI3.additional_frame.y()
+                + self.UI3.additional_frame.height()
+                + self.ui_var.sim_main_D,
+            )
+            self.UI3.potentialRank_frame.move(
+                deltaWidth,
+                self.UI3.potential_frame.y()
+                + self.UI3.potential_frame.height()
                 + self.ui_var.sim_main_D,
             )
 
-        elif self.shared_data.sim_page_type == 2:  # 시뮬레이터
-            self.sim2_ui.power.move(deltaWidth // 2, 0)
-            self.sim2_ui.analysis.move(
-                deltaWidth // 2,
-                self.sim2_ui.power.y()
-                + self.sim2_ui.power.height()
-                + self.ui_var.sim_main_D,
-            )
-
-        elif self.shared_data.sim_page_type == 3:  # 스탯 계산기
-            self.sim3_ui.efficiency_frame.move(deltaWidth // 2, 0)
-            self.sim3_ui.additional_frame.move(
-                deltaWidth // 2,
-                self.sim3_ui.efficiency_frame.y()
-                + self.sim3_ui.efficiency_frame.height()
-                + self.ui_var.sim_main_D,
-            )
-            self.sim3_ui.potential_frame.move(
-                deltaWidth // 2,
-                self.sim3_ui.additional_frame.y()
-                + self.sim3_ui.additional_frame.height()
-                + self.ui_var.sim_main_D,
-            )
-            self.sim3_ui.potentialRank_frame.move(
-                deltaWidth // 2,
-                self.sim3_ui.potential_frame.y()
-                + self.sim3_ui.potential_frame.height()
-                + self.ui_var.sim_main_D,
-            )
-
-        elif self.shared_data.sim_page_type == 4:  # 캐릭터 카드
-            self.sim4_ui.mainframe.move(deltaWidth // 2, 0)
+        elif self.layout.currentIndex() == 3:
+            self.UI4.mainframe.move(deltaWidth, 0)
 
 
 class Sim1UI(QFrame):
@@ -380,6 +437,8 @@ class Sim1UI(QFrame):
         )
 
         self.setGeometry(0, 0, 928, self.infos.y() + self.infos.height())
+
+        print(self.height())
 
         # Tab Order 설정
         tab_orders: list[CustomLineEdit] = (
@@ -450,7 +509,7 @@ class Sim1UI(QFrame):
 
                 return a <= int(text) <= b
 
-            # for 1개로 변경하기
+            # todo: for 1개로 변경하기
             # 모두 digit 이고 범위 내에 있으면
             if all(checkInput(i, j.text()) for i, j in enumerate(self.input.inputs)):
                 # 통과O면 원래색
@@ -736,13 +795,7 @@ class Sim2UI(QFrame):
                 0,
                 power.y() + power.height() + self.ui_var.sim_main_D,
                 928,
-                self.ui_var.sim_title_H
-                + (
-                    self.ui_var.sim_widget_D * 5
-                    + self.ui_var.sim_analysis_frame_H
-                    + self.ui_var.sim_dps_height
-                    + self.ui_var.sim_dmg_height * 3
-                ),
+                self.ui_var.sim_widget_D + self.ui_var.sim_analysis_frame_H,
             )
             self.setStyleSheet(
                 "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
@@ -775,6 +828,7 @@ class Sim2UI(QFrame):
             self,
             parent: QFrame,
             shared_data: SharedData,
+            analysis: Sim2UI.Analysis,
             results: list[list[SimAttack]],
         ) -> None:
             super().__init__(parent)
@@ -784,9 +838,7 @@ class Sim2UI(QFrame):
 
             self.setGeometry(
                 self.ui_var.sim_dps_margin,
-                self.ui_var.sim_label_H
-                + self.ui_var.sim_analysis_frame_H
-                + self.ui_var.sim_widget_D * 2,
+                analysis.y() + analysis.height() + self.ui_var.sim_main_D,
                 self.ui_var.sim_dps_width,
                 self.ui_var.sim_dps_height,
             )
@@ -798,7 +850,7 @@ class Sim2UI(QFrame):
                 sum([i.damage for i in result]) for result in results
             ]
 
-            self.graph = DpsDistributionCanvas(self, sums_for_results)
+            self.graph = DpmDistributionCanvas(self, sums_for_results)
             self.graph.move(5, 5)
             self.graph.resize(
                 self.ui_var.sim_dps_width - 10, self.ui_var.sim_dps_height - 10
@@ -809,6 +861,7 @@ class Sim2UI(QFrame):
             self,
             parent: QFrame,
             shared_data: SharedData,
+            analysis: Sim2UI.Analysis,
             resultDet: list[SimAttack],
         ) -> None:
             super().__init__(parent)
@@ -820,9 +873,7 @@ class Sim2UI(QFrame):
                 self.ui_var.sim_dps_margin
                 + self.ui_var.sim_dps_width
                 + self.ui_var.sim_skillDps_margin,
-                self.ui_var.sim_label_H
-                + self.ui_var.sim_analysis_frame_H
-                + self.ui_var.sim_widget_D * 2,
+                analysis.y() + analysis.height() + self.ui_var.sim_widget_D,
                 self.ui_var.sim_skillRatio_width,
                 self.ui_var.sim_skillRatio_height,
             )
@@ -849,11 +900,12 @@ class Sim2UI(QFrame):
                 self.ui_var.sim_skillRatio_height - 20,
             )
 
-    class TimeGraph(QFrame):
+    class DPSGraph(QFrame):
         def __init__(
             self,
             parent: QFrame,
             shared_data: SharedData,
+            distribution: Sim2UI.DPMGraph,
             results: list[list[SimAttack]],
         ) -> None:
             super().__init__(parent)
@@ -863,10 +915,7 @@ class Sim2UI(QFrame):
 
             self.setGeometry(
                 self.ui_var.sim_dps_margin,
-                self.ui_var.sim_label_H
-                + self.ui_var.sim_analysis_frame_H
-                + self.ui_var.sim_dps_height
-                + self.ui_var.sim_widget_D * 3,
+                distribution.y() + distribution.height() + self.ui_var.sim_main_D,
                 self.ui_var.sim_dmg_width,
                 self.ui_var.sim_dmg_height,
             )
@@ -906,19 +955,18 @@ class Sim2UI(QFrame):
                 ],
             }
 
-            self.graph = DMGCanvas(
-                self, data, "시간 경과에 따른 피해량"
-            )  # 시뮬레이션 결과
+            self.graph = DMGCanvas(self, data, "시간 경과에 따른 피해량")
             self.graph.move(5, 5)
             self.graph.resize(
                 self.ui_var.sim_dmg_width - 10, self.ui_var.sim_dmg_height - 10
             )
 
-    class TimeGraph(QFrame):
+    class TotalGraph(QFrame):
         def __init__(
             self,
             parent: QFrame,
             shared_data: SharedData,
+            dps_graph: Sim2UI.DPSGraph,
             results: list[list[SimAttack]],
         ) -> None:
             super().__init__(parent)
@@ -928,11 +976,7 @@ class Sim2UI(QFrame):
 
             self.setGeometry(
                 self.ui_var.sim_dps_margin,
-                self.ui_var.sim_label_H
-                + self.ui_var.sim_analysis_frame_H
-                + self.ui_var.sim_dps_height
-                + self.ui_var.sim_dmg_height
-                + self.ui_var.sim_widget_D * 4,
+                dps_graph.y() + dps_graph.height() + self.ui_var.sim_main_D,
                 self.ui_var.sim_dmg_width,
                 self.ui_var.sim_dmg_height,
             )
@@ -973,10 +1017,89 @@ class Sim2UI(QFrame):
                 "min": [min([j[i] for j in total_list]) for i in range(count + 1)],
             }
 
-            self.graph = DMGCanvas(self, data, "누적 피해량")  # 시뮬레이션 결과
+            self.graph = DMGCanvas(self, data, "누적 피해량")
             self.graph.move(5, 5)
             self.graph.resize(
                 self.ui_var.sim_dmg_width - 10, self.ui_var.sim_dmg_height - 10
+            )
+
+    class ContributionGraph(QFrame):
+        def __init__(
+            self,
+            parent: QFrame,
+            shared_data: SharedData,
+            cumulative_graph: Sim2UI.TotalGraph,
+            resultDet: list[SimAttack],
+        ) -> None:
+            super().__init__(parent)
+
+            self.shared_data: SharedData = shared_data
+            self.ui_var = UI_Variable()
+
+            self.setGeometry(
+                self.ui_var.sim_dps_margin,
+                cumulative_graph.y()
+                + cumulative_graph.height()
+                + self.ui_var.sim_main_D,
+                self.ui_var.sim_dmg_width,
+                self.ui_var.sim_dmg_height,
+            )
+            self.setStyleSheet(
+                "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
+            )
+
+            step, count = 1, 60
+            times: list[int] = [i * step for i in range(count + 1)]
+
+            skillsData: list[list[float]] = [
+                [0.0]
+                + [
+                    sum(
+                        [
+                            j.damage
+                            for j in resultDet
+                            if j.skill_name == skill_name and j.time < (i + 1) * step
+                        ]
+                    )
+                    for i in range(count)
+                ]
+                for skill_name in self.shared_data.equipped_skills + ["평타"]
+            ]
+
+            # totalData = []
+            # for i in range(timeStepCount):
+            #     totalData.append(sum([j[2] for j in resultDet if j[1] < (i + 1) * timeStep]))
+            totalData: list[float] = [0.0] + [
+                sum([j.damage for j in resultDet if j.time < (i + 1) * step])
+                for i in range(count)
+            ]
+
+            # data_normalized = []
+            # for i in range(7):
+            #     data_normalized.append([skillsData[i][j] / totalData[j] for j in range(timeStepCount)])
+            data_normalized: list[list[float]] = [
+                [0.0] + [skillsData[i][j] / totalData[j] for j in range(1, count + 1)]
+                for i in range(7)
+            ]
+
+            data_cumsum: list[list[float]] = [
+                [0.0 for _ in row] for row in data_normalized
+            ]
+            for i in range(len(data_normalized)):
+                for j in range(len(data_normalized[0])):
+                    data_cumsum[i][j] = sum(row[j] for row in data_normalized[: i + 1])
+
+            data = {
+                "time": times,
+                "data": data_normalized,
+            }
+            self.graph = SkillContributionCanvas(
+                self, data, self.shared_data.equipped_skills.copy()
+            )
+            self.graph.move(20, 20)
+            self.graph.resize(
+                self.ui_var.sim_dmg_width - 40,
+                self.ui_var.sim_dmg_height - 40,
             )
 
     def __init__(self, parent: QFrame, shared_data: SharedData) -> None:
@@ -1010,91 +1133,32 @@ class Sim2UI(QFrame):
 
         # DPM 분포
         self.DPM_graph: Sim2UI.DPMGraph = self.DPMGraph(
-            self.analysis, self.shared_data, results
+            self, self.shared_data, self.analysis, results
         )
 
         # 스킬 비율
         self.ratio_graph: Sim2UI.RatioGraph = self.RatioGraph(
-            self.analysis, self.shared_data, resultDet
+            self, self.shared_data, self.analysis, resultDet
         )
 
         # 시간 경과에 따른 피해량
-        self.dps_graph: Sim2UI.TimeGraph = self.TimeGraph(
-            self.analysis, self.shared_data, results
+        self.dps_graph: Sim2UI.DPSGraph = self.DPSGraph(
+            self, self.shared_data, self.DPM_graph, results
         )
 
         # 누적 피해량
-        self.total_graph: Sim2UI.TimeGraph = self.TimeGraph(
-            self.analysis, self.shared_data, results
+        self.total_graph: Sim2UI.TotalGraph = self.TotalGraph(
+            self, self.shared_data, self.dps_graph, results
         )
-        self.totalDmg.show()
 
-        ## 스킬별 누적 기여도
-        self.skillContribute_frame = QFrame(self.analysis_frame)
-        self.skillContribute_frame.setGeometry(
-            self.ui_var.sim_dps_margin,
-            self.ui_var.sim_label_H
-            + self.ui_var.sim_analysis_frame_H
-            + self.ui_var.sim_dps_height
-            + self.ui_var.sim_dmg_height * 2
-            + self.ui_var.sim_widget_D * 5,
-            self.ui_var.sim_dmg_width,
-            self.ui_var.sim_dmg_height,
+        # 스킬별 누적 기여도
+        self.contribution_graph: Sim2UI.ContributionGraph = self.ContributionGraph(
+            self, self.shared_data, self.total_graph, resultDet
         )
-        self.skillContribute_frame.setStyleSheet(
-            "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
+
+        self.setGeometry(
+            0, 0, 928, self.contribution_graph.y() + self.contribution_graph.height()
         )
-        self.skillContribute_frame.show()
-
-        skillsData: list[list[float]] = [
-            [0.0]
-            + [
-                sum(
-                    [
-                        j.damage
-                        for j in resultDet
-                        if j.skill_name == skill_name and j.time < (i + 1) * step
-                    ]
-                )
-                for i in range(count)
-            ]
-            for skill_name in self.shared_data.equipped_skills + ["평타"]
-        ]
-
-        # totalData = []
-        # for i in range(timeStepCount):
-        #     totalData.append(sum([j[2] for j in resultDet if j[1] < (i + 1) * timeStep]))
-        totalData: list[float] = [0.0] + [
-            sum([j.damage for j in resultDet if j.time < (i + 1) * step])
-            for i in range(count)
-        ]
-
-        # data_normalized = []
-        # for i in range(7):
-        #     data_normalized.append([skillsData[i][j] / totalData[j] for j in range(timeStepCount)])
-        data_normalized: list[list[float]] = [
-            [0.0] + [skillsData[i][j] / totalData[j] for j in range(1, count + 1)]
-            for i in range(7)
-        ]
-
-        data_cumsum: list[list[float]] = [[0.0 for _ in row] for row in data_normalized]
-        for i in range(len(data_normalized)):
-            for j in range(len(data_normalized[0])):
-                data_cumsum[i][j] = sum(row[j] for row in data_normalized[: i + 1])
-
-        data = {
-            "time": times,
-            "data": data_normalized,
-        }
-        self.skillContribute = SkillContributionCanvas(
-            self.skillContribute_frame, data, self.shared_data.equipped_skills.copy()
-        )  # 시뮬레이션 결과
-        self.skillContribute.move(20, 20)
-        self.skillContribute.resize(
-            self.ui_var.sim_dmg_width - 40,
-            self.ui_var.sim_dmg_height - 40,
-        )
-        self.skillContribute.show()
 
 
 class Sim3UI:
