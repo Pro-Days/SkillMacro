@@ -32,6 +32,7 @@ import os
 import sys
 from functools import partial
 from typing import TYPE_CHECKING
+import threading
 
 # import matplotlib.pyplot as plt
 
@@ -142,6 +143,7 @@ class SimUI:
         # 페이지를 전환할 때마다 새로 만들지 말고
         # 레이아웃을 전환하는 방식으로 변경
         self.layout = QStackedLayout(self.main_frame)
+        self.layout.setSizeConstraint(QStackedLayout.SizeConstraint.SetFixedSize)
 
         self.UI1 = Sim1UI(self.main_frame, self.shared_data)
         self.UI2 = Sim2UI(self.main_frame, self.shared_data)
@@ -151,12 +153,23 @@ class SimUI:
         self.layout.addWidget(self.UI2)
 
         self.layout.setCurrentIndex(0)
-
-        self.main_frame.setFixedHeight(
-            self.layout.currentWidget().height() + self.ui_var.sim_mainFrameMargin
-        )
+        self.layout.currentChanged.connect(self._on_current_widget_changed)
+        self._on_current_widget_changed(0)
 
         # self.make_simul_page1()
+
+    def _on_current_widget_changed(self, index: int) -> None:
+        """
+        현재 표시되는 위젯이 변경될 때 main_frame의 크기를 조절합니다.
+        """
+        current_widget = self.layout.widget(index)
+        if current_widget:
+            self.main_frame.setFixedHeight(
+                current_widget.height() + self.ui_var.sim_mainFrameMargin
+            )
+
+            print(f"current widget height: {current_widget.height()}, index: {index}")
+            print(f"ui1 height: {self.UI1.height()}")
 
     ## change_layout 시작
     # def remove_simul_widgets(self) -> None:
@@ -309,6 +322,8 @@ class SimUI:
     ## change_layout 끝
 
     def change_layout(self, index: int) -> None:
+        print(f"change_layout1: {self.UI2.height()=}")
+
         # 입력값 확인
         if index in (2, 3) and not all(self.shared_data.is_input_valid.values()):
             self.master.get_popup_manager().make_notice_popup("SimInputError")
@@ -316,12 +331,15 @@ class SimUI:
 
         # 네비게이션 버튼 색 변경
         self.update_nav(index)
+        print(f"change_layout2: {self.UI2.height()=}")
 
         # 레이아웃 변경
         self.layout.setCurrentIndex(index)
+        print(f"change_layout3: {self.UI2.height()=}")
 
         # 나중에 삭제
         self.update_position()
+        print(f"change_layout4: {self.UI2.height()=}")
 
     def update_nav(self, index: int) -> None:
         """
@@ -346,6 +364,7 @@ class SimUI:
             )
 
     def update_position(self) -> None:
+        print(f"{self.UI2.height()=}")
         deltaWidth: int = (self.master.width() - self.ui_var.DEFAULT_WINDOW_WIDTH) // 2
 
         self.nav.frame.move(self.ui_var.sim_margin + deltaWidth, self.ui_var.sim_margin)
@@ -374,22 +393,16 @@ class SimUI:
                 self.UI1.skills.y() + self.UI1.skills.height() + self.ui_var.sim_main_D,
             )
 
-            self.main_frame.setFixedHeight(
-                self.UI1.height() + self.ui_var.sim_mainFrameMargin
-            )
-            print(self.UI1.height())
-
         elif self.layout.currentIndex() == 1:
-            self.UI2.power.move(deltaWidth, 0)
-            self.UI2.analysis.move(
-                deltaWidth,
-                self.UI2.power.y() + self.UI2.power.height() + self.ui_var.sim_main_D,
-            )
+            # self.UI2.power.move(deltaWidth, 0)
+            # self.UI2.analysis.move(
+            #     deltaWidth,
+            #     self.UI2.power.y() + self.UI2.power.height() + self.ui_var.sim_main_D,
+            # )
 
-            self.main_frame.setFixedHeight(
-                self.UI2.height() + self.ui_var.sim_mainFrameMargin
+            print(
+                f"{self.UI2.power.y()=}, {self.UI2.analysis.y()=}, {self.UI2.DPM_graph.y()=}, {self.UI2.ratio_graph.y()=}, {self.UI2.dps_graph.y()=}, {self.UI2.total_graph.y()=}, {self.UI2.contribution_graph.y()=}"
             )
-            print(self.UI2.height())
 
         elif self.layout.currentIndex() == 2:
             self.UI3.efficiency_frame.move(deltaWidth, 0)
@@ -436,9 +449,11 @@ class Sim1UI(QFrame):
             self, self.shared_data, self.skills.y() + self.skills.height()
         )
 
-        self.setGeometry(0, 0, 928, self.infos.y() + self.infos.height())
+        height = self.infos.y() + self.infos.height()
+        self.setGeometry(0, 0, 928, height)
+        self.setMinimumSize(928, height)
 
-        print(self.height())
+        print(f"{self.height()=}")
 
         # Tab Order 설정
         tab_orders: list[CustomLineEdit] = (
@@ -1156,9 +1171,19 @@ class Sim2UI(QFrame):
             self, self.shared_data, self.total_graph, resultDet
         )
 
-        self.setGeometry(
-            0, 0, 928, self.contribution_graph.y() + self.contribution_graph.height()
-        )
+        height = self.contribution_graph.y() + self.contribution_graph.height()
+        self.setGeometry(0, 0, 928, height)
+        self.setMinimumSize(928, height)
+
+        # print(
+        #     f"{self.power.y()=}, {self.analysis.y()=}, {self.DPM_graph.y()=}, {self.ratio_graph.y()=}, {self.dps_graph.y()=}, {self.total_graph.y()=}, {self.contribution_graph.y()=}"
+        # )
+
+        # def temp():
+        #     while True:
+        #         print(f"{self.height()=}")
+
+        # threading.Thread(target=temp, daemon=True).start()
 
 
 class Sim3UI:
