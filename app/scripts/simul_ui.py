@@ -24,6 +24,8 @@ from .custom_classes import (
     CustomComboBox,
     SimResult,
     SimAnalysis,
+    KVInput,
+    SkillImage,
 )
 from .get_character_data import get_character_info, get_character_card_data
 
@@ -44,9 +46,11 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QFileDialog,
     QScrollArea,
-    QComboBox,
     QWidget,
     QStackedLayout,
+    QVBoxLayout,
+    QSizePolicy,
+    QGridLayout,
 )
 
 
@@ -388,7 +392,7 @@ class SimUI:
                 deltaWidth,
                 self.UI1.stats.y() + self.UI1.stats.height() + self.ui_var.sim_main_D,
             )
-            self.UI1.infos.move(
+            self.UI1.condition.move(
                 deltaWidth,
                 self.UI1.skills.y() + self.UI1.skills.height() + self.ui_var.sim_main_D,
             )
@@ -436,81 +440,68 @@ class Sim1UI(QFrame):
         self.shared_data: SharedData = shared_data
         self.ui_var: UI_Variable = UI_Variable()
 
+        layout = QVBoxLayout(self)
+
         # 스텟
+        self.stats_title: Title = Title(parent=self, text="캐릭터 스탯")
         self.stats = self.Stat(self, self.shared_data)
 
         # 스킬 입력
+        self.skills_title: Title = Title(parent=self, text="스킬 레벨")
         self.skills = self.Skill(
             self, self.shared_data, self.stats.y() + self.stats.height()
         )
 
         # 추가 정보 입력
-        self.infos = self.Info(
+        self.condition_title: Title = Title(parent=self, text="시뮬레이션 조건")
+        self.condition = self.Condition(
             self, self.shared_data, self.skills.y() + self.skills.height()
         )
 
-        height = self.infos.y() + self.infos.height()
-        self.setGeometry(0, 0, 928, height)
-        self.setMinimumSize(928, height)
+        # height = self.condition.y() + self.condition.height()
+        # self.setGeometry(0, 0, 928, height)
+        # self.setMinimumSize(928, height)
 
-        print(f"{self.height()=}")
+        # print(f"{self.height()=}")
 
         # Tab Order 설정
         tab_orders: list[CustomLineEdit] = (
-            self.stats.input.inputs + self.skills.input.inputs + self.infos.input.inputs
+            self.stats.input.inputs
+            + self.skills.input.inputs
+            + self.condition.input.inputs
         )
         for i in range(len(tab_orders) - 1):
             QWidget.setTabOrder(tab_orders[i], tab_orders[i + 1])
 
-    class Stat(QFrame):
+        layout.addWidget(self.stats_title)
+        layout.addWidget(self.stats)
+        layout.addWidget(self.skills_title)
+        layout.addWidget(self.skills)
+        layout.addWidget(self.condition_title)
+        layout.addWidget(self.condition)
+
+        self.setLayout(layout)
+
+    class Stat(QWidget):
         def __init__(self, parent: QFrame, shared_data: SharedData) -> None:
             super().__init__(parent)
 
             self.shared_data: SharedData = shared_data
             self.ui_var = UI_Variable()
 
-            self.setGeometry(
-                0,
-                0,
-                928,
-                self.ui_var.sim_title_H
-                + (self.ui_var.sim_widget_D + self.ui_var.sim_stat_frame_H) * 3,
-            )
-            self.setStyleSheet(
-                "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
-            )
+            # 스탯 데이터 생성
+            stats_data: dict[str, str] = {
+                name_ko: str(self.shared_data.info_stats.get_stat_from_name(name_en))
+                for name_en, name_ko in self.shared_data.STATS.items()
+            }
 
-            self.title: Title = Title(parent=self, text="캐릭터 스탯")
-            self.input: StatInput = StatInput(
-                self, self.shared_data, self.input_changed
-            )
-            self.input.inputs[0].setFocus()
+            # 스탯 입력 위젯 생성
+            self.inputs: list[CustomLineEdit] = StatInputs(
+                self, stats_data, self.input_changed
+            ).inputs
 
-            # 스탯 입력창 위치 조정
-            margin, count = 21, 6
-            for i in range(18):
-                self.input.frames[i].move(
-                    self.ui_var.sim_stat_margin
-                    + (self.ui_var.sim_stat_width + margin) * (i % count),
-                    self.title.frame.height()
-                    + self.ui_var.sim_widget_D * ((i // count) + 1)
-                    + self.ui_var.sim_stat_frame_H * (i // count),
-                )
-                self.input.labels[i].setGeometry(
-                    0,
-                    0,
-                    self.ui_var.sim_stat_width,
-                    self.ui_var.sim_stat_label_H,
-                )
-                self.input.inputs[i].setGeometry(
-                    0,
-                    self.ui_var.sim_stat_label_H,
-                    self.ui_var.sim_stat_width,
-                    self.ui_var.sim_stat_input_H,
-                )
-                self.input.inputs[i].setText(
-                    str(self.shared_data.info_stats.get_stat_from_index(i))
-                )
+            # 첫 번째 입력 상자에 포커스 설정
+            self.inputs[0].setFocus()
 
         def input_changed(self) -> None:
             # 스탯이 정상적으로 입력되었는지 확인
@@ -557,64 +548,16 @@ class Sim1UI(QFrame):
 
             self.shared_data.is_input_valid["stat"] = False
 
-    class Skill(QFrame):
-        def __init__(self, parent: QFrame, shared_data: SharedData, y: int) -> None:
+    class Skill(QWidget):
+        def __init__(self, parent: QFrame, shared_data: SharedData) -> None:
             super().__init__(parent)
 
             self.shared_data: SharedData = shared_data
             self.ui_var: UI_Variable = UI_Variable()
 
-            self.setGeometry(
-                0,
-                y + self.ui_var.sim_main_D,
-                928,
-                self.ui_var.sim_title_H
-                + (self.ui_var.sim_widget_D + self.ui_var.sim_skill_frame_H) * 2,
-            )
-            self.setStyleSheet(
-                "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
-            )
-
-            self.skill_title = Title(self, "스킬 레벨")
-            self.input = SkillInput(self, self.shared_data, self.input_changed)
-
-            margin, count = 66, 4
-            for i in range(8):
-                self.input.frames[i].move(
-                    self.ui_var.sim_skill_margin
-                    + (self.ui_var.sim_skill_width + margin) * (i % count),
-                    self.skill_title.frame.height()
-                    + self.ui_var.sim_widget_D * ((i // count) + 1)
-                    + self.ui_var.sim_skill_frame_H * (i // count),
-                )
-
-                # *args으로 변경 가능?
-                self.input.names[i].setGeometry(
-                    0,
-                    0,
-                    self.ui_var.sim_skill_width,
-                    self.ui_var.sim_skill_name_H,
-                )
-                self.input.labels[i].setGeometry(
-                    self.ui_var.sim_skill_image_Size,
-                    self.ui_var.sim_skill_name_H,
-                    self.ui_var.sim_skill_right_W,
-                    self.ui_var.sim_skill_level_H,
-                )
-                self.input.inputs[i].setGeometry(
-                    self.ui_var.sim_skill_image_Size,
-                    self.ui_var.sim_skill_name_H + self.ui_var.sim_skill_level_H,
-                    self.ui_var.sim_skill_right_W,
-                    self.ui_var.sim_skill_input_H,
-                )
-
-                self.input.inputs[i].setText(
-                    str(
-                        self.shared_data.info_skill_levels[
-                            get_available_skills(self.shared_data)[i]
-                        ]
-                    )
-                )
+            self.inputs: list[CustomLineEdit] = SkillInputs(
+                self, self.shared_data, self.input_changed
+            ).inputs
 
         def input_changed(self):
             # 스킬이 정상적으로 입력되었는지 확인
@@ -653,7 +596,7 @@ class Sim1UI(QFrame):
 
             self.shared_data.is_input_valid["skill"] = False
 
-    class Info(QFrame):
+    class Condition(QFrame):
         def __init__(self, parent: QFrame, shared_data: SharedData, y: int) -> None:
             super().__init__(parent)
 
@@ -1400,7 +1343,7 @@ class Sim3UI(QFrame):
             self.widgetList.append(label)
             self.widgetList.append(number)
 
-        self.additional_stats = StatInput(
+        self.additional_stats = StatInputs(
             self.additional_frame, self.shared_data, self.stat_inputChanged
         )
 
@@ -1433,7 +1376,7 @@ class Sim3UI(QFrame):
             self.widgetList.append(self.additional_stats.labels[i])
             self.widgetList.append(self.additional_stats.inputs[i])
 
-        self.additional_skills = SkillInput(
+        self.additional_skills = SkillInputs(
             self.additional_frame, self.shared_data, self.skill_inputChanged
         )
 
@@ -2525,94 +2468,138 @@ class Sim4UI:
         self.shared_data.is_card_updated = True
 
 
-class StatInput:
-    def __init__(self, mainframe, shared_data: SharedData, connected_function):
-        self.frames = []
-        self.labels = []
-        self.inputs = []
+class StatInputs(QWidget):
+    def __init__(self, mainframe, stats_data: dict[str, str], connected_function):
+        super().__init__(mainframe)
 
-        # 스탯 입력창 생성
-        for i in range(len(list(shared_data.STATS.values()))):
-            frame = QFrame(mainframe)
-            frame.setStyleSheet(
-                "QFrame { background-color: transparent; border: 0px solid; }"
+        # 그리드 레이아웃 위젯 생성
+        grid_layout = QGridLayout(self)
+
+        # 아이템을 저장할 리스트
+        self.inputs: list[CustomLineEdit] = []
+
+        # column 수 설정
+        COLS = 6
+        for i, (name, value) in enumerate(stats_data.items()):
+            item_widget = KVInput(self, name, value, float, connected_function)
+
+            # 위치 계산
+            row: int = i // COLS
+            column: int = i % COLS
+
+            # 그리드에 추가
+            grid_layout.addWidget(item_widget, row, column)
+
+            # 아이템 위젯을 리스트에 저장
+            self.inputs.append(item_widget.input)
+
+        # 그리드 레이아웃 간격 설정
+        grid_layout.setVerticalSpacing(10)
+        grid_layout.setHorizontalSpacing(20)
+
+        # # 2. 중앙 컨테이너 위젯을 메인 창 중앙에 배치하기 위한 레이아웃 설정
+
+        # # 2-1. 수평 중앙 정렬 (왼쪽 스트레치 - 컨테이너 - 오른쪽 스트레치)
+        # h_layout = QHBoxLayout()
+        # h_layout.addStretch(1)  # 왼쪽 스트레치 (남는 공간 흡수)
+        # h_layout.addWidget(stats_container)  # 중앙에 배치할 컨테이너
+        # h_layout.addStretch(1)  # 오른쪽 스트레치 (남는 공간 흡수)
+
+        # # 2-2. 수직 중앙 정렬 (상단 스트레치 - 수평 레이아웃 - 하단 스트레치)
+        # v_layout = QVBoxLayout(self)  # 메인 창의 최종 레이아웃
+        # v_layout.addStretch(1)  # 상단 스트레치
+        # v_layout.addLayout(h_layout)  # 수평 중앙 정렬된 위젯 묶음
+        # v_layout.addStretch(1)  # 하단 스트레치
+
+
+class SkillInputs(QWidget):
+    class SkillInput(QWidget):
+        def __init__(
+            self,
+            parent,
+            shared_data: SharedData,
+            name: str,
+            value: int,
+            connected_function=None,
+        ):
+            super().__init__(parent)
+
+            ui_var = UI_Variable()
+
+            # 전체 layout 설정
+            grid = QGridLayout()
+            grid.setContentsMargins(0, 0, 0, 0)
+
+            label = QLabel(name, self)
+            label.setStyleSheet(f"QLabel {{ border: 0px solid; border-radius: 4px; }}")
+            label.setFont(CustomFont(14))
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            image = SkillImage(
+                self,
+                get_skill_pixmap(
+                    shared_data,
+                    name,
+                ),
+                ui_var.sim_skill_image_Size,
             )
 
-            label = QLabel(list(shared_data.STATS.values())[i], frame)
-            label.setStyleSheet(
-                "QLabel { background-color: transparent; border: 0px solid; }"
+            level_input = KVInput(
+                self, "레벨", str(value), connected_function=connected_function
             )
-            label.setFont(CustomFont(10))
 
-            lineEdit = CustomLineEdit(frame, connected_function)
+            # layout에 추가
+            grid.addWidget(label, 0, 0, 2, 1)
+            grid.addWidget(image, 1, 0)
+            grid.addWidget(level_input, 1, 1)
 
-            self.frames.append(frame)
-            self.labels.append(label)
-            self.inputs.append(lineEdit)
+            # layout 설정
+            self.setLayout(grid)
 
+    def __init__(
+        self,
+        mainframe,
+        shared_data: SharedData,
+        skills_data: dict[str, int],
+        connected_function,
+    ):
+        # self.shared_data.info_skill_levels[
+        #     get_available_skills(self.shared_data)[i]
+        # ]
+        super().__init__(mainframe)
 
-class SkillInput:
-    def __init__(self, mainframe, shared_data: SharedData, connected_function):
+        # 그리드 레이아웃 위젯 생성
+        grid_layout = QGridLayout(self)
+
+        # 아이템을 저장할 리스트
+        self.inputs: list[CustomLineEdit] = []
+
+        # column 수 설정
+        COLS = 7
+        for i, (name, value) in enumerate(skills_data.items()):
+            item_widget = self.SkillInput(
+                self, shared_data, name, value, connected_function
+            )
+
+            # 위치 계산
+            row: int = i // COLS
+            column: int = i % COLS
+
+            # 그리드에 추가
+            grid_layout.addWidget(item_widget, row, column)
+
+            # 아이템 위젯을 리스트에 저장
+            self.inputs.append(item_widget.input)
+
+        # 그리드 레이아웃 간격 설정
+        grid_layout.setVerticalSpacing(10)
+        grid_layout.setHorizontalSpacing(20)
+
         ui_var = UI_Variable()
 
         texts = shared_data.skill_data[shared_data.server_ID]["jobs"][
             shared_data.job_ID
         ]["skills"]
-
-        self.frames = []
-        self.names = []
-        self.images = []
-        self.labels = []
-        self.inputs = []
-
-        for i in range(8):
-            frame = QFrame(mainframe)
-            frame.setStyleSheet(
-                "QFrame { background-color: transparent; border: 0px solid black; }"
-            )
-
-            name = QLabel(texts[i], frame)
-            name.setStyleSheet(
-                f"QLabel {{ border: 1px solid {ui_var.sim_input_colors[1]}; border-radius: 4px; }}"
-            )
-            name.setFont(CustomFont(14))
-            name.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-            label = QLabel("레벨", frame)
-            label.setStyleSheet(
-                "QLabel { background-color: transparent; border: 0px solid; }"
-            )
-            label.setFont(CustomFont(10))
-            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-            lineEdit = CustomLineEdit(frame, connected_function)
-
-            image = QPushButton(frame)
-            image.setGeometry(
-                0,
-                ui_var.sim_skill_name_H,
-                ui_var.sim_skill_image_Size,
-                ui_var.sim_skill_image_Size,
-            )
-            image.setStyleSheet(
-                "QPushButton { background-color: transparent; border: 0px solid; }"
-            )
-            image.setIcon(
-                QIcon(
-                    get_skill_pixmap(
-                        shared_data, skill_name=get_available_skills(shared_data)[i]
-                    )
-                )
-            )
-            image.setIconSize(
-                QSize(ui_var.sim_skill_image_Size, ui_var.sim_skill_image_Size)
-            )
-
-            self.frames.append(frame)
-            self.names.append(name)
-            self.labels.append(label)
-            self.inputs.append(lineEdit)
-            self.images.append(image)
 
 
 class SimInfoInput:
@@ -2907,25 +2894,13 @@ class PotentialRank:
         return texts
 
 
-class Title:
+class Title(QLabel):
     def __init__(self, parent, text):
-        ui_var = UI_Variable()
-
-        self.frame = QFrame(parent)
-        self.frame.setGeometry(0, 0, 928, ui_var.sim_title_H)
-        self.frame.setStyleSheet(
-            "QFrame { background-color: rgb(255, 255, 255); border: none; border-bottom: 1px solid #bbbbbb; }"
+        super().__init__(text, parent)
+        self.setStyleSheet(
+            "QLabel { background-color: rgb(255, 255, 255); border: none; border-bottom: 1px solid #bbbbbb; }"
         )
-        self.frame.show()
-
-        self.label = QLabel(text, self.frame)
-        self.label.setGeometry(
-            ui_var.sim_label_x,
-            0,
-            928 - ui_var.sim_label_x,
-            ui_var.sim_label_H,
-        )
-        self.label.setFont(CustomFont(16))
+        self.setFont(CustomFont(16))
 
 
 class Navigation:

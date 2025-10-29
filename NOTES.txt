@@ -124,6 +124,10 @@ python flag.optimize, pyinstaller optimize
 
 코드를 수정하지 않고 json 파일만 수정하면 서버, 스킬 데이터 모두 변하게 수정(기본값, 목록 등을 json에 포함)
 
+프로그램 내 기본 정보가 변경되었을 때 LocalAppdata의 데이터와 다르면 발생하는 오류 수정하기
+
+스킬 쿨타임이 레벨에 따라 조절될 수 있도록 수정
+
 ---------
 
 

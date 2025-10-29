@@ -6,9 +6,14 @@ from PyQt6.QtWidgets import (
     QLabel,
     QWidget,
     QGraphicsDropShadowEffect,
+    QVBoxLayout,
+    QSizePolicy,
 )
 
 from dataclasses import dataclass, field
+
+from collections.abc import Callable
+from builtins import type
 
 
 class CustomLineEdit(QLineEdit):
@@ -37,6 +42,74 @@ class CustomLineEdit(QLineEdit):
 
         if connected_function:
             self.textChanged.connect(connected_function)
+
+
+class KVInput(QWidget):
+    def __init__(
+        self,
+        parent: QWidget,
+        name: str,
+        value: str,
+        connected_function: Callable | None = None,
+        expected_type: type = int,
+    ):
+        super().__init__(parent)
+
+        # 전체 layout 설정
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        # label 생성
+        self.label = QLabel(name, self)
+        self.label.setStyleSheet(
+            "QLabel { background-color: transparent; border: 0px solid; }"
+        )
+        self.label.setFont(CustomFont(10))
+        self.label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.label.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
+        )
+
+        # lineEdit 생성
+        self.input = CustomLineEdit(self, connected_function, value)
+        self.input.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        # layout에 추가
+        layout.addWidget(self.label)
+        layout.addWidget(self.input)
+
+        # layout 설정
+        self.setLayout(layout)
+
+        # 값의 타입 저장
+        self.expected_type = expected_type
+
+    def is_input_valid(self) -> bool:
+        # 입력된 값이 지정된 타입과 일치하는지 확인
+
+        text: str = self.input.text()
+
+        # int 라면
+        if self.expected_type == int:
+            try:
+                int(text)
+                return True
+
+            except ValueError:
+                return False
+
+        # float 이라면
+        elif self.expected_type == float:
+            try:
+                float(text)
+                return True
+
+            except ValueError:
+                return False
+
+        # 예외는 False
+        else:
+            return False
 
 
 class CustomComboBox(QComboBox):
@@ -71,7 +144,7 @@ class SkillImage(QLabel):
     """
 
     def __init__(
-        self, parent: QWidget, pixmap: QPixmap, size: int, x: int, y: int
+        self, parent: QWidget, pixmap: QPixmap, size: int, x: int = 0, y: int = 0
     ) -> None:
         super().__init__(parent)
 
