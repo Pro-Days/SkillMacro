@@ -1186,149 +1186,157 @@ class Sim2UI(QFrame):
         # threading.Thread(target=temp, daemon=True).start()
 
 
-class Sim3UI:
-    def __init__(self, parent, shared_data: SharedData):
-        self.shared_data = shared_data
-        self.parent = parent
+class Sim3UI(QFrame):
+    class Efficiency(QFrame):
+        def __init__(self, parent: QFrame, shared_data: SharedData) -> None:
+            super().__init__(parent)
 
+            self.shared_data: SharedData = shared_data
+            self.ui_var = UI_Variable()
+
+            self.setGeometry(
+                0,
+                0,
+                928,
+                self.ui_var.sim_title_H
+                + (self.ui_var.sim_widget_D + self.ui_var.sim_efficiency_frame_H),
+            )
+            self.setStyleSheet(
+                "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
+            )
+
+            self.title: Title = Title(self, "스펙업 효율 계산기")
+
+            # 왼쪽 콤보박스
+            self.combobox_L = CustomComboBox(
+                self,
+                list(self.shared_data.STATS.values()),
+                self.efficiency_Changed,
+            )
+            self.combobox_L.setGeometry(
+                self.ui_var.sim_efficiency_statL_margin,
+                self.ui_var.sim_label_H
+                + self.ui_var.sim_widget_D
+                + self.ui_var.sim_efficiency_statL_y,
+                self.ui_var.sim_efficiency_statL_W,
+                self.ui_var.sim_efficiency_statL_H,
+            )
+
+            # 왼쪽 스탯 입력창
+            self.efficiency_statInput = CustomLineEdit(
+                self, self.efficiency_Changed, "10"
+            )
+            self.efficiency_statInput.setGeometry(
+                self.ui_var.sim_efficiency_statInput_margin,
+                self.ui_var.sim_label_H
+                + self.ui_var.sim_widget_D
+                + self.ui_var.sim_efficiency_statInput_y,
+                self.ui_var.sim_efficiency_statInput_W,
+                self.ui_var.sim_efficiency_statInput_H,
+            )
+            self.efficiency_statInput.setFocus()
+            self.widgetList.append(self.efficiency_statInput)
+
+            # 화살표
+            self.efficiency_arrow = QLabel("", self.efficiency_frame)
+            self.efficiency_arrow.setStyleSheet(
+                f"QLabel {{ background-color: transparent; border: 0px solid; }}"
+            )
+            self.efficiency_arrow.setPixmap(
+                QPixmap(
+                    convert_resource_path("resources\\image\\lineArrow.png")
+                ).scaled(
+                    self.ui_var.sim_efficiency_arrow_W,
+                    self.ui_var.sim_efficiency_arrow_H,
+                )
+            )
+            self.efficiency_arrow.setGeometry(
+                self.ui_var.sim_efficiency_arrow_margin,
+                self.ui_var.sim_label_H
+                + self.ui_var.sim_widget_D
+                + self.ui_var.sim_efficiency_arrow_y,
+                self.ui_var.sim_efficiency_arrow_W,
+                self.ui_var.sim_efficiency_arrow_H,
+            )
+            self.widgetList.append(self.efficiency_arrow)
+
+            # 오른쪽 콤보박스
+            self.efficiency_statR = CustomComboBox(
+                self.efficiency_frame,
+                list(self.shared_data.STATS.values()),
+                self.efficiency_Changed,
+            )
+            self.efficiency_statR.setGeometry(
+                self.ui_var.sim_efficiency_statR_margin,
+                self.ui_var.sim_label_H
+                + self.ui_var.sim_widget_D
+                + self.ui_var.sim_efficiency_statR_y,
+                self.ui_var.sim_efficiency_statR_W,
+                self.ui_var.sim_efficiency_statR_H,
+            )
+            self.widgetList.append(self.efficiency_statR)
+
+            self.efficiency_power_labels = PowerLabels(
+                self.efficiency_frame, self.shared_data, ["0"] * 4
+            )
+
+            for i in range(len(self.efficiency_power_labels.labels)):
+                frame = self.efficiency_power_labels.frames[i]
+                label = self.efficiency_power_labels.labels[i]
+                number = self.efficiency_power_labels.numbers[i]
+
+                frame.setGeometry(
+                    self.ui_var.sim_powerS_margin
+                    + (self.ui_var.sim_powerS_width + self.ui_var.sim_powerS_D) * i,
+                    self.ui_var.sim_label_H + self.ui_var.sim_widget_D,
+                    self.ui_var.sim_powerS_width,
+                    self.ui_var.sim_powerS_frame_H,
+                )
+                label.setGeometry(
+                    0,
+                    0,
+                    self.ui_var.sim_powerS_width,
+                    self.ui_var.sim_powerS_title_H,
+                )
+                number.setGeometry(
+                    0,
+                    self.ui_var.sim_powerS_title_H,
+                    self.ui_var.sim_powerS_width,
+                    self.ui_var.sim_powerS_number_H,
+                )
+
+                self.widgetList.append(frame)
+                self.widgetList.append(label)
+                self.widgetList.append(number)
+
+            self.update_efficiency()
+
+    def __init__(self, parent: QFrame, shared_data: SharedData) -> None:
+        super().__init__(parent)
+
+        self.shared_data: SharedData = shared_data
         self.ui_var = UI_Variable()
 
-        self.makeSim3UI()
-
-    def makeSim3UI(self):
-        powers = detSimulate(
+        # 계산
+        powers: list[float] = detSimulate(
             self.shared_data,
             self.shared_data.info_stats,
             self.shared_data.info_sim_details,
         ).powers
 
+        # 저장
         for i, power in enumerate(powers):
             self.shared_data.powers[i] = power
 
+        # 레이아웃 시스템으로 변경할 때 제거
         self.widgetList = []
 
+        # ???
         self.shared_data.is_input_valid["stat"] = False
         self.shared_data.is_input_valid["skill"] = False
 
         ## 스펙업 효율 계산기
-        self.efficiency_frame = QFrame(self.parent)
-        self.efficiency_frame.setGeometry(
-            0,
-            0,
-            928,
-            self.ui_var.sim_title_H
-            + (self.ui_var.sim_widget_D + self.ui_var.sim_efficiency_frame_H),
-        )
-        self.efficiency_frame.setStyleSheet(
-            "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
-        )
-        self.widgetList.append(self.efficiency_frame)
-
-        self.efficiency_title = Title(self.efficiency_frame, "스펙업 효율 계산기")
-        self.widgetList.append(self.efficiency_title.frame)
-        self.widgetList.append(self.efficiency_title.label)
-
-        # 왼쪽 콤보박스
-        self.efficiency_statL = CustomComboBox(
-            self.efficiency_frame,
-            list(self.shared_data.STATS.values()),
-            self.efficiency_Changed,
-        )
-        self.efficiency_statL.setGeometry(
-            self.ui_var.sim_efficiency_statL_margin,
-            self.ui_var.sim_label_H
-            + self.ui_var.sim_widget_D
-            + self.ui_var.sim_efficiency_statL_y,
-            self.ui_var.sim_efficiency_statL_W,
-            self.ui_var.sim_efficiency_statL_H,
-        )
-        self.widgetList.append(self.efficiency_statL)
-
-        # 왼쪽 스탯 입력창
-        self.efficiency_statInput = CustomLineEdit(
-            self.efficiency_frame, self.efficiency_Changed, "10"
-        )
-        self.efficiency_statInput.setGeometry(
-            self.ui_var.sim_efficiency_statInput_margin,
-            self.ui_var.sim_label_H
-            + self.ui_var.sim_widget_D
-            + self.ui_var.sim_efficiency_statInput_y,
-            self.ui_var.sim_efficiency_statInput_W,
-            self.ui_var.sim_efficiency_statInput_H,
-        )
-        self.efficiency_statInput.setFocus()
-        self.widgetList.append(self.efficiency_statInput)
-
-        # 화살표
-        self.efficiency_arrow = QLabel("", self.efficiency_frame)
-        self.efficiency_arrow.setStyleSheet(
-            f"QLabel {{ background-color: transparent; border: 0px solid; }}"
-        )
-        self.efficiency_arrow.setPixmap(
-            QPixmap(convert_resource_path("resources\\image\\lineArrow.png")).scaled(
-                self.ui_var.sim_efficiency_arrow_W, self.ui_var.sim_efficiency_arrow_H
-            )
-        )
-        self.efficiency_arrow.setGeometry(
-            self.ui_var.sim_efficiency_arrow_margin,
-            self.ui_var.sim_label_H
-            + self.ui_var.sim_widget_D
-            + self.ui_var.sim_efficiency_arrow_y,
-            self.ui_var.sim_efficiency_arrow_W,
-            self.ui_var.sim_efficiency_arrow_H,
-        )
-        self.widgetList.append(self.efficiency_arrow)
-
-        # 오른쪽 콤보박스
-        self.efficiency_statR = CustomComboBox(
-            self.efficiency_frame,
-            list(self.shared_data.STATS.values()),
-            self.efficiency_Changed,
-        )
-        self.efficiency_statR.setGeometry(
-            self.ui_var.sim_efficiency_statR_margin,
-            self.ui_var.sim_label_H
-            + self.ui_var.sim_widget_D
-            + self.ui_var.sim_efficiency_statR_y,
-            self.ui_var.sim_efficiency_statR_W,
-            self.ui_var.sim_efficiency_statR_H,
-        )
-        self.widgetList.append(self.efficiency_statR)
-
-        self.efficiency_power_labels = PowerLabels(
-            self.efficiency_frame, self.shared_data, ["0"] * 4
-        )
-
-        for i in range(len(self.efficiency_power_labels.labels)):
-            frame = self.efficiency_power_labels.frames[i]
-            label = self.efficiency_power_labels.labels[i]
-            number = self.efficiency_power_labels.numbers[i]
-
-            frame.setGeometry(
-                self.ui_var.sim_powerS_margin
-                + (self.ui_var.sim_powerS_width + self.ui_var.sim_powerS_D) * i,
-                self.ui_var.sim_label_H + self.ui_var.sim_widget_D,
-                self.ui_var.sim_powerS_width,
-                self.ui_var.sim_powerS_frame_H,
-            )
-            label.setGeometry(
-                0,
-                0,
-                self.ui_var.sim_powerS_width,
-                self.ui_var.sim_powerS_title_H,
-            )
-            number.setGeometry(
-                0,
-                self.ui_var.sim_powerS_title_H,
-                self.ui_var.sim_powerS_width,
-                self.ui_var.sim_powerS_number_H,
-            )
-
-            self.widgetList.append(frame)
-            self.widgetList.append(label)
-            self.widgetList.append(number)
-
-        self.update_efficiency()
+        self.efficiency = self.Efficiency()
 
         # 추가 스펙업 계산기
         self.additional_frame = QFrame(self.parent)
