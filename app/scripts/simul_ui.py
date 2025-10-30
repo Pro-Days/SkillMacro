@@ -444,13 +444,11 @@ class Sim1UI(QFrame):
 
         # 스텟
         self.stats_title: Title = Title(parent=self, text="캐릭터 스탯")
-        self.stats = self.Stat(self, self.shared_data)
+        self.stats = self.Stats(self, self.shared_data)
 
         # 스킬 입력
         self.skills_title: Title = Title(parent=self, text="스킬 레벨")
-        self.skills = self.Skill(
-            self, self.shared_data, self.stats.y() + self.stats.height()
-        )
+        self.skills = self.Skills(self, self.shared_data)
 
         # 추가 정보 입력
         self.condition_title: Title = Title(parent=self, text="시뮬레이션 조건")
@@ -466,9 +464,7 @@ class Sim1UI(QFrame):
 
         # Tab Order 설정
         tab_orders: list[CustomLineEdit] = (
-            self.stats.input.inputs
-            + self.skills.input.inputs
-            + self.condition.input.inputs
+            self.stats.inputs + self.skills.inputs + self.condition.input.inputs
         )
         for i in range(len(tab_orders) - 1):
             QWidget.setTabOrder(tab_orders[i], tab_orders[i + 1])
@@ -482,7 +478,7 @@ class Sim1UI(QFrame):
 
         self.setLayout(layout)
 
-    class Stat(QWidget):
+    class Stats(QWidget):
         def __init__(self, parent: QFrame, shared_data: SharedData) -> None:
             super().__init__(parent)
 
@@ -548,7 +544,7 @@ class Sim1UI(QFrame):
 
             self.shared_data.is_input_valid["stat"] = False
 
-    class Skill(QWidget):
+    class Skills(QWidget):
         def __init__(self, parent: QFrame, shared_data: SharedData) -> None:
             super().__init__(parent)
 
@@ -556,7 +552,15 @@ class Sim1UI(QFrame):
             self.ui_var: UI_Variable = UI_Variable()
 
             self.inputs: list[CustomLineEdit] = SkillInputs(
-                self, self.shared_data, self.input_changed
+                self,
+                self.shared_data,
+                {
+                    get_available_skills(self.shared_data)[i]: level
+                    for i, level in enumerate(
+                        self.shared_data.info_skill_levels.values()
+                    )
+                },
+                self.input_changed,
             ).inputs
 
         def input_changed(self):
@@ -596,56 +600,23 @@ class Sim1UI(QFrame):
 
             self.shared_data.is_input_valid["skill"] = False
 
-    class Condition(QFrame):
-        def __init__(self, parent: QFrame, shared_data: SharedData, y: int) -> None:
+    class Condition(QWidget):
+        def __init__(self, parent: QFrame, shared_data: SharedData) -> None:
             super().__init__(parent)
 
             self.shared_data: SharedData = shared_data
             self.ui_var = UI_Variable()
 
-            self.setGeometry(
-                0,
-                y + self.ui_var.sim_main_D,
-                928,
-                self.ui_var.sim_title_H
-                + (self.ui_var.sim_widget_D + self.ui_var.sim_simInfo_frame_H) * 1,
-            )
-            self.setStyleSheet(
-                "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
+            self.input = ConditionInputs(
+                self,
+                {
+                    name: str(self.shared_data.info_sim_details[name])
+                    for name in self.shared_data.SIM_DETAILS.keys()
+                },
+                self.input_changed,
             )
 
-            self.info_title = Title(self, "추가 정보 입력")
-            self.input = SimInfoInput(self, self.shared_data, self.input_changed)
-
-            margin = 60
-            for i in range(3):
-                self.input.frames[i].move(
-                    self.ui_var.sim_simInfo_margin
-                    + (self.ui_var.sim_simInfo_width + margin) * i,
-                    self.info_title.frame.height() + self.ui_var.sim_widget_D,
-                )
-                self.input.labels[i].setGeometry(
-                    0,
-                    0,
-                    self.ui_var.sim_simInfo_width,
-                    self.ui_var.sim_simInfo_label_H,
-                )
-                self.input.inputs[i].setGeometry(
-                    0,
-                    self.ui_var.sim_simInfo_label_H,
-                    self.ui_var.sim_simInfo_width,
-                    self.ui_var.sim_simInfo_input_H,
-                )
-
-                self.input.inputs[i].setText(
-                    str(
-                        self.shared_data.info_sim_details[
-                            list(self.shared_data.SIM_DETAILS.keys())[i]
-                        ]
-                    )
-                )
-
-        def input_changed(self):
+        def input_changed(self) -> None:
             # 스탯이 정상적으로 입력되었는지 확인
             def checkInput(num, text) -> bool:
                 if not text.isdigit():
@@ -2469,7 +2440,9 @@ class Sim4UI:
 
 
 class StatInputs(QWidget):
-    def __init__(self, mainframe, stats_data: dict[str, str], connected_function):
+    def __init__(
+        self, mainframe: QWidget, stats_data: dict[str, str], connected_function
+    ):
         super().__init__(mainframe)
 
         # 그리드 레이아웃 위젯 생성
@@ -2496,20 +2469,6 @@ class StatInputs(QWidget):
         # 그리드 레이아웃 간격 설정
         grid_layout.setVerticalSpacing(10)
         grid_layout.setHorizontalSpacing(20)
-
-        # # 2. 중앙 컨테이너 위젯을 메인 창 중앙에 배치하기 위한 레이아웃 설정
-
-        # # 2-1. 수평 중앙 정렬 (왼쪽 스트레치 - 컨테이너 - 오른쪽 스트레치)
-        # h_layout = QHBoxLayout()
-        # h_layout.addStretch(1)  # 왼쪽 스트레치 (남는 공간 흡수)
-        # h_layout.addWidget(stats_container)  # 중앙에 배치할 컨테이너
-        # h_layout.addStretch(1)  # 오른쪽 스트레치 (남는 공간 흡수)
-
-        # # 2-2. 수직 중앙 정렬 (상단 스트레치 - 수평 레이아웃 - 하단 스트레치)
-        # v_layout = QVBoxLayout(self)  # 메인 창의 최종 레이아웃
-        # v_layout.addStretch(1)  # 상단 스트레치
-        # v_layout.addLayout(h_layout)  # 수평 중앙 정렬된 위젯 묶음
-        # v_layout.addStretch(1)  # 하단 스트레치
 
 
 class SkillInputs(QWidget):
@@ -2545,7 +2504,11 @@ class SkillInputs(QWidget):
             )
 
             level_input = KVInput(
-                self, "레벨", str(value), connected_function=connected_function
+                self,
+                "레벨",
+                str(value),
+                connected_function=connected_function,
+                expected_type=int,
             )
 
             # layout에 추가
@@ -2558,7 +2521,7 @@ class SkillInputs(QWidget):
 
     def __init__(
         self,
-        mainframe,
+        mainframe: QWidget,
         shared_data: SharedData,
         skills_data: dict[str, int],
         connected_function,
@@ -2602,29 +2565,36 @@ class SkillInputs(QWidget):
         ]["skills"]
 
 
-class SimInfoInput:
-    def __init__(self, mainframe, shared_data: SharedData, connected_function):
-        self.frames = []
-        self.labels = []
-        self.inputs = []
+class ConditionInputs(QWidget):
+    def __init__(
+        self, mainframe: QWidget, stats_data: dict[str, str], connected_function
+    ):
+        super().__init__(mainframe)
 
-        for i in range(len(shared_data.SIM_DETAILS)):
-            frame = QFrame(mainframe)
-            frame.setStyleSheet(
-                "QFrame { background-color: transparent; border: 0px solid; }"
-            )
+        # 그리드 레이아웃 위젯 생성
+        grid_layout = QGridLayout(self)
 
-            label = QLabel(list(shared_data.SIM_DETAILS.values())[i], frame)
-            label.setStyleSheet(
-                "QLabel { background-color: transparent; border: 0px solid; }"
-            )
-            label.setFont(CustomFont(10))
+        # 아이템을 저장할 리스트
+        self.inputs: list[CustomLineEdit] = []
 
-            lineEdit = CustomLineEdit(frame, connected_function)
+        # column 수 설정
+        COLS = 3
+        for i, (name, value) in enumerate(stats_data.items()):
+            item_widget = KVInput(self, name, value, connected_function, int)
 
-            self.frames.append(frame)
-            self.labels.append(label)
-            self.inputs.append(lineEdit)
+            # 위치 계산
+            row = 1
+            column: int = i % COLS
+
+            # 그리드에 추가
+            grid_layout.addWidget(item_widget, row, column)
+
+            # 아이템 위젯을 리스트에 저장
+            self.inputs.append(item_widget.input)
+
+        # 그리드 레이아웃 간격 설정
+        grid_layout.setVerticalSpacing(10)
+        grid_layout.setHorizontalSpacing(20)
 
 
 class PowerLabels:
