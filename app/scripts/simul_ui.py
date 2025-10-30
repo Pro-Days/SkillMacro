@@ -450,11 +450,9 @@ class Sim1UI(QFrame):
         self.skills_title: Title = Title(parent=self, text="스킬 레벨")
         self.skills = self.Skills(self, self.shared_data)
 
-        # 추가 정보 입력
+        # 시뮬레이션 조건 입력
         self.condition_title: Title = Title(parent=self, text="시뮬레이션 조건")
-        self.condition = self.Condition(
-            self, self.shared_data, self.skills.y() + self.skills.height()
-        )
+        self.condition = self.Condition(self, self.shared_data)
 
         # height = self.condition.y() + self.condition.height()
         # self.setGeometry(0, 0, 928, height)
@@ -464,7 +462,7 @@ class Sim1UI(QFrame):
 
         # Tab Order 설정
         tab_orders: list[CustomLineEdit] = (
-            self.stats.inputs + self.skills.inputs + self.condition.input.inputs
+            self.stats.inputs + self.skills.inputs + self.condition.inputs
         )
         for i in range(len(tab_orders) - 1):
             QWidget.setTabOrder(tab_orders[i], tab_orders[i + 1])
@@ -513,14 +511,14 @@ class Sim1UI(QFrame):
 
             # todo: for 1개로 변경하기
             # 모두 digit 이고 범위 내에 있으면
-            if all(checkInput(i, j.text()) for i, j in enumerate(self.input.inputs)):
+            if all(checkInput(i, j.text()) for i, j in enumerate(self.inputs)):
                 # 통과O면 원래색
-                for i in self.input.inputs:
+                for i in self.inputs:
                     i.setStyleSheet(
                         f"QLineEdit {{ background-color: {self.ui_var.sim_input_colors[0]}; border: 1px solid {self.ui_var.sim_input_colors[1]}; border-radius: 4px; }}"
                     )
 
-                for i, j in enumerate(self.input.inputs):
+                for i, j in enumerate(self.inputs):
                     self.shared_data.info_stats.set_stat_from_index(i, int(j.text()))
 
                 save_data(self.shared_data)
@@ -529,7 +527,7 @@ class Sim1UI(QFrame):
                 return
 
             # 하나라도 통과X
-            for i, j in enumerate(self.input.inputs):
+            for i, j in enumerate(self.inputs):
                 # 통과X면 빨간색
                 if not checkInput(i, j.text()):
                     j.setStyleSheet(
@@ -551,15 +549,15 @@ class Sim1UI(QFrame):
             self.shared_data: SharedData = shared_data
             self.ui_var: UI_Variable = UI_Variable()
 
+            skills_data: dict[str, int] = {
+                name: self.shared_data.info_skill_levels[name]
+                for name in get_available_skills(self.shared_data)
+            }
+
             self.inputs: list[CustomLineEdit] = SkillInputs(
                 self,
                 self.shared_data,
-                {
-                    get_available_skills(self.shared_data)[i]: level
-                    for i, level in enumerate(
-                        self.shared_data.info_skill_levels.values()
-                    )
-                },
+                skills_data,
                 self.input_changed,
             ).inputs
 
@@ -571,13 +569,13 @@ class Sim1UI(QFrame):
 
                 return 1 <= int(text) <= 30
 
-            if all(checkInput(i.text()) for i in self.input.inputs):  # 모두 통과
-                for i in self.input.inputs:  # 통과O면 원래색
+            if all(checkInput(i.text()) for i in self.inputs):  # 모두 통과
+                for i in self.inputs:  # 통과O면 원래색
                     i.setStyleSheet(
                         f"QLineEdit {{ background-color: {self.ui_var.sim_input_colors[0]}; border: 1px solid {self.ui_var.sim_input_colors[1]}; border-radius: 4px; }}"
                     )
 
-                for i, j in enumerate(self.input.inputs):
+                for i, j in enumerate(self.inputs):
                     self.shared_data.info_skill_levels[
                         get_available_skills(self.shared_data)[i]
                     ] = int(j.text())
@@ -588,7 +586,7 @@ class Sim1UI(QFrame):
                 return
 
             # 하나라도 통과X
-            for i in self.input.inputs:
+            for i in self.inputs:
                 if not checkInput(i.text()):  # 통과X면 빨간색
                     i.setStyleSheet(
                         f"QLineEdit {{ background-color: {self.ui_var.sim_input_colors[0]}; border: 2px solid {self.ui_var.sim_input_colorsRed}; border-radius: 4px; }}"
@@ -607,14 +605,14 @@ class Sim1UI(QFrame):
             self.shared_data: SharedData = shared_data
             self.ui_var = UI_Variable()
 
-            self.input = ConditionInputs(
+            self.inputs: list[CustomLineEdit] = ConditionInputs(
                 self,
                 {
                     name: str(self.shared_data.info_sim_details[name])
                     for name in self.shared_data.SIM_DETAILS.keys()
                 },
                 self.input_changed,
-            )
+            ).inputs
 
         def input_changed(self) -> None:
             # 스탯이 정상적으로 입력되었는지 확인
@@ -629,14 +627,14 @@ class Sim1UI(QFrame):
                         return True
 
             if all(
-                checkInput(i, j.text()) for i, j in enumerate(self.input.inputs)
+                checkInput(i, j.text()) for i, j in enumerate(self.inputs)
             ):  # 모두 통과
-                for i in self.input.inputs:  # 통과O면 원래색
+                for i in self.inputs:  # 통과O면 원래색
                     i.setStyleSheet(
                         f"QLineEdit {{ background-color: {self.ui_var.sim_input_colors[0]}; border: 1px solid {self.ui_var.sim_input_colors[1]}; border-radius: 4px; }}"
                     )
 
-                for i, j in enumerate(self.input.inputs):
+                for i, j in enumerate(self.inputs):
                     self.shared_data.info_sim_details[
                         list(self.shared_data.SIM_DETAILS.keys())[i]
                     ] = int(j.text())
@@ -647,7 +645,7 @@ class Sim1UI(QFrame):
                 return
 
             # 하나라도 통과X
-            for i, j in enumerate(self.input.inputs):
+            for i, j in enumerate(self.inputs):
                 if not checkInput(i, j.text()):  # 통과X면 빨간색
                     j.setStyleSheet(
                         f"QLineEdit {{ background-color: {self.ui_var.sim_input_colors[0]}; border: 2px solid {self.ui_var.sim_input_colorsRed}; border-radius: 4px; }}"
@@ -2452,9 +2450,11 @@ class StatInputs(QWidget):
         self.inputs: list[CustomLineEdit] = []
 
         # column 수 설정
+        # 서버가 많아지면 스탯 개수에 따라 자동으로 조절하는 기능 추가 필요
+        # QVBoxLayout에 각 행마다 QHBoxLayout을 추가하는 방식
         COLS = 6
         for i, (name, value) in enumerate(stats_data.items()):
-            item_widget = KVInput(self, name, value, float, connected_function)
+            item_widget = KVInput(self, name, value, connected_function, float)
 
             # 위치 계산
             row: int = i // COLS
@@ -2489,11 +2489,13 @@ class SkillInputs(QWidget):
             grid = QGridLayout()
             grid.setContentsMargins(0, 0, 0, 0)
 
+            # 레이블
             label = QLabel(name, self)
             label.setStyleSheet(f"QLabel {{ border: 0px solid; border-radius: 4px; }}")
             label.setFont(CustomFont(14))
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
+            # 스킬 이미지
             image = SkillImage(
                 self,
                 get_skill_pixmap(
@@ -2503,6 +2505,7 @@ class SkillInputs(QWidget):
                 ui_var.sim_skill_image_Size,
             )
 
+            # 레벨 입력
             level_input = KVInput(
                 self,
                 "레벨",
@@ -2510,6 +2513,9 @@ class SkillInputs(QWidget):
                 connected_function=connected_function,
                 expected_type=int,
             )
+
+            # 탭 순서를 설정하기 위해 외부에서 접근 가능하도록 설정
+            self.input: CustomLineEdit = level_input.input
 
             # layout에 추가
             grid.addWidget(label, 0, 0, 2, 1)
@@ -2526,9 +2532,6 @@ class SkillInputs(QWidget):
         skills_data: dict[str, int],
         connected_function,
     ):
-        # self.shared_data.info_skill_levels[
-        #     get_available_skills(self.shared_data)[i]
-        # ]
         super().__init__(mainframe)
 
         # 그리드 레이아웃 위젯 생성
@@ -2558,12 +2561,6 @@ class SkillInputs(QWidget):
         grid_layout.setVerticalSpacing(10)
         grid_layout.setHorizontalSpacing(20)
 
-        ui_var = UI_Variable()
-
-        texts = shared_data.skill_data[shared_data.server_ID]["jobs"][
-            shared_data.job_ID
-        ]["skills"]
-
 
 class ConditionInputs(QWidget):
     def __init__(
@@ -2578,12 +2575,14 @@ class ConditionInputs(QWidget):
         self.inputs: list[CustomLineEdit] = []
 
         # column 수 설정
-        COLS = 3
+        COLS = 6
         for i, (name, value) in enumerate(stats_data.items()):
+            # 위젯 생성
             item_widget = KVInput(self, name, value, connected_function, int)
 
             # 위치 계산
-            row = 1
+            # 시뮬 조건 항목이 많아지면 스탯 입력과 같이 조절 필요
+            row: int = i // COLS
             column: int = i % COLS
 
             # 그리드에 추가

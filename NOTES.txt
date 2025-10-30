@@ -128,6 +128,8 @@ python flag.optimize, pyinstaller optimize
 
 스킬 쿨타임이 레벨에 따라 조절될 수 있도록 수정
 
+보스 체력과 제한 시간을 입력해서 제한 시간 내에 처치할 수 있는지, 처치 배율을 표시
+
 ---------
 
 

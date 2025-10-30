@@ -13,7 +13,6 @@ from PyQt6.QtWidgets import (
 from dataclasses import dataclass, field
 
 from collections.abc import Callable
-from builtins import type
 
 
 class CustomLineEdit(QLineEdit):
@@ -24,7 +23,7 @@ class CustomLineEdit(QLineEdit):
     def __init__(
         self,
         parent: QWidget,
-        connected_function: Callable[[bool], None] | None = None,
+        connected_function: Callable | None = None,
         text: str = "",
         point_size: int = 14,
     ) -> None:
@@ -71,7 +70,7 @@ class KVInput(QWidget):
         )
 
         # lineEdit 생성
-        self.input = CustomLineEdit(self, self.is_type_valid(connected_function), value)
+        self.input = CustomLineEdit(self, self.is_type_valid, value)
         self.input.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         # layout에 추가
@@ -81,10 +80,11 @@ class KVInput(QWidget):
         # layout 설정
         self.setLayout(layout)
 
-        # 값의 타입 저장
-        self.expected_type = expected_type
+        # 값의 타입과 함수 저장
+        self.expected_type: type = expected_type
+        self.connected_function: Callable[[bool], None] | None = connected_function
 
-    def is_type_valid(self, func: Callable[[bool], None] | None) -> None:
+    def is_type_valid(self) -> None:
         """
         입력된 값이 지정된 타입과 일치하는지 확인
         """
@@ -110,8 +110,8 @@ class KVInput(QWidget):
 
         # 둘다 아니라면 항상 True
 
-        if func:
-            func(result)
+        if self.connected_function:
+            self.connected_function(result)
 
 
 class CustomComboBox(QComboBox):
