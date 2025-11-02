@@ -65,9 +65,6 @@ class KVInput(QWidget):
         )
         self.label.setFont(CustomFont(10))
         self.label.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        self.label.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
-        )
 
         # lineEdit 생성
         self.input = CustomLineEdit(self, self.is_type_valid, value)
@@ -83,6 +80,8 @@ class KVInput(QWidget):
         # 값의 타입과 함수 저장
         self.expected_type: type = expected_type
         self.connected_function: Callable[[bool], None] | None = connected_function
+
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
 
     def is_type_valid(self) -> None:
         """

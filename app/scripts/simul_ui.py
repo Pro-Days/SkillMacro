@@ -49,6 +49,7 @@ from PyQt6.QtWidgets import (
     QWidget,
     QStackedLayout,
     QVBoxLayout,
+    QHBoxLayout,
     QSizePolicy,
     QGridLayout,
 )
@@ -96,39 +97,47 @@ class SimUI:
 
         # 메인 프레임
         self.main_frame: QFrame = QFrame(self.parent)
-        self.main_frame.setGeometry(
-            self.ui_var.sim_margin,
-            self.ui_var.sim_margin
-            + self.ui_var.sim_navHeight
-            + self.ui_var.sim_main1_D,
-            self.master.width()
-            - self.ui_var.scrollBarWidth
-            - self.ui_var.sim_margin * 2,
-            self.master.height()
-            - self.master.creator_label.height()
-            - self.ui_var.sim_navHeight
-            - self.ui_var.sim_margin * 2
-            - self.ui_var.sim_main1_D,
-        )
+        # self.main_frame.setGeometry(
+        #     self.ui_var.sim_margin,
+        #     self.ui_var.sim_margin
+        #     + self.ui_var.sim_navHeight
+        #     + self.ui_var.sim_main1_D,
+        #     self.master.width()
+        #     - self.ui_var.scrollBarWidth
+        #     - self.ui_var.sim_margin * 2,
+        #     self.master.height()
+        #     - self.master.creator_label.height()
+        #     - self.ui_var.sim_navHeight
+        #     - self.ui_var.sim_margin * 2
+        #     - self.ui_var.sim_main1_D,
+        # )
         self.main_frame.setStyleSheet(
-            "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
+            "QFrame { background-color: rgb(255, 0, 0); border: 0px solid; }"
+            # "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
         )
+        self.main_frame.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
+        # 최소 크기 설정하여 스크롤 영역에서 보이도록 함
+        # self.main_frame.setMinimumSize(800, 600)
 
         # 스크롤바
         self.scroll_area: QScrollArea = QScrollArea(self.parent)
         self.scroll_area.setWidget(self.main_frame)
-        self.scroll_area.setGeometry(
-            self.ui_var.sim_margin,
-            self.ui_var.sim_margin
-            + self.ui_var.sim_navHeight
-            + self.ui_var.sim_main1_D,
-            self.master.width() - self.ui_var.sim_margin,
-            self.master.height()
-            - self.master.creator_label.height()
-            - self.ui_var.sim_navHeight
-            - self.ui_var.sim_margin * 2
-            - self.ui_var.sim_main1_D,
-        )
+        # 위젯이 스크롤 영역에 맞춰 크기 조절되도록
+        self.scroll_area.setWidgetResizable(True)
+        # self.scroll_area.setGeometry(
+        #     self.ui_var.sim_margin,
+        #     self.ui_var.sim_margin
+        #     + self.ui_var.sim_navHeight
+        #     + self.ui_var.sim_main1_D,
+        #     self.master.width() - self.ui_var.sim_margin,
+        #     self.master.height()
+        #     - self.master.creator_label.height()
+        #     - self.ui_var.sim_navHeight
+        #     - self.ui_var.sim_margin * 2
+        #     - self.ui_var.sim_main1_D,
+        # )
         self.scroll_area.setStyleSheet(
             "QScrollArea { background-color: #FFFFFF; border: 0px solid black; border-radius: 10px; }"
         )
@@ -143,37 +152,43 @@ class SimUI:
         # self.sim_mainScrollArea.setPalette(self.backPalette)
         self.scroll_area.show()
 
+        # page2 레이아웃 설정
+        layout = QVBoxLayout(self.parent)
+        layout.addWidget(self.nav)
+        layout.addWidget(self.scroll_area)
+        self.parent.setLayout(layout)
+
         # 페이지 레이아웃 설정
-        # 페이지를 전환할 때마다 새로 만들지 말고
-        # 레이아웃을 전환하는 방식으로 변경
-        self.layout = QStackedLayout(self.main_frame)
-        self.layout.setSizeConstraint(QStackedLayout.SizeConstraint.SetFixedSize)
+        self.stacked_layout = QStackedLayout(self.main_frame)
+        # self.layout.setSizeConstraint(QStackedLayout.SizeConstraint.Set)
 
         self.UI1 = Sim1UI(self.main_frame, self.shared_data)
         self.UI2 = Sim2UI(self.main_frame, self.shared_data)
         # self.UI3 = Sim3UI(self.main_frame, self.shared_data)
         # self.UI4 = Sim4UI(self.main_frame, self.shared_data)
-        self.layout.addWidget(self.UI1)
-        self.layout.addWidget(self.UI2)
+        self.stacked_layout.addWidget(self.UI1)
+        self.stacked_layout.addWidget(self.UI2)
 
-        self.layout.setCurrentIndex(0)
-        self.layout.currentChanged.connect(self._on_current_widget_changed)
-        self._on_current_widget_changed(0)
+        self.stacked_layout.setCurrentIndex(0)
+        # 스택 레이아웃 설정
+        self.main_frame.setLayout(self.stacked_layout)
+        # self.stacked_layout.currentChanged.connect(self._on_current_widget_changed)
+        # self._on_current_widget_changed(0)
 
         # self.make_simul_page1()
 
-    def _on_current_widget_changed(self, index: int) -> None:
-        """
-        현재 표시되는 위젯이 변경될 때 main_frame의 크기를 조절합니다.
-        """
-        current_widget = self.layout.widget(index)
-        if current_widget:
-            self.main_frame.setFixedHeight(
-                current_widget.height() + self.ui_var.sim_mainFrameMargin
-            )
+    # def _on_current_widget_changed(self, index: int) -> None:
+    #     """
+    #     현재 표시되는 위젯이 변경될 때 main_frame의 크기를 조절합니다.
+    #     """
+    #     current_widget = self.stacked_layout.widget(index)
+    #     if current_widget:
+    #         self.main_frame.setFixedHeight(
+    #             current_widget.height() + self.ui_var.sim_mainFrameMargin
+    #         )
 
-            print(f"current widget height: {current_widget.height()}, index: {index}")
-            print(f"ui1 height: {self.UI1.height()}")
+    #         print(f"current widget height: {current_widget.height()}, index: {index}")
+    #         print(f"ui1 height: {self.UI1.height()}")
 
     ## change_layout 시작
     # def remove_simul_widgets(self) -> None:
@@ -326,7 +341,7 @@ class SimUI:
     ## change_layout 끝
 
     def change_layout(self, index: int) -> None:
-        print(f"change_layout1: {self.UI2.height()=}")
+        # print(f"change_layout1: {self.UI2.height()=}")
 
         # 입력값 확인
         if index in (2, 3) and not all(self.shared_data.is_input_valid.values()):
@@ -335,15 +350,15 @@ class SimUI:
 
         # 네비게이션 버튼 색 변경
         self.update_nav(index)
-        print(f"change_layout2: {self.UI2.height()=}")
+        # print(f"change_layout2: {self.UI2.height()=}")
 
         # 레이아웃 변경
-        self.layout.setCurrentIndex(index)
-        print(f"change_layout3: {self.UI2.height()=}")
+        self.stacked_layout.setCurrentIndex(index)
+        # print(f"change_layout3: {self.UI2.height()=}")
 
         # 나중에 삭제
-        self.update_position()
-        print(f"change_layout4: {self.UI2.height()=}")
+        # self.update_position()
+        # print(f"change_layout4: {self.UI2.height()=}")
 
     def update_nav(self, index: int) -> None:
         """
@@ -367,70 +382,70 @@ class SimUI:
                 """
             )
 
-    def update_position(self) -> None:
-        print(f"{self.UI2.height()=}")
-        deltaWidth: int = (self.master.width() - self.ui_var.DEFAULT_WINDOW_WIDTH) // 2
+    # def update_position(self) -> None:
+    #     print(f"{self.UI2.height()=}")
+    #     deltaWidth: int = (self.master.width() - self.ui_var.DEFAULT_WINDOW_WIDTH) // 2
 
-        self.nav.frame.move(self.ui_var.sim_margin + deltaWidth, self.ui_var.sim_margin)
-        self.main_frame.setFixedWidth(
-            self.master.width()
-            - self.ui_var.scrollBarWidth
-            - self.ui_var.sim_margin * 2
-        )
-        self.scroll_area.setFixedSize(
-            self.master.width() - self.ui_var.sim_margin,
-            self.master.height()
-            - self.master.creator_label.height()
-            - self.ui_var.sim_navHeight
-            - self.ui_var.sim_margin * 2
-            - self.ui_var.sim_main1_D,
-        )
+    #     self.nav.frame.move(self.ui_var.sim_margin + deltaWidth, self.ui_var.sim_margin)
+    #     self.main_frame.setFixedWidth(
+    #         self.master.width()
+    #         - self.ui_var.scrollBarWidth
+    #         - self.ui_var.sim_margin * 2
+    #     )
+    #     self.scroll_area.setFixedSize(
+    #         self.master.width() - self.ui_var.sim_margin,
+    #         self.master.height()
+    #         - self.master.creator_label.height()
+    #         - self.ui_var.sim_navHeight
+    #         - self.ui_var.sim_margin * 2
+    #         - self.ui_var.sim_main1_D,
+    #     )
 
-        if self.layout.currentIndex() == 0:
-            self.UI1.stats.move(deltaWidth, 0)
-            self.UI1.skills.move(
-                deltaWidth,
-                self.UI1.stats.y() + self.UI1.stats.height() + self.ui_var.sim_main_D,
-            )
-            self.UI1.condition.move(
-                deltaWidth,
-                self.UI1.skills.y() + self.UI1.skills.height() + self.ui_var.sim_main_D,
-            )
+    #     if self.layout.currentIndex() == 0:
+    #         self.UI1.stats.move(deltaWidth, 0)
+    #         self.UI1.skills.move(
+    #             deltaWidth,
+    #             self.UI1.stats.y() + self.UI1.stats.height() + self.ui_var.sim_main_D,
+    #         )
+    #         self.UI1.condition.move(
+    #             deltaWidth,
+    #             self.UI1.skills.y() + self.UI1.skills.height() + self.ui_var.sim_main_D,
+    #         )
 
-        elif self.layout.currentIndex() == 1:
-            # self.UI2.power.move(deltaWidth, 0)
-            # self.UI2.analysis.move(
-            #     deltaWidth,
-            #     self.UI2.power.y() + self.UI2.power.height() + self.ui_var.sim_main_D,
-            # )
+    #     elif self.layout.currentIndex() == 1:
+    #         # self.UI2.power.move(deltaWidth, 0)
+    #         # self.UI2.analysis.move(
+    #         #     deltaWidth,
+    #         #     self.UI2.power.y() + self.UI2.power.height() + self.ui_var.sim_main_D,
+    #         # )
 
-            print(
-                f"{self.UI2.power.y()=}, {self.UI2.analysis.y()=}, {self.UI2.DPM_graph.y()=}, {self.UI2.ratio_graph.y()=}, {self.UI2.dps_graph.y()=}, {self.UI2.total_graph.y()=}, {self.UI2.contribution_graph.y()=}"
-            )
+    #         print(
+    #             f"{self.UI2.power.y()=}, {self.UI2.analysis.y()=}, {self.UI2.DPM_graph.y()=}, {self.UI2.ratio_graph.y()=}, {self.UI2.dps_graph.y()=}, {self.UI2.total_graph.y()=}, {self.UI2.contribution_graph.y()=}"
+    #         )
 
-        elif self.layout.currentIndex() == 2:
-            self.UI3.efficiency_frame.move(deltaWidth, 0)
-            self.UI3.additional_frame.move(
-                deltaWidth,
-                self.UI3.efficiency_frame.y()
-                + self.UI3.efficiency_frame.height()
-                + self.ui_var.sim_main_D,
-            )
-            self.UI3.potential_frame.move(
-                deltaWidth,
-                self.UI3.additional_frame.y()
-                + self.UI3.additional_frame.height()
-                + self.ui_var.sim_main_D,
-            )
-            self.UI3.potentialRank_frame.move(
-                deltaWidth,
-                self.UI3.potential_frame.y()
-                + self.UI3.potential_frame.height()
-                + self.ui_var.sim_main_D,
-            )
+    #     elif self.layout.currentIndex() == 2:
+    #         self.UI3.efficiency_frame.move(deltaWidth, 0)
+    #         self.UI3.additional_frame.move(
+    #             deltaWidth,
+    #             self.UI3.efficiency_frame.y()
+    #             + self.UI3.efficiency_frame.height()
+    #             + self.ui_var.sim_main_D,
+    #         )
+    #         self.UI3.potential_frame.move(
+    #             deltaWidth,
+    #             self.UI3.additional_frame.y()
+    #             + self.UI3.additional_frame.height()
+    #             + self.ui_var.sim_main_D,
+    #         )
+    #         self.UI3.potentialRank_frame.move(
+    #             deltaWidth,
+    #             self.UI3.potential_frame.y()
+    #             + self.UI3.potential_frame.height()
+    #             + self.ui_var.sim_main_D,
+    #         )
 
-        elif self.layout.currentIndex() == 3:
-            self.UI4.mainframe.move(deltaWidth, 0)
+    #     elif self.layout.currentIndex() == 3:
+    #         self.UI4.mainframe.move(deltaWidth, 0)
 
 
 class Sim1UI(QFrame):
@@ -440,10 +455,11 @@ class Sim1UI(QFrame):
         self.shared_data: SharedData = shared_data
         self.ui_var: UI_Variable = UI_Variable()
 
-        layout = QVBoxLayout(self)
+        self.setStyleSheet("QFrame { background-color: gray;}")
 
         # 스텟
         self.stats_title: Title = Title(parent=self, text="캐릭터 스탯")
+        # self.stats = CustomLineEdit(self)
         self.stats = self.Stats(self, self.shared_data)
 
         # 스킬 입력
@@ -461,11 +477,13 @@ class Sim1UI(QFrame):
         # print(f"{self.height()=}")
 
         # Tab Order 설정
-        tab_orders: list[CustomLineEdit] = (
-            self.stats.inputs + self.skills.inputs + self.condition.inputs
-        )
-        for i in range(len(tab_orders) - 1):
-            QWidget.setTabOrder(tab_orders[i], tab_orders[i + 1])
+        # tab_orders: list[CustomLineEdit] = (
+        #     self.stats.inputs + self.skills.inputs + self.condition.inputs
+        # )
+        # for i in range(len(tab_orders) - 1):
+        #     QWidget.setTabOrder(tab_orders[i], tab_orders[i + 1])
+
+        layout = QVBoxLayout(self)
 
         layout.addWidget(self.stats_title)
         layout.addWidget(self.stats)
@@ -474,7 +492,12 @@ class Sim1UI(QFrame):
         layout.addWidget(self.condition_title)
         layout.addWidget(self.condition)
 
+        # 레이아웃 여백과 간격 설정
+        layout.setSpacing(10)  # 위젯들 사이의 간격
+        layout.setContentsMargins(10, 10, 10, 10)  # 레이아웃의 여백
         self.setLayout(layout)
+
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
     class Stats(QWidget):
         def __init__(self, parent: QFrame, shared_data: SharedData) -> None:
@@ -490,9 +513,18 @@ class Sim1UI(QFrame):
             }
 
             # 스탯 입력 위젯 생성
-            self.inputs: list[CustomLineEdit] = StatInputs(
-                self, stats_data, self.input_changed
-            ).inputs
+            self.stat_inputs = StatInputs(self, stats_data, self.input_changed)
+            self.inputs: list[CustomLineEdit] = self.stat_inputs.inputs
+
+            # 레이아웃 설정
+            layout = QVBoxLayout(self)
+            layout.addWidget(self.stat_inputs)
+            layout.setContentsMargins(0, 0, 0, 0)  # 여백 제거
+            layout.setSpacing(0)  # 위젯 간 간격 제거
+            self.setLayout(layout)
+
+            # 크기 정책: 가로는 부모 크기 최대, 세로는 내용에 맞게 고정
+            self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
             # 첫 번째 입력 상자에 포커스 설정
             self.inputs[0].setFocus()
@@ -561,6 +593,9 @@ class Sim1UI(QFrame):
                 self.input_changed,
             ).inputs
 
+            # 크기 정책: 가로는 부모 크기 최대, 세로는 내용에 맞게 최소
+            self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
         def input_changed(self):
             # 스킬이 정상적으로 입력되었는지 확인
             def checkInput(text: str) -> bool:
@@ -613,6 +648,9 @@ class Sim1UI(QFrame):
                 },
                 self.input_changed,
             ).inputs
+
+            # 크기 정책: 가로는 부모 크기 최대, 세로는 내용에 맞게 최소
+            self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
         def input_changed(self) -> None:
             # 스탯이 정상적으로 입력되었는지 확인
@@ -2437,11 +2475,13 @@ class Sim4UI:
         self.shared_data.is_card_updated = True
 
 
-class StatInputs(QWidget):
+class StatInputs(QFrame):
     def __init__(
         self, mainframe: QWidget, stats_data: dict[str, str], connected_function
     ):
         super().__init__(mainframe)
+
+        self.setStyleSheet("QFrame { background-color: green; border: 0px solid; }")
 
         # 그리드 레이아웃 위젯 생성
         grid_layout = QGridLayout(self)
@@ -2470,8 +2510,14 @@ class StatInputs(QWidget):
         grid_layout.setVerticalSpacing(10)
         grid_layout.setHorizontalSpacing(20)
 
+        # 레이아웃 설정
+        self.setLayout(grid_layout)
 
-class SkillInputs(QWidget):
+        # 크기 정책: 가로는 부모 크기 최대, 세로는 내용에 맞게 고정
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+
+class SkillInputs(QFrame):
     class SkillInput(QWidget):
         def __init__(
             self,
@@ -2534,6 +2580,8 @@ class SkillInputs(QWidget):
     ):
         super().__init__(mainframe)
 
+        self.setStyleSheet("QFrame { background-color: green; border: 0px solid; }")
+
         # 그리드 레이아웃 위젯 생성
         grid_layout = QGridLayout(self)
 
@@ -2561,12 +2609,20 @@ class SkillInputs(QWidget):
         grid_layout.setVerticalSpacing(10)
         grid_layout.setHorizontalSpacing(20)
 
+        # 레이아웃 설정
+        self.setLayout(grid_layout)
 
-class ConditionInputs(QWidget):
+        # 크기 정책: 가로는 부모 크기 최대, 세로는 내용에 맞게 최소
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+
+class ConditionInputs(QFrame):
     def __init__(
         self, mainframe: QWidget, stats_data: dict[str, str], connected_function
     ):
         super().__init__(mainframe)
+
+        self.setStyleSheet("QFrame { background-color: green; border: 0px solid; }")
 
         # 그리드 레이아웃 위젯 생성
         grid_layout = QGridLayout(self)
@@ -2594,6 +2650,12 @@ class ConditionInputs(QWidget):
         # 그리드 레이아웃 간격 설정
         grid_layout.setVerticalSpacing(10)
         grid_layout.setHorizontalSpacing(20)
+
+        # 크기 정책: 가로는 부모 크기 최대, 세로는 내용에 맞게 최소
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+        # 레이아웃 설정
+        self.setLayout(grid_layout)
 
 
 class PowerLabels:
@@ -2867,24 +2929,30 @@ class Title(QLabel):
     def __init__(self, parent, text):
         super().__init__(text, parent)
         self.setStyleSheet(
-            "QLabel { background-color: rgb(255, 255, 255); border: none; border-bottom: 1px solid #bbbbbb; }"
+            "QLabel { background-color: rgb(255, 255, 255); border: none; border-bottom: 1px solid #bbbbbb; padding: 10px 0; }"
         )
         self.setFont(CustomFont(16))
 
+        # 크기 정책을 설정하여 자동 크기 조절
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-class Navigation:
+        # 텍스트 줄바꿈 허용
+        # self.setWordWrap(True)
+
+
+class Navigation(QFrame):
     class NavButton(QPushButton):
-        def __init__(self, text, parent, i, border_width):
-            ui_var = UI_Variable()
+        def __init__(self, text, parent, border_width):
+            # ui_var = UI_Variable()
 
             super().__init__(text, parent)
 
-            self.setGeometry(
-                ui_var.sim_navBWidth * i,
-                0,
-                ui_var.sim_navBWidth,
-                ui_var.sim_navHeight,
-            )
+            # self.setGeometry(
+            #     ui_var.sim_navBWidth * i,
+            #     0,
+            #     ui_var.sim_navBWidth,
+            #     ui_var.sim_navHeight,
+            # )
             self.setStyleSheet(
                 f"""
                 QPushButton {{
@@ -2898,35 +2966,23 @@ class Navigation:
             self.setFont(CustomFont(12))
 
     def __init__(self, parent):
-        ui_var = UI_Variable()
+        super().__init__(parent)
 
         # 상단 네비게이션바
-        self.frame: QFrame = QFrame(parent)
-        self.frame.setGeometry(
-            ui_var.sim_margin,
-            ui_var.sim_margin,
-            ui_var.DEFAULT_WINDOW_WIDTH - ui_var.sim_margin * 2,
-            ui_var.sim_navHeight,
-        )
-        self.frame.setStyleSheet("QFrame { background-color: rgb(255, 255, 255); }")
+        self.setStyleSheet("QFrame { background-color: blue; }")
+
+        layout = QHBoxLayout(self)
 
         # 네비게이션바 텍스트
         nav_texts: list[str] = ["정보 입력", "시뮬레이터", "스탯 계산기", "캐릭터 카드"]
         border_widths: list[int] = [2, 0, 0, 0]
 
         self.buttons: list[QPushButton] = [
-            Navigation.NavButton(nav_texts[i], self.frame, i, border_widths[i])
-            for i in range(4)
+            Navigation.NavButton(nav_texts[i], self, border_widths[i]) for i in range(4)
         ]
 
         # 닫기 버튼
-        button: QPushButton = QPushButton(self.frame)
-        button.setGeometry(
-            890,
-            0,
-            ui_var.sim_navHeight,
-            ui_var.sim_navHeight,
-        )
+        button: QPushButton = QPushButton(self)
         button.setStyleSheet(
             """
             QPushButton {
@@ -2942,3 +2998,12 @@ class Navigation:
         button.setIconSize(QSize(15, 15))
 
         self.buttons.append(button)
+
+        layout.addWidget(self.buttons[0])
+        layout.addWidget(self.buttons[1])
+        layout.addWidget(self.buttons[2])
+        layout.addWidget(self.buttons[3])
+        layout.addStretch()
+        layout.addWidget(self.buttons[4])
+
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)

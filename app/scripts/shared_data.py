@@ -252,6 +252,10 @@ class SharedData:
     # SKILL_COMBO_COUNT_LIST = skill_data["ComboCounts"]
     # IS_SKILL_CASTING = skill_data["IsSkillCasting"]
 
+    # 스킬 아이콘 디렉토리 정보
+    # 이 딕셔너리에 없는 스킬은 기본 아이콘 사용
+    skill_images_dir: ClassVar[dict[str, str]] = {}
+
     # 변수 초기화
 
     # 계산기 페이지 번호

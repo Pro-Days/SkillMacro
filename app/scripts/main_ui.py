@@ -734,7 +734,7 @@ class MainUI:
         if self.shared_data.selected_skill == num and equipped_skill:
             # 빈 스킬 아이콘으로 변경
             self.equipped_skill_buttons[num].setIcon(
-                QIcon(get_skill_pixmap(shared_data=self.shared_data, skill_name=""))
+                QIcon(get_skill_pixmap(shared_data=self.shared_data))
             )
 
             self.clear_equipped_skill(skill=equipped_skill)

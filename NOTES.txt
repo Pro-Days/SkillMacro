@@ -130,6 +130,23 @@ python flag.optimize, pyinstaller optimize
 
 보스 체력과 제한 시간을 입력해서 제한 시간 내에 처치할 수 있는지, 처치 배율을 표시
 
+서버 정보를 shared_data에 저장하지 말고, 서버 정보를 저장하는 클래스를 만들어 사용하기
+
+모듈 레벨 싱글톤:
+"""
+# shared_data.py 파일 내용
+class ProgramState:
+    def __init__(self):
+        self.count = 0
+        ...
+STATE_MANAGER = ProgramState()
+
+# 다른 파일
+from shared_data import STATE_MANAGER
+STATE_MANAGER.count += 10
+"""
+=> 프로그램 전역에서 이 데이터를 공유함.
+
 ---------
 
 

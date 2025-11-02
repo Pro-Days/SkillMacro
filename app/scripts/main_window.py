@@ -32,6 +32,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QApplication,
     QStackedLayout,
+    QSizePolicy,
 )
 
 
@@ -227,6 +228,7 @@ class MainWindow(QWidget):
         # 페이지1: 메인 매크로, 페이지2: 시뮬레이션
         self.page1: QFrame = QFrame(self)
         self.page2: QFrame = QFrame(self)
+        self.page2.setStyleSheet("QFrame { background-color: yellow;}")
 
         # 하단 제작자 라벨 설정
         self.creator_label: QPushButton = QPushButton(
@@ -291,15 +293,15 @@ class MainWindow(QWidget):
             painter.drawLine(320, 0, 320, self.height())
 
     ## 창 크기 조절시 실행
-    def resizeEvent(self, a0: Any) -> None:
-        self.update()
-        self.update_position()
+    # def resizeEvent(self, a0: Any) -> None:
+    #     self.update()
+    # self.update_position()
 
     ## 창 크기 조절시 위젯 위치, 크기 조절
     def update_position(self) -> None:
         self.main_ui.update_position()
         self.popup_manager.update_position()
-        self.sim_ui.update_position()
+        # self.sim_ui.update_position()
 
         # 항상 업데이트
         self.creator_label.move(2, self.height() - 25)

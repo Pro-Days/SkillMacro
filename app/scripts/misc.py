@@ -89,17 +89,20 @@ def set_default_fonts() -> None:
 
 
 def get_skill_pixmap(
-    shared_data: SharedData, skill_name: str, state: int = -1
+    shared_data: SharedData, skill_name: str = "", state: int = -1
 ) -> QPixmap:
     """
     스킬 아이콘 반환
 
-    skill == ""이면 빈 스킬 아이콘 반환
+    skill_name == ""이면 빈 스킬 아이콘 반환
     state == -1이면 해당 스킬의 최대 카운트 반환, -2이면 비활성화 아이콘 반환
     """
 
     # return QPixmap(convert_resource_path(f"resources\\image\\emptySkill.png"))
 
+    # 계속 반복적으로 실행이 되는 문제가 있음.
+
+    # skill_name == ""이면 빈 스킬 아이콘 반환
     if not skill_name:
         return QPixmap(convert_resource_path(f"resources\\image\\emptySkill.png"))
 
@@ -107,14 +110,17 @@ def get_skill_pixmap(
     if state == -1:
         state = get_skill_details(shared_data, skill_name)["max_combo_count"]
 
-    skill_id: int = get_available_skills(shared_data).index(skill_name)
+    image_path: str = shared_data.skill_images_dir.get(
+        skill_name, "resources\\image\\skill_attack.png"
+    )
+    return QPixmap(convert_resource_path(image_path))
 
     # state가 -2이면 비활성화 아이콘 반환
-    return QPixmap(
-        convert_resource_path(
-            f"resources\\image\\skills\\{shared_data.server_ID}\\{shared_data.job_ID}\\{skill_id}\\{state if state != -2 else 'off'}.png"
-        )
-    )
+    # return QPixmap(
+    #     convert_resource_path(
+    #         f"resources\\image\\skills\\{shared_data.server_ID}\\{shared_data.job_ID}\\{skill_id}\\{state if state != -2 else 'off'}.png"
+    #     )
+    # )
 
 
 ## 위젯 크기에 맞는 폰트로 변경
