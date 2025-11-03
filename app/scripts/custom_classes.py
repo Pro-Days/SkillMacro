@@ -5,6 +5,7 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QLabel,
     QWidget,
+    QFrame,
     QGraphicsDropShadowEffect,
     QVBoxLayout,
     QSizePolicy,
@@ -13,6 +14,8 @@ from PyQt6.QtWidgets import (
 from dataclasses import dataclass, field
 
 from collections.abc import Callable
+
+from .config import config
 
 
 class CustomLineEdit(QLineEdit):
@@ -29,21 +32,33 @@ class CustomLineEdit(QLineEdit):
     ) -> None:
         super().__init__(text, parent)
 
-        from .shared_data import UI_Variable
-
-        ui_var = UI_Variable()
-
         self.setFont(CustomFont(point_size))
         self.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
-        self.setStyleSheet(
-            f"QLineEdit {{ background-color: {ui_var.sim_input_colors[0]}; border: 1px solid {ui_var.sim_input_colors[1]}; border-radius: 4px; }}"
-        )
+
+        self.set_valid(True)
 
         if connected_function:
             self.textChanged.connect(connected_function)
 
+    def set_valid(self, is_valid: bool) -> None:
+        """
+        입력이 유효한지에 따라 스타일 변경
+        """
 
-class KVInput(QWidget):
+        # 유효하다면
+        if is_valid:
+            self.setStyleSheet(
+                "QLineEdit { background-color: #f0f0f0; border: 1px solid #D9D9D9; border-radius: 4px; }"
+            )
+
+        # 유효하지 않다면
+        else:
+            self.setStyleSheet(
+                "QLineEdit { background-color: #f0f0f0; border: 2px solid #FF6060; border-radius: 4px; }"
+            )
+
+
+class KVInput(QFrame):
     def __init__(
         self,
         parent: QWidget,
@@ -51,8 +66,14 @@ class KVInput(QWidget):
         value: str,
         connected_function: Callable[[bool], None] | None = None,
         expected_type: type = int,
+        max_width: int = 120,
     ):
         super().__init__(parent)
+
+        if config.ui.debug_colors:
+            self.setStyleSheet(
+                "QFrame { background-color: orange; border: 0px solid; }"
+            )
 
         # 전체 layout 설정
         layout = QVBoxLayout()
@@ -69,6 +90,7 @@ class KVInput(QWidget):
         # lineEdit 생성
         self.input = CustomLineEdit(self, self.is_type_valid, value)
         self.input.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.input.setMaximumWidth(max_width)
 
         # layout에 추가
         layout.addWidget(self.label)
@@ -81,7 +103,7 @@ class KVInput(QWidget):
         self.expected_type: type = expected_type
         self.connected_function: Callable[[bool], None] | None = connected_function
 
-        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Preferred)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
     def is_type_valid(self) -> None:
         """
@@ -160,7 +182,6 @@ class SkillImage(QLabel):
 
         self.setPixmap(pixmap)
         self.setFixedSize(size, size)
-        self.move(x, y)
 
 
 class CustomShadowEffect(QGraphicsDropShadowEffect):

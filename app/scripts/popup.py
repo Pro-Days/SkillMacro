@@ -44,7 +44,7 @@ class PopupManager:
         self.shared_data = shared_data
 
     ## 알림 창 생성
-    def make_notice_popup(self, e: str) -> None:  # popup으로 이동
+    def make_notice_popup(self, e: str) -> None:
         """
         MacroIsRunning: 매크로 작동중
         editingLinkSkill: 연계스킬 수정중
@@ -61,6 +61,8 @@ class PopupManager:
         SimCardError: 카드 생성 오류
         SimCardPowerError: 카드 전투력 선택 안함
         SimCardNotUpdated: 카드 정보 업데이트 필요
+
+        str에서 클래스로 바꾸는 것도 고려
         """
 
         noticePopup = QFrame(self.master)

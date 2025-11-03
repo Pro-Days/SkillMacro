@@ -8,6 +8,7 @@ from .shared_data import SharedData, UI_Variable
 from .data_manager import update_data, load_data, update_skill_data
 from .run_macro import checking_kb_thread
 from .custom_classes import CustomFont
+from .config import config
 
 import sys
 import requests
@@ -228,7 +229,9 @@ class MainWindow(QWidget):
         # 페이지1: 메인 매크로, 페이지2: 시뮬레이션
         self.page1: QFrame = QFrame(self)
         self.page2: QFrame = QFrame(self)
-        self.page2.setStyleSheet("QFrame { background-color: yellow;}")
+
+        if config.ui.debug_colors:
+            self.page2.setStyleSheet("QFrame { background-color: yellow;}")
 
         # 하단 제작자 라벨 설정
         self.creator_label: QPushButton = QPushButton(
