@@ -395,129 +395,96 @@ class Sim1UI(QFrame):
 
 
 class Sim2UI(QFrame):
-    class Power(QFrame):
-        def __init__(
-            self, parent: QFrame, shared_data: SharedData, str_powers: list[str]
-        ) -> None:
-            super().__init__(parent)
+    def __init__(self, parent: QFrame, shared_data: SharedData) -> None:
+        super().__init__(parent)
 
-            self.shared_data: SharedData = shared_data
-            self.ui_var = UI_Variable()
+        self.shared_data: SharedData = shared_data
+        self.ui_var = UI_Variable()
 
-            self.setGeometry(
-                0,
-                0,
-                928,
-                self.ui_var.sim_title_H
-                + (self.ui_var.sim_widget_D + self.ui_var.sim_powerL_frame_H),
-            )
-            self.setStyleSheet(
-                "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
-            )
+        if config.ui.debug_colors:
+            self.setStyleSheet("QFrame { background-color: gray;}")
 
-            self.title: Title = Title(self, "전투력")
-            self.label = PowerLabels(self, self.shared_data, str_powers)
+        # 처음 생성때는 계산하지 않기
+        sim_result: SimResult = randSimulate(
+            self.shared_data,
+            self.shared_data.info_stats,
+            self.shared_data.info_sim_details,
+        )
+        powers: list[float] = sim_result.powers
+        analysis: list[SimAnalysis] = sim_result.analysis
+        resultDet: list[SimAttack] = sim_result.deterministic_boss_attacks
+        results: list[list[SimAttack]] = sim_result.random_boss_attacks
+        str_powers: list[str] = sim_result.str_powers
 
-            for i, (frame, label, number) in enumerate(
-                zip(self.label.frames, self.label.labels, self.label.numbers)
-            ):
-                frame.setGeometry(
-                    self.ui_var.sim_powerL_margin
-                    + (self.ui_var.sim_powerL_width + self.ui_var.sim_powerL_D) * i,
-                    self.ui_var.sim_label_H + self.ui_var.sim_widget_D,
-                    self.ui_var.sim_powerL_width,
-                    self.ui_var.sim_powerL_frame_H,
-                )
-                label.setGeometry(
-                    0,
-                    0,
-                    self.ui_var.sim_powerL_width,
-                    self.ui_var.sim_powerL_title_H,
-                )
-                number.setGeometry(
-                    0,
-                    self.ui_var.sim_powerL_title_H,
-                    self.ui_var.sim_powerL_width,
-                    self.ui_var.sim_powerL_number_H,
-                )
+        for i, power in enumerate(powers):
+            self.shared_data.powers[i] = power
 
-    class Analysis(QFrame):
-        def __init__(
-            self,
-            parent: QFrame,
-            shared_data: SharedData,
-            power: Sim2UI.Power,
-            analysis: list[SimAnalysis],
-        ) -> None:
-            super().__init__(parent)
+        # 전투력
+        self.power_title: Title = Title(self, "전투력")
+        self.power = PowerLabels(self, self.shared_data, str_powers)
 
-            self.shared_data: SharedData = shared_data
-            self.ui_var = UI_Variable()
+        # 분석
+        self.analysis_title: Title = Title(self, "분석")
+        self.analysis = AnalysisDetails(self, self.shared_data, analysis)
 
-            self.setGeometry(
-                0,
-                power.y() + power.height() + self.ui_var.sim_main_D,
-                928,
-                self.ui_var.sim_widget_D + self.ui_var.sim_analysis_frame_H,
-            )
-            self.setStyleSheet(
-                "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
-            )
+        # DPM 분포
+        self.DPM_graph = self.DPMGraph(self, results)
 
-            self.title: Title = Title(self, "분석")
-            self.details: list[AnalysisDetails] = [
-                AnalysisDetails(
-                    self,
-                    analysis[i],
-                    self.shared_data.POWER_DETAILS,
-                )
-                for i in range(4)
-            ]
+        # 스킬 비율
+        self.ratio_graph = self.RatioGraph(
+            self, self.shared_data, self.analysis, resultDet
+        )
 
-            for i, detail in enumerate(self.details):
-                detail.frame.setGeometry(
-                    self.ui_var.sim_analysis_margin
-                    + (self.ui_var.sim_analysis_width + self.ui_var.sim_analysis_D) * i,
-                    self.ui_var.sim_label_H + self.ui_var.sim_widget_D,
-                    self.ui_var.sim_analysis_width,
-                    self.ui_var.sim_analysis_frame_H,
-                )
-                detail.color.setStyleSheet(
-                    f"QFrame {{ background-color: rgb({self.ui_var.sim_colors4[i]}); border: 0px solid; border-radius: 0px; border-bottom: 1px solid #CCCCCC; border-left: 1px solid #CCCCCC; border-top: 1px solid #CCCCCC; }}"
-                )
+        # 시간 경과에 따른 피해량
+        self.dps_graph = self.DPSGraph(self, self.shared_data, self.DPM_graph, results)
+
+        # 누적 피해량
+        self.total_graph = self.TotalGraph(
+            self, self.shared_data, self.dps_graph, results
+        )
+
+        # 스킬별 누적 기여도
+        self.contribution_graph = self.ContributionGraph(
+            self, self.shared_data, self.total_graph, resultDet
+        )
+
+        layout = QGridLayout(self)
+
+        layout.addWidget(self.power_title, 0, 0, 1, 2)
+        layout.addWidget(self.power, 1, 0, 1, 2)
+        layout.addWidget(self.analysis_title, 2, 0, 1, 2)
+        layout.addWidget(self.analysis, 3, 0, 1, 2)
+        layout.addWidget(self.DPM_graph, 4, 0, 1, 1)
+        layout.addWidget(self.ratio_graph, 4, 1, 1, 1)
+        layout.addWidget(self.dps_graph, 5, 0, 1, 2)
+        layout.addWidget(self.total_graph, 6, 0, 1, 2)
+        layout.addWidget(self.contribution_graph, 7, 0, 1, 2)
+
+        # 레이아웃 여백과 간격 설정
+        layout.setSpacing(10)  # 위젯들 사이의 간격
+        layout.setContentsMargins(10, 10, 10, 10)  # 레이아웃의 여백
+        self.setLayout(layout)
+
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
     class DPMGraph(QFrame):
         def __init__(
             self,
             parent: QFrame,
-            shared_data: SharedData,
-            analysis: Sim2UI.Analysis,
             results: list[list[SimAttack]],
         ) -> None:
             super().__init__(parent)
 
-            self.shared_data: SharedData = shared_data
-            self.ui_var = UI_Variable()
-
-            self.setGeometry(
-                self.ui_var.sim_dps_margin,
-                analysis.y() + analysis.height() + self.ui_var.sim_main_D,
-                self.ui_var.sim_dps_width,
-                self.ui_var.sim_dps_height,
-            )
             self.setStyleSheet(
                 "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
             )
 
-            sums_for_results: list[float] = [
-                sum([i.damage for i in result]) for result in results
-            ]
+            self.graph = DpmDistributionCanvas(self, results)
 
-            self.graph = DpmDistributionCanvas(self, sums_for_results)
-            self.graph.move(5, 5)
-            self.graph.resize(
-                self.ui_var.sim_dps_width - 10, self.ui_var.sim_dps_height - 10
-            )
+            layout = QVBoxLayout(self)
+            layout.setContentsMargins(5, 5, 5, 5)
+            layout.addWidget(self.graph)
+            self.setLayout(layout)
 
     class RatioGraph(QFrame):
         def __init__(
@@ -764,74 +731,6 @@ class Sim2UI(QFrame):
                 self.ui_var.sim_dmg_width - 40,
                 self.ui_var.sim_dmg_height - 40,
             )
-
-    def __init__(self, parent: QFrame, shared_data: SharedData) -> None:
-        super().__init__(parent)
-
-        self.shared_data: SharedData = shared_data
-        self.ui_var = UI_Variable()
-
-        # 처음 생성때는 계산하지 않기
-        sim_result: SimResult = randSimulate(
-            self.shared_data,
-            self.shared_data.info_stats,
-            self.shared_data.info_sim_details,
-        )
-        powers: list[float] = sim_result.powers
-        analysis: list[SimAnalysis] = sim_result.analysis
-        resultDet: list[SimAttack] = sim_result.deterministic_boss_attacks
-        results: list[list[SimAttack]] = sim_result.random_boss_attacks
-        str_powers: list[str] = sim_result.str_powers
-
-        for i, power in enumerate(powers):
-            self.shared_data.powers[i] = power
-
-        # 전투력
-        self.power: Sim2UI.Power = self.Power(self, self.shared_data, str_powers)
-
-        # 분석
-        self.analysis: Sim2UI.Analysis = self.Analysis(
-            self, self.shared_data, self.power, analysis
-        )
-
-        # DPM 분포
-        self.DPM_graph: Sim2UI.DPMGraph = self.DPMGraph(
-            self, self.shared_data, self.analysis, results
-        )
-
-        # 스킬 비율
-        self.ratio_graph: Sim2UI.RatioGraph = self.RatioGraph(
-            self, self.shared_data, self.analysis, resultDet
-        )
-
-        # 시간 경과에 따른 피해량
-        self.dps_graph: Sim2UI.DPSGraph = self.DPSGraph(
-            self, self.shared_data, self.DPM_graph, results
-        )
-
-        # 누적 피해량
-        self.total_graph: Sim2UI.TotalGraph = self.TotalGraph(
-            self, self.shared_data, self.dps_graph, results
-        )
-
-        # 스킬별 누적 기여도
-        self.contribution_graph: Sim2UI.ContributionGraph = self.ContributionGraph(
-            self, self.shared_data, self.total_graph, resultDet
-        )
-
-        height = self.contribution_graph.y() + self.contribution_graph.height()
-        self.setGeometry(0, 0, 928, height)
-        self.setMinimumSize(928, height)
-
-        # print(
-        #     f"{self.power.y()=}, {self.analysis.y()=}, {self.DPM_graph.y()=}, {self.ratio_graph.y()=}, {self.dps_graph.y()=}, {self.total_graph.y()=}, {self.contribution_graph.y()=}"
-        # )
-
-        # def temp():
-        #     while True:
-        #         print(f"{self.height()=}")
-
-        # threading.Thread(target=temp, daemon=True).start()
 
 
 class Sim3UI(QFrame):
@@ -2368,141 +2267,200 @@ class ConditionInputs(QFrame):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
 
-class PowerLabels:
+class PowerLabels(QFrame):
     def __init__(self, mainframe, shared_data: SharedData, texts, font_size=18):
+        super().__init__(mainframe)
+
+        if config.ui.debug_colors:
+            self.setStyleSheet(
+                "QFrame { background-color: purple; border: 0px solid; }"
+            )
+        else:
+            self.setStyleSheet("QFrame { background-color: white; border: 0px solid; }")
+
         ui_var = UI_Variable()
 
-        self.frames = []
-        self.labels = []
-        self.numbers = []
+        # 레이아웃 설정
+        layout = QHBoxLayout(self)
 
+        # 전투력 라벨 추가
         for i in range(4):
-            frame = QFrame(mainframe)
-            frame.show()
+            power = self.Power(
+                self,
+                shared_data.POWER_TITLES[i],
+                texts[i],
+                ui_var.sim_colors4[i],
+                font_size,
+            )
 
-            label = QLabel(shared_data.POWER_TITLES[i], frame)
+            layout.addWidget(power)
+
+        # 레이아웃 여백과 간격 설정
+        layout.setSpacing(10)  # 위젯들 사이의 간격
+        layout.setContentsMargins(10, 10, 10, 10)  # 레이아웃의 여백
+        self.setLayout(layout)
+
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+    class Power(QFrame):
+        def __init__(self, mainframe, name: str, text, color: str, font_size=18):
+            super().__init__(mainframe)
+
+            label = QLabel(name, self)
             label.setStyleSheet(
-                f"QLabel {{ background-color: rgb({ui_var.sim_colors4[i]}); border: 1px solid rgb({ui_var.sim_colors4[i]}); border-bottom: 0px solid; border-top-left-radius: 4px; border-top-right-radius: 4px; border-bottom-left-radius: 0px; border-bottom-right-radius: 0px; }}"
+                f"QLabel {{ background-color: rgb({color}); border: 1px solid rgb({color}); border-bottom: 0px solid; border-top-left-radius: 4px; border-top-right-radius: 4px; border-bottom-left-radius: 0px; border-bottom-right-radius: 0px; }}"
             )
             label.setFont(CustomFont(14))
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            label.show()
+            label.setFixedHeight(50)
 
-            number = QLabel(texts[i], frame)
-            number.setStyleSheet(
-                f"QLabel {{ background-color: rgba({ui_var.sim_colors4[i]}, 120); border: 1px solid rgb({ui_var.sim_colors4[i]}); border-top: 0px solid; border-top-left-radius: 0px; border-top-right-radius: 0px; border-bottom-left-radius: 4px; border-bottom-right-radius: 4px }}"
+            self.number = QLabel(text, self)
+            self.number.setStyleSheet(
+                f"QLabel {{ background-color: rgba({color}, 120); border: 1px solid rgb({color}); border-top: 0px solid; border-top-left-radius: 0px; border-top-right-radius: 0px; border-bottom-left-radius: 4px; border-bottom-right-radius: 4px }}"
             )
-            number.setFont(CustomFont(font_size))
-            number.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            number.show()
+            self.number.setFont(CustomFont(font_size))
+            self.number.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.number.setFixedHeight(90)
 
-            self.frames.append(frame)
-            self.labels.append(label)
-            self.numbers.append(number)
+            layout = QVBoxLayout(self)
+            layout.addWidget(label)
+            layout.addWidget(self.number)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(0)
+            self.setLayout(layout)
+
+            self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
 
-class AnalysisDetails:
-    def __init__(self, mainframe, analysis: SimAnalysis, details):
+class AnalysisDetails(QFrame):
+    def __init__(self, mainframe, shared_data: SharedData, analysis: list[SimAnalysis]):
+        super().__init__(mainframe)
+
         ui_var = UI_Variable()
 
-        self.frame = QFrame(mainframe)
-        self.frame.setStyleSheet(
-            "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-top-left-radius: 0px; border-top-right-radius: 6px; border-bottom-left-radius: 0px; border-bottom-right-radius: 6px; }"
-        )
-        self.frame.show()
-
-        self.color = QFrame(self.frame)
-        self.color.setGeometry(
-            0,
-            0,
-            ui_var.sim_analysis_color_W,
-            ui_var.sim_analysis_frame_H,
-        )
-        self.color.show()
-
-        self.title = QLabel(analysis.title, self.frame)
-        self.title.setGeometry(
-            ui_var.sim_analysis_color_W,
-            0,
-            ui_var.sim_analysis_widthXC,
-            ui_var.sim_analysis_title_H,
-        )
-        self.title.setStyleSheet(
-            "QLabel { background-color: transparent; border: 0px solid; }"
-        )
-        self.title.setFont(CustomFont(14))
-        self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.title.show()
-
-        self.number = QLabel(analysis.value, self.frame)
-        self.number.setGeometry(
-            ui_var.sim_analysis_color_W,
-            ui_var.sim_analysis_title_H,
-            ui_var.sim_analysis_widthXC,
-            ui_var.sim_analysis_number_H,
-        )
-        self.number.setStyleSheet(
-            "QLabel { background-color: transparent; border: 0px solid; }"
-        )
-        self.number.setFont(CustomFont(18))
-        self.number.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.number.show()
-
-        self.detail_frames = []
-        self.detail_labels = []
-        self.detail_numbers = []
-
-        for i in range(6):
-            detail_frame = QFrame(self.frame)
-            detail_frame.setGeometry(
-                ui_var.sim_analysis_color_W
-                + ui_var.sim_analysis_details_margin
-                + (ui_var.sim_analysis_details_W + ui_var.sim_analysis_details_margin)
-                * (i % 3)
-                - 1,
-                ui_var.sim_analysis_title_H
-                + ui_var.sim_analysis_number_H
-                + ui_var.sim_analysis_number_marginH
-                + ui_var.sim_analysis_details_H * (i // 3),
-                ui_var.sim_analysis_details_W,
-                ui_var.sim_analysis_details_H,
+        if config.ui.debug_colors:
+            self.setStyleSheet(
+                "QFrame { background-color: brown; border: 1px solid #CCCCCC; border-top-left-radius: 0px; border-top-right-radius: 6px; border-bottom-left-radius: 0px; border-bottom-right-radius: 6px; }"
             )
-            detail_frame.setStyleSheet(
+        else:
+            self.setStyleSheet(
                 "QFrame { background-color: transparent; border: 0px solid; }"
             )
-            detail_frame.show()
 
-            detail_title = QLabel(details[i], detail_frame)
-            detail_title.setGeometry(
-                0,
-                0,
-                ui_var.sim_analysis_detailsT_W,
-                ui_var.sim_analysis_details_H,
+        self.details: list[AnalysisDetails.Analysis] = [
+            self.Analysis(
+                self,
+                analysis[i],
+                shared_data.POWER_DETAILS,
+                ui_var.sim_colors4[i],
             )
-            detail_title.setStyleSheet(
-                "QLabel { background-color: transparent; border: 0px solid; color: #A0A0A0 }"
-            )
-            detail_title.setFont(CustomFont(8))
-            detail_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            detail_title.show()
+            for i in range(4)
+        ]
 
-            detail_number = QLabel(analysis.get_data_from_str(details[i]), detail_frame)
-            detail_number.setGeometry(
-                ui_var.sim_analysis_detailsT_W,
-                0,
-                ui_var.sim_analysis_detailsN_W,
-                ui_var.sim_analysis_details_H,
+        layout = QHBoxLayout(self)
+        for detail in self.details:
+            layout.addWidget(detail)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(10)
+        self.setLayout(layout)
+
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+    class Analysis(QFrame):
+        def __init__(
+            self,
+            parent: QFrame,
+            analysis: SimAnalysis,
+            statistics: list[str],
+            color: str,
+        ) -> None:
+            super().__init__(parent)
+
+            self.setStyleSheet(
+                "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-left: 0px solid; border-top-left-radius: 0px; border-top-right-radius: 6px; border-bottom-left-radius: 0px; border-bottom-right-radius: 6px; }"
             )
-            detail_number.setStyleSheet(
+
+            color_frame = QFrame(self)
+            color_frame.setStyleSheet(
+                f"QFrame {{ background-color: rgb({color}); border: 0px solid; border-radius: 0px; border-left: 1px solid #CCCCCC; }}"
+            )
+            color_frame.setFixedWidth(3)
+
+            title = QLabel(analysis.title, self)
+            title.setStyleSheet(
                 "QLabel { background-color: transparent; border: 0px solid; }"
             )
-            detail_number.setFont(CustomFont(8))
-            detail_number.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            detail_number.show()
+            title.setFont(CustomFont(14))
+            title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-            self.detail_frames.append(detail_frame)
-            self.detail_labels.append(detail_title)
-            self.detail_numbers.append(detail_number)
+            self.number = QLabel(analysis.value, self)
+            self.number.setStyleSheet(
+                "QLabel { background-color: transparent; border: 0px solid; }"
+            )
+            self.number.setFont(CustomFont(18))
+            self.number.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            self.statistics: list[AnalysisDetails.Statistic] = []
+            for stat in statistics:
+                value: str = analysis.get_data_from_str(stat)
+                detail = AnalysisDetails.Statistic(self, stat, value)
+
+                self.statistics.append(detail)
+
+            statistics_layout = QGridLayout()
+            for i, stat in enumerate(self.statistics):
+                row: int = i // 3
+                column: int = i % 3
+                statistics_layout.addWidget(stat, row, column)
+            statistics_layout.setContentsMargins(5, 5, 5, 5)
+            statistics_layout.setSpacing(5)
+
+            content_layout = QVBoxLayout()
+            content_layout.setContentsMargins(0, 5, 0, 0)
+            content_layout.addWidget(title)
+            content_layout.addWidget(self.number)
+            content_layout.addLayout(statistics_layout)
+            content_layout.setSpacing(15)
+
+            layout = QHBoxLayout(self)
+            layout.addWidget(color_frame)
+            layout.addLayout(content_layout)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(0)
+            self.setLayout(layout)
+
+            self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+    class Statistic(QFrame):
+        def __init__(self, parent: QFrame, name: str, value: str):
+            super().__init__(parent)
+
+            self.setStyleSheet(
+                "QFrame { background-color: transparent; border: 0px solid; }"
+            )
+
+            title = QLabel(name, self)
+            title.setStyleSheet(
+                "QLabel { background-color: transparent; border: 0px solid; color: #A0A0A0 }"
+            )
+            title.setFont(CustomFont(8))
+            title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            self.number = QLabel(value, self)
+            self.number.setStyleSheet(
+                "QLabel { background-color: transparent; border: 0px solid; }"
+            )
+            self.number.setFont(CustomFont(8))
+            self.number.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            layout = QHBoxLayout(self)
+            layout.addWidget(title)
+            layout.addWidget(self.number)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(5)
+            self.setLayout(layout)
+
+            self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
 
 class PotentialRank:

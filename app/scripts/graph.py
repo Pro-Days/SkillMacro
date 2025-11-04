@@ -5,15 +5,15 @@ from PyQt6.QtCore import Qt, QPoint, QPointF
 from PyQt6.QtWidgets import QLabel, QWidget
 from PyQt6.QtGui import QBrush, QPainter, QFont
 
-from .custom_classes import CustomFont
+from .custom_classes import CustomFont, SimAttack
 
 
 class DpmDistributionCanvas(pg.PlotWidget):
-    def __init__(self, parent: QWidget, data: list[float]) -> None:
+    def __init__(self, parent: QWidget, results: list[list[SimAttack]]) -> None:
         super().__init__(parent=parent)
 
         # 데이터 저장
-        self.data: list[float] = data
+        self.data: list[float] = [sum([i.damage for i in result]) for result in results]
 
         # 안티 에일리어싱 활성화
         self.setRenderHint(QPainter.RenderHint.Antialiasing, True)
@@ -66,10 +66,12 @@ class DpmDistributionCanvas(pg.PlotWidget):
         self.setMenuEnabled(False)
 
         # 배경 색상 설정
-        self.setBackground("#F8F8F8")
+        # self.setBackground("#F8F8F8")
 
         # 테두리 색상 설정
-        self.setStyleSheet("border: 0px solid;")
+        self.setStyleSheet(
+            "{ background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
+        )
 
         # 색상 정의
         self.colors: dict[str, str] = {
