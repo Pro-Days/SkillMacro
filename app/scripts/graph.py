@@ -66,12 +66,10 @@ class DpmDistributionCanvas(pg.PlotWidget):
         self.setMenuEnabled(False)
 
         # 배경 색상 설정
-        # self.setBackground("#F8F8F8")
+        self.setBackground("#F8F8F8")
 
         # 테두리 색상 설정
-        self.setStyleSheet(
-            "{ background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
-        )
+        self.setStyleSheet("border: 0px solid;")
 
         # 색상 정의
         self.colors: dict[str, str] = {
@@ -375,18 +373,22 @@ class SkillDpsRatioCanvas(pg.PlotWidget):
     def __init__(
         self,
         parent: QWidget,
-        data: list[float],
+        data: list[SimAttack],
         skill_names: list[str],
     ) -> None:
         super().__init__(parent=parent)
 
         # 데이터와 레이블, 색상, 제목 설정
         # 존재하는 데이터만 필터링
-        self.data: list[float] = [i for i in data if i]
+        ratio_data: list[float] = [
+            sum(skill.damage for skill in data if skill.skill_name == skill_name)
+            for skill_name in skill_names + ["평타"]
+        ]
+        self.data: list[float] = [i for i in ratio_data if i]
 
         # 레이블은 스킬 이름에서 데이터가 있는 것만 필터링
         self.labels: list[str] = [
-            f"{skill_names[i]}" for i, j in enumerate(data) if j and i != 6
+            f"{skill_names[i]}" for i, j in enumerate(ratio_data) if j and i != 6
         ]
 
         # 평타 추가
@@ -591,13 +593,32 @@ class DMGCanvas(pg.PlotWidget):
     def __init__(
         self,
         parent: QWidget,
-        data: dict[str, list[int] | list[float]],
+        results: list[list[SimAttack]],
         title: str,
     ) -> None:
         super().__init__(parent)
 
-        # 데이터와 레이블, 색상, 제목 설정
-        self.data: dict[str, list[int] | list[float]] = data
+        step, count = 1, 60
+        times: list[int] = [i * step for i in range(count + 1)]
+
+        dmg_sec_for_results: list[list[float]] = [
+            [0.0]
+            + [
+                sum([j.damage for j in result if i * step <= j.time < (i + 1) * step])
+                for i in range(count)
+            ]
+            for result in results
+        ]
+
+        self.data: dict[str, list[int] | list[float]] = {
+            "time": times,
+            "max": [max([j[i] for j in dmg_sec_for_results]) for i in range(count + 1)],
+            "mean": [
+                sum([j[i] for j in dmg_sec_for_results]) / len(dmg_sec_for_results)
+                for i in range(count + 1)
+            ],
+            "min": [min([j[i] for j in dmg_sec_for_results]) for i in range(count + 1)],
+        }
 
         # 안티 에일리어싱 활성화
         self.setRenderHint(QPainter.RenderHint.Antialiasing, True)
@@ -842,17 +863,59 @@ class SkillContributionCanvas(pg.PlotWidget):
     def __init__(
         self,
         parent: QWidget,
-        data: dict,
+        resultDet: list[SimAttack],
         names: list[str],
     ) -> None:
         super().__init__(parent)
 
+        step, count = 1, 60
+        times: list[int] = [i * step for i in range(count + 1)]
+
+        skillsData: list[list[float]] = [
+            [0.0]
+            + [
+                sum(
+                    [
+                        j.damage
+                        for j in resultDet
+                        if j.skill_name == skill_name and j.time < (i + 1) * step
+                    ]
+                )
+                for i in range(count)
+            ]
+            for skill_name in names + ["평타"]
+        ]
+
+        # totalData = []
+        # for i in range(timeStepCount):
+        #     totalData.append(sum([j[2] for j in resultDet if j[1] < (i + 1) * timeStep]))
+        totalData: list[float] = [0.0] + [
+            sum([j.damage for j in resultDet if j.time < (i + 1) * step])
+            for i in range(count)
+        ]
+
+        # data_normalized = []
+        # for i in range(7):
+        #     data_normalized.append([skillsData[i][j] / totalData[j] for j in range(timeStepCount)])
+        data_normalized: list[list[float]] = [
+            [0.0] + [skillsData[i][j] / totalData[j] for j in range(1, count + 1)]
+            for i in range(7)
+        ]
+
+        data_cumsum: list[list[float]] = [[0.0 for _ in row] for row in data_normalized]
+        for i in range(len(data_normalized)):
+            for j in range(len(data_normalized[0])):
+                data_cumsum[i][j] = sum(row[j] for row in data_normalized[: i + 1])
+
         # 데이터와 레이블, 색상, 제목 설정
-        self.data: dict = data
+        self.data: dict = {
+            "time": times,
+            "data": data_normalized,
+        }
         self.skill_names: list[str] = names
 
         # 데미지가 0인 스킬 제거
-        data_0idx = [i for i, j in enumerate(data["data"]) if not j[-1]]
+        data_0idx = [i for i, j in enumerate(self.data["data"]) if not j[-1]]
         data_0idx.sort(reverse=True)
 
         for i in data_0idx:

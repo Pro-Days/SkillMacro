@@ -431,34 +431,35 @@ class Sim2UI(QFrame):
         self.DPM_graph = self.DPMGraph(self, results)
 
         # 스킬 비율
-        self.ratio_graph = self.RatioGraph(
-            self, self.shared_data, self.analysis, resultDet
-        )
+        self.ratio_graph = self.RatioGraph(self, self.shared_data, resultDet)
+
+        sub_layout = QHBoxLayout()
+        sub_layout.addWidget(self.DPM_graph)
+        sub_layout.addWidget(self.ratio_graph)
+        sub_layout.setSpacing(10)
+        sub_layout.setContentsMargins(10, 10, 10, 10)
 
         # 시간 경과에 따른 피해량
-        self.dps_graph = self.DPSGraph(self, self.shared_data, self.DPM_graph, results)
+        self.dps_graph = self.DPSGraph(self, results)
 
         # 누적 피해량
-        self.total_graph = self.TotalGraph(
-            self, self.shared_data, self.dps_graph, results
-        )
+        self.total_graph = self.TotalGraph(self, self.shared_data, results)
 
         # 스킬별 누적 기여도
         self.contribution_graph = self.ContributionGraph(
-            self, self.shared_data, self.total_graph, resultDet
+            self, self.shared_data, resultDet
         )
 
-        layout = QGridLayout(self)
+        layout = QVBoxLayout(self)
 
-        layout.addWidget(self.power_title, 0, 0, 1, 2)
-        layout.addWidget(self.power, 1, 0, 1, 2)
-        layout.addWidget(self.analysis_title, 2, 0, 1, 2)
-        layout.addWidget(self.analysis, 3, 0, 1, 2)
-        layout.addWidget(self.DPM_graph, 4, 0, 1, 1)
-        layout.addWidget(self.ratio_graph, 4, 1, 1, 1)
-        layout.addWidget(self.dps_graph, 5, 0, 1, 2)
-        layout.addWidget(self.total_graph, 6, 0, 1, 2)
-        layout.addWidget(self.contribution_graph, 7, 0, 1, 2)
+        layout.addWidget(self.power_title)
+        layout.addWidget(self.power)
+        layout.addWidget(self.analysis_title)
+        layout.addWidget(self.analysis)
+        layout.addLayout(sub_layout)
+        layout.addWidget(self.dps_graph)
+        layout.addWidget(self.total_graph)
+        layout.addWidget(self.contribution_graph)
 
         # 레이아웃 여백과 간격 설정
         layout.setSpacing(10)  # 위젯들 사이의 간격
@@ -480,6 +481,7 @@ class Sim2UI(QFrame):
             )
 
             self.graph = DpmDistributionCanvas(self, results)
+            self.graph.setFixedHeight(300)
 
             layout = QVBoxLayout(self)
             layout.setContentsMargins(5, 5, 5, 5)
@@ -491,246 +493,91 @@ class Sim2UI(QFrame):
             self,
             parent: QFrame,
             shared_data: SharedData,
-            analysis: Sim2UI.Analysis,
             resultDet: list[SimAttack],
         ) -> None:
             super().__init__(parent)
 
             self.shared_data: SharedData = shared_data
-            self.ui_var = UI_Variable()
 
-            self.setGeometry(
-                self.ui_var.sim_dps_margin
-                + self.ui_var.sim_dps_width
-                + self.ui_var.sim_skillDps_margin,
-                analysis.y() + analysis.height() + self.ui_var.sim_widget_D,
-                self.ui_var.sim_skillRatio_width,
-                self.ui_var.sim_skillRatio_height,
-            )
             self.setStyleSheet(
                 "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
             )
 
-            ratio_data: list[float] = [
-                sum(
-                    skill.damage
-                    for skill in resultDet
-                    if skill.skill_name == skill_name
-                )
-                for skill_name in self.shared_data.equipped_skills + ["평타"]
-            ]
-            # data = [round(total_dmgs[i] / sum(total_dmgs) * 100, 1) for i in range(7)]
-
             self.graph = SkillDpsRatioCanvas(
-                self, ratio_data, self.shared_data.equipped_skills
+                self, resultDet, self.shared_data.equipped_skills
             )
-            self.graph.move(10, 10)
-            self.graph.resize(
-                self.ui_var.sim_skillRatio_width - 20,
-                self.ui_var.sim_skillRatio_height - 20,
-            )
+            self.graph.setFixedHeight(300)
+
+            layout = QVBoxLayout(self)
+            layout.setContentsMargins(5, 5, 5, 5)
+            layout.addWidget(self.graph)
+            self.setLayout(layout)
 
     class DPSGraph(QFrame):
         def __init__(
             self,
             parent: QFrame,
-            shared_data: SharedData,
-            distribution: Sim2UI.DPMGraph,
             results: list[list[SimAttack]],
         ) -> None:
             super().__init__(parent)
 
-            self.shared_data: SharedData = shared_data
-            self.ui_var = UI_Variable()
-
-            self.setGeometry(
-                self.ui_var.sim_dps_margin,
-                distribution.y() + distribution.height() + self.ui_var.sim_main_D,
-                self.ui_var.sim_dmg_width,
-                self.ui_var.sim_dmg_height,
-            )
             self.setStyleSheet(
                 "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
             )
 
-            step, count = 1, 60
-            times: list[int] = [i * step for i in range(count + 1)]
+            self.graph = DMGCanvas(self, results, "시간 경과에 따른 피해량")
+            self.graph.setFixedHeight(400)
 
-            dmg_sec_for_results: list[list[float]] = [
-                [0.0]
-                + [
-                    sum(
-                        [
-                            j.damage
-                            for j in result
-                            if i * step <= j.time < (i + 1) * step
-                        ]
-                    )
-                    for i in range(count)
-                ]
-                for result in results
-            ]
-
-            data = {
-                "time": times,
-                "max": [
-                    max([j[i] for j in dmg_sec_for_results]) for i in range(count + 1)
-                ],
-                "mean": [
-                    sum([j[i] for j in dmg_sec_for_results]) / len(dmg_sec_for_results)
-                    for i in range(count + 1)
-                ],
-                "min": [
-                    min([j[i] for j in dmg_sec_for_results]) for i in range(count + 1)
-                ],
-            }
-
-            self.graph = DMGCanvas(self, data, "시간 경과에 따른 피해량")
-            self.graph.move(5, 5)
-            self.graph.resize(
-                self.ui_var.sim_dmg_width - 10, self.ui_var.sim_dmg_height - 10
-            )
+            layout = QVBoxLayout(self)
+            layout.setContentsMargins(5, 5, 5, 5)
+            layout.addWidget(self.graph)
+            self.setLayout(layout)
 
     class TotalGraph(QFrame):
         def __init__(
             self,
             parent: QFrame,
             shared_data: SharedData,
-            dps_graph: Sim2UI.DPSGraph,
             results: list[list[SimAttack]],
         ) -> None:
             super().__init__(parent)
 
             self.shared_data: SharedData = shared_data
-            self.ui_var = UI_Variable()
 
-            self.setGeometry(
-                self.ui_var.sim_dps_margin,
-                dps_graph.y() + dps_graph.height() + self.ui_var.sim_main_D,
-                self.ui_var.sim_dmg_width,
-                self.ui_var.sim_dmg_height,
-            )
             self.setStyleSheet(
                 "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
             )
 
-            step, count = 1, 60
-            times: list[int] = [i * step for i in range(count + 1)]
+            self.graph = DMGCanvas(self, results, "누적 피해량")
+            self.graph.setFixedHeight(400)
 
-            dmg_sec_for_results: list[list[float]] = [
-                [0.0]
-                + [
-                    sum(
-                        [
-                            j.damage
-                            for j in result
-                            if i * step <= j.time < (i + 1) * step
-                        ]
-                    )
-                    for i in range(count)
-                ]
-                for result in results
-            ]
-
-            total_list: list[list[float]] = [
-                [sum([j for j in dmg_sec[: i + 1]]) for i in range(count + 1)]
-                for dmg_sec in dmg_sec_for_results
-            ]
-
-            data = {
-                "time": times,
-                "max": [max([j[i] for j in total_list]) for i in range(count + 1)],
-                "mean": [
-                    sum([j[i] for j in total_list]) / len(total_list)
-                    for i in range(count + 1)
-                ],
-                "min": [min([j[i] for j in total_list]) for i in range(count + 1)],
-            }
-
-            self.graph = DMGCanvas(self, data, "누적 피해량")
-            self.graph.move(5, 5)
-            self.graph.resize(
-                self.ui_var.sim_dmg_width - 10, self.ui_var.sim_dmg_height - 10
-            )
+            layout = QVBoxLayout(self)
+            layout.setContentsMargins(5, 5, 5, 5)
+            layout.addWidget(self.graph)
+            self.setLayout(layout)
 
     class ContributionGraph(QFrame):
         def __init__(
             self,
             parent: QFrame,
             shared_data: SharedData,
-            cumulative_graph: Sim2UI.TotalGraph,
             resultDet: list[SimAttack],
         ) -> None:
             super().__init__(parent)
 
-            self.shared_data: SharedData = shared_data
-            self.ui_var = UI_Variable()
-
-            self.setGeometry(
-                self.ui_var.sim_dps_margin,
-                cumulative_graph.y()
-                + cumulative_graph.height()
-                + self.ui_var.sim_main_D,
-                self.ui_var.sim_dmg_width,
-                self.ui_var.sim_dmg_height,
-            )
             self.setStyleSheet(
                 "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
             )
 
-            step, count = 1, 60
-            times: list[int] = [i * step for i in range(count + 1)]
-
-            skillsData: list[list[float]] = [
-                [0.0]
-                + [
-                    sum(
-                        [
-                            j.damage
-                            for j in resultDet
-                            if j.skill_name == skill_name and j.time < (i + 1) * step
-                        ]
-                    )
-                    for i in range(count)
-                ]
-                for skill_name in self.shared_data.equipped_skills + ["평타"]
-            ]
-
-            # totalData = []
-            # for i in range(timeStepCount):
-            #     totalData.append(sum([j[2] for j in resultDet if j[1] < (i + 1) * timeStep]))
-            totalData: list[float] = [0.0] + [
-                sum([j.damage for j in resultDet if j.time < (i + 1) * step])
-                for i in range(count)
-            ]
-
-            # data_normalized = []
-            # for i in range(7):
-            #     data_normalized.append([skillsData[i][j] / totalData[j] for j in range(timeStepCount)])
-            data_normalized: list[list[float]] = [
-                [0.0] + [skillsData[i][j] / totalData[j] for j in range(1, count + 1)]
-                for i in range(7)
-            ]
-
-            data_cumsum: list[list[float]] = [
-                [0.0 for _ in row] for row in data_normalized
-            ]
-            for i in range(len(data_normalized)):
-                for j in range(len(data_normalized[0])):
-                    data_cumsum[i][j] = sum(row[j] for row in data_normalized[: i + 1])
-
-            data = {
-                "time": times,
-                "data": data_normalized,
-            }
             self.graph = SkillContributionCanvas(
-                self, data, self.shared_data.equipped_skills.copy()
+                self, resultDet, shared_data.equipped_skills.copy()
             )
-            self.graph.move(20, 20)
-            self.graph.resize(
-                self.ui_var.sim_dmg_width - 40,
-                self.ui_var.sim_dmg_height - 40,
-            )
+            self.graph.setFixedHeight(400)
+
+            layout = QVBoxLayout(self)
+            layout.setContentsMargins(5, 5, 5, 5)
+            layout.addWidget(self.graph)
+            self.setLayout(layout)
 
 
 class Sim3UI(QFrame):
