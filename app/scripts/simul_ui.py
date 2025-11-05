@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.scripts.custom_classes import SimAttack
+from app.scripts.custom_classes import SimAttack, Stats
 from app.scripts.shared_data import SharedData
 
 from .data_manager import save_data
@@ -404,7 +404,11 @@ class Sim2UI(QFrame):
         if config.ui.debug_colors:
             self.setStyleSheet("QFrame { background-color: gray;}")
 
-        # 처음 생성때는 계산하지 않기
+        # 처음 생성때 계산하지 않고, 버튼을 누르면 시작.
+        # 횟수를 설정할 수 있도록 변경
+        # 진행 상황이 실시간으로 보이도록 그래핑 방식도 변경
+        # GPU를 사용하는 것도 고려.
+        # 레벨을 사용하도록 변경
         sim_result: SimResult = randSimulate(
             self.shared_data,
             self.shared_data.info_stats,
@@ -581,6 +585,114 @@ class Sim2UI(QFrame):
 
 
 class Sim3UI(QFrame):
+    def __init__(self, parent: QFrame, shared_data: SharedData) -> None:
+        super().__init__(parent)
+
+        self.shared_data: SharedData = shared_data
+        self.ui_var = UI_Variable()
+
+        powers: list[float] = detSimulate(
+            self.shared_data,
+            self.shared_data.info_stats,
+            self.shared_data.info_sim_details,
+        ).powers
+
+        for i, power in enumerate(powers):
+            self.shared_data.powers[i] = power
+
+        # ???
+        self.shared_data.is_input_valid["stat"] = False
+        self.shared_data.is_input_valid["skill"] = False
+
+        # 스펙업 효율 계산
+        self.title: Title = Title(self, "스펙업 효율 계산")
+        self.efficiency = self.Efficiency()
+
+        # 추가 스펙업 계산기
+        self.additional_frame = QFrame(self.parent)
+        self.additional_frame.setStyleSheet(
+            "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
+        )
+
+        self.additional_title = Title(self.additional_frame, "추가 스펙업 계산기")
+
+        self.additional_power_labels = PowerLabels(
+            self.additional_frame, self.shared_data, ["0"] * 4
+        )
+
+        self.additional_stats = StatInputs(
+            self.additional_frame, self.shared_data, self.stat_inputChanged
+        )
+
+        self.additional_stats.inputs[i].setText("0")
+
+        self.additional_skills = SkillInputs(
+            self.additional_frame, self.shared_data, self.skill_inputChanged
+        )
+
+        self.additional_skills.inputs[i].setText(
+            str(
+                self.shared_data.info_skill_levels[
+                    get_available_skills(self.shared_data)[i]
+                ]
+            )
+        )
+
+        # 잠재능력 계산기
+        self.potential_frame = QFrame(self.parent)
+        self.potential_frame.setStyleSheet(
+            "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
+        )
+
+        self.potential_title = Title(self.potential_frame, "잠재능력 계산기")
+
+        self.potential_stat0 = CustomComboBox(
+            self.potential_frame,
+            list(self.shared_data.POTENTIAL_STATS.keys()),
+            self.potential_update,
+        )
+
+        self.potential_stat1 = CustomComboBox(
+            self.potential_frame,
+            list(self.shared_data.POTENTIAL_STATS.keys()),
+            self.potential_update,
+        )
+
+        self.potential_stat2 = CustomComboBox(
+            self.potential_frame,
+            list(self.shared_data.POTENTIAL_STATS.keys()),
+            self.potential_update,
+        )
+
+        self.potential_power_labels = PowerLabels(
+            self.potential_frame, self.shared_data, ["0"] * 4
+        )
+
+        self.potential_update()
+
+        # 잠재능력 옵션 순위표
+        self.potentialRank_frame = QFrame(self.parent)
+        self.potentialRank_frame.setStyleSheet(
+            "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
+        )
+
+        self.potentialRank_title = Title(
+            self.potentialRank_frame, "잠재능력 옵션 순위표"
+        )
+
+        self.potentialRanks = PotentialRank(self.potentialRank_frame, self.shared_data)
+
+        layout = QVBoxLayout(self)
+
+        # layout.addWidget()
+
+        # 레이아웃 여백과 간격 설정
+        layout.setSpacing(10)  # 위젯들 사이의 간격
+        layout.setContentsMargins(10, 10, 10, 10)  # 레이아웃의 여백
+        self.setLayout(layout)
+
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
     class Efficiency(QFrame):
         def __init__(self, parent: QFrame, shared_data: SharedData) -> None:
             super().__init__(parent)
@@ -588,526 +700,121 @@ class Sim3UI(QFrame):
             self.shared_data: SharedData = shared_data
             self.ui_var = UI_Variable()
 
-            self.setGeometry(
-                0,
-                0,
-                928,
-                self.ui_var.sim_title_H
-                + (self.ui_var.sim_widget_D + self.ui_var.sim_efficiency_frame_H),
-            )
-            self.setStyleSheet(
-                "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
-            )
-
-            self.title: Title = Title(self, "스펙업 효율 계산기")
+            if config.ui.debug_colors:
+                self.setStyleSheet(
+                    "QFrame { background-color: green; border: 0px solid; }"
+                )
+            else:
+                self.setStyleSheet(
+                    "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
+                )
 
             # 왼쪽 콤보박스
-            self.combobox_L = CustomComboBox(
+            self.combobox_left = CustomComboBox(
                 self,
                 list(self.shared_data.STATS.values()),
-                self.efficiency_Changed,
-            )
-            self.combobox_L.setGeometry(
-                self.ui_var.sim_efficiency_statL_margin,
-                self.ui_var.sim_label_H
-                + self.ui_var.sim_widget_D
-                + self.ui_var.sim_efficiency_statL_y,
-                self.ui_var.sim_efficiency_statL_W,
-                self.ui_var.sim_efficiency_statL_H,
+                self.efficiency_changed,
             )
 
             # 왼쪽 스탯 입력창
-            self.efficiency_statInput = CustomLineEdit(
-                self, self.efficiency_Changed, "10"
-            )
-            self.efficiency_statInput.setGeometry(
-                self.ui_var.sim_efficiency_statInput_margin,
-                self.ui_var.sim_label_H
-                + self.ui_var.sim_widget_D
-                + self.ui_var.sim_efficiency_statInput_y,
-                self.ui_var.sim_efficiency_statInput_W,
-                self.ui_var.sim_efficiency_statInput_H,
-            )
-            self.efficiency_statInput.setFocus()
-            self.widgetList.append(self.efficiency_statInput)
+            self.input = CustomLineEdit(self, self.efficiency_changed, "10")
+            self.input.setFocus()
 
             # 화살표
-            self.efficiency_arrow = QLabel("", self.efficiency_frame)
-            self.efficiency_arrow.setStyleSheet(
-                f"QLabel {{ background-color: transparent; border: 0px solid; }}"
+            self.arrow = QLabel("", self)
+            self.arrow.setStyleSheet(
+                "QLabel { background-color: transparent; border: 0px solid; }"
             )
-            self.efficiency_arrow.setPixmap(
-                QPixmap(
-                    convert_resource_path("resources\\image\\lineArrow.png")
-                ).scaled(
-                    self.ui_var.sim_efficiency_arrow_W,
-                    self.ui_var.sim_efficiency_arrow_H,
-                )
+
+            pixmap: QPixmap = QPixmap(
+                convert_resource_path("resources\\image\\lineArrow.png")
             )
-            self.efficiency_arrow.setGeometry(
-                self.ui_var.sim_efficiency_arrow_margin,
-                self.ui_var.sim_label_H
-                + self.ui_var.sim_widget_D
-                + self.ui_var.sim_efficiency_arrow_y,
+            pixmap = pixmap.scaled(
                 self.ui_var.sim_efficiency_arrow_W,
                 self.ui_var.sim_efficiency_arrow_H,
             )
-            self.widgetList.append(self.efficiency_arrow)
+            self.arrow.setPixmap(pixmap)
 
             # 오른쪽 콤보박스
-            self.efficiency_statR = CustomComboBox(
-                self.efficiency_frame,
+            self.combobox_right = CustomComboBox(
+                self,
                 list(self.shared_data.STATS.values()),
-                self.efficiency_Changed,
-            )
-            self.efficiency_statR.setGeometry(
-                self.ui_var.sim_efficiency_statR_margin,
-                self.ui_var.sim_label_H
-                + self.ui_var.sim_widget_D
-                + self.ui_var.sim_efficiency_statR_y,
-                self.ui_var.sim_efficiency_statR_W,
-                self.ui_var.sim_efficiency_statR_H,
-            )
-            self.widgetList.append(self.efficiency_statR)
-
-            self.efficiency_power_labels = PowerLabels(
-                self.efficiency_frame, self.shared_data, ["0"] * 4
+                self.efficiency_changed,
             )
 
-            for i in range(len(self.efficiency_power_labels.labels)):
-                frame = self.efficiency_power_labels.frames[i]
-                label = self.efficiency_power_labels.labels[i]
-                number = self.efficiency_power_labels.numbers[i]
-
-                frame.setGeometry(
-                    self.ui_var.sim_powerS_margin
-                    + (self.ui_var.sim_powerS_width + self.ui_var.sim_powerS_D) * i,
-                    self.ui_var.sim_label_H + self.ui_var.sim_widget_D,
-                    self.ui_var.sim_powerS_width,
-                    self.ui_var.sim_powerS_frame_H,
-                )
-                label.setGeometry(
-                    0,
-                    0,
-                    self.ui_var.sim_powerS_width,
-                    self.ui_var.sim_powerS_title_H,
-                )
-                number.setGeometry(
-                    0,
-                    self.ui_var.sim_powerS_title_H,
-                    self.ui_var.sim_powerS_width,
-                    self.ui_var.sim_powerS_number_H,
-                )
-
-                self.widgetList.append(frame)
-                self.widgetList.append(label)
-                self.widgetList.append(number)
+            self.power_labels = PowerLabels(self, self.shared_data, ["0"] * 4)
 
             self.update_efficiency()
 
-    def __init__(self, parent: QFrame, shared_data: SharedData) -> None:
-        super().__init__(parent)
+        def update_efficiency(self) -> None:
+            left_index: int = self.combobox_left.currentIndex()
+            right_index: int = self.combobox_right.currentIndex()
+            value: int = int(self.input.text())
 
-        self.shared_data: SharedData = shared_data
-        self.ui_var = UI_Variable()
+            # 종류가 같다면 동일한 값 출력
+            if left_index == right_index:
+                self.power_labels.set_texts([f"{value:.2f}"] * 4)
 
-        # 계산
-        powers: list[float] = detSimulate(
-            self.shared_data,
-            self.shared_data.info_stats,
-            self.shared_data.info_sim_details,
-        ).powers
+                return
 
-        # 저장
-        for i, power in enumerate(powers):
-            self.shared_data.powers[i] = power
+            # 종류가 다르다면 적용 후 계산
+            stats: Stats = self.shared_data.info_stats.copy()
+            stats.add_stat_from_index(left_index, value)
 
-        # 레이아웃 시스템으로 변경할 때 제거
-        self.widgetList = []
+            # 적용 후 전투력 계산
+            powers: list[float] = detSimulate(
+                self.shared_data,
+                stats,
+                self.shared_data.info_sim_details,
+            ).powers
 
-        # ???
-        self.shared_data.is_input_valid["stat"] = False
-        self.shared_data.is_input_valid["skill"] = False
-
-        ## 스펙업 효율 계산기
-        self.efficiency = self.Efficiency()
-
-        # 추가 스펙업 계산기
-        self.additional_frame = QFrame(self.parent)
-        self.additional_frame.setGeometry(
-            0,
-            self.efficiency_frame.y()
-            + self.efficiency_frame.height()
-            + self.ui_var.sim_main_D,
-            928,
-            self.ui_var.sim_title_H
-            + (self.ui_var.sim_widget_D + self.ui_var.sim_stat_frame_H) * 3
-            + self.ui_var.sim_main_D
-            + (self.ui_var.sim_widget_D + self.ui_var.sim_skill_frame_H) * 2
-            + self.ui_var.sim_main_D
-            + (self.ui_var.sim_widget_D + self.ui_var.sim_powerL_frame_H),
-        )
-        self.additional_frame.setStyleSheet(
-            "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
-        )
-        self.widgetList.append(self.additional_frame)
-
-        self.additional_title = Title(self.additional_frame, "추가 스펙업 계산기")
-        self.widgetList.append(self.additional_title.frame)
-        self.widgetList.append(self.additional_title.label)
-
-        self.additional_power_labels = PowerLabels(
-            self.additional_frame, self.shared_data, ["0"] * 4
-        )
-
-        for i in range(len((self.additional_power_labels.labels))):
-            frame = self.additional_power_labels.frames[i]
-            label = self.additional_power_labels.labels[i]
-            number = self.additional_power_labels.numbers[i]
-
-            frame.setGeometry(
-                self.ui_var.sim_powerL_margin
-                + (self.ui_var.sim_powerL_width + self.ui_var.sim_powerL_D) * i,
-                self.ui_var.sim_label_H
-                + self.ui_var.sim_widget_D
-                + (self.ui_var.sim_widget_D + self.ui_var.sim_stat_frame_H) * 3
-                + self.ui_var.sim_main_D
-                + (self.ui_var.sim_widget_D + self.ui_var.sim_skill_frame_H) * 2
-                + self.ui_var.sim_main_D,
-                self.ui_var.sim_powerL_width,
-                self.ui_var.sim_powerL_frame_H,
-            )
-            label.setGeometry(
-                0,
-                0,
-                self.ui_var.sim_powerL_width,
-                self.ui_var.sim_powerL_title_H,
-            )
-            number.setGeometry(
-                0,
-                self.ui_var.sim_powerL_title_H,
-                self.ui_var.sim_powerL_width,
-                self.ui_var.sim_powerL_number_H,
+            # 요구량 계산
+            reqStats: list[str] = get_req_stats(
+                self.shared_data,
+                powers,
+                list(self.shared_data.STATS.keys())[right_index],
             )
 
-            self.widgetList.append(frame)
-            self.widgetList.append(label)
-            self.widgetList.append(number)
+            # 텍스트 설정
+            self.power_labels.set_texts(reqStats)
 
-        self.additional_stats = StatInputs(
-            self.additional_frame, self.shared_data, self.stat_inputChanged
-        )
+        def efficiency_changed(self) -> None:
+            text: str = self.input.text()
+            index: int = self.combobox_left.currentIndex()
+            stat_name: str = list(self.shared_data.STATS.keys())[index]
 
-        margin, count = 21, 6
-        for i in range(18):
-            self.additional_stats.frames[i].move(
-                self.ui_var.sim_stat_margin
-                + self.ui_var.sim_stat_width * (i % count)
-                + margin * (i % count),
-                self.additional_title.frame.height()
-                + self.ui_var.sim_widget_D * ((i // count) + 1)
-                + self.ui_var.sim_stat_frame_H * (i // count),
-            )
-            self.additional_stats.labels[i].setGeometry(
-                0,
-                0,
-                self.ui_var.sim_stat_width,
-                self.ui_var.sim_stat_label_H,
-            )
-            self.additional_stats.inputs[i].setGeometry(
-                0,
-                self.ui_var.sim_stat_label_H,
-                self.ui_var.sim_stat_width,
-                self.ui_var.sim_stat_input_H,
-            )
+            # 입력이 숫자가 아니면 오류
+            if not text.isdigit():
+                self.power_labels.set_texts(["오류"] * 4)
 
-            self.additional_stats.inputs[i].setText("0")
+                return
 
-            self.widgetList.append(self.additional_stats.frames[i])
-            self.widgetList.append(self.additional_stats.labels[i])
-            self.widgetList.append(self.additional_stats.inputs[i])
+            stat: int | float = self.shared_data.info_stats.get_stat_from_name(
+                stat_name
+            ) + int(text)
 
-        self.additional_skills = SkillInputs(
-            self.additional_frame, self.shared_data, self.skill_inputChanged
-        )
+            # 최소 범위보다 작으면 오류
+            if stat < self.shared_data.STAT_RANGES[stat_name][0]:
+                self.power_labels.set_texts(["오류"] * 4)
 
-        margin, count = 66, 4
-        for i in range(8):
-            self.additional_skills.frames[i].move(
-                self.ui_var.sim_skill_margin
-                + self.ui_var.sim_skill_width * (i % count)
-                + margin * (i % count),
-                self.additional_title.frame.height()
-                + self.ui_var.sim_widget_D * ((i // count) + 1)
-                + self.ui_var.sim_skill_frame_H * (i // count)
-                + (self.ui_var.sim_widget_D + self.ui_var.sim_stat_frame_H) * 3
-                + self.ui_var.sim_main_D,
-            )
-            self.additional_skills.names[i].setGeometry(
-                0,
-                0,
-                self.ui_var.sim_skill_width,
-                self.ui_var.sim_skill_name_H,
-            )
-            self.additional_skills.labels[i].setGeometry(
-                self.ui_var.sim_skill_image_Size,
-                self.ui_var.sim_skill_name_H,
-                self.ui_var.sim_skill_right_W,
-                self.ui_var.sim_skill_level_H,
-            )
-            self.additional_skills.inputs[i].setGeometry(
-                self.ui_var.sim_skill_image_Size,
-                self.ui_var.sim_skill_name_H + self.ui_var.sim_skill_level_H,
-                self.ui_var.sim_skill_right_W,
-                self.ui_var.sim_skill_input_H,
-            )
+                return
 
-            self.additional_skills.inputs[i].setText(
-                str(
-                    self.shared_data.info_skill_levels[
-                        get_available_skills(self.shared_data)[i]
-                    ]
-                )
-            )
-
-            self.widgetList.append(self.additional_skills.frames[i])
-            self.widgetList.append(self.additional_skills.names[i])
-            self.widgetList.append(self.additional_skills.labels[i])
-            self.widgetList.append(self.additional_skills.inputs[i])
-
-        # 잠재능력 계산기
-        self.potential_frame = QFrame(self.parent)
-        self.potential_frame.setGeometry(
-            0,
-            self.additional_frame.y()
-            + self.additional_frame.height()
-            + self.ui_var.sim_main_D,
-            928,
-            self.ui_var.sim_title_H
-            + (self.ui_var.sim_widget_D + self.ui_var.sim_potential_frame_H),
-        )
-        self.potential_frame.setStyleSheet(
-            "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
-        )
-        self.widgetList.append(self.potential_frame)
-
-        self.potential_title = Title(self.potential_frame, "잠재능력 계산기")
-        self.widgetList.append(self.potential_title.frame)
-        self.widgetList.append(self.potential_title.label)
-
-        self.potential_stat0 = CustomComboBox(
-            self.potential_frame,
-            list(self.shared_data.POTENTIAL_STATS.keys()),
-            self.potential_update,
-        )
-        self.potential_stat0.setGeometry(
-            self.ui_var.sim_potential_stat_margin,
-            self.ui_var.sim_label_H + self.ui_var.sim_widget_D,
-            self.ui_var.sim_potential_stat_W,
-            self.ui_var.sim_potential_stat_H,
-        )
-        self.widgetList.append(self.potential_stat0)
-
-        self.potential_stat1 = CustomComboBox(
-            self.potential_frame,
-            list(self.shared_data.POTENTIAL_STATS.keys()),
-            self.potential_update,
-        )
-        self.potential_stat1.setGeometry(
-            self.ui_var.sim_potential_stat_margin,
-            self.ui_var.sim_label_H
-            + self.ui_var.sim_widget_D
-            + (self.ui_var.sim_potential_stat_H + self.ui_var.sim_potential_stat_D),
-            self.ui_var.sim_potential_stat_W,
-            self.ui_var.sim_potential_stat_H,
-        )
-        self.widgetList.append(self.potential_stat1)
-
-        self.potential_stat2 = CustomComboBox(
-            self.potential_frame,
-            list(self.shared_data.POTENTIAL_STATS.keys()),
-            self.potential_update,
-        )
-        self.potential_stat2.setGeometry(
-            self.ui_var.sim_potential_stat_margin,
-            self.ui_var.sim_label_H
-            + self.ui_var.sim_widget_D
-            + (self.ui_var.sim_potential_stat_H + self.ui_var.sim_potential_stat_D) * 2,
-            self.ui_var.sim_potential_stat_W,
-            self.ui_var.sim_potential_stat_H,
-        )
-        self.widgetList.append(self.potential_stat2)
-
-        self.potential_power_labels = PowerLabels(
-            self.potential_frame, self.shared_data, ["0"] * 4
-        )
-
-        for i in range(len(self.potential_power_labels.labels)):
-            frame = self.potential_power_labels.frames[i]
-            label = self.potential_power_labels.labels[i]
-            number = self.potential_power_labels.numbers[i]
-
-            frame.setGeometry(
-                self.ui_var.sim_powerM_margin
-                + (self.ui_var.sim_powerM_width + self.ui_var.sim_powerM_D) * i,
-                self.ui_var.sim_label_H + self.ui_var.sim_widget_D,
-                self.ui_var.sim_powerM_width,
-                self.ui_var.sim_powerM_frame_H,
-            )
-            label.setGeometry(
-                0,
-                0,
-                self.ui_var.sim_powerM_width,
-                self.ui_var.sim_powerM_title_H,
-            )
-            number.setGeometry(
-                0,
-                self.ui_var.sim_powerM_title_H,
-                self.ui_var.sim_powerM_width,
-                self.ui_var.sim_powerM_number_H,
-            )
-
-            self.widgetList.append(frame)
-            self.widgetList.append(label)
-            self.widgetList.append(number)
-
-        self.potential_update()
-
-        # 잠재능력 옵션 순위표
-        self.potentialRank_frame = QFrame(self.parent)
-        self.potentialRank_frame.setGeometry(
-            0,
-            self.potential_frame.y()
-            + self.potential_frame.height()
-            + self.ui_var.sim_main_D,
-            928,
-            self.ui_var.sim_title_H
-            + (self.ui_var.sim_widget_D + self.ui_var.sim_potentialRank_frame_H),
-        )
-        self.potentialRank_frame.setStyleSheet(
-            "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
-        )
-        self.widgetList.append(self.potentialRank_frame)
-
-        self.potentialRank_title = Title(
-            self.potentialRank_frame, "잠재능력 옵션 순위표"
-        )
-        self.widgetList.append(self.potentialRank_title.frame)
-        self.widgetList.append(self.potentialRank_title.label)
-
-        self.potentialRanks = PotentialRank(self.potentialRank_frame, self.shared_data)
-
-        for i in range(4):
-            self.potentialRanks.frames[i].setGeometry(
-                self.ui_var.sim_potentialRank_margin
-                + (
-                    self.ui_var.sim_potentialRank_width
-                    + self.ui_var.sim_potentialRank_D
-                )
-                * i,
-                self.ui_var.sim_label_H + self.ui_var.sim_widget_D,
-                self.ui_var.sim_potentialRank_width,
-                self.ui_var.sim_potentialRank_frame_H,
-            )
-            self.potentialRanks.titles[i].setGeometry(
-                0,
-                0,
-                self.ui_var.sim_potentialRank_width,
-                self.ui_var.sim_potentialRank_title_H + 1,
-            )
-            self.potentialRanks.table_frames[i].setGeometry(
-                0,
-                self.ui_var.sim_potentialRank_title_H,
-                self.ui_var.sim_potentialRank_width,
-                self.ui_var.sim_potentialRank_ranks_H,
-            )
-
-            for j in range(16):
-                self.potentialRanks.ranks[i][j].setGeometry(
-                    0,
-                    self.ui_var.sim_potentialRank_rank_H * j,
-                    self.ui_var.sim_potentialRank_rank_ranking_W,
-                    self.ui_var.sim_potentialRank_rank_H,
-                )
-                self.potentialRanks.labels[i][j].setGeometry(
-                    self.ui_var.sim_potentialRank_rank_ranking_W,
-                    self.ui_var.sim_potentialRank_rank_H * j,
-                    self.ui_var.sim_potentialRank_rank_potential_W,
-                    self.ui_var.sim_potentialRank_rank_H,
-                )
-                self.potentialRanks.powers[i][j].setGeometry(
-                    self.ui_var.sim_potentialRank_rank_ranking_W
-                    + self.ui_var.sim_potentialRank_rank_potential_W,
-                    self.ui_var.sim_potentialRank_rank_H * j,
-                    self.ui_var.sim_potentialRank_rank_power_W,
-                    self.ui_var.sim_potentialRank_rank_H,
-                )
-
-            self.widgetList.extend(self.potentialRanks.ranks[i])
-            self.widgetList.extend(self.potentialRanks.labels[i])
-            self.widgetList.extend(self.potentialRanks.powers[i])
-
-        self.widgetList.extend(self.potentialRanks.frames)
-        self.widgetList.extend(self.potentialRanks.titles)
-        self.widgetList.extend(self.potentialRanks.table_frames)
-
-    def update_efficiency(self):
-        if self.efficiency_statL.currentIndex() == self.efficiency_statR.currentIndex():
-            [
-                self.efficiency_power_labels.numbers[i].setText(
-                    f"{int(self.efficiency_statInput.text()):.2f}"
-                )
-                for i in range(4)
-            ]
-            return
-
-        stats = self.shared_data.info_stats.copy()
-        stats.add_stat_from_index(
-            self.efficiency_statL.currentIndex(), int(self.efficiency_statInput.text())
-        )
-
-        powers = detSimulate(
-            self.shared_data,
-            stats,
-            self.shared_data.info_sim_details,
-        ).powers
-        reqStats = get_req_stats(
-            self.shared_data,
-            powers,
-            list(self.shared_data.STATS.keys())[self.efficiency_statR.currentIndex()],
-        )
-
-        [self.efficiency_power_labels.numbers[i].setText(reqStats[i]) for i in range(4)]
-
-    def efficiency_Changed(self):
-        text = self.efficiency_statInput.text()
-        index = self.efficiency_statL.currentIndex()
-        stat_name = list(self.shared_data.STATS.keys())[index]
-
-        if not text.isdigit():
-            [self.efficiency_power_labels.labels[i].setText("오류") for i in range(4)]
-            return
-
-        stat = self.shared_data.info_stats.get_stat_from_name(stat_name) + int(text)
-
-        if self.shared_data.STAT_RANGES[stat_name][0] <= stat:
+            # 최대 범위가 존재하지 않다면 통과
             if self.shared_data.STAT_RANGES[stat_name][1] == None:
                 self.update_efficiency()
+
                 return
 
-            else:
-                if stat <= self.shared_data.STAT_RANGES[stat_name][1]:
-                    self.update_efficiency()
-                    return
+            # 최대 범위가 존재한다면 비교 후 통과
+            if stat <= self.shared_data.STAT_RANGES[stat_name][1]:
+                self.update_efficiency()
 
-                [
-                    self.efficiency_power_labels.numbers[i].setText("오류")
-                    for i in range(4)
-                ]
                 return
 
-        [self.efficiency_power_labels.numbers[i].setText("오류") for i in range(4)]
-        return
+            # 최대 범위보다 크면 오류
+            self.power_labels.set_texts(["오류"] * 4)
+
+            return
 
     def stat_inputChanged(self):
         # 스탯이 정상적으로 입력되었는지 확인
@@ -2130,6 +1837,8 @@ class PowerLabels(QFrame):
         # 레이아웃 설정
         layout = QHBoxLayout(self)
 
+        self.numbers: list[QLabel] = []
+
         # 전투력 라벨 추가
         for i in range(4):
             power = self.Power(
@@ -2141,6 +1850,7 @@ class PowerLabels(QFrame):
             )
 
             layout.addWidget(power)
+            self.numbers.append(power.number)
 
         # 레이아웃 여백과 간격 설정
         layout.setSpacing(10)  # 위젯들 사이의 간격
@@ -2148,6 +1858,10 @@ class PowerLabels(QFrame):
         self.setLayout(layout)
 
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+    def set_texts(self, texts: list[str]) -> None:
+        for i in range(4):
+            self.numbers[i].setText(texts[i])
 
     class Power(QFrame):
         def __init__(self, mainframe, name: str, text, color: str, font_size=18):
