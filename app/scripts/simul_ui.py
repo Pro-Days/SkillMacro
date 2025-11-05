@@ -134,6 +134,8 @@ class SimUI:
         # 스택 레이아웃 설정
         self.main_frame.setLayout(self.stacked_layout)
 
+        self.adjust_main_frame_height()
+
     def change_layout(self, index: int) -> None:
         # 입력값 확인
         if index in (2, 3) and not all(self.shared_data.is_input_valid.values()):
@@ -146,6 +148,8 @@ class SimUI:
 
         # 레이아웃 변경
         self.stacked_layout.setCurrentIndex(index)
+
+        self.adjust_main_frame_height()
 
     def update_nav(self, index: int) -> None:
         """
@@ -166,6 +170,18 @@ class SimUI:
                 }}
                 """
             )
+
+    def adjust_main_frame_height(self) -> None:
+        """현재 표시 중인 UI 높이에 맞춰 메인 프레임 높이를 동기화."""
+
+        current_widget = self.stacked_layout.currentWidget()
+        if current_widget is None:
+            return
+
+        current_widget.adjustSize()
+        height = current_widget.sizeHint().height()
+        if height > 0:
+            self.main_frame.setFixedHeight(height)
 
 
 class Sim1UI(QFrame):
