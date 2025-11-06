@@ -898,7 +898,7 @@ class SkillContributionCanvas(pg.PlotWidget):
         # for i in range(7):
         #     data_normalized.append([skillsData[i][j] / totalData[j] for j in range(timeStepCount)])
         data_normalized: list[list[float]] = [
-            [0.0] + [skillsData[i][j] / totalData[j] for j in range(1, count + 1)]
+            [0.0] + [skillsData[i][j] / totalData[j] * 100 for j in range(1, count + 1)]
             for i in range(7)
         ]
 

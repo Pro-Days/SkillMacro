@@ -125,10 +125,11 @@ class SimUI:
 
         self.UI1 = Sim1UI(self.main_frame, self.shared_data)
         self.UI2 = Sim2UI(self.main_frame, self.shared_data)
-        # self.UI3 = Sim3UI(self.main_frame, self.shared_data)
+        self.UI3 = Sim3UI(self.main_frame, self.shared_data)
         # self.UI4 = Sim4UI(self.main_frame, self.shared_data)
         self.stacked_layout.addWidget(self.UI1)
         self.stacked_layout.addWidget(self.UI2)
+        self.stacked_layout.addWidget(self.UI3)
 
         self.stacked_layout.setCurrentIndex(0)
         # 스택 레이아웃 설정
@@ -137,10 +138,15 @@ class SimUI:
         self.adjust_main_frame_height()
 
     def change_layout(self, index: int) -> None:
+        print(self.shared_data.is_input_valid)
+
         # 입력값 확인
-        if index in (2, 3) and not all(self.shared_data.is_input_valid.values()):
+        if index in (1, 2, 3) and not all(self.shared_data.is_input_valid.values()):
             self.master.get_popup_manager().make_notice_popup("SimInputError")
 
+            return
+
+        if index == self.stacked_layout.currentIndex():
             return
 
         # 네비게이션 버튼 색 변경
@@ -258,7 +264,9 @@ class Sim1UI(QFrame):
             # 첫 번째 입력 상자에 포커스 설정
             self.inputs[0].setFocus()
 
-        def input_changed(self) -> None:
+            self.input_changed(None)
+
+        def input_changed(self, _) -> None:
             # 정상적으로 입력되었는지 확인
             def checkInput(num: int, text: str) -> bool:
                 if not text.isdigit():
@@ -321,7 +329,9 @@ class Sim1UI(QFrame):
             # 크기 정책: 가로는 부모 크기 최대, 세로는 내용에 맞게 최소
             self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-        def input_changed(self) -> None:
+            self.input_changed(None)
+
+        def input_changed(self, _) -> None:
             # 정상적으로 입력되었는지 확인
             def checkInput(text: str) -> bool:
                 if not text.isdigit():
@@ -377,7 +387,9 @@ class Sim1UI(QFrame):
             # 크기 정책: 가로는 부모 크기 최대, 세로는 내용에 맞게 최소
             self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-        def input_changed(self) -> None:
+            self.input_changed(None)
+
+        def input_changed(self, _) -> None:
             # 정상적으로 입력되었는지 확인
             def checkInput(num, text) -> bool:
                 if not text.isdigit():
@@ -607,6 +619,7 @@ class Sim3UI(QFrame):
         self.shared_data: SharedData = shared_data
         self.ui_var = UI_Variable()
 
+        # 초기 전투력 계산
         powers: list[float] = detSimulate(
             self.shared_data,
             self.shared_data.info_stats,
@@ -616,91 +629,32 @@ class Sim3UI(QFrame):
         for i, power in enumerate(powers):
             self.shared_data.powers[i] = power
 
-        # ???
-        self.shared_data.is_input_valid["stat"] = False
-        self.shared_data.is_input_valid["skill"] = False
-
-        # 스펙업 효율 계산
-        self.title: Title = Title(self, "스펙업 효율 계산")
-        self.efficiency = self.Efficiency()
+        # 스탯 효율 계산
+        self.efficiency_title: Title = Title(self, "스탯 효율 계산")
+        self.efficiency = self.Efficiency(self, self.shared_data)
 
         # 추가 스펙업 계산기
-        self.additional_frame = QFrame(self.parent)
-        self.additional_frame.setStyleSheet(
-            "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
-        )
-
-        self.additional_title = Title(self.additional_frame, "추가 스펙업 계산기")
-
-        self.additional_power_labels = PowerLabels(
-            self.additional_frame, self.shared_data, ["0"] * 4
-        )
-
-        self.additional_stats = StatInputs(
-            self.additional_frame, self.shared_data, self.stat_inputChanged
-        )
-
-        self.additional_stats.inputs[i].setText("0")
-
-        self.additional_skills = SkillInputs(
-            self.additional_frame, self.shared_data, self.skill_inputChanged
-        )
-
-        self.additional_skills.inputs[i].setText(
-            str(
-                self.shared_data.info_skill_levels[
-                    get_available_skills(self.shared_data)[i]
-                ]
-            )
-        )
+        self.additional_title: Title = Title(self, "추가 스펙업 계산기")
+        self.additional = self.Additional(self, self.shared_data)
 
         # 잠재능력 계산기
-        self.potential_frame = QFrame(self.parent)
-        self.potential_frame.setStyleSheet(
-            "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
-        )
+        self.potential_title: Title = Title(self, "잠재능력 계산기")
+        self.potential = self.Potential(self, self.shared_data)
 
-        self.potential_title = Title(self.potential_frame, "잠재능력 계산기")
-
-        self.potential_stat0 = CustomComboBox(
-            self.potential_frame,
-            list(self.shared_data.POTENTIAL_STATS.keys()),
-            self.potential_update,
-        )
-
-        self.potential_stat1 = CustomComboBox(
-            self.potential_frame,
-            list(self.shared_data.POTENTIAL_STATS.keys()),
-            self.potential_update,
-        )
-
-        self.potential_stat2 = CustomComboBox(
-            self.potential_frame,
-            list(self.shared_data.POTENTIAL_STATS.keys()),
-            self.potential_update,
-        )
-
-        self.potential_power_labels = PowerLabels(
-            self.potential_frame, self.shared_data, ["0"] * 4
-        )
-
-        self.potential_update()
-
-        # 잠재능력 옵션 순위표
-        self.potentialRank_frame = QFrame(self.parent)
-        self.potentialRank_frame.setStyleSheet(
-            "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
-        )
-
-        self.potentialRank_title = Title(
-            self.potentialRank_frame, "잠재능력 옵션 순위표"
-        )
-
-        self.potentialRanks = PotentialRank(self.potentialRank_frame, self.shared_data)
+        # 잠재능력 옵션 순위
+        self.potential_rank_title: Title = Title(self, "잠재능력 옵션 순위")
+        self.potential_ranks = PotentialRank(self, self.shared_data)
 
         layout = QVBoxLayout(self)
 
-        # layout.addWidget()
+        layout.addWidget(self.efficiency_title)
+        layout.addWidget(self.efficiency)
+        layout.addWidget(self.additional_title)
+        layout.addWidget(self.additional)
+        layout.addWidget(self.potential_title)
+        layout.addWidget(self.potential)
+        layout.addWidget(self.potential_rank_title)
+        layout.addWidget(self.potential_ranks)
 
         # 레이아웃 여백과 간격 설정
         layout.setSpacing(10)  # 위젯들 사이의 간격
@@ -736,6 +690,12 @@ class Sim3UI(QFrame):
             self.input = CustomLineEdit(self, self.efficiency_changed, "10")
             self.input.setFocus()
 
+            input_layout = QVBoxLayout()
+            input_layout.addWidget(self.combobox_left)
+            input_layout.addWidget(self.input)
+            input_layout.setSpacing(5)
+            input_layout.setContentsMargins(0, 0, 0, 0)
+
             # 화살표
             self.arrow = QLabel("", self)
             self.arrow.setStyleSheet(
@@ -758,7 +718,18 @@ class Sim3UI(QFrame):
                 self.efficiency_changed,
             )
 
-            self.power_labels = PowerLabels(self, self.shared_data, ["0"] * 4)
+            self.power_labels = PowerLabels(self, self.shared_data)
+
+            layout = QHBoxLayout(self)
+            layout.addLayout(input_layout)
+            layout.addWidget(self.arrow)
+            layout.addWidget(self.combobox_right)
+            layout.addWidget(self.power_labels)
+            layout.setSpacing(10)
+            layout.setContentsMargins(10, 10, 10, 10)
+            self.setLayout(layout)
+
+            self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
             self.update_efficiency()
 
@@ -769,7 +740,7 @@ class Sim3UI(QFrame):
 
             # 종류가 같다면 동일한 값 출력
             if left_index == right_index:
-                self.power_labels.set_texts([f"{value:.2f}"] * 4)
+                self.power_labels.set_texts(f"{value:.2f}")
 
                 return
 
@@ -801,7 +772,7 @@ class Sim3UI(QFrame):
 
             # 입력이 숫자가 아니면 오류
             if not text.isdigit():
-                self.power_labels.set_texts(["오류"] * 4)
+                self.power_labels.set_texts("오류")
 
                 return
 
@@ -811,7 +782,7 @@ class Sim3UI(QFrame):
 
             # 최소 범위보다 작으면 오류
             if stat < self.shared_data.STAT_RANGES[stat_name][0]:
-                self.power_labels.set_texts(["오류"] * 4)
+                self.power_labels.set_texts("오류")
 
                 return
 
@@ -828,149 +799,229 @@ class Sim3UI(QFrame):
                 return
 
             # 최대 범위보다 크면 오류
-            self.power_labels.set_texts(["오류"] * 4)
+            self.power_labels.set_texts("오류")
 
             return
 
-    def stat_inputChanged(self):
-        # 스탯이 정상적으로 입력되었는지 확인
-        def checkInput(num, text) -> bool:
-            try:
-                value = int(text)
+    class Additional(QFrame):
+        def __init__(self, parent: QFrame, shared_data: SharedData) -> None:
+            super().__init__(parent)
 
-            except ValueError:
-                return False
+            self.shared_data: SharedData = shared_data
 
-            stat_name = list(self.shared_data.STATS.keys())[num]
+            if config.ui.debug_colors:
+                self.setStyleSheet(
+                    "QFrame { background-color: green; border: 0px solid; }"
+                )
+            else:
+                self.setStyleSheet(
+                    "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
+                )
 
-            stat = self.shared_data.info_stats.get_stat_from_name(stat_name) + value
+            stat_data: dict[str, str] = {
+                name_ko: "0" for name_ko in self.shared_data.STATS.keys()
+            }
+            self.stats = StatInputs(self, stat_data, self.on_stat_changed)
 
-            return (
-                self.shared_data.STAT_RANGES[stat_name][0]
-                <= stat
-                <= self.shared_data.STAT_RANGES[stat_name][1]
+            skills_data: dict[str, int] = {
+                name: self.shared_data.info_skill_levels[name]
+                for name in get_available_skills(self.shared_data)
+            }
+            self.skills = SkillInputs(
+                self, self.shared_data, skills_data, self.on_skill_changed
             )
 
-        if not False in [
-            checkInput(i, j.text()) for i, j in enumerate(self.additional_stats.inputs)
-        ]:  # 모두 digit
-            for i in self.additional_stats.inputs:  # 통과O면 원래색
-                i.setStyleSheet(
-                    f"QLineEdit {{ background-color: {self.ui_var.sim_input_colors[0]}; border: 1px solid {self.ui_var.sim_input_colors[1]}; border-radius: 4px; }}"
+            self.power_labels = PowerLabels(self, self.shared_data)
+
+            layout = QVBoxLayout(self)
+            layout.addWidget(self.stats)
+            layout.addWidget(self.skills)
+            layout.addWidget(self.power_labels)
+            layout.setSpacing(10)
+            layout.setContentsMargins(10, 10, 10, 10)
+            self.setLayout(layout)
+
+            self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+        # todo: on_stat_changed, on_skill_changed를 합쳐서 하나로 만들기
+        def on_stat_changed(self):
+            # 스탯이 정상적으로 입력되었는지 확인
+            # 음수도 허용
+            def checkInput(num: int, text: str) -> bool:
+                try:
+                    value = int(text)
+
+                except ValueError:
+                    return False
+
+                name: str = list(self.shared_data.STATS.keys())[num]
+                stat: float = (
+                    self.shared_data.info_stats.get_stat_from_name(name) + value
                 )
 
-            self.shared_data.is_input_valid["stat"] = True
-            self.update_additional_power_list()
-
-        else:  # 하나라도 통과X
-            for i, j in enumerate(self.additional_stats.inputs):
-                if not checkInput(i, j.text()):  # 통과X면 빨간색
-                    j.setStyleSheet(
-                        f"QLineEdit {{ background-color: {self.ui_var.sim_input_colors[0]}; border: 2px solid {self.ui_var.sim_input_colorsRed}; border-radius: 4px; }}"
-                    )
-
-                else:  # 통과O면 원래색
-                    j.setStyleSheet(
-                        f"QLineEdit {{ background-color: {self.ui_var.sim_input_colors[0]}; border: 1px solid {self.ui_var.sim_input_colors[1]}; border-radius: 4px; }}"
-                    )
-
-            self.shared_data.is_input_valid["stat"] = False
-
-    def skill_inputChanged(self):
-        # 스킬이 정상적으로 입력되었는지 확인
-        def checkInput(i: int, text: str) -> bool:
-            if not text.isdigit():
-                return False
-
-            return (
-                1
-                <= int(text)
-                <= self.shared_data.MAX_SKILL_LEVEL[self.shared_data.server_ID]
-            )
-
-        if not False in [
-            checkInput(i, j.text()) for i, j in enumerate(self.additional_skills.inputs)
-        ]:  # 모두 통과
-            for i in self.additional_skills.inputs:  # 통과O면 원래색
-                i.setStyleSheet(
-                    f"QLineEdit {{ background-color: {self.ui_var.sim_input_colors[0]}; border: 1px solid {self.ui_var.sim_input_colors[1]}; border-radius: 4px; }}"
+                return (
+                    self.shared_data.STAT_RANGES[name][0]
+                    <= stat
+                    <= self.shared_data.STAT_RANGES[name][1]
                 )
 
-            self.shared_data.is_input_valid["skill"] = True
-            self.update_additional_power_list()
+            # 모두 통과 여부 확인
+            all_valid = True
+            for i, j in enumerate(self.stats.inputs):
+                is_valid: bool = checkInput(i, j.text())
 
-        else:  # 하나라도 통과X
-            for i, j in enumerate(self.additional_skills.inputs):
-                if not checkInput(i, j.text()):  # 통과X면 빨간색
-                    j.setStyleSheet(
-                        f"QLineEdit {{ background-color: {self.ui_var.sim_input_colors[0]}; border: 2px solid {self.ui_var.sim_input_colorsRed}; border-radius: 4px; }}"
-                    )
-                else:
-                    j.setStyleSheet(
-                        f"QLineEdit {{ background-color: {self.ui_var.sim_input_colors[0]}; border: 1px solid {self.ui_var.sim_input_colors[1]}; border-radius: 4px; }}"
-                    )
+                # 스타일 업데이트
+                j.set_valid(is_valid)
 
-            self.shared_data.is_input_valid["skill"] = False
+                # 전체 유효 여부 업데이트
+                all_valid: bool = all_valid and is_valid
 
-    def update_additional_power_list(self):
-        if all(self.shared_data.is_input_valid.values()):
-            stats = self.shared_data.info_stats.copy()
-            for i in self.additional_stats.inputs:
-                stats.add_stat_from_index(
-                    self.additional_stats.inputs.index(i), int(i.text())
+            # 모두 통과했다면 저장 및 플래그 설정
+            if all_valid:
+                self.update_powers()
+                self.shared_data.is_input_valid["stat"] = True
+
+            # 하나라도 통과하지 못했다면 플래그 설정
+            else:
+                self.shared_data.is_input_valid["stat"] = False
+
+        def on_skill_changed(self):
+            # 스킬이 정상적으로 입력되었는지 확인
+            def checkInput(text: str) -> bool:
+                if not text.isdigit():
+                    return False
+
+                return (
+                    1
+                    <= int(text)
+                    <= self.shared_data.MAX_SKILL_LEVEL[self.shared_data.server_ID]
                 )
-            # stats = [
-            #     stats[i] + int(self.additional_stats.inputs[i].text())
-            #     for i in range(len(stats))
-            # ]
 
-            skills: dict[str, int] = self.shared_data.info_skill_levels.copy()
-            for i, j in enumerate(self.additional_skills.inputs):
-                skills[get_available_skills(self.shared_data)[i]] = int(j.text())
+            # 모두 통과 여부 확인
+            all_valid = True
+            for j in self.stats.inputs:
+                is_valid: bool = checkInput(j.text())
 
-            powers = detSimulate(
+                # 스타일 업데이트
+                j.set_valid(is_valid)
+
+                # 전체 유효 여부 업데이트
+                all_valid: bool = all_valid and is_valid
+
+            # 모두 통과했다면 저장 및 플래그 설정
+            if all_valid:
+                self.update_powers()
+                self.shared_data.is_input_valid["skill"] = False
+
+            # 하나라도 통과하지 못했다면 플래그 설정
+            else:
+                self.shared_data.is_input_valid["skill"] = False
+
+        def update_powers(self) -> None:
+            # 입력이 모두 정상인지 확인
+            if not all(self.shared_data.is_input_valid.values()):
+                self.power_labels.set_texts("오류")
+
+                return
+
+            # 모든 입력이 정상이라면 계산 시작
+            # 스탯 적용
+            stats: Stats = self.shared_data.info_stats.copy()
+            for i in self.stats.inputs:
+                stats.add_stat_from_index(self.stats.inputs.index(i), int(i.text()))
+
+            # 스킬 적용
+            skills: dict[str, int] = {
+                skill: int(j.text())
+                for j, skill in zip(
+                    self.skills.inputs, get_available_skills(self.shared_data)
+                )
+            }
+
+            # 전투력 계산
+            powers: list[float] = detSimulate(
                 self.shared_data,
                 stats,
                 self.shared_data.info_sim_details,
                 skills,
             ).powers
 
-            diff_powers = [powers[i] - self.shared_data.powers[i] for i in range(4)]
-
-            [
-                self.additional_power_labels.numbers[i].setText(
-                    f"{int(powers[i]):}\n({round(diff_powers[i]):+}, {round(diff_powers[i] / self.shared_data.powers[i] * 100, 2):+.1f}%)"
-                )
-                for i in range(4)
+            # 차이 계산
+            diff_powers: list[float] = [
+                powers[i] - self.shared_data.powers[i] for i in range(4)
             ]
 
-        else:
-            [self.additional_power_labels.numbers[i].setText("오류") for i in range(4)]
+            # 텍스트 설정
+            texts: list[str] = [
+                f"{int(powers[i]):}\n({diff_powers[i]:+.0f}, {diff_powers[i] / self.shared_data.powers[i]:+.1%})"
+                for i in range(4)
+            ]
+            self.power_labels.set_texts(texts)
 
-    def potential_update(self):
-        indexList = [
-            self.potential_stat0.currentText(),
-            self.potential_stat1.currentText(),
-            self.potential_stat2.currentText(),
-        ]
+    class Potential(QFrame):
+        def __init__(self, parent: QFrame, shared_data: SharedData) -> None:
+            super().__init__(parent)
 
-        stats = self.shared_data.info_stats.copy()
-        for i in range(3):
-            stat, value = self.shared_data.POTENTIAL_STATS[indexList[i]]
-            stats.add_stat_from_name(stat, value)
+            self.shared_data: SharedData = shared_data
 
-        powers = detSimulate(
-            self.shared_data,
-            stats,
-            self.shared_data.info_sim_details,
-        ).powers
+            if config.ui.debug_colors:
+                self.setStyleSheet(
+                    "QFrame { background-color: green; border: 0px solid; }"
+                )
+            else:
+                self.setStyleSheet(
+                    "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
+                )
 
-        diff_powers = [round(powers[i] - self.shared_data.powers[i]) for i in range(4)]
+            self.option_comboboxes: list[CustomComboBox] = [
+                CustomComboBox(
+                    self,
+                    list(self.shared_data.POTENTIAL_STATS.keys()),
+                    self.update_values,
+                )
+                for _ in range(3)
+            ]
 
-        [
-            self.potential_power_labels.numbers[i].setText(f"{diff_powers[i]:+}")
-            for i in range(4)
-        ]
+            combobox_layout = QVBoxLayout()
+            for combobox in self.option_comboboxes:
+                combobox_layout.addWidget(combobox)
+            combobox_layout.setSpacing(5)
+            combobox_layout.setContentsMargins(0, 0, 0, 0)
+
+            self.power_labels = PowerLabels(self, self.shared_data)
+
+            layout = QHBoxLayout(self)
+            layout.addLayout(combobox_layout)
+            layout.addWidget(self.power_labels)
+            layout.setSpacing(10)
+            layout.setContentsMargins(10, 10, 10, 10)
+            self.setLayout(layout)
+
+            self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+            self.update_values()
+
+        def update_values(self) -> None:
+            options: list[str] = [
+                self.option_comboboxes[i].currentText() for i in range(3)
+            ]
+
+            stats: Stats = self.shared_data.info_stats.copy()
+            for i in range(3):
+                stat, value = self.shared_data.POTENTIAL_STATS[options[i]]
+                stats.add_stat_from_name(stat, value)
+
+            powers: list[float] = detSimulate(
+                self.shared_data,
+                stats,
+                self.shared_data.info_sim_details,
+            ).powers
+
+            diff_powers: list[str] = [
+                f"{powers[i] - self.shared_data.powers[i]:+.0f}" for i in range(4)
+            ]
+
+            self.power_labels.set_texts(diff_powers)
 
 
 class Sim4UI:
@@ -1686,6 +1737,51 @@ class StatInputs(QFrame):
 
 
 class SkillInputs(QFrame):
+    def __init__(
+        self,
+        mainframe: QWidget,
+        shared_data: SharedData,
+        skills_data: dict[str, int],
+        connected_function,
+    ):
+        super().__init__(mainframe)
+
+        if config.ui.debug_colors:
+            self.setStyleSheet("QFrame { background-color: green; border: 0px solid; }")
+
+        # 그리드 레이아웃 위젯 생성
+        grid_layout = QGridLayout(self)
+
+        # 아이템을 저장할 리스트
+        self.inputs: list[CustomLineEdit] = []
+
+        # column 수 설정
+        COLS = 7
+        for i, (name, value) in enumerate(skills_data.items()):
+            item_widget = self.SkillInput(
+                self, shared_data, name, value, connected_function
+            )
+
+            # 위치 계산
+            row: int = i // COLS
+            column: int = i % COLS
+
+            # 그리드에 추가
+            grid_layout.addWidget(item_widget, row, column)
+
+            # 아이템 위젯을 리스트에 저장
+            self.inputs.append(item_widget.input)
+
+        # 그리드 레이아웃 간격 설정
+        grid_layout.setVerticalSpacing(10)
+        grid_layout.setHorizontalSpacing(20)
+
+        # 레이아웃 설정
+        self.setLayout(grid_layout)
+
+        # 크기 정책: 가로는 부모 크기 최대, 세로는 내용에 맞게 최소
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
     class SkillInput(QFrame):
         def __init__(
             self,
@@ -1748,51 +1844,6 @@ class SkillInputs(QFrame):
             # layout 설정
             self.setLayout(grid)
 
-    def __init__(
-        self,
-        mainframe: QWidget,
-        shared_data: SharedData,
-        skills_data: dict[str, int],
-        connected_function,
-    ):
-        super().__init__(mainframe)
-
-        if config.ui.debug_colors:
-            self.setStyleSheet("QFrame { background-color: green; border: 0px solid; }")
-
-        # 그리드 레이아웃 위젯 생성
-        grid_layout = QGridLayout(self)
-
-        # 아이템을 저장할 리스트
-        self.inputs: list[CustomLineEdit] = []
-
-        # column 수 설정
-        COLS = 7
-        for i, (name, value) in enumerate(skills_data.items()):
-            item_widget = self.SkillInput(
-                self, shared_data, name, value, connected_function
-            )
-
-            # 위치 계산
-            row: int = i // COLS
-            column: int = i % COLS
-
-            # 그리드에 추가
-            grid_layout.addWidget(item_widget, row, column)
-
-            # 아이템 위젯을 리스트에 저장
-            self.inputs.append(item_widget.input)
-
-        # 그리드 레이아웃 간격 설정
-        grid_layout.setVerticalSpacing(10)
-        grid_layout.setHorizontalSpacing(20)
-
-        # 레이아웃 설정
-        self.setLayout(grid_layout)
-
-        # 크기 정책: 가로는 부모 크기 최대, 세로는 내용에 맞게 최소
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-
 
 class ConditionInputs(QFrame):
     def __init__(
@@ -1838,7 +1889,13 @@ class ConditionInputs(QFrame):
 
 
 class PowerLabels(QFrame):
-    def __init__(self, mainframe, shared_data: SharedData, texts, font_size=18):
+    def __init__(
+        self,
+        mainframe,
+        shared_data: SharedData,
+        texts: list[str] | str = "0",
+        font_size=18,
+    ):
         super().__init__(mainframe)
 
         if config.ui.debug_colors:
@@ -1854,6 +1911,10 @@ class PowerLabels(QFrame):
         layout = QHBoxLayout(self)
 
         self.numbers: list[QLabel] = []
+
+        # texts가 문자열인 경우 4개의 동일한 값으로 변환
+        if isinstance(texts, str):
+            texts = [texts] * 4
 
         # 전투력 라벨 추가
         for i in range(4):
@@ -1875,12 +1936,16 @@ class PowerLabels(QFrame):
 
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-    def set_texts(self, texts: list[str]) -> None:
+    def set_texts(self, texts: list[str] | str) -> None:
+        # texts가 문자열인 경우 4개의 동일한 값으로 변환
+        if isinstance(texts, str):
+            texts = [texts] * 4
+
         for i in range(4):
             self.numbers[i].setText(texts[i])
 
     class Power(QFrame):
-        def __init__(self, mainframe, name: str, text, color: str, font_size=18):
+        def __init__(self, mainframe, name: str, text: str, color: str, font_size=18):
             super().__init__(mainframe)
 
             label = QLabel(name, self)
@@ -2040,29 +2105,92 @@ class AnalysisDetails(QFrame):
             self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
 
-class PotentialRank:
-    def __init__(self, mainframe, shared_data: SharedData):
+class PotentialRank(QFrame):
+    def __init__(self, mainframe: QWidget, shared_data: SharedData) -> None:
+        super().__init__(mainframe)
+
+        texts: list[list[list[str]]] = self.get_potential_rank(shared_data)
+        colors: list[str] = ["#8CFFA386", "#59FF9800", "#4D2196F3", "#B3A5D6A7"]
+
         ui_var = UI_Variable()
 
-        texts = self.get_potential_rank(shared_data)
-        colors = ["255, 163, 134", "255, 152, 0", "33, 150, 243", "165, 214, 167"]
-        transparencies = ["140", "89", "77", "179"]
-
-        self.frames = []
-        self.titles = []
-        self.table_frames = []
-        self.ranks = [[], [], [], []]
-        self.labels = [[], [], [], []]
-        self.powers = [[], [], [], []]
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+        self.setLayout(layout)
 
         for i in range(4):
-            frame = QFrame(mainframe)
+            rank = self.Rank(
+                self,
+                shared_data.POWER_TITLES[i],
+                texts[i],
+                ui_var.sim_colors4[i],
+                colors[i],
+            )
 
-            title = QLabel(shared_data.POWER_TITLES[i], frame)
+            layout.addWidget(rank)
+
+    def get_potential_rank(self, shared_data: SharedData) -> list[list[list[str]]]:
+        ranks: list[list[tuple[str, float]]] = [[], [], [], []]
+
+        for key, (stat, value) in shared_data.POTENTIAL_STATS.items():
+            stats: Stats = shared_data.info_stats.copy()
+            stats.add_stat_from_name(stat, value)
+
+            powers: list[float] = detSimulate(
+                shared_data,
+                stats,
+                shared_data.info_sim_details,
+            ).powers
+
+            diff_powers: list[float] = [
+                round(powers[i] - shared_data.powers[i], 5) for i in range(4)
+            ]
+
+            for i in range(4):
+                ranks[i].append((key, diff_powers[i]))
+
+        [ranks[i].sort(key=lambda x: x[1], reverse=True) for i in range(4)]
+
+        texts: list[list[list[str]]] = [
+            [["순위", "잠재능력", "전투력"]] for _ in range(4)
+        ]
+        for i in range(4):
+            for j, rank in enumerate(ranks[i], start=1):
+                if rank[1] == 0:
+                    texts[i].append(["", "", ""])
+                else:
+                    texts[i].append([str(j), rank[0], f"{rank[1]:+.0f}"])
+
+        return texts
+
+    # 그리드로 UI를 만드는 방식에서
+    # QTableWidget을 사용하도록 변경하기
+    class Rank(QFrame):
+        def __init__(
+            self,
+            parent: QFrame,
+            name: str,
+            data: list[list[str]],
+            color: str,
+            header_color: str,
+        ):
+            super().__init__(parent)
+
+            self.setStyleSheet(
+                f"QFrame {{ background-color: rgba({color}, 120); border-radius: 4px; }}"
+            )
+
+            layout = QGridLayout(self)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(0)
+            self.setLayout(layout)
+
+            title = QLabel(name, self)
             title.setStyleSheet(
                 f"""QLabel {{
-                    background-color: rgb({ui_var.sim_colors4[i]});
-                    border: 1px solid rgb({ui_var.sim_colors4[i]});
+                    background-color: rgb({color});
+                    border: 1px solid rgb({color});
                     border-bottom: 0px solid;
                     border-top-left-radius: 4px;
                     border-top-right-radius: 4px;
@@ -2073,40 +2201,30 @@ class PotentialRank:
             title.setFont(CustomFont(14))
             title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-            table_frame = QFrame(frame)
-            table_frame.setStyleSheet(
-                f"""QFrame {{
-                    background-color: rgba({ui_var.sim_colors4[i]}, 120);
-                    border-top-left-radius: 0px;
-                    border-top-right-radius: 0px;
-                    border-bottom-left-radius: 4px;
-                    border-bottom-right-radius: 4px
-                }}"""
-            )
+            layout.addWidget(title, 0, 0, 1, 3)
 
-            self.frames.append(frame)
-            self.titles.append(title)
-            self.table_frames.append(table_frame)
-
-            for j in range(16):  # 인덱스 포함 16개
-                rank = QLabel(texts[i][j][0], table_frame)
-                rank_style = f"""QLabel {{
-                        background-color: {f"rgba({colors[i]}, {transparencies[i]})" if j == 0 else "transparent"};
-                        border: 1px solid rgb({ui_var.sim_colors4[i]});
+            ROWS = 16  # 인덱스 포함 16개
+            for row in range(ROWS):
+                rank = QLabel(data[row][0], self)
+                rank.setStyleSheet(
+                    f"""QLabel {{
+                        background-color: {header_color if row == 0 else "transparent"};
+                        border: 1px solid rgb({color});
                         border-top: 0px solid;
                         border-top-left-radius: 0px;
                         border-top-right-radius: 0px;
-                        border-bottom-left-radius: {"4" if j == 15 else "0"}px;
+                        border-bottom-left-radius: {"4" if row == ROWS-1 else "0"}px;
                         border-bottom-right-radius: 0px;
                     }}"""
-                rank.setStyleSheet(rank_style)
+                )
                 rank.setFont(CustomFont(10))
                 rank.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-                label = QLabel(texts[i][j][1], table_frame)
-                label_style = f"""QLabel {{
-                        background-color: {f"rgba({colors[i]}, {transparencies[i]})" if j == 0 else "transparent"};
-                        border: 1px solid rgb({ui_var.sim_colors4[i]});
+                label = QLabel(data[row][1], self)
+                label.setStyleSheet(
+                    f"""QLabel {{
+                        background-color: {header_color if row == 0 else "transparent"};
+                        border: 1px solid rgb({color});
                         border-top: 0px solid;
                         border-left: 0px solid;
                         border-right: 0px solid;
@@ -2115,59 +2233,28 @@ class PotentialRank:
                         border-bottom-left-radius: 0px;
                         border-bottom-right-radius: 0px;
                     }}"""
-                label.setStyleSheet(label_style)
+                )
                 label.setAlignment(Qt.AlignmentFlag.AlignVCenter)
                 label.setFont(CustomFont(10))
 
-                power = QLabel(texts[i][j][2], table_frame)
-                power_style = f"""QLabel {{
-                            background-color: {f"rgba({colors[i]}, {transparencies[i]})" if j == 0 else "transparent"};
-                            border: 1px solid rgb({ui_var.sim_colors4[i]});
+                power = QLabel(data[row][2], self)
+                power.setStyleSheet(
+                    f"""QLabel {{
+                            background-color: {header_color if row == 0 else "transparent"};
+                            border: 1px solid rgb({color});
                             border-top: 0px solid;
                             border-top-left-radius: 0px;
                             border-top-right-radius: 0px;
                             border-bottom-left-radius: 0px;
-                            border-bottom-right-radius: {"4" if j == 15 else "0"}px;
+                            border-bottom-right-radius: {"4" if row == ROWS-1 else "0"}px;
                         }}"""
-                power.setStyleSheet(power_style)
+                )
                 power.setFont(CustomFont(10))
                 power.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-                self.ranks[i].append(rank)
-                self.labels[i].append(label)
-                self.powers[i].append(power)
-
-    def get_potential_rank(self, shared_data: SharedData):
-        texts = [[], [], [], []]
-        for key, (stat, value) in shared_data.POTENTIAL_STATS.items():
-            stats = shared_data.info_stats.copy()
-            stats.add_stat_from_name(stat, value)
-
-            powers = detSimulate(
-                shared_data,
-                stats,
-                shared_data.info_sim_details,
-            ).powers
-            diff_powers = [
-                round(powers[i] - shared_data.powers[i], 5) for i in range(4)
-            ]
-
-            for i in range(4):
-                texts[i].append([key, diff_powers[i]])
-
-        [texts[i].sort(key=lambda x: x[1], reverse=True) for i in range(4)]
-
-        for i in range(4):
-            for j in range(len(shared_data.POTENTIAL_STATS)):
-                if texts[i][j][1] == 0:
-                    texts[i][j] = ["", "", ""]
-                else:
-                    texts[i][j][1] = f"+{round(texts[i][j][1])}"
-                    texts[i][j].insert(0, str(j + 1))
-
-        [texts[i].insert(0, ["순위", "잠재능력", "전투력"]) for i in range(4)]
-
-        return texts
+                layout.addWidget(rank, row + 1, 0)
+                layout.addWidget(label, row + 1, 1)
+                layout.addWidget(power, row + 1, 2)
 
 
 class Title(QLabel):
