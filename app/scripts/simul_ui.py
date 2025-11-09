@@ -40,7 +40,7 @@ import threading
 # import matplotlib.pyplot as plt
 
 from PyQt6.QtCore import QSize, Qt
-from PyQt6.QtGui import QPixmap, QPainter, QIcon
+from PyQt6.QtGui import QPixmap, QPainter, QIcon, QColor
 from PyQt6.QtWidgets import (
     QFrame,
     QLabel,
@@ -53,6 +53,10 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QSizePolicy,
     QGridLayout,
+    QTableWidget,
+    QTableWidgetItem,
+    QHeaderView,
+    QAbstractItemView,
 )
 
 from collections.abc import Callable
@@ -138,8 +142,6 @@ class SimUI:
         self.adjust_main_frame_height()
 
     def change_layout(self, index: int) -> None:
-        print(self.shared_data.is_input_valid)
-
         # 입력값 확인
         if index in (1, 2, 3) and not all(self.shared_data.is_input_valid.values()):
             self.master.get_popup_manager().make_notice_popup("SimInputError")
@@ -679,21 +681,28 @@ class Sim3UI(QFrame):
                     "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
                 )
 
+            widgets_width: int = 120
+            arrow_size: int = 60
+
             # 왼쪽 콤보박스
             self.combobox_left = CustomComboBox(
                 self,
                 list(self.shared_data.STATS.values()),
                 self.efficiency_changed,
             )
+            self.combobox_left.setFixedWidth(widgets_width)
 
             # 왼쪽 스탯 입력창
             self.input = CustomLineEdit(self, self.efficiency_changed, "10")
             self.input.setFocus()
+            self.input.setFixedWidth(widgets_width)
 
             input_layout = QVBoxLayout()
+            input_layout.addStretch()
             input_layout.addWidget(self.combobox_left)
             input_layout.addWidget(self.input)
-            input_layout.setSpacing(5)
+            input_layout.addStretch()
+            input_layout.setSpacing(10)
             input_layout.setContentsMargins(0, 0, 0, 0)
 
             # 화살표
@@ -705,11 +714,9 @@ class Sim3UI(QFrame):
             pixmap: QPixmap = QPixmap(
                 convert_resource_path("resources\\image\\lineArrow.png")
             )
-            pixmap = pixmap.scaled(
-                self.ui_var.sim_efficiency_arrow_W,
-                self.ui_var.sim_efficiency_arrow_H,
-            )
+            pixmap = pixmap.scaled(arrow_size, arrow_size)
             self.arrow.setPixmap(pixmap)
+            self.arrow.setFixedSize(arrow_size, arrow_size)
 
             # 오른쪽 콤보박스
             self.combobox_right = CustomComboBox(
@@ -717,14 +724,18 @@ class Sim3UI(QFrame):
                 list(self.shared_data.STATS.values()),
                 self.efficiency_changed,
             )
+            self.combobox_right.setFixedWidth(widgets_width)
 
             self.power_labels = PowerLabels(self, self.shared_data)
+            self.power_labels.setSizePolicy(
+                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+            )
 
             layout = QHBoxLayout(self)
-            layout.addLayout(input_layout)
-            layout.addWidget(self.arrow)
-            layout.addWidget(self.combobox_right)
-            layout.addWidget(self.power_labels)
+            layout.addLayout(input_layout, stretch=0)
+            layout.addWidget(self.arrow, stretch=0)
+            layout.addWidget(self.combobox_right, stretch=0)
+            layout.addWidget(self.power_labels, stretch=1)
             layout.setSpacing(10)
             layout.setContentsMargins(10, 10, 10, 10)
             self.setLayout(layout)
@@ -2152,9 +2163,7 @@ class PotentialRank(QFrame):
 
         [ranks[i].sort(key=lambda x: x[1], reverse=True) for i in range(4)]
 
-        texts: list[list[list[str]]] = [
-            [["순위", "잠재능력", "전투력"]] for _ in range(4)
-        ]
+        texts: list[list[list[str]]] = [[["순위", "옵션", "전투력"]] for _ in range(4)]
         for i in range(4):
             for j, rank in enumerate(ranks[i], start=1):
                 if rank[1] == 0:
@@ -2164,8 +2173,6 @@ class PotentialRank(QFrame):
 
         return texts
 
-    # 그리드로 UI를 만드는 방식에서
-    # QTableWidget을 사용하도록 변경하기
     class Rank(QFrame):
         def __init__(
             self,
@@ -2178,7 +2185,7 @@ class PotentialRank(QFrame):
             super().__init__(parent)
 
             self.setStyleSheet(
-                f"QFrame {{ background-color: rgba({color}, 120); border-radius: 4px; }}"
+                f"QFrame {{ background-color: rgba({color}, 120); border: 1px solid rgb({color}); border-radius: 4px; }}"
             )
 
             layout = QGridLayout(self)
@@ -2190,8 +2197,7 @@ class PotentialRank(QFrame):
             title.setStyleSheet(
                 f"""QLabel {{
                     background-color: rgb({color});
-                    border: 1px solid rgb({color});
-                    border-bottom: 0px solid;
+                    border: 0px solid;
                     border-top-left-radius: 4px;
                     border-top-right-radius: 4px;
                     border-bottom-left-radius: 0px;
@@ -2209,8 +2215,9 @@ class PotentialRank(QFrame):
                 rank.setStyleSheet(
                     f"""QLabel {{
                         background-color: {header_color if row == 0 else "transparent"};
-                        border: 1px solid rgb({color});
-                        border-top: 0px solid;
+                        border: 0px solid;
+                        border-top: 1px solid rgb({color});
+                        border-bottom: 0px solid;
                         border-top-left-radius: 0px;
                         border-top-right-radius: 0px;
                         border-bottom-left-radius: {"4" if row == ROWS-1 else "0"}px;
@@ -2219,15 +2226,16 @@ class PotentialRank(QFrame):
                 )
                 rank.setFont(CustomFont(10))
                 rank.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                rank.setFixedWidth(30)
 
                 label = QLabel(data[row][1], self)
                 label.setStyleSheet(
                     f"""QLabel {{
                         background-color: {header_color if row == 0 else "transparent"};
-                        border: 1px solid rgb({color});
-                        border-top: 0px solid;
-                        border-left: 0px solid;
-                        border-right: 0px solid;
+                        border-top: 1px solid rgb({color});
+                        border-bottom: 0px solid;
+                        border-left: 1px solid rgb({color});
+                        border-right: 1px solid rgb({color});
                         border-top-left-radius: 0px;
                         border-top-right-radius: 0px;
                         border-bottom-left-radius: 0px;
@@ -2240,17 +2248,19 @@ class PotentialRank(QFrame):
                 power = QLabel(data[row][2], self)
                 power.setStyleSheet(
                     f"""QLabel {{
-                            background-color: {header_color if row == 0 else "transparent"};
-                            border: 1px solid rgb({color});
-                            border-top: 0px solid;
-                            border-top-left-radius: 0px;
-                            border-top-right-radius: 0px;
-                            border-bottom-left-radius: 0px;
-                            border-bottom-right-radius: {"4" if row == ROWS-1 else "0"}px;
+                        background-color: {header_color if row == 0 else "transparent"};
+                        border: 0px solid;
+                        border-top: 1px solid rgb({color});
+                        border-bottom: 0px solid;
+                        border-top-left-radius: 0px;
+                        border-top-right-radius: 0px;
+                        border-bottom-left-radius: 0px;
+                        border-bottom-right-radius: {"4" if row == ROWS-1 else "0"}px;
                         }}"""
                 )
                 power.setFont(CustomFont(10))
                 power.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                power.setFixedWidth(60)
 
                 layout.addWidget(rank, row + 1, 0)
                 layout.addWidget(label, row + 1, 1)
