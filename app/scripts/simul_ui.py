@@ -268,6 +268,8 @@ class Sim1UI(QFrame):
 
             self.input_changed(None)
 
+        # KVInput에서 bool
+        # KVInput에 인덱스, 이름 저장 후 넘기기
         def input_changed(self, _) -> None:
             # 정상적으로 입력되었는지 확인
             def checkInput(num: int, text: str) -> bool:
@@ -293,7 +295,11 @@ class Sim1UI(QFrame):
 
             # 모두 통과했다면 저장 및 플래그 설정
             if all_valid:
+                for i, j in enumerate(self.inputs):
+                    self.shared_data.info_stats.set_stat_from_index(i, int(j.text()))
+
                 save_data(self.shared_data)
+
                 self.shared_data.is_input_valid["stat"] = True
 
             # 하나라도 통과하지 못했다면 플래그 설정
@@ -354,7 +360,13 @@ class Sim1UI(QFrame):
 
             # 모두 통과했다면 저장 및 플래그 설정
             if all_valid:
+                for _input, name in zip(
+                    self.inputs, get_available_skills(self.shared_data)
+                ):
+                    self.shared_data.info_skill_levels[name] = int(_input.text())
+
                 save_data(self.shared_data)
+
                 self.shared_data.is_input_valid["skill"] = True
 
             # 하나라도 통과하지 못했다면 플래그 설정

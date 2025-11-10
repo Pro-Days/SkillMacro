@@ -236,6 +236,8 @@ def save_data(shared_data: SharedData) -> None:
     with open(file_dir, "w", encoding="UTF8") as f:
         json.dump(jsonObject, f, ensure_ascii=False, indent=4)
 
+    print("Data saved successfully.")
+
 
 def remove_preset(num: int) -> None:
     """

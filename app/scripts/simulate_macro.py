@@ -120,7 +120,7 @@ def calculate_req_stat(
         mid: float = (low + high) * 0.5
         stats.set_stat_from_name(stat=stat_type, value=base_stat + mid)
 
-        # print(tuple(stats), tuple(shared_data.info_skills), tuple(shared_data.info_sim_details))
+        # print(stats)
 
         # 전투력 계산
         current_power = detSimulate(
@@ -130,6 +130,7 @@ def calculate_req_stat(
         ).powers[power_num]
 
         # print(f"{low=}, {high=}, {mid=}")
+        # print(f"{current_power=}, {power=}")
 
         if current_power < power:
             low = mid
