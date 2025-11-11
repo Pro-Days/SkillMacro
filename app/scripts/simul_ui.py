@@ -127,6 +127,7 @@ class SimUI:
         # 페이지 레이아웃 설정
         self.stacked_layout = QStackedLayout(self.main_frame)
 
+        # UI{N} 이름을 각각 수행하는 기능을 대표하는 이름으로 변경
         self.UI1 = Sim1UI(self.main_frame, self.shared_data)
         self.UI2 = Sim2UI(self.main_frame, self.shared_data)
         self.UI3 = Sim3UI(self.main_frame, self.shared_data)
@@ -1734,6 +1735,7 @@ class StatInputs(QFrame):
         # column 수 설정
         # 서버가 많아지면 스탯 개수에 따라 자동으로 조절하는 기능 추가 필요
         # QVBoxLayout에 각 행마다 QHBoxLayout을 추가하는 방식
+        # 그리드는 한 줄에 위젯이 부족하면 정렬이 안됨
         COLS = 6
         for i, (name, value) in enumerate(stats_data.items()):
             item_widget = KVInput(self, name, value, connected_function, float)

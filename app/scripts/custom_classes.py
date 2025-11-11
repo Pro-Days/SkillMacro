@@ -363,6 +363,9 @@ class Stats:
         else:
             raise IndexError(f"{index} 번째 항목이 존재하지 않습니다.")
 
+    # 중복되는 부분 제거하기
+    # from_index에서 from_name 호출하는 식으로 변경
+    # from_name에서도 __dataclass_fields__를 이용해 검사하기
     def set_stat_from_name(self, stat: str, value: float | int) -> None:
         """
         스탯을 현재 Stats 객체에 설정
