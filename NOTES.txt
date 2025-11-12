@@ -150,6 +150,12 @@ STATE_MANAGER.count += 10
 
 그래프를 그리고 스크롤 할 때 렉이 걸린다면 캐시를 쓰는 방법 검토
 
+StyleSheet들을 모아 따로 빼기
+
+색코드 규격 통일
+
+layout의 setContentsMargins, setSpacing, addWidget을 한번에 적용하는 클래스로 바꾸기
+
 ---------
 
 
