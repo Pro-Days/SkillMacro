@@ -164,6 +164,8 @@ layout의 setContentsMargins, setSpacing, addWidget을 한번에 적용하는 �
 
 프로그램 초기화 과정에서 시뮬레이션을 계산해서 스탯 검증 과정이 빠져있어, 총 데미지가 0 -> 오류 발생하는 문제
 
+SimUI들 만들 때 main_frame 안받아도 되는지 테스트
+
 ---------
 스펙업 요소:
 스텟

@@ -1,5 +1,4 @@
-from __future__ import annotations
-
+from app.scripts.shared_data import SharedData
 from .misc import convert_resource_path
 
 from .data_manager import save_data, load_data, add_preset, remove_preset
@@ -21,12 +20,19 @@ from functools import partial
 
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import QSize, Qt
+from PyQt6.QtCore import QSize, Qt, QUrl
 from PyQt6.QtGui import QPixmap, QIcon
 from PyQt6.QtWidgets import (
     QFrame,
     QLabel,
     QPushButton,
+    QTabWidget,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QGridLayout,
+    QSizePolicy,
+    QLayout,
 )
 
 
@@ -35,229 +41,26 @@ if TYPE_CHECKING:
     from .shared_data import SharedData
 
 
-class MainUI:
+class MainUI(QFrame):
     def __init__(
         self,
-        master: MainWindow,
-        parent: QFrame,
+        master,
         shared_data: SharedData,
     ) -> None:
-        self.shared_data: SharedData = shared_data
-        self.parent: QFrame = parent
-        self.master: MainWindow = master
+        super().__init__()
 
+        self.master = master
+
+        self.shared_data: SharedData = shared_data
         self.ui_var = UI_Variable()
 
-        self.make_ui()
+        self.macro_tab = TabWidget(self, self.shared_data)
 
-    def make_ui(self) -> None:
-        self.background = QFrame(self.parent)
-        self.background.setStyleSheet(
-            """QFrame { background-color: #eeeeff; border-top-left-radius :0px; border-top-right-radius : 30px; border-bottom-left-radius : 30px; border-bottom-right-radius : 30px }"""
-        )
-        self.background.setFixedSize(560, 450)
-        self.background.move(360, 69)
-        self.background.setGraphicsEffect(
-            CustomShadowEffect(0, 5, 20, 100)
-        )  # 나중에 수정
-
-        self.tab_buttons: list[QPushButton] = []
-        self.tab_backgrounds: list[QFrame] = []
-        self.tab_remove_buttons: list[QPushButton] = []
-
-        for tabNum in range(len(self.shared_data.tab_names)):
-            # 탭 선택 버튼 배경
-            background = QFrame(self.parent)  # 나중에 self.background으로 수정
-            background.setStyleSheet(
-                f"""QFrame {{
-                    background-color: {"#eeeeff" if tabNum == self.shared_data.recent_preset else "#dddddd"};
-                    border-top-left-radius :20px;
-                    border-top-right-radius : 20px;
-                    border-bottom-left-radius : 0px;
-                    border-bottom-right-radius : 0px;
-                }}"""
-            )
-            background.setFixedSize(250, 50)
-            background.move(360 + 250 * tabNum, 20)
-            background.setGraphicsEffect(CustomShadowEffect(5, -2))
-
-            tab_button: QPushButton = QPushButton(
-                "", self.parent
-            )  # 나중에 self.background으로 수정
-            tab_button.setFont(CustomFont(12))
-            tab_button.setText(
-                adjust_text_length(f" {self.shared_data.tab_names[tabNum]}", tab_button)
-            )  # 나중에 수정
-            tab_button.clicked.connect(partial(lambda x: self.onTabClick(x), tabNum))
-            tab_button.setStyleSheet(
-                f"""
-                    QPushButton {{
-                        background-color: {"#eeeeff" if tabNum == self.shared_data.recent_preset else "#dddddd"}; border-radius: 15px; text-align: left;
-                    }}
-                    QPushButton:hover {{
-                        background-color: {"#fafaff" if tabNum == self.shared_data.recent_preset else "#eeeeee"};
-                    }}
-                """
-            )
-            tab_button.setFixedSize(240, 40)
-            tab_button.move(365 + 250 * tabNum, 25)
-
-            tab_remove_button = QPushButton(
-                "", self.parent
-            )  # 나중에 self.background으로 수정
-            tab_remove_button.clicked.connect(
-                partial(lambda x: self.on_tab_remove_clicked(x), tabNum)
-            )
-            tab_remove_button.setFont(CustomFont(16))
-
-            tab_remove_button.setStyleSheet(
-                f"""
-                    QPushButton {{
-                        background-color: transparent; border-radius: 20px;
-                    }}
-                    QPushButton:hover {{
-                        background-color: {"#fafaff" if tabNum == self.shared_data.recent_preset else "#eeeeee"};
-                    }}
-                """
-            )
-
-            pixmap = QPixmap(convert_resource_path("resources\\image\\x.png"))
-            tab_remove_button.setIcon(QIcon(pixmap))
-            tab_remove_button.setFixedSize(40, 40)
-            tab_remove_button.move(565 + 250 * tabNum, 25)
-
-            self.tab_buttons.append(tab_button)
-            self.tab_backgrounds.append(background)
-            self.tab_remove_buttons.append(tab_remove_button)
-
-        self.tab_add_button = QPushButton(
-            "", self.parent
-        )  # 나중에 self.background으로 수정
-        self.tab_add_button.clicked.connect(self.onTabAddClick)
-        self.tab_add_button.setFont(CustomFont(16))
-        self.tab_add_button.setStyleSheet(
-            """
-            QPushButton {
-                background-color: transparent; border-radius: 20px;
-            }
-            QPushButton:hover {
-                background-color: #eeeeee;
-            }
-        """
-        )
-
-        pixmap = QPixmap(convert_resource_path("resources\\image\\plus.png"))
-        self.tab_add_button.setIcon(QIcon(pixmap))
-        self.tab_add_button.setFixedSize(40, 40)
-        self.tab_add_button.move(370 + 250 * len(self.shared_data.tab_names), 25)
-
-        self.shared_data.layout_type = 0
-
-        self.skill_preview_frame = QFrame(self.background)
-        self.skill_preview_frame.setStyleSheet(
-            "QFrame { background-color: #ffffff; border-radius :5px; border: 1px solid black; }"
-        )
-        self.skill_preview_frame.setFixedSize(288, 48)
-        self.skill_preview_frame.move(136, 10)
-        self.skill_preview_frame.show()
-        # self.showSkillPreview()
-
-        self.equippable_skill_frames: list[QFrame] = []
-        for i in range(8):
-            frame = QFrame(self.background)
-            frame.setStyleSheet(
-                "QFrame { background-color: transparent; border-radius :0px; }"
-            )
-            frame.setFixedSize(64, 88)
-            frame.move(50 + 132 * (i % 4), 80 + 120 * (i // 4))
-            frame.show()
-            self.equippable_skill_frames.append(frame)
-
-        self.equippable_skill_buttons: list[QPushButton] = []
-        self.equippable_skill_names: list[QLabel] = []
-        for i, j in enumerate(self.equippable_skill_frames):
-            button = QPushButton(j)
-            button.setStyleSheet(
-                "QPushButton { background-color: #bbbbbb; border-radius :10px; }"
-            )
-            button.clicked.connect(
-                partial(lambda x: self.on_equippable_skill_clicked(x), i)
-            )
-            button.setFixedSize(64, 64)
-            button.setIcon(
-                QIcon(
-                    get_skill_pixmap(
-                        self.shared_data,
-                        skill_name=get_available_skills(self.shared_data)[i],
-                    )
-                )
-            )
-            button.setIconSize(QSize(64, 64))
-            button.show()
-
-            label = QLabel(
-                self.shared_data.skill_data[self.shared_data.server_ID]["jobs"][
-                    self.shared_data.job_ID
-                ]["skills"][i],
-                j,
-            )
-            label.setStyleSheet(
-                "QLabel { background-color: transparent; border-radius :0px; }"
-            )
-            label.setFixedSize(64, 24)
-            label.move(0, 64)
-            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            label.show()
-
-            self.equippable_skill_buttons.append(button)
-            self.equippable_skill_names.append(label)
-
-        self.skill_selection_line = QFrame(self.background)
-        self.skill_selection_line.setStyleSheet("QFrame { background-color: #b4b4b4;}")
-        self.skill_selection_line.setFixedSize(520, 1)
-        self.skill_selection_line.move(20, 309)
-        self.skill_selection_line.show()
-
-        self.equipped_skill_frames: list[QFrame] = []
-        for i in range(6):
-            frame = QFrame(self.background)
-            frame.setStyleSheet(
-                "QFrame { background-color: transparent; border-radius :0px; }"
-            )
-            frame.setFixedSize(64, 96)
-            frame.move(38 + 84 * i, 330)
-            frame.show()
-            self.equipped_skill_frames.append(frame)
-
-        self.equipped_skill_buttons: list[QPushButton] = []
-        self.equipped_skill_keys: list[QPushButton] = []
-        for i, j in enumerate(self.equipped_skill_frames):
-            button = QPushButton(j)
-            button.setStyleSheet(
-                "QPushButton { background-color: #BBBBBB; border-radius :10px; }"
-            )
-            button.clicked.connect(
-                partial(lambda x: self.on_equipped_skill_clicked(x), i)
-            )
-            button.setFixedSize(64, 64)
-            button.setIcon(
-                QIcon(
-                    get_skill_pixmap(
-                        self.shared_data, self.shared_data.equipped_skills[i]
-                    )
-                )
-            )
-            button.setIconSize(QSize(64, 64))
-            button.show()
-
-            key_button = QPushButton(self.shared_data.skill_keys[i], j)
-            key_button.clicked.connect(partial(lambda x: self.onSkillKeyClick(x), i))
-            key_button.setFixedSize(64, 24)
-            key_button.move(0, 72)
-            key_button.show()
-
-            self.equipped_skill_buttons.append(button)
-            self.equipped_skill_keys.append(key_button)
+        layout = QVBoxLayout()
+        layout.addWidget(self.macro_tab)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        self.setLayout(layout)
 
     ## 탭 변경
     def changeTab(self, num: int) -> None:
@@ -1059,3 +862,359 @@ class MainUI:
                 round(self.master.height() * 0.5 - 60),
             )
             self.tabRemoveBackground.raise_()
+
+
+class TabWidget(QTabWidget):
+    def __init__(self, main_frame: QWidget, shared_data: SharedData):
+        super().__init__(main_frame)
+
+        self.shared_data: SharedData = shared_data
+
+        self.TAB_BACKGROUND_COLOR = "#eeeeff"
+        self.TAB_BORDER_COLOR = "#cccccc"
+        self.TAB_DEFAULT_COLOR = "#eeeeee"
+        self.TAB_HOVER_COLOR = "#dddddd"
+
+        # 탭 닫기 버튼 활성화
+        self.setTabsClosable(True)
+
+        # 탭 제거 시그널 연결
+        self.tabCloseRequested.connect(self._remove_tab_by_index)
+
+        # 탭 및 스타일 초기화
+        self._apply_tab_style()
+
+        # 우측 상단 탭 추가 버튼 설정
+        self._setup_add_tab_button()
+
+        # 초기 탭 설정
+        self._set_tabs()
+
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+
+        tab_bar = self.tabBar()
+        if tab_bar is not None:
+            tab_bar.setFont(CustomFont(12))
+
+    def _setup_add_tab_button(self):
+        """
+        탭 목록 오른쪽에 고정된 탭 추가 버튼 설정
+        """
+
+        self.add_tab_button = QPushButton()
+        self.add_tab_button.setIcon(
+            QIcon(QPixmap(convert_resource_path("resources\\image\\plus.png")))
+        )
+        self.add_tab_button.setFixedSize(QSize(26, 26))
+        self.add_tab_button.setStyleSheet(
+            f"""
+            QPushButton {{
+                border: 1px solid {self.TAB_BORDER_COLOR};
+                background: {self.TAB_BACKGROUND_COLOR};
+                border-radius: 4px;
+            }}
+            QPushButton:hover {{
+                background: {self.TAB_HOVER_COLOR};
+            }}
+            """
+        )
+
+        # 탭 추가 버튼을 담을 컨테이너 위젯 생성
+        corner_container = QWidget()
+        corner_layout = QVBoxLayout(corner_container)
+        corner_layout.setContentsMargins(1, 1, 1, 1)
+        corner_layout.addWidget(
+            self.add_tab_button, alignment=Qt.AlignmentFlag.AlignCenter
+        )
+
+        # 우측 상단 코너에 컨테이너 위젯 설정
+        self.setCornerWidget(corner_container, Qt.Corner.TopRightCorner)
+
+        # 탭 추가 버튼 클릭 시그널 연결
+        self.add_tab_button.clicked.connect(self._add_tab)
+
+    def _create_tab(
+        self,
+        name: str,
+        available_skills: list[str],
+        equipped_skills: list[str],
+        keys: list[str],
+    ) -> "Tab":
+        """
+        새 탭 생성
+        """
+        return Tab(self.shared_data)
+
+    def _add_tab(
+        self,
+        name: str,
+        available_skills: list[str],
+        equipped_skills: list[str],
+        keys: list[str],
+    ):
+        """
+        새로운 탭 생성 후 QTabWidget에 추가
+        """
+        self.tab_count += 1
+
+        new_tab: Tab = self._create_tab(name, available_skills, equipped_skills, keys)
+        tab_name: str = "탭 " + str(self.tab_count)
+
+        # QTabWidget에 탭 추가
+        index: int = self.addTab(new_tab, tab_name)
+
+        # 새로 추가된 탭으로 이동
+        self.setCurrentIndex(index)
+
+    def _set_tabs(self):
+        """
+        초기 탭 설정
+        """
+        self.tab_count: int = 0
+
+        # 탭 데이터 인스턴스를 기반으로 탭 추가하도록 수정
+        # 임시로 최근 탭 데이터를 기반으로만 추가하도록 설정함.
+        for i in range(len(self.shared_data.tab_names)):
+            names: str = self.shared_data.tab_names[i]
+            available_skills: list[str] = get_available_skills(self.shared_data)
+            equipped_skills: list[str] = self.shared_data.equipped_skills
+            keys: list[str] = self.shared_data.skill_keys
+
+            self._add_tab(names, available_skills, equipped_skills, keys)
+
+    def _remove_tab_by_index(self, index):
+        """
+        탭 제거
+        """
+        self.removeTab(index)
+
+    def _apply_tab_style(self):
+        """
+        탭과 내용 영역에 스타일 시트 적용
+        """
+
+        self.setStyleSheet(
+            f"""
+        /* QTabWidget container */
+        QTabWidget {{
+            background: {self.TAB_BACKGROUND_COLOR};
+            border: 1px solid {self.TAB_BORDER_COLOR};
+            border-radius: 10px;
+        }}
+        
+        QTabWidget::pane {{
+            border: 1px solid {self.TAB_BORDER_COLOR};
+            border-bottom-left-radius: 10px;
+            border-bottom-right-radius: 10px;
+            background: {self.TAB_BACKGROUND_COLOR};
+        }}
+
+        /* 탭 기본 설정 */
+        QTabBar::tab {{
+            background: {self.TAB_DEFAULT_COLOR};
+            border: 1px solid {self.TAB_BORDER_COLOR};
+            border-bottom: none;
+            border-top-left-radius: 4px;
+            border-top-right-radius: 4px;
+            padding: 6px 10px;
+            margin-top: 0px;
+        }}
+
+        /* 선택된 탭 */
+        QTabBar::tab:selected {{
+            background: {self.TAB_BACKGROUND_COLOR};
+        }}
+
+        /* 탭 호버 */
+        QTabBar::tab:hover {{
+            background: {self.TAB_HOVER_COLOR};
+        }}
+
+        /* 닫기 버튼 */
+        QTabBar::close-button {{
+            image: url({convert_resource_path("resources\\image\\x.png").replace("\\", "/")});
+            border-radius: 7px;
+        }}
+
+        QTabBar::close-button:hover {{
+            background-color: #FF5555;
+        }}
+
+        QTabBar::close-button:pressed {{
+            background-color: #CC0000;
+        }}
+        """
+        )
+
+
+class Tab(QFrame):
+    def __init__(self, shared_data: SharedData):
+        super().__init__()
+
+        self.shared_data: SharedData = shared_data
+
+        preview = SkillPreview(shared_data=self.shared_data)
+
+        equippable_skill_frame = EquippableSkill(shared_data=self.shared_data)
+
+        line = QFrame(self)
+        line.setStyleSheet("QFrame { background-color: #b4b4b4; }")
+        line.setFixedHeight(1)
+
+        equipped_skill_frame = EquippedSkill(shared_data=self.shared_data)
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(preview, alignment=Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(equippable_skill_frame)
+        layout.addWidget(line)
+        layout.addWidget(equipped_skill_frame)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(20)
+        self.setLayout(layout)
+
+
+class SkillPreview(QFrame):
+    def __init__(self, shared_data: SharedData):
+        super().__init__()
+
+        self.shared_data: SharedData = shared_data
+
+        self.setStyleSheet(
+            """
+            QFrame { 
+                background-color: #ffffff;
+                border-radius: 5px;
+                border: 1px solid black;
+            }
+            """
+        )
+        self.setFixedSize(288, 48)
+
+        self.skill_count = 0
+        self.images: list[QLabel] = []
+
+
+class EquippableSkill(QFrame):
+    def __init__(self, shared_data: SharedData):
+        super().__init__()
+
+        self.shared_data: SharedData = shared_data
+
+        self.setStyleSheet("QFrame { background-color: transparent; }")
+
+        layout = QGridLayout()
+
+        self.skills: list[EquippableSkill.Skill] = []
+        COLS = 4
+        for i in range(8):
+            skill = self.Skill(shared_data=self.shared_data, index=i)
+            self.skills.append(skill)
+
+            row: int = i // COLS
+            col: int = i % COLS
+
+            layout.addWidget(skill, row, col)
+
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+        self.setLayout(layout)
+
+    class Skill(QFrame):
+        def __init__(self, shared_data: SharedData, index: int):
+            super().__init__()
+
+            self.setStyleSheet("QFrame { background-color: transparent; }")
+
+            name: str = get_available_skills(shared_data)[index]
+
+            self.button: QPushButton = QPushButton(self)
+            self.button.setStyleSheet("QPushButton { border-radius :10px; }")
+            self.button.setFixedSize(48, 48)
+            self.button.setIcon(
+                QIcon(
+                    get_skill_pixmap(
+                        shared_data=shared_data,
+                        skill_name=name,
+                    )
+                )
+            )
+            self.button.setIconSize(QSize(48, 48))
+            # self.button.clicked.connect(
+            #     partial(lambda x: self.on_equippable_skill_clicked(x), i)
+            # )
+
+            self.name: QLabel = QLabel(name, self)
+            self.name.setStyleSheet(
+                "QLabel { background-color: transparent; border-radius :0px; }"
+            )
+            self.name.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.name.setFont(CustomFont(12))
+
+            layout = QVBoxLayout()
+            layout.addWidget(self.button)
+            layout.addWidget(self.name)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(0)
+            layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+            self.setLayout(layout)
+
+
+class EquippedSkill(QFrame):
+    def __init__(self, shared_data: SharedData):
+        super().__init__()
+
+        self.shared_data: SharedData = shared_data
+
+        self.setStyleSheet("QFrame { background-color: transparent; }")
+
+        layout = QHBoxLayout()
+
+        self.skills: list[EquippedSkill.Skill] = []
+        for i in range(6):
+            skill = self.Skill(shared_data=self.shared_data, index=i)
+            self.skills.append(skill)
+
+            layout.addWidget(skill)
+
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+        self.setLayout(layout)
+
+    class Skill(QFrame):
+        def __init__(self, shared_data: SharedData, index: int):
+            super().__init__()
+
+            self.setStyleSheet("QFrame { background-color: transparent; }")
+
+            name: str = shared_data.equipped_skills[index]
+
+            self.button: QPushButton = QPushButton(self)
+            self.button.setStyleSheet("QPushButton { border-radius :10px; }")
+            self.button.setFixedSize(64, 64)
+            self.button.setIcon(
+                QIcon(
+                    get_skill_pixmap(
+                        shared_data=shared_data,
+                        skill_name=name,
+                    )
+                )
+            )
+            self.button.setIconSize(QSize(64, 64))
+            # self.button.clicked.connect(
+            #     partial(lambda x: self.on_equipped_skill_clicked(x), i)
+            # )
+
+            self.key = QPushButton(shared_data.skill_keys[index], self)
+            self.key.setFont(CustomFont(10))
+            self.key.setFixedWidth(64)
+            # self.key_button.clicked.connect(partial(lambda x: self.onSkillKeyClick(x), i))
+
+            layout = QVBoxLayout()
+            layout.addWidget(self.button)
+            layout.addWidget(self.key)
+            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setSpacing(0)
+            layout.setSizeConstraint(QLayout.SizeConstraint.SetFixedSize)
+
+            self.setLayout(layout)

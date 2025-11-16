@@ -276,9 +276,6 @@ class SharedData:
     # 사이드바 페이지 번호
     sidebar_type: int = -1
 
-    # 0: 스킬, 1: 시뮬레이터
-    layout_type: int = 0
-
     # 팝업 정보
     # 현재 활성화된 팝업 이름
     active_popup: str = ""
