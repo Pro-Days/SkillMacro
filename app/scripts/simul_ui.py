@@ -387,8 +387,8 @@ class Sim1UI(QFrame):
             self.condition_inputs = ConditionInputs(
                 self,
                 {
-                    name: str(self.shared_data.info_sim_details[name])
-                    for name in self.shared_data.SIM_DETAILS.keys()
+                    display: str(self.shared_data.info_sim_details[name])
+                    for name, display in self.shared_data.SIM_DETAILS.items()
                 },
                 self.input_changed,
             )
@@ -1686,12 +1686,12 @@ class Navigation(QFrame):
         layout = QHBoxLayout(self)
 
         # 네비게이션바 텍스트
-        nav_texts: list[str] = ["정보 입력", "시뮬레이터", "스탯 계산기", "캐릭터 카드"]
+        nav_texts: list[str] = ["정보 입력", "시뮬레이터", "스탯 계산기"]
 
         # 네비게이션바 버튼들
         # 첫 번째 버튼만 활성화 상태로 시작
         self.buttons: list[QPushButton] = [
-            Navigation.NavButton(nav_texts[i], self, i == 0, i, func1) for i in range(4)
+            Navigation.NavButton(nav_texts[i], self, i == 0, i, func1) for i in range(3)
         ]
 
         # 닫기 버튼
@@ -1716,10 +1716,9 @@ class Navigation(QFrame):
         layout.addWidget(self.buttons[0])
         layout.addWidget(self.buttons[1])
         layout.addWidget(self.buttons[2])
-        layout.addWidget(self.buttons[3])
 
         # 오른쪽 끝에 닫기 버튼 배치
         layout.addStretch()
-        layout.addWidget(self.buttons[4])
+        layout.addWidget(self.buttons[3])
 
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
