@@ -1,4 +1,3 @@
-from app.scripts.main_window import MainWindow
 from app.scripts.popup import PopupManager
 from app.scripts.shared_data import SharedData
 from .misc import convert_resource_path
@@ -439,11 +438,11 @@ class TabWidget(QTabWidget):
         # 탭 닫기 버튼 활성화
         self.setTabsClosable(True)
 
-        # 탭 및 스타일 초기화
-        self._apply_tab_style()
-
         # 우측 상단 탭 추가 버튼 설정
         self._setup_add_tab_button()
+
+        # 탭 및 스타일 초기화
+        self._apply_tab_style()
 
         # 초기 탭 설정
         self._init_tabs()

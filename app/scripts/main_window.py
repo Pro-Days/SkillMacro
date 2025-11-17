@@ -210,6 +210,9 @@ class MainWindow(QWidget):
         if config.ui.debug_colors:
             self.page2.setStyleSheet("QFrame { background-color: yellow;}")
 
+        # 팝업 매니저 초기화
+        self.popup_manager: PopupManager = PopupManager(self, self.shared_data)
+
         # 메인 프레임
         self.main_ui: MainUI = MainUI(self, self.shared_data)
 
@@ -218,9 +221,6 @@ class MainWindow(QWidget):
 
         # 시뮬레이션 UI
         self.sim_ui: SimUI = SimUI(self, self.page2, self.shared_data)
-
-        # 팝업 매니저 초기화
-        self.popup_manager: PopupManager = PopupManager(self, self.shared_data)
 
         # 하단 제작자 라벨 설정
         self.creator_label: QPushButton = CreatorLabel(self)
