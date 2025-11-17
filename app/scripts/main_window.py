@@ -103,7 +103,7 @@ class MainWindow(QWidget):
         if e.key() == Qt.Key.Key_Escape:
             # 매크로 탭 제거 중
             if self.shared_data.is_tab_remove_popup_activated:
-                self.main_ui.on_tab_remove_popup_clicked(0, False)
+                self.main_ui.on_remove_tab_popup_clicked(0, False)
 
             # 에러 팝업창이 있을 때
             elif self.shared_data.active_error_popup_count >= 1:
@@ -120,13 +120,13 @@ class MainWindow(QWidget):
                 e.key() == Qt.Key.Key_W
                 and not self.shared_data.is_tab_remove_popup_activated
             ):
-                self.main_ui.on_tab_remove_clicked(self.shared_data.recent_preset)
+                self.main_ui.on_remove_tab_clicked(self.shared_data.recent_preset)
 
         # Enter
         elif e.key() == Qt.Key.Key_Return:
             # 탭 제거 팝업창이 활성화되어 있을 때 -> 탭 제거 실행
             if self.shared_data.is_tab_remove_popup_activated:
-                self.main_ui.on_tab_remove_popup_clicked(self.shared_data.recent_preset)
+                self.main_ui.on_remove_tab_popup_clicked(self.shared_data.recent_preset)
 
             # 일반 팝업창이 활성화되어 있을 때 -> 팝업창 클릭
             elif self.shared_data.active_popup == "settingDelay":

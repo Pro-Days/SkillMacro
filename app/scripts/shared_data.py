@@ -270,9 +270,6 @@ class SharedData:
     # 매크로 실행 중 게임 내에서 선택된 아이템 슬롯. -1이면 모르는 상태.
     selected_item_slot: int = -1
 
-    # 프로그램 내에서 클릭해서 선택된 장착 가능 스킬칸
-    selected_skill: int = -1
-
     # 사이드바 페이지 번호
     sidebar_type: int = -1
 
@@ -283,8 +280,6 @@ class SharedData:
     active_error_popup: ClassVar[list[list]] = []
     active_error_popup_count: int = 0  # len으로 변경
     is_tab_remove_popup_activated: bool = False
-
-    preview_skills: ClassVar[list[SkillImage]] = []
 
     powers: ClassVar[list[float]] = [0.0, 0.0, 0.0, 0.0]
     is_input_valid: ClassVar[dict[str, bool]] = {

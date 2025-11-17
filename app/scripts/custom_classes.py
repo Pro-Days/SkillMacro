@@ -166,9 +166,7 @@ class SkillImage(QLabel):
     스킬 아이콘만을 표시하는 위젯
     """
 
-    def __init__(
-        self, parent: QWidget, pixmap: QPixmap, size: int, x: int = 0, y: int = 0
-    ) -> None:
+    def __init__(self, parent: QWidget, pixmap: QPixmap, size: int) -> None:
         super().__init__(parent)
 
         self.setStyleSheet("QLabel { background-color: transparent; border: 0px; }")
