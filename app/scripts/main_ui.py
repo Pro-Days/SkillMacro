@@ -210,6 +210,7 @@ class MainUI(QFrame):
 
         self.shared_data.is_tab_remove_popup_activated = True
 
+        # 탭 제거 팝업 생성
         self.confirm_remove = ConfirmRemovePopup(
             self, self.tab_widget.tabText(index), index
         )
@@ -810,7 +811,7 @@ class EquippedSkill(QFrame):
             layout.addWidget(skill)
 
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
+        layout.setSpacing(24)
         self.setLayout(layout)
 
         self.selected_index: int = -1
@@ -844,11 +845,12 @@ class EquippedSkill(QFrame):
 
             self.setStyleSheet("QFrame { background-color: transparent; }")
 
+            size = 48
             name: str = shared_data.equipped_skills[index]
 
             self.button: QPushButton = QPushButton(self)
             self.button.setStyleSheet("QPushButton { border-radius :10px; }")
-            self.button.setFixedSize(64, 64)
+            self.button.setFixedSize(size, size)
             self.button.setIcon(
                 QIcon(
                     get_skill_pixmap(
@@ -857,14 +859,14 @@ class EquippedSkill(QFrame):
                     )
                 )
             )
-            self.button.setIconSize(QSize(64, 64))
+            self.button.setIconSize(QSize(size, size))
             # self.button.clicked.connect(
             #     partial(lambda x: self.on_equipped_skill_clicked(x), i)
             # )
 
             self.key = QPushButton(shared_data.skill_keys[index], self)
             self.key.setFont(CustomFont(10))
-            self.key.setFixedWidth(64)
+            self.key.setFixedWidth(size)
             # self.key_button.clicked.connect(partial(lambda x: self.onSkillKeyClick(x), i))
 
             layout = QVBoxLayout()
@@ -875,79 +877,3 @@ class EquippedSkill(QFrame):
             layout.setSizeConstraint(QLayout.SizeConstraint.SetFixedSize)
 
             self.setLayout(layout)
-
-
-class ConfirmRemovePopup(QFrame):
-    def __init__(self, master: MainUI, tab_name: str, tab_index: int):
-        super().__init__(master)
-
-        self.master: MainUI = master
-        self.tab_index: int = tab_index
-
-        self.setStyleSheet("QFrame { background-color: rgba(0, 0, 0, 100); }")
-
-        popup_frame = QFrame(self)
-        popup_frame.setStyleSheet(
-            "QFrame { background-color: white; border-radius: 20px; }"
-        )
-        popup_frame.setGraphicsEffect(CustomShadowEffect(2, 2, 20))
-
-        name = QLabel("", popup_frame)
-        name.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        name.setFont(CustomFont(12))
-        name.setText(f'정말 "{tab_name}"\n 탭을 삭제하시겠습니까?')
-
-        yes_button = QPushButton("예", popup_frame)
-        yes_button.setFont(CustomFont(12))
-        yes_button.clicked.connect(self.on_yes_clicked)
-        yes_button.setStyleSheet(
-            """
-                QPushButton {
-                    background-color: #86A7FC; border-radius: 10px;
-                }
-                QPushButton:hover {
-                    background-color: #6498f0;
-                }
-            """
-        )
-        yes_button.setGraphicsEffect(CustomShadowEffect(2, 2, 20))
-
-        no_button = QPushButton("아니오", popup_frame)
-        no_button.setFont(CustomFont(12))
-        no_button.clicked.connect(self.on_no_clicked)
-        no_button.setStyleSheet(
-            """
-                QPushButton {
-                    background-color: #ffffff; border-radius: 10px;
-                }
-                QPushButton:hover {
-                    background-color: #eeeeee;
-                }
-            """
-        )
-        no_button.setGraphicsEffect(CustomShadowEffect(2, 2, 20))
-
-        layout = QGridLayout(popup_frame)
-        layout.addWidget(name, 0, 0, 1, 2)
-        layout.addWidget(yes_button, 1, 0)
-        layout.addWidget(no_button, 1, 1)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(20)
-        popup_frame.setLayout(layout)
-
-        main_layout = QVBoxLayout(self)
-        main_layout.addWidget(popup_frame, alignment=Qt.AlignmentFlag.AlignCenter)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        self.setLayout(main_layout)
-
-    def on_yes_clicked(self):
-        self.master.on_remove_tab_popup_clicked(
-            index=self.tab_index,
-            confirmed=True,
-        )
-
-    def on_no_clicked(self):
-        self.master.on_remove_tab_popup_clicked(
-            index=self.tab_index,
-            confirmed=False,
-        )
