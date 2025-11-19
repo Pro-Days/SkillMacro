@@ -1,36 +1,35 @@
-from app.scripts.popup import PopupManager
-from app.scripts.shared_data import SharedData
-from .misc import convert_resource_path
-
-from .data_manager import save_data, load_data, add_preset, remove_preset
-from .misc import get_skill_pixmap, get_available_skills
-from .shared_data import UI_Variable
-from .custom_classes import SkillImage, CustomFont
-from .run_macro import init_macro, add_task_list
-from .popup import ConfirmRemovePopup
-
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import QSize, Qt, QUrl
-from PyQt6.QtGui import QPixmap, QIcon
+from PyQt6.QtCore import QSize, Qt
+from PyQt6.QtGui import QIcon, QPixmap
 from PyQt6.QtWidgets import (
     QFrame,
+    QGridLayout,
+    QHBoxLayout,
     QLabel,
+    QLayout,
     QPushButton,
+    QSizePolicy,
     QTabBar,
     QTabWidget,
-    QWidget,
     QVBoxLayout,
-    QHBoxLayout,
-    QGridLayout,
-    QSizePolicy,
-    QLayout,
+    QWidget,
 )
 
+from app.scripts.custom_classes import CustomFont, SkillImage
+from app.scripts.data_manager import add_preset, load_data, remove_preset, save_data
+from app.scripts.misc import (
+    convert_resource_path,
+    get_available_skills,
+    get_skill_pixmap,
+)
+from app.scripts.popup import ConfirmRemovePopup, PopupManager
+from app.scripts.run_macro import add_task_list, init_macro
+from app.scripts.shared_data import UI_Variable
 
 if TYPE_CHECKING:
-    from .main_window import MainWindow
-    from .shared_data import SharedData
+    from app.scripts.main_window import MainWindow
+    from app.scripts.shared_data import SharedData
 
 
 class MainUI(QFrame):

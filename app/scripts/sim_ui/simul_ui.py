@@ -3,22 +3,22 @@ from __future__ import annotations
 from app.scripts.custom_classes import SimAttack, Stats
 from app.scripts.shared_data import SharedData
 
-from .data_manager import save_data
-from .misc import (
+from ..data_manager import save_data
+from ..misc import (
     get_skill_pixmap,
     adjust_font_size,
     get_available_skills,
     convert_resource_path,
 )
-from .shared_data import UI_Variable
-from .simulate_macro import randSimulate, detSimulate, get_req_stats
+from ..shared_data import UI_Variable
+from ..simulate_macro import randSimulate, detSimulate, get_req_stats
 from .graph import (
     DpmDistributionCanvas,
     SkillDpsRatioCanvas,
     DMGCanvas,
     SkillContributionCanvas,
 )
-from .custom_classes import (
+from ..custom_classes import (
     CustomFont,
     CustomLineEdit,
     CustomComboBox,
@@ -27,8 +27,8 @@ from .custom_classes import (
     KVInput,
     SkillImage,
 )
-from .get_character_data import get_character_info, get_character_card_data
-from .config import config
+from ....archive.get_character_data import get_character_info, get_character_card_data
+from ..config import config
 
 import requests
 import os
@@ -63,8 +63,8 @@ from collections.abc import Callable
 
 
 if TYPE_CHECKING:
-    from .main_window import MainWindow
-    from .shared_data import SharedData
+    from ..main_window import MainWindow
+    from ..shared_data import SharedData
 
 
 class SimUI:

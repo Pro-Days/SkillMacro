@@ -1,5 +1,5 @@
 from .misc import convert_resource_path
-from .simul_ui import SimUI
+from .sim_ui.simul_ui import SimUI
 from .main_ui import MainUI
 from .sidebar import Sidebar
 from .misc import set_default_fonts
