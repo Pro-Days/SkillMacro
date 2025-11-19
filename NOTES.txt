@@ -166,6 +166,8 @@ layout의 setContentsMargins, setSpacing, addWidget을 한번에 적용하는 �
 
 SimUI들 만들 때 main_frame 안받아도 되는지 테스트
 
+탭을 끄면 데이터를 삭제하지 않도록 설정
+
 ---------
 스펙업 요소:
 스텟

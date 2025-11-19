@@ -3,21 +3,11 @@ from app.scripts.shared_data import SharedData
 from .misc import convert_resource_path
 
 from .data_manager import save_data, load_data, add_preset, remove_preset
-from .misc import (
-    get_skill_pixmap,
-    adjust_font_size,
-    adjust_text_length,
-    get_available_skills,
-)
+from .misc import get_skill_pixmap, get_available_skills
 from .shared_data import UI_Variable
-from .custom_classes import (
-    CustomShadowEffect,
-    SkillImage,
-    CustomFont,
-)
+from .custom_classes import SkillImage, CustomFont
 from .run_macro import init_macro, add_task_list
-
-from functools import partial
+from .popup import ConfirmRemovePopup
 
 from typing import TYPE_CHECKING
 
@@ -50,7 +40,7 @@ class MainUI(QFrame):
 
     def __init__(
         self,
-        master: "MainWindow",
+        master: MainWindow,
         shared_data: SharedData,
     ) -> None:
         super().__init__()
@@ -194,6 +184,8 @@ class MainUI(QFrame):
 
     def on_remove_tab_clicked(self, index: int) -> None:
         """탭 닫기 버튼 클릭시 실행"""
+        # 탭 닫기 버튼 클릭시 바로 탭이 제거되지 않고, 나중에 다시 열 수 있도록 수정
+        # 탭 삭제 / 열기 기능을 추가해야함.
 
         # 활성화 상태인 팝업 닫기
         self.master.get_popup_manager().close_popup()
@@ -211,7 +203,7 @@ class MainUI(QFrame):
         self.shared_data.is_tab_remove_popup_activated = True
 
         # 탭 제거 팝업 생성
-        self.confirm_remove = ConfirmRemovePopup(
+        self.remove_confirmation_popup = ConfirmRemovePopup(
             self, self.tab_widget.tabText(index), index
         )
 
@@ -221,7 +213,7 @@ class MainUI(QFrame):
         # 탭이 삭제되면 기존 인덱스와 달리지기 때문에 인덱스 대신 객체를 기반으로 탭을 찾도록 수정 필요
 
         # 팝업 제거
-        self.confirm_remove.deleteLater()
+        self.remove_confirmation_popup.deleteLater()
 
         # 탭 제거 팝업 활성화 상태 초기화
         self.shared_data.is_tab_remove_popup_activated = False

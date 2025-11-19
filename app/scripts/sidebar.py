@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .data_manager import save_data
 from .misc import (
     get_skill_pixmap,

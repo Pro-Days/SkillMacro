@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from .misc import convert_resource_path
 
 from .custom_classes import CustomShadowEffect
@@ -16,7 +14,16 @@ from .misc import (
 from .data_manager import save_data
 from .custom_classes import CustomFont
 
-from PyQt6.QtWidgets import QFrame, QPushButton, QLabel, QLineEdit
+from PyQt6.QtWidgets import (
+    QFrame,
+    QPushButton,
+    QLabel,
+    QLineEdit,
+    QGridLayout,
+    QVBoxLayout,
+    QHBoxLayout,
+    QWidget,
+)
 from PyQt6.QtGui import QPixmap, QIcon, QTransform
 from PyQt6.QtCore import Qt, QSize
 
@@ -28,6 +35,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .main_window import MainWindow
     from .shared_data import SharedData
+    from .main_ui import MainUI
 
 
 class PopupManager:
@@ -40,8 +48,8 @@ class PopupManager:
         master: MainWindow,
         shared_data: SharedData,
     ):
-        self.master = master
-        self.shared_data = shared_data
+        self.master: MainWindow = master
+        self.shared_data: SharedData = shared_data
 
     ## 알림 창 생성
     # pyqtSignal을 이용하도록 수정
@@ -67,9 +75,6 @@ class PopupManager:
         """
 
         noticePopup = QFrame(self.master)
-
-        if self.shared_data.is_tab_remove_popup_activated:
-            self.master.get_main_ui().tabRemoveBackground.raise_()
 
         frameHeight = 78
         match e:
@@ -218,80 +223,6 @@ class PopupManager:
             [noticePopup, frameHeight, self.shared_data.active_error_popup_count]
         )
         self.shared_data.active_error_popup_count += 1
-
-    class ConfirmRemovePopup(QFrame):
-        def __init__(self, tab_name: str, tab_index: int):
-            super().__init__()
-
-            self.tab_index: int = tab_index
-
-            self.setStyleSheet("QFrame { background-color: rgba(0, 0, 0, 100); }")
-
-            popup_frame = QFrame(self)
-            popup_frame.setStyleSheet(
-                "QFrame { background-color: white; border-radius: 20px; }"
-            )
-            popup_frame.setGraphicsEffect(CustomShadowEffect(2, 2, 20))
-
-            name = QLabel("", popup_frame)
-            name.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            name.setFont(CustomFont(12))
-            name.setText(f'정말 "{tab_name}"\n 탭을 삭제하시겠습니까?')
-
-            yes_button = QPushButton("예", popup_frame)
-            yes_button.setFont(CustomFont(12))
-            yes_button.clicked.connect(self.on_yes_clicked)
-            yes_button.setStyleSheet(
-                """
-                    QPushButton {
-                        background-color: #86A7FC; border-radius: 10px;
-                    }
-                    QPushButton:hover {
-                        background-color: #6498f0;
-                    }
-                """
-            )
-            yes_button.setGraphicsEffect(CustomShadowEffect(2, 2, 20))
-
-            no_button = QPushButton("아니오", popup_frame)
-            no_button.setFont(CustomFont(12))
-            no_button.clicked.connect(self.on_no_clicked)
-            no_button.setStyleSheet(
-                """
-                    QPushButton {
-                        background-color: #ffffff; border-radius: 10px;
-                    }
-                    QPushButton:hover {
-                        background-color: #eeeeee;
-                    }
-                """
-            )
-            no_button.setGraphicsEffect(CustomShadowEffect(2, 2, 20))
-
-            layout = QGridLayout(popup_frame)
-            layout.addWidget(name, 0, 0, 1, 2)
-            layout.addWidget(yes_button, 1, 0)
-            layout.addWidget(no_button, 1, 1)
-            layout.setContentsMargins(20, 20, 20, 20)
-            layout.setSpacing(20)
-            popup_frame.setLayout(layout)
-
-            main_layout = QVBoxLayout(self)
-            main_layout.addWidget(popup_frame, alignment=Qt.AlignmentFlag.AlignCenter)
-            main_layout.setContentsMargins(0, 0, 0, 0)
-            self.setLayout(main_layout)
-
-        def on_yes_clicked(self):
-            self.master.on_remove_tab_popup_clicked(
-                index=self.tab_index,
-                confirmed=True,
-            )
-
-        def on_no_clicked(self):
-            self.master.on_remove_tab_popup_clicked(
-                index=self.tab_index,
-                confirmed=False,
-            )
 
     ## 알림 창 제거
     def close_notice_popup(self, num=-1):
@@ -454,11 +385,11 @@ class PopupManager:
                     self.close_popup()
                     return
 
-                self.master.get_main_ui().tab_buttons[var].setText(
-                    adjust_text_length(
-                        " " + text, self.master.get_main_ui().tab_buttons[var]
-                    )
-                )
+                # self.master.get_main_ui().tab_buttons[var].setText(
+                #     adjust_text_length(
+                #         " " + text, self.master.get_main_ui().tab_buttons[var]
+                #     )
+                # )
                 self.shared_data.tab_names[var] = text
 
         save_data(self.shared_data)
@@ -921,8 +852,8 @@ class PopupManager:
         if disabled:
             return
 
-        self.master.get_main_ui().equipped_skill_keys[num].setText(key)
-        adjust_font_size(self.master.get_main_ui().equipped_skill_keys[num], key, 24)
+        # self.master.get_main_ui().equipped_skill_keys[num].setText(key)
+        # adjust_font_size(self.master.get_main_ui().equipped_skill_keys[num], key, 24)
         self.shared_data.skill_keys[num] = key
 
         save_data(self.shared_data)
@@ -1211,3 +1142,80 @@ class PopupManager:
             button.move(35 * i - 30, 5)
 
             button.show()
+
+
+class ConfirmRemovePopup(QFrame):
+    def __init__(self, master: MainUI, tab_name: str, tab_index: int):
+        # QFrame의 부모를 master(MainUI)의 master(MainWindow)로 설정
+        super().__init__(master.master)
+
+        self.setStyleSheet("QFrame { background-color: rgba(0, 0, 0, 100); }")
+
+        self.master: MainUI = master
+        self.tab_index: int = tab_index
+
+        popup_frame = QFrame(self)
+        popup_frame.setStyleSheet(
+            "QFrame { background-color: white; border-radius: 20px; }"
+        )
+        popup_frame.setGraphicsEffect(CustomShadowEffect(2, 2, 20))
+
+        name = QLabel("", popup_frame)
+        name.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        name.setFont(CustomFont(12))
+        name.setText(f'정말 "{tab_name}"\n 탭을 삭제하시겠습니까?')
+
+        yes_button = QPushButton("예", popup_frame)
+        yes_button.setFont(CustomFont(12))
+        yes_button.clicked.connect(self.on_yes_clicked)
+        yes_button.setStyleSheet(
+            """
+                QPushButton {
+                    background-color: #86A7FC; border-radius: 10px;
+                }
+                QPushButton:hover {
+                    background-color: #6498f0;
+                }
+            """
+        )
+        yes_button.setGraphicsEffect(CustomShadowEffect(2, 2, 20))
+
+        no_button = QPushButton("아니오", popup_frame)
+        no_button.setFont(CustomFont(12))
+        no_button.clicked.connect(self.on_no_clicked)
+        no_button.setStyleSheet(
+            """
+                QPushButton {
+                    background-color: #ffffff; border-radius: 10px;
+                }
+                QPushButton:hover {
+                    background-color: #eeeeee;
+                }
+            """
+        )
+        no_button.setGraphicsEffect(CustomShadowEffect(2, 2, 20))
+
+        layout = QGridLayout(popup_frame)
+        layout.addWidget(name, 0, 0, 1, 2)
+        layout.addWidget(yes_button, 1, 0)
+        layout.addWidget(no_button, 1, 1)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(20)
+        popup_frame.setLayout(layout)
+
+        main_layout = QVBoxLayout(self)
+        main_layout.addWidget(popup_frame, alignment=Qt.AlignmentFlag.AlignCenter)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(main_layout)
+
+    def on_yes_clicked(self):
+        self.master.on_remove_tab_popup_clicked(
+            index=self.tab_index,
+            confirmed=True,
+        )
+
+    def on_no_clicked(self):
+        self.master.on_remove_tab_popup_clicked(
+            index=self.tab_index,
+            confirmed=False,
+        )
