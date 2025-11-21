@@ -2,13 +2,9 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any, TYPE_CHECKING, ClassVar
+from typing import Any, ClassVar
 
-from .misc import convert_resource_path
-
-
-if TYPE_CHECKING:
-    from .custom_classes import SkillImage
+from app.scripts.misc import convert_resource_path
 
 
 # 공유 데이터 클래스

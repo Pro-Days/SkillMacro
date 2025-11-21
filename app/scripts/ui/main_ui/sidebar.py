@@ -1,27 +1,28 @@
-from .data_manager import save_data
-from .misc import (
-    get_skill_pixmap,
-    adjust_font_size,
-    is_key_used,
-    get_available_skills,
-    get_skill_details,
-    convert_resource_path,
-)
-from .shared_data import UI_Variable
-from .custom_classes import CustomFont, CustomShadowEffect, SkillImage
+from __future__ import annotations
 
 import copy
 from functools import partial
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QSize, Qt
-from PyQt6.QtGui import QPixmap, QIcon
+from PyQt6.QtGui import QIcon, QPixmap
 from PyQt6.QtWidgets import QFrame, QLabel, QPushButton, QScrollArea, QWidget
 
+from app.scripts.custom_classes import CustomFont, CustomShadowEffect, SkillImage
+from app.scripts.data_manager import save_data
+from app.scripts.misc import (
+    adjust_font_size,
+    convert_resource_path,
+    get_available_skills,
+    get_skill_details,
+    get_skill_pixmap,
+    is_key_used,
+)
+from app.scripts.shared_data import UI_Variable
 
 if TYPE_CHECKING:
-    from .main_window import MainWindow
-    from .shared_data import SharedData
+    from app.scripts.main_window import MainWindow
+    from app.scripts.shared_data import SharedData
 
 
 class Sidebar:

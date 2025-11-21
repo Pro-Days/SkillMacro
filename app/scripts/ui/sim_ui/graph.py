@@ -1,11 +1,13 @@
-import pyqtgraph as pg
+from __future__ import annotations
+
 import math
 
-from PyQt6.QtCore import Qt, QPoint, QPointF
+import pyqtgraph as pg
+from PyQt6.QtCore import QPoint, QPointF, Qt
+from PyQt6.QtGui import QBrush, QPainter
 from PyQt6.QtWidgets import QLabel, QWidget
-from PyQt6.QtGui import QBrush, QPainter, QFont
 
-from ..custom_classes import CustomFont, SimAttack
+from app.scripts.custom_classes import CustomFont, SimAttack
 
 
 class DpmDistributionCanvas(pg.PlotWidget):

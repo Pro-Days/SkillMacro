@@ -1,39 +1,33 @@
-from .misc import convert_resource_path
-from .sim_ui.simul_ui import SimUI
-from .main_ui import MainUI
-from .sidebar import Sidebar
-from .misc import set_default_fonts
-from .popup import PopupManager
-from .shared_data import SharedData, UI_Variable
-from .data_manager import update_data, load_data, update_skill_data
-from .run_macro import checking_kb_thread
-from .custom_classes import CustomFont
-from .config import config
+from __future__ import annotations
 
 import sys
-import requests
-
 from threading import Thread
-from webbrowser import open_new
 from typing import Any, Literal
+from webbrowser import open_new
 
+import requests
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import (
-    QIcon,
-    QColor,
-    QPixmap,
-    QPalette,
-    QKeyEvent,
-)
+from PyQt6.QtGui import QColor, QIcon, QKeyEvent, QPalette, QPixmap
 from PyQt6.QtWidgets import (
-    QFrame,
-    QWidget,
-    QPushButton,
     QApplication,
+    QFrame,
+    QHBoxLayout,
+    QPushButton,
     QStackedWidget,
     QVBoxLayout,
-    QHBoxLayout,
+    QWidget,
 )
+
+from app.scripts.config import config
+from app.scripts.custom_classes import CustomFont
+from app.scripts.data_manager import load_data, update_data, update_skill_data
+from app.scripts.misc import convert_resource_path, set_default_fonts
+from app.scripts.popup import PopupManager
+from app.scripts.run_macro import checking_kb_thread
+from app.scripts.shared_data import SharedData, UI_Variable
+from app.scripts.ui.main_ui.main_ui import MainUI
+from app.scripts.ui.main_ui.sidebar import Sidebar
+from app.scripts.ui.sim_ui.simul_ui import SimUI
 
 
 class MainWindow(QWidget):

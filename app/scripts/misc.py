@@ -1,19 +1,15 @@
 from __future__ import annotations
 
 import os
-
 from typing import TYPE_CHECKING
 
-from PyQt6.QtGui import QFontDatabase
-from PyQt6.QtGui import QPixmap, QFontMetrics
-from PyQt6.QtWidgets import QPushButton, QLabel
+from PyQt6.QtGui import QFontDatabase, QFontMetrics, QPixmap
+from PyQt6.QtWidgets import QLabel, QPushButton
 
-
-from .custom_classes import CustomFont
-
+from app.scripts.custom_classes import CustomFont
 
 if TYPE_CHECKING:
-    from .shared_data import SharedData
+    from app.scripts.shared_data import SharedData
 
 
 def convert_skill_name_to_slot(shared_data: SharedData, skill_name: str) -> int:

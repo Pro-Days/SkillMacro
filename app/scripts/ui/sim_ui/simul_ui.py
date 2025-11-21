@@ -1,70 +1,54 @@
 from __future__ import annotations
 
-from app.scripts.custom_classes import SimAttack, Stats
-from app.scripts.shared_data import SharedData
-
-from ..data_manager import save_data
-from ..misc import (
-    get_skill_pixmap,
-    adjust_font_size,
-    get_available_skills,
-    convert_resource_path,
-)
-from ..shared_data import UI_Variable
-from ..simulate_macro import randSimulate, detSimulate, get_req_stats
-from .graph import (
-    DpmDistributionCanvas,
-    SkillDpsRatioCanvas,
-    DMGCanvas,
-    SkillContributionCanvas,
-)
-from ..custom_classes import (
-    CustomFont,
-    CustomLineEdit,
-    CustomComboBox,
-    SimResult,
-    SimAnalysis,
-    KVInput,
-    SkillImage,
-)
-from ....archive.get_character_data import get_character_info, get_character_card_data
-from ..config import config
-
-import requests
-import os
-import sys
+from collections.abc import Callable
 from functools import partial
 from typing import TYPE_CHECKING
-import threading
-
-# import matplotlib.pyplot as plt
 
 from PyQt6.QtCore import QSize, Qt
-from PyQt6.QtGui import QPixmap, QPainter, QIcon, QColor
+from PyQt6.QtGui import QIcon, QPixmap
 from PyQt6.QtWidgets import (
     QFrame,
+    QGridLayout,
+    QHBoxLayout,
     QLabel,
     QPushButton,
-    QFileDialog,
     QScrollArea,
-    QWidget,
+    QSizePolicy,
     QStackedLayout,
     QVBoxLayout,
-    QHBoxLayout,
-    QSizePolicy,
-    QGridLayout,
-    QTableWidget,
-    QTableWidgetItem,
-    QHeaderView,
-    QAbstractItemView,
+    QWidget,
 )
 
-from collections.abc import Callable
-
+from app.scripts.config import config
+from app.scripts.custom_classes import (
+    CustomComboBox,
+    CustomFont,
+    CustomLineEdit,
+    KVInput,
+    SimAnalysis,
+    SimAttack,
+    SimResult,
+    SkillImage,
+    Stats,
+)
+from app.scripts.data_manager import save_data
+from app.scripts.misc import (
+    convert_resource_path,
+    get_available_skills,
+    get_skill_pixmap,
+)
+from app.scripts.shared_data import UI_Variable
+from app.scripts.simulate_macro import detSimulate, get_req_stats, randSimulate
+from app.scripts.ui.sim_ui.graph import (
+    DMGCanvas,
+    DpmDistributionCanvas,
+    SkillContributionCanvas,
+    SkillDpsRatioCanvas,
+)
 
 if TYPE_CHECKING:
-    from ..main_window import MainWindow
-    from ..shared_data import SharedData
+    from app.scripts.main_window import MainWindow
+    from app.scripts.shared_data import SharedData
 
 
 class SimUI:

@@ -1,41 +1,37 @@
-from .misc import convert_resource_path
+from __future__ import annotations
 
-from .custom_classes import CustomShadowEffect
-from .misc import (
-    adjust_font_size,
-    is_key_used,
-    get_skill_pixmap,
-    adjust_text_length,
-    get_available_skills,
-    get_skill_details,
-    get_every_skills,
-    set_var_to_ClassVar,
-)
-from .data_manager import save_data
-from .custom_classes import CustomFont
-
-from PyQt6.QtWidgets import (
-    QFrame,
-    QPushButton,
-    QLabel,
-    QLineEdit,
-    QGridLayout,
-    QVBoxLayout,
-    QHBoxLayout,
-    QWidget,
-)
-from PyQt6.QtGui import QPixmap, QIcon, QTransform
-from PyQt6.QtCore import Qt, QSize
-
-from webbrowser import open_new
 from functools import partial
 from typing import TYPE_CHECKING
+from webbrowser import open_new
 
+from PyQt6.QtCore import QSize, Qt
+from PyQt6.QtGui import QIcon, QPixmap, QTransform
+from PyQt6.QtWidgets import (
+    QFrame,
+    QGridLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QVBoxLayout,
+)
+
+from app.scripts.custom_classes import CustomFont, CustomShadowEffect
+from app.scripts.data_manager import save_data
+from app.scripts.misc import (
+    adjust_font_size,
+    convert_resource_path,
+    get_available_skills,
+    get_every_skills,
+    get_skill_details,
+    get_skill_pixmap,
+    is_key_used,
+    set_var_to_ClassVar,
+)
 
 if TYPE_CHECKING:
-    from .main_window import MainWindow
-    from .shared_data import SharedData
-    from .main_ui import MainUI
+    from app.scripts.main_window import MainWindow
+    from app.scripts.shared_data import SharedData
+    from app.scripts.ui.main_ui.main_ui import MainUI
 
 
 class PopupManager:

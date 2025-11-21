@@ -1,19 +1,20 @@
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont, QPixmap, QColor
-from PyQt6.QtWidgets import (
-    QLineEdit,
-    QComboBox,
-    QLabel,
-    QWidget,
-    QFrame,
-    QGraphicsDropShadowEffect,
-    QVBoxLayout,
-    QSizePolicy,
-)
-
-from dataclasses import dataclass, field
+from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass, field
+
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor, QFont, QPixmap
+from PyQt6.QtWidgets import (
+    QComboBox,
+    QFrame,
+    QGraphicsDropShadowEffect,
+    QLabel,
+    QLineEdit,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
 from .config import config
 

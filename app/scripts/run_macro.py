@@ -1,18 +1,20 @@
 from __future__ import annotations
 
-import copy
 import time
-from pynput import keyboard, mouse
 from threading import Thread
 from typing import TYPE_CHECKING, NoReturn
 
+from pynput import keyboard, mouse
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from .misc import convert_skill_name_to_slot, get_skill_details, set_var_to_ClassVar
-
+from app.scripts.misc import (
+    convert_skill_name_to_slot,
+    get_skill_details,
+    set_var_to_ClassVar,
+)
 
 if TYPE_CHECKING:
-    from .shared_data import SharedData
+    from app.scripts.shared_data import SharedData
 
 
 print_info = False  # 디버깅용

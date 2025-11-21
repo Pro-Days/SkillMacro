@@ -1,25 +1,23 @@
 from __future__ import annotations
 
-from .run_macro import init_macro, add_task_list
-from .misc import get_skill_details
-from .custom_classes import (
-    SimBuff,
-    SimAttack,
-    Stats,
-    SimSkillApplyDelay,
-    SimSkill,
-    SimResult,
-    SimAnalysis,
-)
-
 import random
 from functools import lru_cache
-
 from typing import TYPE_CHECKING
 
+from app.scripts.custom_classes import (
+    SimAnalysis,
+    SimAttack,
+    SimBuff,
+    SimResult,
+    SimSkill,
+    SimSkillApplyDelay,
+    Stats,
+)
+from app.scripts.misc import get_skill_details
+from app.scripts.run_macro import add_task_list, init_macro
 
 if TYPE_CHECKING:
-    from .shared_data import SharedData
+    from app.scripts.shared_data import SharedData
 
 
 def get_req_stats(
