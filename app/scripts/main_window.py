@@ -211,7 +211,7 @@ class MainWindow(QWidget):
         self.main_ui: MainUI = MainUI(self, self.shared_data)
 
         # 사이드바
-        self.sidebar: Sidebar = Sidebar(self, self.page1, self.shared_data)
+        self.sidebar: Sidebar = Sidebar(self, self.shared_data)
 
         # 시뮬레이션 UI
         self.sim_ui: SimUI = SimUI(self, self.page2, self.shared_data)

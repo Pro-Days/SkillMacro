@@ -167,20 +167,16 @@ class SkillImage(QLabel):
     스킬 아이콘만을 표시하는 위젯
     """
 
-    def __init__(self, parent: QWidget, pixmap: QPixmap, size: int) -> None:
+    def __init__(self, parent: QWidget, pixmap: QPixmap, size: int = 0) -> None:
         super().__init__(parent)
 
         self.setStyleSheet("QLabel { background-color: transparent; border: 0px; }")
 
-        pixmap = pixmap.scaled(
-            size,
-            size,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-
         self.setPixmap(pixmap)
-        self.setFixedSize(size, size)
+        self.setScaledContents(True)
+
+        if size != 0:
+            self.setFixedSize(size, size)
 
 
 class CustomShadowEffect(QGraphicsDropShadowEffect):

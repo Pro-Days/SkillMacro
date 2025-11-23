@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 import json
 import os
+import shutil
 from dataclasses import asdict
 from typing import TYPE_CHECKING
 
@@ -304,11 +305,34 @@ def get_default_preset(shared_data: SharedData) -> dict:
         },
         "linkSettings": [],
         "info": {
-            "stats": {stat: 0 for stat in shared_data.STATS.keys()},
+            "stats": {
+                "ATK": 100,
+                "DEF": 100,
+                "PWR": 100,
+                "STR": 100,
+                "INT": 100,
+                "RES": 10,
+                "CRIT_RATE": 50,
+                "CRIT_DMG": 50,
+                "BOSS_DMG": 20,
+                "ACC": 10,
+                "DODGE": 10,
+                "STATUS_RES": 10,
+                "NAEGONG": 10,
+                "HP": 2000,
+                "ATK_SPD": 15,
+                "POT_HEAL": 10,
+                "LUK": 10,
+                "EXP": 10,
+            },
             "skill_levels": {
                 skill: 1 for skill in get_every_skills(shared_data=shared_data)
             },
-            "sim_details": {info: 0 for info in shared_data.SIM_DETAILS.keys()},
+            "sim_details": {
+                "NORMAL_NAEGONG": 10,
+                "BOSS_NAEGONG": 10,
+                "POTION_HEAL": 300,
+            },
         },
     }
 
@@ -533,23 +557,13 @@ def backup_data() -> None:
         f"SkillMacro_backup_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
     )
 
-    # 파일이 존재하면 불러오기
+    # 파일이 존재하면 복사
     if os.path.isfile(file_dir):
-        with open(file_dir, "r", encoding="UTF8") as f:
-            jsonObject: dict = json.load(f)
+        shutil.copy2(file_dir, backup_file)
 
-    # 이전 경로에 있는 파일이 존재하면 불러오기
+    # 이전 경로에 있는 파일이 존재하면 복사
     elif os.path.isfile(file_dir_legacy):
-        with open(file_dir_legacy, "r", encoding="UTF8") as f:
-            jsonObject: dict = json.load(f)
-
-    # 파일이 없으면 종료
-    else:
-        return
-
-    # 백업 파일로 저장
-    with open(backup_file, "w", encoding="UTF8") as f:
-        json.dump(jsonObject, f, ensure_ascii=False, indent=4)
+        shutil.copy2(file_dir_legacy, backup_file)
 
 
 """

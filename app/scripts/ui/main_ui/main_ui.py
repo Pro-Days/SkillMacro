@@ -25,7 +25,7 @@ from app.scripts.misc import (
     get_available_skills,
     get_skill_pixmap,
 )
-from app.scripts.popup import ConfirmRemovePopup, PopupManager
+from app.scripts.popup import PopupManager
 from app.scripts.run_macro import add_task_list, init_macro
 from app.scripts.shared_data import UI_Variable
 
@@ -187,9 +187,10 @@ class MainUI(QFrame):
         """탭 닫기 버튼 클릭시 실행"""
         # 탭 닫기 버튼 클릭시 바로 탭이 제거되지 않고, 나중에 다시 열 수 있도록 수정
         # 탭 삭제 / 열기 기능을 추가해야함.
+        # 이 방식을 사용하면 탭 제거 팝업을 띄우지 않음.
 
         # 활성화 상태인 팝업 닫기
-        self.master.get_popup_manager().close_popup()
+        # self.master.get_popup_manager().close_popup()
 
         # 매크로 실행중일 때는 탭 추가 불가
         if self.shared_data.is_activated:
@@ -198,26 +199,30 @@ class MainUI(QFrame):
             return
 
         # 탭 제거 팝업이 활성화되어있지 않을 때만 팝업 생성
-        if self.shared_data.is_tab_remove_popup_activated:
-            return
+        # if self.shared_data.is_tab_remove_popup_activated:
+        #     return
 
-        self.shared_data.is_tab_remove_popup_activated = True
+        # self.shared_data.is_tab_remove_popup_activated = True
 
-        # 탭 제거 팝업 생성
-        self.remove_confirmation_popup = ConfirmRemovePopup(
-            self, self.tab_widget.tabText(index), index
-        )
+        # # 탭 제거 팝업 생성
+        # self.remove_confirmation_popup = ConfirmRemovePopup(
+        #     self, self.tab_widget.tabText(index), index
+        # )
+
+        self.on_remove_tab_popup_clicked(index, True)
 
     def on_remove_tab_popup_clicked(self, index: int, confirmed: bool) -> None:
         """탭 제거 팝업창에서 예/아니오 클릭시 실행"""
 
+        print(123)
+
         # 탭이 삭제되면 기존 인덱스와 달리지기 때문에 인덱스 대신 객체를 기반으로 탭을 찾도록 수정 필요
 
         # 팝업 제거
-        self.remove_confirmation_popup.deleteLater()
+        # self.remove_confirmation_popup.deleteLater()
 
         # 탭 제거 팝업 활성화 상태 초기화
-        self.shared_data.is_tab_remove_popup_activated = False
+        # self.shared_data.is_tab_remove_popup_activated = False
 
         # 아니오 클릭시 리턴
         if not confirmed:
