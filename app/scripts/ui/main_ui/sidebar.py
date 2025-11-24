@@ -33,6 +33,7 @@ from app.scripts.shared_data import UI_Variable
 
 if TYPE_CHECKING:
     from app.scripts.main_window import MainWindow
+    from app.scripts.popup import PopupManager
     from app.scripts.shared_data import SharedData
 
 
@@ -49,16 +50,16 @@ class Sidebar(QFrame):
 
         self.ui_var = UI_Variable()
 
-        # general_settings = GeneralSettings(self, self.shared_data)
-        # skill_settings = SkillSettings(self, self.shared_data)
-        # link_skill_settings = LinkSkillSettings(self, self.shared_data)
-        # link_skill_editor = LinkSkillEditor(self, self.shared_data)
+        general_settings = GeneralSettings(self.shared_data)
+        skill_settings = SkillSettings(self.shared_data)
+        link_skill_settings = LinkSkillSettings(self.shared_data)
+        link_skill_editor = LinkSkillEditor(self.shared_data)
 
         self.page_navigator = QStackedWidget()
-        # self.page_navigator.addWidget(general_settings)
-        # self.page_navigator.addWidget(skill_settings)
-        # self.page_navigator.addWidget(link_skill_settings)
-        # self.page_navigator.addWidget(link_skill_editor)
+        self.page_navigator.addWidget(general_settings)
+        self.page_navigator.addWidget(skill_settings)
+        self.page_navigator.addWidget(link_skill_settings)
+        self.page_navigator.addWidget(link_skill_editor)
         self.page_navigator.setContentsMargins(0, 0, 0, 0)
         self.page_navigator.setCurrentIndex(0)
 
@@ -79,105 +80,15 @@ class Sidebar(QFrame):
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
 
-        # self.nav_button = NavigationButton(self, self.shared_data)
+        self.nav_button = NavigationButtons()
 
         layout = QHBoxLayout()
         layout.addWidget(self.scroll_area)
-        # layout.addWidget(self.nav_button)
+        layout.addWidget(self.nav_button)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
         self.setLayout(layout)
-
-    ## 링크스킬 변경 팝업창 클릭시 실행
-    def oneLinkSkillTypePopupClick(self, var):
-        self.master.get_popup_manager().close_popup()
-        data, num, i = var
-        skill_name = get_available_skills(self.shared_data)[i]
-
-        if data["skills"][num]["name"] == skill_name:
-            return
-
-        data["skills"][num]["name"] = skill_name
-        data["skills"][num]["count"] = 1
-        data["useType"] = "manual"
-
-        if self.checkLinkSkillExceed(data, i):
-            self.master.get_popup_manager().make_notice_popup("exceedMaxLinkSkill")
-
-        self.reload_sidebar4(data)
-
-    ## 링크스킬 목록에서 하나 삭제
-    def removeOneLinkSkill(self, var):
-        self.master.get_popup_manager().close_popup()
-        data, num = var
-
-        if len(data["skills"]) == 1:
-            return
-
-        del data["skills"][num]
-        data["useType"] = "manual"
-        self.reload_sidebar4(data)
-
-    ## 링크스킬 저장
-    def saveEditingLinkSkill(self, data):
-        self.master.get_popup_manager().close_popup()
-
-        num = data.pop("num")
-        if num == -1:
-            self.shared_data.link_skills.append(data)
-        else:
-            self.shared_data.link_skills[num] = data
-
-        save_data(self.shared_data)
-        self.delete_sidebar_4()
-        self.shared_data.sidebar_type = -1
-        self.change_sidebar_to_3()
-
-    ## 링크스킬 취소
-    def cancelEditingLinkSkill(self):
-        self.master.get_popup_manager().close_popup()
-
-        self.delete_sidebar_4()
-        self.shared_data.sidebar_type = -1
-        self.change_sidebar_to_3()
-
-    ## 링크스킬 추가
-    def addLinkSkill(self, data):
-        self.master.get_popup_manager().close_popup()
-
-        data["skills"].append(
-            {"name": get_available_skills(self.shared_data)[0], "count": 1}
-        )
-        data["useType"] = "manual"
-        if self.checkLinkSkillExceed(data, 0):
-            self.master.get_popup_manager().make_notice_popup("exceedMaxLinkSkill")
-        self.reload_sidebar4(data)
-
-    ## 링크스킬 사용 횟수 팝업창 클릭시 실행
-    def onLinkSkillCountPopupClick(self, var):
-        self.master.get_popup_manager().close_popup()
-        data, num, i = var
-
-        data["skills"][num]["count"] = i
-        if self.checkLinkSkillExceed(data, i):
-            self.master.get_popup_manager().make_notice_popup("exceedMaxLinkSkill")
-        data["useType"] = "manual"
-        self.reload_sidebar4(data)
-
-    # 연계스킬에서 스킬 사용 횟수가 초과되었는지 확인
-    def checkLinkSkillExceed(self, data, skill) -> bool:
-        maxSkill = get_skill_details(
-            self.shared_data, get_available_skills(self.shared_data)[skill]
-        )["max_combo_count"]
-
-        for i in data["skills"]:
-            s = i["name"]
-            count = i["count"]
-            if get_available_skills(self.shared_data)[skill] == s:
-                maxSkill -= count
-
-        return maxSkill < 0
 
     ## 링크스킬 키 설정
     def setLinkSkillKey(self, data, num):
@@ -1116,45 +1027,13 @@ class LinkSkillSettings(QFrame):
 class LinkSkillEditor(QFrame):
     """사이드바 타입 4 - 연계설정 편집"""
 
-    class SettingItem(QFrame):
-        def __init__(
-            self,
-            title: str,
-            tooltip: str,
-            btn0_text: str,
-            btn1_text: str,
-            is_btn0_enabled: bool,
-            func0: Callable,
-            func1: Callable,
-            data,
-        ):
-            super().__init__()
+    # todo: 링크스킬 데이터를 클래스로 관리하도록 수정
 
-            type_label = QLabel(title)
-            type_label.setToolTip(tooltip)
-            type_label.setFont(CustomFont(12))
-
-            btn0 = QPushButton(btn0_text)
-            btn0.clicked.connect(lambda: func0(data))
-            btn0.setStyleSheet(f"color: {"#999999" if is_btn0_enabled else "#000000"};")
-            btn0.setFont(CustomFont(12))
-
-            btn1 = QPushButton(btn1_text)
-            btn1.clicked.connect(lambda: func1(data))
-            btn1.setStyleSheet(
-                f"color: {"#999999" if not is_btn0_enabled else "#000000"};"
-            )
-            btn1.setFont(CustomFont(12))
-
-            layout = QHBoxLayout()
-            layout.addWidget(type_label)
-            layout.addStretch(1)
-            layout.addWidget(btn0)
-            layout.addWidget(btn1)
-            self.setLayout(layout)
-
-    def __init__(self, shared_data: SharedData):
+    def __init__(self, shared_data: SharedData, popup_manager: PopupManager):
         super().__init__()
+
+        self.shared_data: SharedData = shared_data
+        self.popup_manager: PopupManager = popup_manager
 
         layout = QVBoxLayout()
         self.setLayout(layout)
@@ -1170,7 +1049,6 @@ class LinkSkillEditor(QFrame):
             is_btn0_enabled=True,
             func0=self.setLinkSkillToAuto,
             func1=self.setLinkSkillToManual,
-            data=None,
         )
         layout.addWidget(type_setting)
 
@@ -1181,93 +1059,170 @@ class LinkSkillEditor(QFrame):
             ),
             btn0_text="설정안함",
             btn1_text="설정하기",
-            is_btn0_enabled=True,
+            is_btn0_enabled=True,  # data["keyType"] == "off"
             func0=self.setLinkSkillKeyToOff,
             func1=self.setLinkSkillKeyToOn,
-            data=None,
         )
-        self.labelLinkKey = QLabel("단축키", self.frame)
-        self.labelLinkKey.setToolTip(
-            "매크로가 실행 중이지 않을 때 해당 연계스킬을 작동시킬 단축키입니다."
+        layout.addWidget(key_setting)
+
+        # skill_item = self.SkillItem(
+        #     name=j["name"],
+        #     count=j["count"],
+        #     shared_data=self.shared_data,
+        # )
+
+        add_skill_btn = QPushButton()
+        # add_skill_btn.clicked.connect(lambda: self.addLinkSkill(data))
+        add_skill_btn.setStyleSheet(
+            """QPushButton {
+                    background-color: transparent; border-radius: 18px;
+                }
+                QPushButton:hover {
+                    background-color: #cccccc;
+                }"""
         )
-        self.labelLinkKey.setFont(CustomFont(12))
-        self.labelLinkKey.setFixedSize(80, 30)
-        self.labelLinkKey.move(40, 235)
-        self.labelLinkKey.show()
+        pixmap = QPixmap(convert_resource_path("resources\\image\\plus.png"))
+        add_skill_btn.setIcon(QIcon(pixmap))
+        add_skill_btn.setIconSize(QSize(24, 24))
+        layout.addWidget(add_skill_btn)
 
-        self.ButtonLinkKey0 = QPushButton("설정안함", self.frame)
-        self.ButtonLinkKey0.clicked.connect(lambda: self.setLinkSkillKey(data, 0))
-        self.ButtonLinkKey0.setFixedSize(50, 30)
-        self.ButtonLinkKey0.setFont(CustomFont(8))
-        if data["keyType"] == "off":
-            self.ButtonLinkKey0.setStyleSheet("color: #000000;")
+        cancel_btn = QPushButton("취소")
+        # cancel_btn.clicked.connect(self.cancelEditingLinkSkill)
+        cancel_btn.setFont(CustomFont(12))
+        layout.addWidget(cancel_btn)
+
+        save_btn = QPushButton("저장")
+        # save_btn.clicked.connect(
+        #     lambda: self.saveEditingLinkSkill(data)
+        # )
+        save_btn.setFont(CustomFont(12))
+        layout.addWidget(save_btn)
+
+        self.data = {}
+
+    def change_skill(self, i: int, skill_name: str):
+        """i번째 스킬을 skill_name으로 변경"""
+        # data 관리 클래스로 이동해도 좋을듯
+
+        self.popup_manager.close_popup()
+
+        # 동일 스킬 선택 시 무시
+        if self.data["skills"][i]["name"] == skill_name:
+            return
+
+        # 스킬명 설정, 사용횟수 초기화
+        # data 클래스에서 값이 변경되면 자동으로 UI에 반영되도록 설정
+        self.data["skills"][i]["name"] = skill_name
+        self.data["skills"][i]["count"] = 1
+        self.data["useType"] = "manual"
+
+        if self.is_skill_exceeded(self.data, i):
+            self.popup_manager.make_notice_popup("exceedMaxLinkSkill")
+
+    def remove_skill(self, i: int):
+        """i번째 스킬 제거"""
+
+        self.popup_manager.close_popup()
+
+        del self.data["skills"][i]
+        self.data["useType"] = "manual"
+
+    def save(self):
+        self.popup_manager.close_popup()
+
+        # 수정하던 연계스킬의 인덱스
+        index = self.data["index"]
+
+        # 새로 만드는 경우
+        if index == -1:
+            self.shared_data.link_skills.append(self.data)
+
+        # 기존 연계스킬 수정하는 경우
         else:
-            self.ButtonLinkKey0.setStyleSheet("color: #999999;")
-        self.ButtonLinkKey0.move(155, 235)
-        self.ButtonLinkKey0.show()
+            self.shared_data.link_skills[index] = self.data
 
-        self.ButtonLinkKey1 = QPushButton(data["key"], self.frame)
-        self.ButtonLinkKey1.clicked.connect(lambda: self.setLinkSkillKey(data, 1))
-        self.ButtonLinkKey1.setFixedSize(50, 30)
-        adjust_font_size(self.ButtonLinkKey1, data["key"], 30)
-        if data["keyType"] == "off":
-            self.ButtonLinkKey1.setStyleSheet("color: #999999;")
-        else:
-            self.ButtonLinkKey1.setStyleSheet("color: #000000;")
-        self.ButtonLinkKey1.move(210, 235)
-        self.ButtonLinkKey1.show()
+        save_data(self.shared_data)
+        # 사이드바 연계설정 목록으로 변경
 
-        self.linkSkillLineA = QFrame(self.frame)
-        self.linkSkillLineA.setStyleSheet("QFrame { background-color: #b4b4b4;}")
-        self.linkSkillLineA.setFixedSize(280, 1)
-        self.linkSkillLineA.move(10, 274)
-        self.linkSkillLineA.show()
+    def cancel(self):
+        self.popup_manager.close_popup()
+        # 사이드바 연계설정 목록으로 변경
 
-        self.linkSkillImageList = []
-        self.linkSkillCount = []
-        self.linkSkillLineB = []
-        self.linkSkillRemove = []
-        for i, j in enumerate(data["skills"]):
-            skill = QPushButton("", self.frame)
-            skill.clicked.connect(
-                partial(
-                    lambda x: self.master.get_popup_manager().change_link_skill_type(x),
-                    (data, i),
-                )
-            )
-            # skill.setStyleSheet("background-color: transparent;")
-            skill.setIcon(
-                QIcon(get_skill_pixmap(self.shared_data, j["name"], j["count"]))
-            )
-            skill.setIconSize(QSize(50, 50))
-            skill.setFixedSize(50, 50)
-            skill.move(40, 281 + 51 * i)
+    def add_skill(self):
+        self.popup_manager.close_popup()
+
+        self.data["skills"].append(
+            {"name": get_available_skills(self.shared_data)[0], "count": 1}
+        )
+        self.data["useType"] = "manual"
+
+        if self.is_skill_exceeded(self.data, 0):
+            self.popup_manager.make_notice_popup("exceedMaxLinkSkill")
+
+    def change_skill_count(self, i: int, count: int):
+        """스킬 사용 횟수 변경"""
+
+        self.popup_manager.close_popup()
+
+        self.data["skills"][i]["count"] = count
+        self.data["useType"] = "manual"
+
+        if self.is_skill_exceeded(i):
+            self.popup_manager.make_notice_popup("exceedMaxLinkSkill")
+
+    def is_skill_exceeded(self, i: int) -> bool:
+        """연계스킬에서 특정 스킬의 최대 사용 횟수를 초과하는지 확인"""
+
+        max_combo: int = get_skill_details(
+            self.shared_data, get_available_skills(self.shared_data)[i]
+        )["max_combo_count"]
+
+        for skill in self.data["skills"]:
+            name = skill["name"]
+            count = skill["count"]
+            if get_available_skills(self.shared_data)[i] == name:
+                max_combo -= count
+
+        return max_combo < 0
+
+    class SkillItem(QFrame):
+        def __init__(
+            self,
+            name: str,
+            count: int,
+            shared_data: SharedData,
+        ):
+            super().__init__()
+
+            skill = QPushButton()
+            # skill.clicked.connect(
+            #     partial(
+            #         lambda x: self.master.get_popup_manager().change_link_skill_type(x),
+            #         (data, i),
+            #     )
+            # )
+            skill.setIcon(QIcon(get_skill_pixmap(shared_data, name, count)))
+            # skill.setIconSize(QSize(50, 50))
             skill.setToolTip(
                 "연계스킬을 구성하는 스킬의 목록과 사용 횟수를 설정할 수 있습니다.\n하나의 스킬이 너무 많이 사용되면 연계가 정상적으로 작동하지 않을 수 있습니다."
             )
-            skill.show()
-            self.linkSkillImageList.append(skill)
 
             button = QPushButton(
-                f"{j["count"]} / {get_skill_details(self.shared_data, j["name"])['max_combo_count']}",
-                self.frame,
+                f"{count} / {get_skill_details(shared_data, name)['max_combo_count']}",
             )
-            button.clicked.connect(
-                partial(
-                    lambda x: self.master.get_popup_manager().editLinkSkillCount(x),
-                    (data, i),
-                )
-            )
-            button.setFixedSize(50, 30)
+            # button.clicked.connect(
+            #     partial(
+            #         lambda x: self.master.get_popup_manager().editLinkSkillCount(x),
+            #         (data, i),
+            #     )
+            # )
+            # button.setFixedSize(50, 30)
             button.setFont(CustomFont(12))
-            button.move(210, 290 + 51 * i)
-            button.show()
-            self.linkSkillCount.append(button)
 
-            remove = QPushButton("", self.frame)
-            remove.clicked.connect(
-                partial(lambda x: self.removeOneLinkSkill(x), (data, i))
-            )
+            remove = QPushButton()
+            # remove.clicked.connect(
+            #     partial(lambda x: self.removeOneLinkSkill(x), (data, i))
+            # )
             remove.setStyleSheet(
                 """QPushButton {
                     background-color: transparent; border-radius: 16px;
@@ -1279,130 +1234,110 @@ class LinkSkillEditor(QFrame):
             pixmap = QPixmap(convert_resource_path("resources\\image\\xAlpha.png"))
             remove.setIcon(QIcon(pixmap))
             remove.setIconSize(QSize(16, 16))
-            remove.setFixedSize(32, 32)
-            remove.move(266, 289 + 51 * i)
-            remove.show()
-            self.linkSkillRemove.append(remove)
 
-            line = QFrame(self.frame)
-            line.setStyleSheet("QFrame { background-color: #b4b4b4;}")
-            line.setFixedSize(220, 1)
-            line.move(40, 331 + 51 * i)
-            line.show()
-            self.linkSkillLineB.append(line)
+            layout = QHBoxLayout()
+            layout.addWidget(skill)
+            layout.addWidget(button)
+            layout.addWidget(remove)
+            self.setLayout(layout)
 
-        self.linkSkillPlus = QPushButton("", self.frame)
-        self.linkSkillPlus.clicked.connect(lambda: self.addLinkSkill(data))
-        self.linkSkillPlus.setStyleSheet(
-            """QPushButton {
-                    background-color: transparent; border-radius: 18px;
-                }
-                QPushButton:hover {
-                    background-color: #cccccc;
-                }"""
+    class SettingItem(QFrame):
+        def __init__(
+            self,
+            title: str,
+            tooltip: str,
+            btn0_text: str,
+            btn1_text: str,
+            is_btn0_enabled: bool,
+            func0: Callable,
+            func1: Callable,
+            # data,
+        ):
+            super().__init__()
+
+            type_label = QLabel(title)
+            type_label.setToolTip(tooltip)
+            type_label.setFont(CustomFont(12))
+
+            btn0 = QPushButton(btn0_text)
+            # btn0.clicked.connect(lambda: func0(data))
+            btn0.setStyleSheet(f"color: {"#999999" if is_btn0_enabled else "#000000"};")
+            btn0.setFont(CustomFont(12))
+
+            btn1 = QPushButton(btn1_text)
+            # btn1.clicked.connect(lambda: func1(data))
+            btn1.setStyleSheet(
+                f"color: {"#999999" if not is_btn0_enabled else "#000000"};"
+            )
+            btn1.setFont(CustomFont(12))
+
+            layout = QHBoxLayout()
+            layout.addWidget(type_label)
+            layout.addStretch(1)
+            layout.addWidget(btn0)
+            layout.addWidget(btn1)
+            self.setLayout(layout)
+
+
+class NavigationButtons(QFrame):
+    def __init__(self):
+        super().__init__()
+
+        self.setStyleSheet(
+            """QFrame { 
+                background-color: #f0f0f0;
+                border: 0px solid;
+            }"""
         )
-        pixmap = QPixmap(convert_resource_path("resources\\image\\plus.png"))
-        self.linkSkillPlus.setIcon(QIcon(pixmap))
-        self.linkSkillPlus.setIconSize(QSize(24, 24))
-        self.linkSkillPlus.setFixedSize(36, 36)
-        self.linkSkillPlus.move(132, 289 + 51 * len(data["skills"]))
-        self.linkSkillPlus.show()
 
-        self.linkSkillCancelButton = QPushButton("취소", self.frame)
-        self.linkSkillCancelButton.clicked.connect(self.cancelEditingLinkSkill)
-        self.linkSkillCancelButton.setFixedSize(120, 32)
-        self.linkSkillCancelButton.setFont(CustomFont(12))
-        self.linkSkillCancelButton.move(15, 350 + 51 * len(data["skills"]))
-        self.linkSkillCancelButton.show()
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        self.setLayout(layout)
 
-        self.linkSkillSaveButton = QPushButton("저장", self.frame)
-        self.linkSkillSaveButton.clicked.connect(
-            lambda: self.saveEditingLinkSkill(data)
-        )
-        self.linkSkillSaveButton.setFixedSize(120, 32)
-        self.linkSkillSaveButton.setFont(CustomFont(12))
-        self.linkSkillSaveButton.move(165, 350 + 51 * len(data["skills"]))
-        self.linkSkillSaveButton.show()
+        icon_paths: list[str] = [
+            convert_resource_path("resources\\image\\setting.png"),
+            convert_resource_path("resources\\image\\usageSetting.png"),
+            convert_resource_path("resources\\image\\linkSetting.png"),
+            convert_resource_path("resources\\image\\simulationSidebar.png"),
+        ]
+        border_radiuses: list[list[int]] = [
+            [0, 8, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 8],
+        ]
 
+        for i in range(4):
+            button = self.NavigationButton(
+                icon_path=icon_paths[i],
+                border_radius=border_radiuses[i],
+            )
+            layout.addWidget(button)
 
-class SideBarButton(QPushButton):
-    def __init__(self, master: MainWindow, sidebar: Sidebar, parent: QWidget, num):
-        super().__init__("", parent)  # self.sidebarOptionFrame
+    class NavigationButton(QPushButton):
+        def __init__(self, icon_path: str, border_radius: list[int]):
+            super().__init__()
 
-        self.sidebar = sidebar
-        self.master = master
+            pixmap = QPixmap(icon_path)
+            self.setStyleSheet(
+                f"""
+                    QPushButton {{
+                        background-color: #dddddd; 
+                        border: 1px solid #b4b4b4; 
+                        border-top-left-radius :{border_radius[0]}px; 
+                        border-top-right-radius : {border_radius[1]}px; 
+                        border-bottom-left-radius : {border_radius[2]}px; 
+                        border-bottom-right-radius : {border_radius[3]}px;
+                    }}
+                    QPushButton:hover {{
+                        background-color: #dddddd;
+                    }}
+                """
+            )
 
-        match num:
-            case 0:
-                self.clicked.connect(self.sidebar.change_sidebar_to_1)
-                pixmap = QPixmap(convert_resource_path("resources\\image\\setting.png"))
-                self.setStyleSheet(
-                    """
-                        QPushButton {
-                            background-color: #dddddd; border: 1px solid #b4b4b4; border-top-left-radius :0px; border-top-right-radius : 8px; border-bottom-left-radius : 0px; border-bottom-right-radius : 0px
-                        }
-                        QPushButton:hover {
-                            background-color: #dddddd;
-                        }
-                    """
-                )
-                self.move(0, 0)
-            case 1:
-                self.clicked.connect(self.sidebar.change_sidebar_to_2)
-                pixmap = QPixmap(
-                    convert_resource_path("resources\\image\\usageSetting.png")
-                )
-                self.setStyleSheet(
-                    """
-                        QPushButton {
-                            background-color: #ffffff; border: 1px solid #b4b4b4; border-top-left-radius :0px; border-top-right-radius : 0px; border-bottom-left-radius : 0px; border-bottom-right-radius : 0px
-                        }
-                        QPushButton:hover {
-                            background-color: #dddddd;
-                        }
-                    """
-                )
-                self.move(0, 34)
-            case 2:
-                self.clicked.connect(self.sidebar.change_sidebar_to_3)
-                pixmap = QPixmap(
-                    convert_resource_path("resources\\image\\linkSetting.png")
-                )
-                self.setStyleSheet(
-                    """
-                        QPushButton {
-                            background-color: #ffffff; border: 1px solid #b4b4b4; border-top-left-radius :0px; border-top-right-radius : 0px; border-bottom-left-radius : 0px; border-bottom-right-radius : 0px
-                        }
-                        QPushButton:hover {
-                            background-color: #dddddd;
-                        }
-                    """
-                )
-                self.move(0, 68)
-            case 3:
-                self.clicked.connect(lambda: self.master.change_layout(1))
-                # button.clicked.connect(self.changeLayout)
-                pixmap = QPixmap(
-                    convert_resource_path("resources\\image\\simulationSidebar.png")
-                )
-                self.setStyleSheet(
-                    """
-                        QPushButton {
-                            background-color: #ffffff; border: 1px solid #b4b4b4; border-top-left-radius :0px; border-top-right-radius : 0px; border-bottom-left-radius : 0px; border-bottom-right-radius : 8px
-                        }
-                        QPushButton:hover {
-                            background-color: #dddddd;
-                        }
-                    """
-                )
-                self.move(0, 102)
-
-            case _:
-                return
-
-        self.setIcon(QIcon(pixmap))
-        self.setIconSize(QSize(32, 32))
-        self.setFixedSize(34, 34)
+            self.setIcon(QIcon(pixmap))
+            self.setIconSize(QSize(32, 32))
 
 
 class Title(QLabel):
