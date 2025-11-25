@@ -90,54 +90,6 @@ class Sidebar(QFrame):
 
         self.setLayout(layout)
 
-    ## 링크스킬 키 설정
-    def setLinkSkillKey(self, data, num):
-        if num == 0:
-            data["keyType"] = "off"
-            self.reload_sidebar4(data)
-        else:
-            self.master.get_popup_manager().activatePopup("settingLinkSkillKey")
-            self.master.get_popup_manager().makeKeyboardPopup(("LinkSkill", data))
-
-    ## 링크스킬 자동으로 설정
-    def setLinkSkillToAuto(self, data):
-        self.master.get_popup_manager().close_popup()
-        if data["useType"] == "auto":
-            return
-
-        num = data["num"]
-
-        for i in data["skills"]:
-            if not (i["name"] in self.shared_data.equipped_skills):
-                self.master.get_popup_manager().make_notice_popup("skillNotSelected")
-                return
-
-        # 사용여부는 연계스킬에 적용되지 않음
-        # for i in data[2]:
-        #     if not self.useSkill[i[0]]:
-        #         self.makeNoticePopup("skillNotUsing")
-        #         return
-        if len(self.shared_data.link_skills) != 0:
-            prevData = copy.deepcopy(self.shared_data.link_skills[num])
-            self.shared_data.link_skills[num] = copy.deepcopy(data)
-            self.shared_data.link_skills[num].pop("num")
-            autoSkillList = []
-            for i in self.shared_data.link_skills:
-                if i["useType"] == "auto":
-                    for j in range(len(i["skills"])):
-                        autoSkillList.append(i["skills"][j]["name"])
-            self.shared_data.link_skills[num] = prevData
-
-            for i in range(len(data["skills"])):
-                if data["skills"][i]["name"] in autoSkillList:
-                    self.master.get_popup_manager().make_notice_popup(
-                        "autoAlreadyExist"
-                    )
-                    return
-
-        data["useType"] = "auto"
-        self.reload_sidebar4(data)
-
     ## 링크스킬 수동으로 설정
     def setLinkSkillToManual(self, data):
         self.master.get_popup_manager().close_popup()
@@ -146,41 +98,6 @@ class Sidebar(QFrame):
 
         data["useType"] = "manual"
         self.reload_sidebar4(data)
-
-    ## 링크스킬 미리보기 생성
-    def makeLinkSkillPreview(self, data):
-        for i in self.linkSkillPreviewList:
-            i.deleteLater()
-
-        count = len(data["skills"])
-        if count <= 6:
-            x1 = round((288 - 48 * count) * 0.5)
-            for i, j in enumerate(data["skills"]):
-                skill = QPushButton("", self.linkSkillPreviewFrame)
-                skill.setStyleSheet("background-color: transparent;")
-                skill.setIcon(
-                    QIcon(get_skill_pixmap(self.shared_data, j["name"], j["count"]))
-                )
-                skill.setIconSize(QSize(48, 48))
-                skill.setFixedSize(48, 48)
-                skill.move(x1 + 48 * i, 0)
-                skill.show()
-
-                self.linkSkillPreviewList.append(skill)
-        else:
-            size = round(288 / count)
-            for i, j in enumerate(data["skills"]):
-                skill = QPushButton("", self.linkSkillPreviewFrame)
-                skill.setStyleSheet("background-color: transparent;")
-                skill.setIcon(
-                    QIcon(get_skill_pixmap(self.shared_data, j["name"], j["count"]))
-                )
-                skill.setIconSize(QSize(size, size))
-                skill.setFixedSize(size, size)
-                skill.move(size * i, round((48 - size) * 0.5))
-                skill.show()
-
-                self.linkSkillPreviewList.append(skill)
 
     ## 연계스킬 제거
     def removeLinkSkill(self, num):
@@ -1170,17 +1087,70 @@ class LinkSkillEditor(QFrame):
         if self.is_skill_exceeded(i):
             self.popup_manager.make_notice_popup("exceedMaxLinkSkill")
 
-    def is_skill_exceeded(self, i: int) -> bool:
+    def on_key_btn_clicked(self, num: int):
+        """연계스킬 단축키 설정"""
+
+        # 단축키 설정 해제
+        if num == 0:
+            self.data["keyType"] = "off"
+            # reload
+
+        # 단축키 설정
+        else:
+            self.popup_manager.activatePopup("settingLinkSkillKey")
+            self.popup_manager.makeKeyboardPopup(("LinkSkill", self.data))
+
+    def setLinkSkillToAuto(self, data):
+        """연계스킬을 자동 사용으로 설정"""
+
+        self.popup_manager.close_popup()
+        if data["useType"] == "auto":
+            return
+
+        num = data["num"]
+
+        for i in data["skills"]:
+            if not (i["name"] in self.shared_data.equipped_skills):
+                self.master.get_popup_manager().make_notice_popup("skillNotSelected")
+                return
+
+        # 사용여부는 연계스킬에 적용되지 않음
+        # for i in data[2]:
+        #     if not self.useSkill[i[0]]:
+        #         self.makeNoticePopup("skillNotUsing")
+        #         return
+        if len(self.shared_data.link_skills) != 0:
+            prevData = copy.deepcopy(self.shared_data.link_skills[num])
+            self.shared_data.link_skills[num] = copy.deepcopy(data)
+            self.shared_data.link_skills[num].pop("num")
+            autoSkillList = []
+            for i in self.shared_data.link_skills:
+                if i["useType"] == "auto":
+                    for j in range(len(i["skills"])):
+                        autoSkillList.append(i["skills"][j]["name"])
+            self.shared_data.link_skills[num] = prevData
+
+            for i in range(len(data["skills"])):
+                if data["skills"][i]["name"] in autoSkillList:
+                    self.master.get_popup_manager().make_notice_popup(
+                        "autoAlreadyExist"
+                    )
+                    return
+
+        data["useType"] = "auto"
+        self.reload_sidebar4(data)
+
+    def is_skill_exceeded(self, skill_name: str) -> bool:
         """연계스킬에서 특정 스킬의 최대 사용 횟수를 초과하는지 확인"""
 
-        max_combo: int = get_skill_details(
-            self.shared_data, get_available_skills(self.shared_data)[i]
-        )["max_combo_count"]
+        max_combo: int = get_skill_details(self.shared_data, skill_name)[
+            "max_combo_count"
+        ]
 
         for skill in self.data["skills"]:
             name = skill["name"]
             count = skill["count"]
-            if get_available_skills(self.shared_data)[i] == name:
+            if skill_name == name:
                 max_combo -= count
 
         return max_combo < 0
