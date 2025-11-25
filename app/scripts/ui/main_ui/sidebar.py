@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 from collections.abc import Callable
 from functools import partial
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, LiteralString
 
 from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtGui import QIcon, QPixmap
@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from app.scripts.main_window import MainWindow
     from app.scripts.popup import PopupManager
     from app.scripts.shared_data import SharedData
+    from app.scripts.ui.main_ui.main_ui import MainUI
 
 
 class Sidebar(QFrame):
@@ -89,59 +90,6 @@ class Sidebar(QFrame):
         layout.setSpacing(0)
 
         self.setLayout(layout)
-
-    ## 링크스킬 수동으로 설정
-    def setLinkSkillToManual(self, data):
-        self.master.get_popup_manager().close_popup()
-        if data["useType"] == "manual":
-            return
-
-        data["useType"] = "manual"
-        self.reload_sidebar4(data)
-
-    ## 연계스킬 제거
-    def removeLinkSkill(self, num):
-        self.master.get_popup_manager().close_popup()
-        del self.shared_data.link_skills[num]
-        self.delete_sidebar_3()
-        self.shared_data.sidebar_type = -1
-        self.change_sidebar_to_3()
-        save_data(self.shared_data)
-
-    ## 연계스킬 설정
-    def editLinkSkill(self, num):
-        self.master.get_popup_manager().close_popup()
-        self.master.get_main_ui().cancel_skill_selection()
-
-        data = copy.deepcopy(self.shared_data.link_skills[num])
-        data["num"] = num
-        self.delete_sidebar_3()
-        self.shared_data.sidebar_type = -1
-        self.change_sidebar_to_4(data)
-
-    ## 새 연계스킬 생성
-    def makeNewLinkSkill(self):
-        def findKey():
-            for char in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
-                if not is_key_used(self.shared_data, char):
-                    return char
-            return None
-
-        self.master.get_popup_manager().close_popup()
-        self.master.get_main_ui().cancel_skill_selection()
-
-        data = {
-            "useType": "manual",
-            "keyType": "off",
-            "key": findKey(),
-            "skills": [
-                {"name": get_available_skills(self.shared_data)[0], "count": 1},
-            ],
-            "num": -1,
-        }
-        self.delete_sidebar_3()
-        self.shared_data.sidebar_type = -1
-        self.change_sidebar_to_4(data)
 
     ## 스킬 사용설정 -> 사용 여부 클릭
     def onSkillUsagesClick(self, num):
@@ -864,10 +812,17 @@ class SkillSettings(QFrame):
 class LinkSkillSettings(QFrame):
     """사이드바 타입 3 - 연계설정 스킬 목록"""
 
-    def __init__(self, shared_data: SharedData):
+    def __init__(
+        self,
+        shared_data: SharedData,
+        popup_manager: PopupManager,
+        cancel_skill_selection: Callable,
+    ):
         super().__init__()
 
         self.shared_data: SharedData = shared_data
+        self.popup_manager: PopupManager = popup_manager
+        self.cancel_skill_selection: Callable = cancel_skill_selection
 
         layout = QVBoxLayout()
         self.setLayout(layout)
@@ -876,13 +831,67 @@ class LinkSkillSettings(QFrame):
         layout.addWidget(self.title)
 
         self.create_link_skill_btn = QPushButton("새 연계스킬 만들기")
-        self.create_link_skill_btn.clicked.connect(self.makeNewLinkSkill)
+        self.create_link_skill_btn.clicked.connect(self.create_new)
         self.create_link_skill_btn.setFont(CustomFont(16))
         layout.addWidget(self.create_link_skill_btn)
 
         for i, data in enumerate(self.shared_data.link_skills):
             link_skill = self.LinkSkill(self.shared_data, data, i)
             layout.addWidget(link_skill)
+
+    def create_new(self):
+        """새 연계스킬 만들기"""
+
+        def get_key() -> LiteralString | None:
+            """사용되지 않는 단축키 반환"""
+
+            for char in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+                if not is_key_used(self.shared_data, char):
+                    return char
+            return None
+
+        self.popup_manager.close_popup()
+
+        # 스킬 장착 선택 중이었으면 취소
+        self.cancel_skill_selection()
+
+        # 새 연계스킬 데이터 생성
+        data = {
+            "useType": "manual",
+            "keyType": "off",
+            "key": get_key(),
+            "skills": [
+                {"name": get_available_skills(self.shared_data)[0], "count": 1},
+            ],
+            "num": -1,
+        }
+
+        # 연계스킬 편집 레이아웃으로 변경
+
+    def edit(self, num: int):
+        """연계스킬 편집"""
+
+        self.popup_manager.close_popup()
+
+        # 스킬 장착 선택 중이었으면 취소
+        self.cancel_skill_selection()
+
+        # 연계스킬 데이터 복사
+        data = copy.deepcopy(self.shared_data.link_skills[num])
+        data["num"] = num
+
+        # 연계스킬 편집 레이아웃으로 변경
+
+    def remove(self, num: int):
+        """연계스킬 제거"""
+
+        self.popup_manager.close_popup()
+
+        # 연계스킬 제거
+        del self.shared_data.link_skills[num]
+
+        # 데이터 저장
+        save_data(self.shared_data)
 
     class LinkSkill(QFrame):
         def __init__(self, shared_data: SharedData, data, idx: int):
@@ -945,7 +954,6 @@ class LinkSkillEditor(QFrame):
     """사이드바 타입 4 - 연계설정 편집"""
 
     # todo: 링크스킬 데이터를 클래스로 관리하도록 수정
-
     def __init__(self, shared_data: SharedData, popup_manager: PopupManager):
         super().__init__()
 
@@ -964,8 +972,8 @@ class LinkSkillEditor(QFrame):
             btn0_text="자동",
             btn1_text="수동",
             is_btn0_enabled=True,
-            func0=self.setLinkSkillToAuto,
-            func1=self.setLinkSkillToManual,
+            func0=self.set_auto,
+            func1=self.set_manual,
         )
         layout.addWidget(type_setting)
 
@@ -975,10 +983,10 @@ class LinkSkillEditor(QFrame):
                 "매크로가 실행 중이지 않을 때 해당 연계스킬을 작동시킬 단축키입니다."
             ),
             btn0_text="설정안함",
-            btn1_text="설정하기",
+            btn1_text="",
             is_btn0_enabled=True,  # data["keyType"] == "off"
-            func0=self.setLinkSkillKeyToOff,
-            func1=self.setLinkSkillKeyToOn,
+            func0=self.clear_key,
+            func1=self.on_key_btn_clicked,
         )
         layout.addWidget(key_setting)
 
@@ -1017,6 +1025,73 @@ class LinkSkillEditor(QFrame):
 
         self.data = {}
 
+    def set_auto(self):
+        """연계스킬을 자동 사용으로 설정"""
+
+        self.popup_manager.close_popup()
+
+        # 이미 자동이면 무시
+        if self.data["useType"] == "auto":
+            return
+
+        # 모든 스킬이 장착되어 있는지 확인
+        if not all(
+            i["name"] in self.shared_data.equipped_skills for i in self.data["skills"]
+        ):
+            self.popup_manager.make_notice_popup("skillNotSelected")
+            return
+
+        # 지금 수정 중인 연계스킬의 인덱스
+        num: int = self.data["num"]
+
+        # 연계스킬을 수정 중이거나
+        # 연계스킬이 1개 이상 존재하는 경우
+        if self.shared_data.link_skills:
+            # 모든 연계 스킬 중 자동으로 사용하는 스킬 목록
+            auto_skills = []
+            for i, link_skill in enumerate(self.shared_data.link_skills):
+                # 현재 수정 중인 스킬은 제외
+                if i == num:
+                    continue
+
+                if link_skill["useType"] == "auto":
+                    for j in link_skill["skills"]:
+                        # 자동 연계스킬에서 사용하는 스킬 이름 추가
+                        auto_skills.append(j["name"])
+
+            # 자동 연계스킬에 이미 사용 중인 스킬이 있는지 확인
+            for i in self.data["skills"]:
+                # 이미 사용 중이라면 알림 팝업 생성 후 종료
+                if i["name"] in auto_skills:
+                    self.popup_manager.make_notice_popup("autoAlreadyExist")
+                    return
+
+        # 자동으로 변경
+        self.data["useType"] = "auto"
+
+    def set_manual(self):
+        """연계스킬을 수동 사용으로 설정"""
+
+        self.popup_manager.close_popup()
+
+        # 이미 수동이면 무시
+        if self.data["useType"] == "manual":
+            return
+
+        # 수동으로 변경
+        self.data["useType"] = "manual"
+
+    def clear_key(self):
+        """단축키 설정 해제"""
+
+        self.data["keyType"] = "off"
+
+    def on_key_btn_clicked(self):
+        """연계스킬 단축키 설정 버튼 클릭 시"""
+
+        self.popup_manager.activatePopup("settingLinkSkillKey")
+        self.popup_manager.makeKeyboardPopup(("LinkSkill", self.data))
+
     def change_skill(self, i: int, skill_name: str):
         """i번째 스킬을 skill_name으로 변경"""
         # data 관리 클래스로 이동해도 좋을듯
@@ -1028,12 +1103,29 @@ class LinkSkillEditor(QFrame):
             return
 
         # 스킬명 설정, 사용횟수 초기화
-        # data 클래스에서 값이 변경되면 자동으로 UI에 반영되도록 설정
+        # todo: data 클래스에서 값이 변경되면 자동으로 UI에 반영되도록 변경하기
         self.data["skills"][i]["name"] = skill_name
         self.data["skills"][i]["count"] = 1
+
+        # 수동 사용으로 변경
         self.data["useType"] = "manual"
 
-        if self.is_skill_exceeded(self.data, i):
+        if self.is_skill_exceeded(skill_name):
+            self.popup_manager.make_notice_popup("exceedMaxLinkSkill")
+
+    def change_skill_count(self, i: int, count: int):
+        """스킬 사용 횟수 변경"""
+
+        self.popup_manager.close_popup()
+
+        # 사용 횟수 변경
+        self.data["skills"][i]["count"] = count
+
+        # 수동 사용으로 변경
+        self.data["useType"] = "manual"
+
+        # 최대 사용 횟수 초과 시 알림 팝업 생성
+        if self.is_skill_exceeded(self.data["skills"][i]["name"]):
             self.popup_manager.make_notice_popup("exceedMaxLinkSkill")
 
     def remove_skill(self, i: int):
@@ -1041,10 +1133,37 @@ class LinkSkillEditor(QFrame):
 
         self.popup_manager.close_popup()
 
+        # 스킬 제거
         del self.data["skills"][i]
+
+        # 수동 사용으로 변경
         self.data["useType"] = "manual"
 
+    def add_skill(self):
+        """스킬 추가"""
+
+        self.popup_manager.close_popup()
+
+        # 스킬 추가
+        name: str = get_available_skills(self.shared_data)[0]
+        self.data["skills"].append({"name": name, "count": 1})
+
+        # 수동 사용으로 변경
+        self.data["useType"] = "manual"
+
+        # 최대 사용 횟수 초과 시 알림 팝업 생성
+        if self.is_skill_exceeded(name):
+            self.popup_manager.make_notice_popup("exceedMaxLinkSkill")
+
+    def cancel(self):
+        """편집 취소"""
+
+        self.popup_manager.close_popup()
+        # 사이드바 연계설정 목록으로 변경
+
     def save(self):
+        """편집 저장"""
+
         self.popup_manager.close_popup()
 
         # 수정하던 연계스킬의 인덱스
@@ -1061,99 +1180,25 @@ class LinkSkillEditor(QFrame):
         save_data(self.shared_data)
         # 사이드바 연계설정 목록으로 변경
 
-    def cancel(self):
-        self.popup_manager.close_popup()
-        # 사이드바 연계설정 목록으로 변경
-
-    def add_skill(self):
-        self.popup_manager.close_popup()
-
-        self.data["skills"].append(
-            {"name": get_available_skills(self.shared_data)[0], "count": 1}
-        )
-        self.data["useType"] = "manual"
-
-        if self.is_skill_exceeded(self.data, 0):
-            self.popup_manager.make_notice_popup("exceedMaxLinkSkill")
-
-    def change_skill_count(self, i: int, count: int):
-        """스킬 사용 횟수 변경"""
-
-        self.popup_manager.close_popup()
-
-        self.data["skills"][i]["count"] = count
-        self.data["useType"] = "manual"
-
-        if self.is_skill_exceeded(i):
-            self.popup_manager.make_notice_popup("exceedMaxLinkSkill")
-
-    def on_key_btn_clicked(self, num: int):
-        """연계스킬 단축키 설정"""
-
-        # 단축키 설정 해제
-        if num == 0:
-            self.data["keyType"] = "off"
-            # reload
-
-        # 단축키 설정
-        else:
-            self.popup_manager.activatePopup("settingLinkSkillKey")
-            self.popup_manager.makeKeyboardPopup(("LinkSkill", self.data))
-
-    def setLinkSkillToAuto(self, data):
-        """연계스킬을 자동 사용으로 설정"""
-
-        self.popup_manager.close_popup()
-        if data["useType"] == "auto":
-            return
-
-        num = data["num"]
-
-        for i in data["skills"]:
-            if not (i["name"] in self.shared_data.equipped_skills):
-                self.master.get_popup_manager().make_notice_popup("skillNotSelected")
-                return
-
-        # 사용여부는 연계스킬에 적용되지 않음
-        # for i in data[2]:
-        #     if not self.useSkill[i[0]]:
-        #         self.makeNoticePopup("skillNotUsing")
-        #         return
-        if len(self.shared_data.link_skills) != 0:
-            prevData = copy.deepcopy(self.shared_data.link_skills[num])
-            self.shared_data.link_skills[num] = copy.deepcopy(data)
-            self.shared_data.link_skills[num].pop("num")
-            autoSkillList = []
-            for i in self.shared_data.link_skills:
-                if i["useType"] == "auto":
-                    for j in range(len(i["skills"])):
-                        autoSkillList.append(i["skills"][j]["name"])
-            self.shared_data.link_skills[num] = prevData
-
-            for i in range(len(data["skills"])):
-                if data["skills"][i]["name"] in autoSkillList:
-                    self.master.get_popup_manager().make_notice_popup(
-                        "autoAlreadyExist"
-                    )
-                    return
-
-        data["useType"] = "auto"
-        self.reload_sidebar4(data)
-
     def is_skill_exceeded(self, skill_name: str) -> bool:
         """연계스킬에서 특정 스킬의 최대 사용 횟수를 초과하는지 확인"""
 
+        # 스킬 사용 가능 최대 횟수
         max_combo: int = get_skill_details(self.shared_data, skill_name)[
             "max_combo_count"
         ]
 
+        combo_count = 0
+        # 연계스킬에서 해당 스킬의 사용 횟수 합산
         for skill in self.data["skills"]:
-            name = skill["name"]
-            count = skill["count"]
-            if skill_name == name:
-                max_combo -= count
+            name: str = skill["name"]
+            count: int = skill["count"]
 
-        return max_combo < 0
+            if skill_name == name:
+                combo_count += count
+
+        # 최대 사용 횟수 초과 여부 반환
+        return combo_count > max_combo
 
     class SkillItem(QFrame):
         def __init__(
