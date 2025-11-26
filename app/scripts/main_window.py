@@ -120,7 +120,9 @@ class MainWindow(QWidget):
         elif e.key() == Qt.Key.Key_Return:
             # 탭 제거 팝업창이 활성화되어 있을 때 -> 탭 제거 실행
             if self.shared_data.is_tab_remove_popup_activated:
-                self.main_ui.on_remove_tab_popup_clicked(self.shared_data.recent_preset)
+                self.main_ui.on_remove_tab_popup_clicked(
+                    self.shared_data.recent_preset, True
+                )
 
             # 일반 팝업창이 활성화되어 있을 때 -> 팝업창 클릭
             elif self.shared_data.active_popup == "settingDelay":
@@ -219,12 +221,10 @@ class MainWindow(QWidget):
         # 하단 제작자 라벨 설정
         self.creator_label: QPushButton = CreatorLabel(self)
 
-        self.sidebar.change_sidebar_to_1()
-
         page1_layout = QHBoxLayout()
-        # page1_layout.addWidget(self.sidebar)
+        page1_layout.addWidget(self.sidebar)
         page1_layout.addWidget(self.main_ui, stretch=1)
-        page1_layout.setContentsMargins(50, 50, 50, 50)
+        page1_layout.setContentsMargins(0, 0, 0, 0)
         page1_layout.setSpacing(0)
         self.page1.setLayout(page1_layout)
 
@@ -251,8 +251,9 @@ class MainWindow(QWidget):
         스킬 미리보기 표시
         """
 
-        self.preview_timer.singleShot(100, self.tick)
-        self.main_ui.show_preview_skills()
+        # self.preview_timer.singleShot(100, self.tick)
+        # self.main_ui.show_preview_skills()
+        pass
 
     ## 마우스 클릭하면 실행
     def mousePressEvent(self, a0: Any) -> None:

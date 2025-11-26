@@ -3,7 +3,7 @@ from __future__ import annotations
 import copy
 from collections.abc import Callable
 from functools import partial
-from typing import TYPE_CHECKING, LiteralString
+from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QSize, Qt
 from PyQt6.QtGui import QIcon, QPixmap
@@ -16,13 +16,11 @@ from PyQt6.QtWidgets import (
     QScrollArea,
     QStackedWidget,
     QVBoxLayout,
-    QWidget,
 )
 
 from app.scripts.custom_classes import CustomFont, SkillImage
 from app.scripts.data_manager import save_data
 from app.scripts.misc import (
-    adjust_font_size,
     convert_resource_path,
     get_available_skills,
     get_skill_details,
@@ -35,7 +33,6 @@ if TYPE_CHECKING:
     from app.scripts.main_window import MainWindow
     from app.scripts.popup import PopupManager
     from app.scripts.shared_data import SharedData
-    from app.scripts.ui.main_ui.main_ui import MainUI
 
 
 class Sidebar(QFrame):
@@ -50,11 +47,12 @@ class Sidebar(QFrame):
         self.shared_data: SharedData = shared_data
 
         self.ui_var = UI_Variable()
+        self.popup_manager: PopupManager = self.master.get_popup_manager()
 
-        general_settings = GeneralSettings(self.shared_data)
-        skill_settings = SkillSettings(self.shared_data)
-        link_skill_settings = LinkSkillSettings(self.shared_data)
-        link_skill_editor = LinkSkillEditor(self.shared_data)
+        general_settings = GeneralSettings(self.shared_data, self.popup_manager)
+        skill_settings = SkillSettings(self.shared_data, self.popup_manager)
+        link_skill_settings = LinkSkillSettings(self.shared_data, self.popup_manager)
+        link_skill_editor = LinkSkillEditor(self.shared_data, self.popup_manager)
 
         self.page_navigator = QStackedWidget()
         self.page_navigator.addWidget(general_settings)
@@ -91,442 +89,15 @@ class Sidebar(QFrame):
 
         self.setLayout(layout)
 
-    ## 스킬 사용설정 -> 사용 여부 클릭
-    def onSkillUsagesClick(self, num):
-        skill_name = get_available_skills(self.shared_data)[num]
-
-        self.master.get_popup_manager().close_popup()
-        if self.shared_data.is_use_skill[skill_name]:
-            pixmap = QPixmap(convert_resource_path("resources\\image\\checkFalse.png"))
-            self.settingSkillUsages[num].setIcon(QIcon(pixmap))
-            self.shared_data.is_use_skill[skill_name] = False
-
-            # for i, j in enumerate(self.shared_data.linkSkillList):
-            #     for k in j[2]:
-            #         if k[0] == num:
-            #             self.shared_data.linkSkillList[i][0] = 1
-        else:
-            pixmap = QPixmap(convert_resource_path("resources\\image\\checkTrue.png"))
-            self.settingSkillUsages[num].setIcon(QIcon(pixmap))
-            self.shared_data.is_use_skill[skill_name] = True
-        save_data(self.shared_data)
-
-    ## 스킬 사용설정 -> 콤보 여부 클릭
-    def onSkillUseSoleClick(self, num):
-        skill_name = get_available_skills(self.shared_data)[num]
-
-        self.master.get_popup_manager().close_popup()
-
-        if self.shared_data.is_use_sole[skill_name]:
-            pixmap = QPixmap(convert_resource_path("resources\\image\\checkFalse.png"))
-            self.settingSkillSingle[num].setIcon(QIcon(pixmap))
-            self.shared_data.is_use_sole[skill_name] = False
-        else:
-            pixmap = QPixmap(convert_resource_path("resources\\image\\checkTrue.png"))
-            self.settingSkillSingle[num].setIcon(QIcon(pixmap))
-            self.shared_data.is_use_sole[skill_name] = True
-
-        save_data(self.shared_data)
-
-    ## 스킬 사용설정 -> 사용 순서 클릭
-    def onSkillSequencesClick(self, num):
-        self.master.get_popup_manager().close_popup()
-
-        skill_name = get_available_skills(self.shared_data)[num]
-
-        if skill_name not in self.shared_data.equipped_skills:
-            return
-
-        if self.shared_data.skill_priority[skill_name] == 0:
-            minValue = max(self.shared_data.skill_priority.values()) + 1
-            self.shared_data.skill_priority[skill_name] = minValue
-            self.skill_sequence[skill_name].setText(str(minValue))
-        else:
-            self.shared_data.skill_priority[skill_name] = 0
-            self.skill_sequence[skill_name].setText("-")
-
-            for i in range(1, 7):
-                if i not in self.shared_data.skill_priority.values():
-                    for j, k in self.shared_data.skill_priority.items():
-                        if k > i:
-                            self.shared_data.skill_priority[j] -= 1
-                            self.skill_sequence[j].setText(str(k - 1))
-
-        save_data(self.shared_data)
-
-    ## 사이드바 타입4 새로고침
-    def reload_sidebar4(self, data):
-        self.delete_sidebar_4()
-        self.shared_data.sidebar_type = -1
-        self.change_sidebar_to_4(data)
-
-    ## 사이드바 타입 - 설정 제거
-    def delete_sidebar_1(self):
-        self.labelServerJob.deleteLater()
-        self.buttonServerList.deleteLater()
-        self.buttonJobList.deleteLater()
-        self.labelDelay.deleteLater()
-        self.buttonDefaultDelay.deleteLater()
-        self.buttonInputDelay.deleteLater()
-        self.labelCooltime.deleteLater()
-        self.buttonDefaultCooltime.deleteLater()
-        self.buttonInputCooltime.deleteLater()
-        self.labelStartKey.deleteLater()
-        self.buttonDefaultStartKey.deleteLater()
-        self.buttonInputStartKey.deleteLater()
-        self.labelMouse.deleteLater()
-        self.button1stMouseType.deleteLater()
-        self.button2ndMouseType.deleteLater()
-        for i in self.settingLines:
-            i.deleteLater()
-
-        self.option_button0.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #ffffff; border: 1px solid #b4b4b4; border-top-left-radius :0px; border-top-right-radius : 8px; border-bottom-left-radius : 0px; border-bottom-right-radius : 0px
-            }
-            QPushButton:hover {
-                background-color: #dddddd;
-            }
-        """
-        )
-
-    ## 사이드바 타입 - 사용설정 제거
-    def delete_sidebar_2(self):
-        for i in self.skillSettingTexts:
-            i.deleteLater()
-        for i in range(8):
-            self.settingLines[i].deleteLater()
-            self.skill_icons[get_available_skills(self.shared_data)[i]].deleteLater()
-            self.settingSkillUsages[i].deleteLater()
-            self.settingSkillSingle[i].deleteLater()
-            self.settingSkillComboCounts[i].deleteLater()
-            self.skill_sequence[get_available_skills(self.shared_data)[i]].deleteLater()
-
-        self.option_button1.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #ffffff; border: 1px solid #b4b4b4; border-top-left-radius :0px; border-top-right-radius : 0px; border-bottom-left-radius : 0px; border-bottom-right-radius : 0px
-            }
-            QPushButton:hover {
-                background-color: #dddddd;
-            }
-        """
-        )
-
-    ## 사이드바 타입 - 연계설정 제거
-    def delete_sidebar_3(self):
-        self.newLinkSkill.deleteLater()
-        for i in self.settingLines:
-            i.deleteLater()
-        for i in self.settingSkillPreview:
-            i.deleteLater()
-        for i in self.settingSkillBackground:
-            i.deleteLater()
-        for i in self.settingSkillKey:
-            i.deleteLater()
-        for i in self.settingSkillRemove:
-            i.deleteLater()
-        for i in self.settingAMDP:
-            i.deleteLater()
-
-        self.option_button2.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #ffffff; border: 1px solid #b4b4b4; border-top-left-radius :0px; border-top-right-radius : 0px; border-bottom-left-radius : 0px; border-bottom-right-radius : 8px
-            }
-            QPushButton:hover {
-                background-color: #dddddd;
-            }
-        """
-        )
-
-    ## 사이드바 타입 - 연계설정 제거
-    def delete_sidebar_4(self):
-        self.linkSkillPreviewFrame.deleteLater()
-        self.labelLinkType.deleteLater()
-        self.ButtonLinkType0.deleteLater()
-        self.ButtonLinkType1.deleteLater()
-        self.labelLinkKey.deleteLater()
-        self.ButtonLinkKey0.deleteLater()
-        self.ButtonLinkKey1.deleteLater()
-        self.linkSkillLineA.deleteLater()
-        self.linkSkillPlus.deleteLater()
-        self.linkSkillCancelButton.deleteLater()
-        self.linkSkillSaveButton.deleteLater()
-        for i in self.linkSkillPreviewList:
-            i.deleteLater()
-        for i in self.linkSkillImageList:
-            i.deleteLater()
-        for i in self.linkSkillCount:
-            i.deleteLater()
-        for i in self.linkSkillLineB:
-            i.deleteLater()
-        for i in self.linkSkillRemove:
-            i.deleteLater()
-
-        self.option_button2.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #ffffff; border: 1px solid #b4b4b4; border-top-left-radius :0px; border-top-right-radius : 0px; border-bottom-left-radius : 0px; border-bottom-right-radius : 8px
-            }
-            QPushButton:hover {
-                background-color: #dddddd;
-            }
-        """
-        )
-
-    ## 사이드바에 사용되는 버튼 리턴
-    def getSettingButton(self, text, x, y, cmd) -> QPushButton:
-        button = QPushButton(text, self.frame)
-        button.clicked.connect(cmd)
-        button.setFont(CustomFont(12))
-        button.setFixedSize(100, 30)
-        button.move(x, y)
-        button.show()
-        return button
-
-    ## 사이드바에 사용되는 체크버튼 리턴
-    def getSettingCheck(self, text, x, y, cmd, disable=False) -> QPushButton:
-        button = QPushButton(text, self.frame)
-        button.clicked.connect(cmd)
-        button.setFont(CustomFont(12))
-        rgb = 153 if disable else 0
-        button.setStyleSheet(f"QPushButton {{color: rgb({rgb}, {rgb}, {rgb});}}")
-        button.setFixedSize(100, 30)
-        button.move(x, y)
-        button.show()
-        return button
-
-    ## 사이드바에 사용되는 라벨 리턴
-    def getSettingName(self, text, x, y) -> QLabel:
-        label = QLabel(text, self.frame)
-        label.setFont(CustomFont(16))
-        label.setStyleSheet("QLabel { border: 0px solid black; border-radius: 10px; }")
-        label.setFixedSize(180, 40)
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        label.move(x, y)
-        label.show()
-        return label
-
-    ## 사이드바 설정 - 서버 클릭
-    def onServerClick(self):
-        if self.shared_data.is_activated:
-            self.master.get_popup_manager().close_popup()
-            self.master.get_popup_manager().make_notice_popup("MacroIsRunning")
-            return
-
-        if self.shared_data.active_popup == "settingServer":
-            self.master.get_popup_manager().close_popup()
-        else:
-            self.master.get_popup_manager().make_server_popup()
-
-    ## 사이드바 설정 - 직업 클릭
-    def onJobClick(self):
-        if self.shared_data.is_activated:
-            self.master.get_popup_manager().close_popup()
-            self.master.get_popup_manager().make_notice_popup("MacroIsRunning")
-            return
-
-        if self.shared_data.active_popup == "settingJob":
-            self.master.get_popup_manager().close_popup()
-        else:
-            self.master.get_popup_manager().make_job_popup()
-
-    ## 사이드바 설정 - 기본 딜레이 클릭
-    def onDefaultDelayClick(self):
-        if self.shared_data.is_activated:
-            self.master.get_popup_manager().close_popup()
-            self.master.get_popup_manager().make_notice_popup("MacroIsRunning")
-            return
-
-        self.master.get_popup_manager().close_popup()
-
-        if self.shared_data.delay_type == 0:
-            return
-
-        self.shared_data.delay_type = 0
-        self.shared_data.delay = 150
-
-        self.buttonDefaultDelay.setStyleSheet("QPushButton { color: #000000; }")
-        self.buttonInputDelay.setStyleSheet("QPushButton { color: #999999; }")
-
-        save_data(self.shared_data)
-
-    ## 사이드바 설정 -  유저 딜레이 클릭
-    def onInputDelayClick(self):
-        if self.shared_data.is_activated:
-            self.master.get_popup_manager().close_popup()
-            self.master.get_popup_manager().make_notice_popup("MacroIsRunning")
-            return
-
-        if self.shared_data.active_popup == "settingDelay":
-            self.master.get_popup_manager().close_popup()
-            return
-        self.master.get_popup_manager().close_popup()
-
-        if self.shared_data.delay_type == 1:
-            self.master.get_popup_manager().activatePopup("settingDelay")
-
-            self.master.get_popup_manager().makePopupInput("delay")
-        else:
-            self.shared_data.delay_type = 1
-            self.shared_data.delay = self.shared_data.delay_input
-
-            self.buttonDefaultDelay.setStyleSheet("QPushButton { color: #999999; }")
-            self.buttonInputDelay.setStyleSheet("QPushButton { color: #000000; }")
-
-            save_data(self.shared_data)
-
-    ## 사이드바 설정 - 기본 쿨타임 감소 클릭
-    def onDefaultCooltimeClick(self):
-        if self.shared_data.is_activated:
-            self.master.get_popup_manager().close_popup()
-            self.master.get_popup_manager().make_notice_popup("MacroIsRunning")
-            return
-
-        self.master.get_popup_manager().close_popup()
-
-        if self.shared_data.cooltime_reduction_type == 0:
-            return
-
-        self.shared_data.cooltime_reduction_type = 0
-        self.shared_data.cooltime_reduction = 0
-
-        self.buttonDefaultCooltime.setStyleSheet("QPushButton { color: #000000; }")
-        self.buttonInputCooltime.setStyleSheet("QPushButton { color: #999999; }")
-
-        save_data(self.shared_data)
-
-    ## 사이드바 설정 - 유저 쿨타임 감소 클릭
-    def onInputCooltimeClick(self):
-        if self.shared_data.is_activated:
-            self.master.get_popup_manager().close_popup()
-            self.master.get_popup_manager().make_notice_popup("MacroIsRunning")
-            return
-
-        if self.shared_data.active_popup == "settingCooltime":
-            self.master.get_popup_manager().close_popup()
-            return
-        self.master.get_popup_manager().close_popup()
-
-        if self.shared_data.cooltime_reduction_type == 1:
-            self.master.get_popup_manager().activatePopup("settingCooltime")
-
-            self.master.get_popup_manager().makePopupInput("cooltime")
-        else:
-            self.shared_data.cooltime_reduction_type = 1
-            self.shared_data.cooltime_reduction = (
-                self.shared_data.cooltime_reduction_input
-            )
-
-            self.buttonDefaultCooltime.setStyleSheet("QPushButton { color: #999999; }")
-            self.buttonInputCooltime.setStyleSheet("QPushButton { color: #000000; }")
-
-            save_data(self.shared_data)
-
-    ## 사이드바 설정 - 기본 시작키 클릭
-    def onDefaultStartKeyClick(self):
-        if self.shared_data.is_activated:
-            self.master.get_popup_manager().close_popup()
-            self.master.get_popup_manager().make_notice_popup("MacroIsRunning")
-            return
-
-        self.master.get_popup_manager().close_popup()
-
-        if self.shared_data.start_key_type == 0:
-            return
-
-        if self.shared_data.start_key_input != "F9" and is_key_used(
-            self.shared_data, "F9"
-        ):
-            self.master.get_popup_manager().make_notice_popup("StartKeyChangeError")
-            return
-
-        self.shared_data.start_key_type = 0
-        self.shared_data.start_key = "F9"
-
-        self.buttonDefaultStartKey.setStyleSheet("QPushButton { color: #000000; }")
-        self.buttonInputStartKey.setStyleSheet("QPushButton { color: #999999; }")
-
-        save_data(self.shared_data)
-
-    ## 사이드바 설정 - 유저 시작키 클릭
-    def onInputStartKeyClick(self):
-        if self.shared_data.is_activated:
-            self.master.get_popup_manager().close_popup()
-            self.master.get_popup_manager().make_notice_popup("MacroIsRunning")
-            return
-
-        if self.shared_data.active_popup == "settingStartKey":
-            self.master.get_popup_manager().close_popup()
-            return
-        self.master.get_popup_manager().close_popup()
-
-        if self.shared_data.start_key_type == 1:
-            self.master.get_popup_manager().activatePopup("settingStartKey")
-
-            self.master.get_popup_manager().makeKeyboardPopup("StartKey")
-        else:
-            if is_key_used(self.shared_data, self.shared_data.start_key_input) and not (
-                self.shared_data.start_key_input == "F9"
-            ):
-                self.master.get_popup_manager().make_notice_popup("StartKeyChangeError")
-                return
-            self.shared_data.start_key_type = 1
-            self.shared_data.start_key = self.shared_data.start_key_input
-
-            self.buttonDefaultStartKey.setStyleSheet("QPushButton { color: #999999; }")
-            self.buttonInputStartKey.setStyleSheet("QPushButton { color: #000000; }")
-
-            save_data(self.shared_data)
-
-    ## 사이드바 설정 - 마우스설정1 클릭
-    def on1stMouseTypeClick(self):
-        if self.shared_data.is_activated:
-            self.master.get_popup_manager().close_popup()
-            self.master.get_popup_manager().make_notice_popup("MacroIsRunning")
-            return
-
-        self.master.get_popup_manager().close_popup()
-
-        if self.shared_data.mouse_click_type == 0:
-            return
-
-        self.shared_data.mouse_click_type = 0
-
-        self.button1stMouseType.setStyleSheet("QPushButton { color: #000000; }")
-        self.button2ndMouseType.setStyleSheet("QPushButton { color: #999999; }")
-
-        save_data(self.shared_data)
-
-    ## 사이드바 설정 - 마우스설정2 클릭
-    def on2ndMouseTypeClick(self):
-        if self.shared_data.is_activated:
-            self.master.get_popup_manager().close_popup()
-            self.master.get_popup_manager().make_notice_popup("MacroIsRunning")
-            return
-
-        self.master.get_popup_manager().close_popup()
-
-        if self.shared_data.mouse_click_type == 1:
-            return
-
-        self.shared_data.mouse_click_type = 1
-
-        self.button1stMouseType.setStyleSheet("QPushButton { color: #999999; }")
-        self.button2ndMouseType.setStyleSheet("QPushButton { color: #000000; }")
-
-        save_data(self.shared_data)
-
 
 class GeneralSettings(QFrame):
     """사이드바 타입 1 - 일반 설정"""
 
-    def __init__(self, shared_data: SharedData):
+    def __init__(self, shared_data: SharedData, popup_manager: PopupManager):
         super().__init__()
 
         self.shared_data: SharedData = shared_data
+        self.popup_manager: PopupManager = popup_manager
 
         self.title = Title("일반 설정")
 
@@ -538,8 +109,8 @@ class GeneralSettings(QFrame):
             btn0_enabled=True,
             btn1_text=self.shared_data.job_ID,
             btn1_enabled=True,
-            func0=self.onServerClick,
-            func1=self.onJobClick,
+            func0=self.on_servers_clicked,
+            func1=self.on_jobs_clicked,
         )
 
         # 딜레이
@@ -555,8 +126,8 @@ class GeneralSettings(QFrame):
             btn0_enabled=self.shared_data.delay_type == 0,
             btn1_text=str(self.shared_data.delay_input),
             btn1_enabled=self.shared_data.delay_type == 1,
-            func0=self.onDefaultDelayClick,
-            func1=self.onInputDelayClick,
+            func0=self.on_default_delay_clicked,
+            func1=self.on_user_delay_clicked,
         )
 
         # 쿨타임 감소
@@ -570,8 +141,8 @@ class GeneralSettings(QFrame):
             btn0_enabled=self.shared_data.cooltime_reduction_type == 0,
             btn1_text=str(self.shared_data.cooltime_reduction_input),
             btn1_enabled=self.shared_data.cooltime_reduction_type == 1,
-            func0=self.onDefaultCooltimeClick,
-            func1=self.onInputCooltimeClick,
+            func0=self.on_default_cooltime_clicked,
+            func1=self.on_user_cooltime_clicked,
         )
 
         # 시작키 설정
@@ -585,7 +156,7 @@ class GeneralSettings(QFrame):
             btn0_enabled=self.shared_data.start_key_type == 0,
             btn1_text=str(self.shared_data.start_key_input),
             btn1_enabled=self.shared_data.start_key_type == 1,
-            func0=self.onDefaultStartKeyClick,
+            func0=self.on_default_start_key_clicked,
             func1=self.onInputStartKeyClick,
         )
 
@@ -600,8 +171,8 @@ class GeneralSettings(QFrame):
             btn0_enabled=self.shared_data.mouse_click_type == 0,
             btn1_text="평타 포함",
             btn1_enabled=self.shared_data.mouse_click_type == 1,
-            func0=self.on1stMouseTypeClick,
-            func1=self.on2ndMouseTypeClick,
+            func0=self.on_mouse_type0_clicked,
+            func1=self.on_mouse_type1_clicked,
         )
 
         layout = QVBoxLayout()
@@ -615,6 +186,273 @@ class GeneralSettings(QFrame):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(10)
         self.setLayout(layout)
+
+    def on_servers_clicked(self):
+        """서버 목록 클릭시 실행"""
+
+        self.popup_manager.close_popup()
+
+        # 매크로 실행 중일 때는 무시
+        if self.shared_data.is_activated:
+            self.popup_manager.make_notice_popup("MacroIsRunning")
+            return
+
+        # 이미 서버 선택 팝업이 열려있다면 닫기
+        if self.shared_data.active_popup == "settingServer":
+            return
+
+        # 서버 선택 팝업 열기
+        self.popup_manager.make_server_popup()
+
+    def on_jobs_clicked(self):
+        """직업 목록 클릭시 실행"""
+
+        self.popup_manager.close_popup()
+
+        # 매크로 실행 중일 때는 무시
+        if self.shared_data.is_activated:
+            self.popup_manager.make_notice_popup("MacroIsRunning")
+            return
+
+        # 이미 직업 선택 팝업이 열려있다면 닫기
+        if self.shared_data.active_popup == "settingJob":
+            return
+
+        # 직업 선택 팝업 열기
+        self.popup_manager.make_job_popup()
+
+    def on_default_delay_clicked(self):
+        """기본 딜레이 클릭시 실행"""
+
+        self.popup_manager.close_popup()
+
+        # 매크로 실행 중일 때는 무시
+        if self.shared_data.is_activated:
+            self.popup_manager.make_notice_popup("MacroIsRunning")
+            return
+
+        # 이미 기본 딜레이라면 무시
+        if self.shared_data.delay_type == 0:
+            return
+
+        # 기본 딜레이로 변경
+        self.shared_data.delay_type = 0
+        self.shared_data.delay = self.shared_data.DEFAULT_DELAY
+
+        # 버튼 색상 변경
+        # self.buttonDefaultDelay.setStyleSheet("QPushButton { color: #000000; }")
+        # self.buttonInputDelay.setStyleSheet("QPushButton { color: #999999; }")
+
+        # 데이터 저장
+        save_data(self.shared_data)
+
+    def on_user_delay_clicked(self):
+        """유저 딜레이 클릭시 실행"""
+
+        self.popup_manager.close_popup()
+
+        # 매크로 실행 중일 때는 무시
+        if self.shared_data.is_activated:
+            self.popup_manager.make_notice_popup("MacroIsRunning")
+            return
+
+        # 이미 딜레이 입력 팝업이 열려있다면 무시
+        if self.shared_data.active_popup == "settingDelay":
+            return
+
+        # 이미 유저 딜레이라면 딜레이 입력 팝업 열기
+        if self.shared_data.delay_type == 1:
+            self.popup_manager.activatePopup("settingDelay")
+            self.popup_manager.makePopupInput("delay")
+
+            return
+
+        # 유저 딜레이로 변경
+        self.shared_data.delay_type = 1
+        self.shared_data.delay = self.shared_data.delay_input
+
+        # 버튼 색상 변경
+        # self.buttonDefaultDelay.setStyleSheet("QPushButton { color: #999999; }")
+        # self.buttonInputDelay.setStyleSheet("QPushButton { color: #000000; }")
+
+        # 데이터 저장
+        save_data(self.shared_data)
+
+    def on_default_cooltime_clicked(self):
+        """기본 쿨타임 감소 클릭시 실행"""
+
+        self.popup_manager.close_popup()
+
+        # 매크로 실행 중일 때는 무시
+        if self.shared_data.is_activated:
+            self.popup_manager.make_notice_popup("MacroIsRunning")
+            return
+
+        # 이미 기본 쿨타임 감소라면 무시
+        if self.shared_data.cooltime_reduction_type == 0:
+            return
+
+        # 기본 쿨타임 감소로 변경
+        self.shared_data.cooltime_reduction_type = 0
+        self.shared_data.cooltime_reduction = 0
+
+        # 버튼 색상 변경
+        # self.buttonDefaultCooltime.setStyleSheet("QPushButton { color: #000000; }")
+        # self.buttonInputCooltime.setStyleSheet("QPushButton { color: #999999; }")
+
+        # 데이터 저장
+        save_data(self.shared_data)
+
+    def on_user_cooltime_clicked(self):
+        """유저 쿨타임 감소 클릭시 실행"""
+
+        self.popup_manager.close_popup()
+
+        # 매크로 실행 중일 때는 무시
+        if self.shared_data.is_activated:
+            self.popup_manager.make_notice_popup("MacroIsRunning")
+            return
+
+        # 이미 쿨타임 감소 입력 팝업이 열려있다면 무시
+        if self.shared_data.active_popup == "settingCooltime":
+            return
+
+        # 이미 유저 쿨타임 감소라면 쿨타임 감소 입력 팝업 열기
+        if self.shared_data.cooltime_reduction_type == 1:
+            self.popup_manager.activatePopup("settingCooltime")
+            self.popup_manager.makePopupInput("cooltime")
+
+            return
+
+        # 유저 쿨타임 감소로 변경
+        self.shared_data.cooltime_reduction_type = 1
+        self.shared_data.cooltime_reduction = self.shared_data.cooltime_reduction_input
+
+        # 버튼 색상 변경
+        # self.buttonDefaultCooltime.setStyleSheet("QPushButton { color: #999999; }")
+        # self.buttonInputCooltime.setStyleSheet("QPushButton { color: #000000; }")
+
+        # 데이터 저장
+        save_data(self.shared_data)
+
+    def on_default_start_key_clicked(self):
+        """기본 시작키 클릭시 실행"""
+
+        self.popup_manager.close_popup()
+
+        # 매크로 실행 중일 때는 무시
+        if self.shared_data.is_activated:
+            self.popup_manager.make_notice_popup("MacroIsRunning")
+            return
+
+        # 이미 기본 시작키라면 무시
+        if self.shared_data.start_key_type == 0:
+            return
+
+        # 유저 시작키가 기본 시작키와 다르고
+        # 기본 시작키가 다른 용도로 사용 중이면 변경 불가
+        default_key: str = self.shared_data.DEFAULT_START_KEY
+        if self.shared_data.start_key_input != default_key and is_key_used(
+            self.shared_data, default_key
+        ):
+            self.popup_manager.make_notice_popup("StartKeyChangeError")
+            return
+
+        # 기본 시작키로 변경
+        self.shared_data.start_key_type = 0
+        self.shared_data.start_key = default_key
+
+        # 버튼 색상 변경
+        # self.buttonDefaultStartKey.setStyleSheet("QPushButton { color: #000000; }")
+        # self.buttonInputStartKey.setStyleSheet("QPushButton { color: #999999; }")
+
+        # 데이터 저장
+        save_data(self.shared_data)
+
+    def onInputStartKeyClick(self):
+        """유저 시작키 클릭시 실행"""
+
+        self.popup_manager.close_popup()
+
+        # 매크로 실행 중일 때는 무시
+        if self.shared_data.is_activated:
+            self.popup_manager.make_notice_popup("MacroIsRunning")
+            return
+
+        # 이미 시작키 입력 팝업이 열려있다면 무시
+        if self.shared_data.active_popup == "settingStartKey":
+            return
+
+        # 이미 유저 시작키라면 시작키 입력 팝업 열기
+        if self.shared_data.start_key_type == 1:
+            self.popup_manager.activatePopup("settingStartKey")
+            self.popup_manager.makeKeyboardPopup("StartKey")
+
+            return
+
+        # 유저 시작키가 사용 중이면 변경 불가
+        if is_key_used(self.shared_data, self.shared_data.start_key_input):
+            self.popup_manager.make_notice_popup("StartKeyChangeError")
+            return
+
+        # 유저 시작키로 변경
+        self.shared_data.start_key_type = 1
+        self.shared_data.start_key = self.shared_data.start_key_input
+
+        # 버튼 색상 변경
+        # self.buttonDefaultStartKey.setStyleSheet("QPushButton { color: #999999; }")
+        # self.buttonInputStartKey.setStyleSheet("QPushButton { color: #000000; }")
+
+        # 데이터 저장
+        save_data(self.shared_data)
+
+    def on_mouse_type0_clicked(self):
+        """마우스 클릭 타입0 (스킬 사용 시) 클릭시 실행"""
+
+        self.popup_manager.close_popup()
+
+        # 매크로 실행 중일 때는 무시
+        if self.shared_data.is_activated:
+            self.popup_manager.make_notice_popup("MacroIsRunning")
+            return
+
+        # 이미 타입0 이라면 무시
+        if self.shared_data.mouse_click_type == 0:
+            return
+
+        # 0번으로 변경
+        self.shared_data.mouse_click_type = 0
+
+        # 버튼 색상 변경
+        # self.button1stMouseType.setStyleSheet("QPushButton { color: #000000; }")
+        # self.button2ndMouseType.setStyleSheet("QPushButton { color: #999999; }")
+
+        # 데이터 저장
+        save_data(self.shared_data)
+
+    def on_mouse_type1_clicked(self):
+        """마우스 클릭 타입1 (평타 포함) 클릭시 실행"""
+
+        self.popup_manager.close_popup()
+
+        # 매크로 실행 중일 때는 무시
+        if self.shared_data.is_activated:
+            self.popup_manager.make_notice_popup("MacroIsRunning")
+            return
+
+        # 이미 타입1 이라면 무시
+        if self.shared_data.mouse_click_type == 1:
+            return
+
+        # 1번으로 변경
+        self.shared_data.mouse_click_type = 1
+
+        # 버튼 색상 변경
+        # self.button1stMouseType.setStyleSheet("QPushButton { color: #999999; }")
+        # self.button2ndMouseType.setStyleSheet("QPushButton { color: #000000; }")
+
+        # 데이터 저장
+        save_data(self.shared_data)
 
     class SettingItem(QFrame):
         def __init__(
@@ -681,132 +519,197 @@ class GeneralSettings(QFrame):
 class SkillSettings(QFrame):
     """사이드바 타입 2 - 스킬 사용설정"""
 
-    def __init__(self, shared_data: SharedData):
+    def __init__(self, shared_data: SharedData, popup_manager: PopupManager):
         super().__init__()
 
         self.shared_data: SharedData = shared_data
+        self.popup_manager: PopupManager = popup_manager
 
         self.title = Title("스킬 사용설정")
 
-        skill_setting = self.SkillSetting(self.shared_data)
+        grid_frame = QFrame()
+        grid_layout = QGridLayout()
+        grid_frame.setLayout(grid_layout)
+
+        titles: list[str] = ["사용\n여부", "단독\n사용", "콤보\n횟수", "우선\n순위"]
+        tooltips: list[str] = [
+            (
+                "매크로가 작동 중일 때 자동으로 스킬을 사용할지 결정합니다.\n"
+                "이동기같이 자신이 직접 사용해야 하는 스킬만 사용을 해제하시는 것을 추천드립니다.\n"
+                "연계스킬에는 적용되지 않습니다."
+            ),
+            (
+                "연계스킬을 대기할 때 다른 스킬들이 준비되는 것을 기다리지 않고 우선적으로 사용할 지 결정합니다.\n"
+                "연계스킬 내에서 다른 스킬보다 너무 빠르게 준비되는 스킬은 사용을 해제하시는 것을 추천드립니다.\n"
+                "사용여부가 활성화되지 않았다면 단독으로 사용되지 않습니다."
+            ),
+            (
+                "매크로가 작동 중일 때 한 번에 스킬을 몇 번 사용할 지를 결정합니다.\n"
+                "콤보가 존재하는 스킬에 사용하는 것을 추천합니다.\n"
+                "연계스킬에는 적용되지 않습니다."
+            ),
+            (
+                "매크로가 작동 중일 때 여러 스킬이 준비되었더라도 우선순위가 더 높은(숫자가 낮은) 스킬을 먼저 사용합니다.\n"
+                "우선순위를 설정하지 않은 스킬들은 준비된 시간 순서대로 사용합니다.\n"
+                "버프스킬의 우선순위를 높이는 것을 추천합니다.\n"
+                "연계스킬은 우선순위가 적용되지 않습니다."
+            ),
+        ]
+        for i in range(4):
+            label = QLabel(titles[i])
+            label.setToolTip(tooltips[i])
+            label.setStyleSheet("QLabel { border: 0px; border-radius: 0px; }")
+            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            label.setFont(CustomFont(12))
+
+            grid_layout.addWidget(label, 0, i + 1)
+
+        check_btn_style = """
+            QPushButton {
+                background-color: transparent; border-radius: 12px;
+            }
+            QPushButton:hover {
+                background-color: #dddddd;
+            }
+        """
+
+        skill_names: list[str] = get_available_skills(self.shared_data)
+        for idx, name in enumerate(skill_names):
+            # 스킬 이미지
+            pixmap: QPixmap = get_skill_pixmap(
+                shared_data=self.shared_data,
+                skill_name=name,
+                state=-1 if name in self.shared_data.equipped_skills else -2,
+            )
+            skill_image: SkillImage = SkillImage(parent=self, pixmap=pixmap, size=50)
+            grid_layout.addWidget(skill_image, idx + 1, 0)
+
+            # 사용 여부 버튼
+            pixmap = QPixmap(
+                convert_resource_path(
+                    f"resources\\image\\check{self.shared_data.is_use_skill[name]}.png"
+                )
+            )
+            usage_btn = QPushButton()
+            usage_btn.clicked.connect(
+                partial(lambda x: self.change_skill_usage(x), idx)
+            )
+            usage_btn.setIcon(QIcon(pixmap))
+            usage_btn.setIconSize(QSize(32, 32))
+            usage_btn.setStyleSheet(check_btn_style)
+            grid_layout.addWidget(usage_btn, idx + 1, 1)
+
+            # 단독 사용 버튼
+            pixmap = QPixmap(
+                convert_resource_path(
+                    f"resources\\image\\check{self.shared_data.is_use_sole[name]}.png"
+                )
+            )
+            use_sole_btn = QPushButton()
+            use_sole_btn.clicked.connect(
+                partial(lambda x: self.change_use_sole(x), idx)
+            )
+            use_sole_btn.setIcon(QIcon(pixmap))
+            use_sole_btn.setIconSize(QSize(32, 32))
+            use_sole_btn.setStyleSheet(check_btn_style)
+            grid_layout.addWidget(use_sole_btn, idx + 1, 2)
+
+            # 콤보 횟수 버튼
+            combo_btn = QPushButton(
+                f"{self.shared_data.combo_count[name]} / {get_skill_details(self.shared_data, name)['max_combo_count']}"
+            )
+            # combo_btn.clicked.connect()
+            combo_btn.setFont(CustomFont(12))
+            grid_layout.addWidget(combo_btn, idx + 1, 3)
+
+            priority: int = self.shared_data.skill_priority[name]
+            txt: str = "-" if priority == 0 else str(priority)
+
+            priority_btn = QPushButton(txt)
+            priority_btn.clicked.connect(
+                partial(lambda x: self.change_priority(x), idx)
+            )
+            priority_btn.setFont(CustomFont(12))
+            grid_layout.addWidget(priority_btn, idx + 1, 4)
 
         layout = QVBoxLayout()
         layout.addWidget(self.title)
-        layout.addWidget(skill_setting)
+        layout.addWidget(grid_frame)
         self.setLayout(layout)
 
-    class SkillSetting(QFrame):
-        def __init__(self, shared_data: SharedData):
-            super().__init__()
+    def change_skill_usage(self, skill_idx: int):
+        """사용 여부 변경"""
 
-            self.shared_data: SharedData = shared_data
-            layout = QGridLayout()
-            self.setLayout(layout)
+        skill_name: str = get_available_skills(self.shared_data)[skill_idx]
 
-            titles: list[str] = ["사용\n여부", "단독\n사용", "콤보\n횟수", "우선\n순위"]
-            tooltips: list[str] = [
-                (
-                    "매크로가 작동 중일 때 자동으로 스킬을 사용할지 결정합니다.\n"
-                    "이동기같이 자신이 직접 사용해야 하는 스킬만 사용을 해제하시는 것을 추천드립니다.\n"
-                    "연계스킬에는 적용되지 않습니다."
-                ),
-                (
-                    "연계스킬을 대기할 때 다른 스킬들이 준비되는 것을 기다리지 않고 우선적으로 사용할 지 결정합니다.\n"
-                    "연계스킬 내에서 다른 스킬보다 너무 빠르게 준비되는 스킬은 사용을 해제하시는 것을 추천드립니다.\n"
-                    "사용여부가 활성화되지 않았다면 단독으로 사용되지 않습니다."
-                ),
-                (
-                    "매크로가 작동 중일 때 한 번에 스킬을 몇 번 사용할 지를 결정합니다.\n"
-                    "콤보가 존재하는 스킬에 사용하는 것을 추천합니다.\n"
-                    "연계스킬에는 적용되지 않습니다."
-                ),
-                (
-                    "매크로가 작동 중일 때 여러 스킬이 준비되었더라도 우선순위가 더 높은(숫자가 낮은) 스킬을 먼저 사용합니다.\n"
-                    "우선순위를 설정하지 않은 스킬들은 준비된 시간 순서대로 사용합니다.\n"
-                    "버프스킬의 우선순위를 높이는 것을 추천합니다.\n"
-                    "연계스킬은 우선순위가 적용되지 않습니다."
-                ),
-            ]
-            for i in range(4):
-                label = QLabel(titles[i])
-                label.setToolTip(tooltips[i])
-                label.setStyleSheet("QLabel { border: 0px; border-radius: 0px; }")
-                label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                label.setFont(CustomFont(12))
+        # 사용 여부 확인 및 반대로 변경
+        flag: bool = not self.shared_data.is_use_skill[skill_name]
 
-                layout.addWidget(label, 0, i + 1)
+        # 아이콘 변경
+        pixmap = QPixmap(convert_resource_path(f"resources\\image\\check{flag}.png"))
+        # self.settingSkillUsages[skill_idx].setIcon(QIcon(pixmap))
 
-            check_btn_style = """
-                QPushButton {
-                    background-color: transparent; border-radius: 12px;
-                }
-                QPushButton:hover {
-                    background-color: #dddddd;
-                }
-            """
-            skill_names: list[str] = get_available_skills(self.shared_data)
-            for idx, name in enumerate(skill_names):
-                pixmap: QPixmap = get_skill_pixmap(
-                    shared_data=self.shared_data,
-                    skill_name=name,
-                    state=-1 if name in self.shared_data.equipped_skills else -2,
-                )
-                skill_image: SkillImage = SkillImage(
-                    parent=self, pixmap=pixmap, size=50
-                )
-                layout.addWidget(skill_image, idx + 1, 0)
+        # 데이터 변경
+        self.shared_data.is_use_skill[skill_name] = flag
 
-                pixmap = QPixmap(
-                    convert_resource_path(
-                        f"resources\\image\\check{self.shared_data.is_use_skill[name]}.png"
-                    )
-                )
-                usage_btn = QPushButton()
-                usage_btn.clicked.connect(
-                    partial(lambda x: self.onSkillUsagesClick(x), name)
-                )
-                usage_btn.setIcon(QIcon(pixmap))
-                usage_btn.setIconSize(QSize(32, 32))
-                usage_btn.setStyleSheet(check_btn_style)
-                layout.addWidget(usage_btn, idx + 1, 1)
+        # 데이터 저장
+        save_data(self.shared_data)
 
-                pixmap = QPixmap(
-                    convert_resource_path(
-                        f"resources\\image\\check{self.shared_data.is_use_sole[name]}.png"
-                    )
-                )
-                use_sole_btn = QPushButton()
-                use_sole_btn.clicked.connect(
-                    partial(lambda x: self.onSkillUseSoleClick(x), name)
-                )
-                use_sole_btn.setIcon(QIcon(pixmap))
-                use_sole_btn.setIconSize(QSize(32, 32))
-                use_sole_btn.setStyleSheet(check_btn_style)
-                layout.addWidget(use_sole_btn, idx + 1, 2)
+    def change_use_sole(self, skill_idx: int):
+        """단독 사용 변경"""
 
-                combo_btn = QPushButton(
-                    f"{self.shared_data.combo_count[name]} / {get_skill_details(self.shared_data, name)['max_combo_count']}"
-                )
-                combo_btn.clicked.connect(
-                    partial(
-                        lambda x: self.master.get_popup_manager().onSkillComboCountsClick(
-                            x
-                        ),
-                        name,
-                    )
-                )
-                combo_btn.setFont(CustomFont(12))
-                layout.addWidget(combo_btn, idx + 1, 3)
+        skill_name: str = get_available_skills(self.shared_data)[skill_idx]
 
-                priority: int = self.shared_data.skill_priority[name]
-                txt: str = "-" if priority == 0 else str(priority)
+        # 단독 사용 여부 확인 및 반대로 변경
+        flag: bool = not self.shared_data.is_use_sole[skill_name]
 
-                priority_btn = QPushButton(txt)
-                priority_btn.clicked.connect(
-                    partial(lambda x: self.onSkillSequencesClick(x), name)
-                )
-                priority_btn.setFont(CustomFont(12))
-                layout.addWidget(priority_btn, idx + 1, 4)
+        # 아이콘 변경
+        pixmap = QPixmap(convert_resource_path(f"resources\\image\\check{flag}.png"))
+        # self.settingSkillSingle[skill_idx].setIcon(QIcon(pixmap))
+
+        # 데이터 변경
+        self.shared_data.is_use_skill[skill_name] = flag
+
+        # 데이터 저장
+        save_data(self.shared_data)
+
+    def change_priority(self, skill_idx: int):
+        """스킬 우선순위 변경"""
+
+        skill_name: str = get_available_skills(self.shared_data)[skill_idx]
+
+        # 장착된 스킬이 아니면 무시
+        if skill_name not in self.shared_data.equipped_skills:
+            return
+
+        # 우선순위가 0 이었다면 = 설정되지 않았다면
+        if self.shared_data.skill_priority[skill_name] == 0:
+            # 가장 높은 우선순위로 설정
+            value: int = max(self.shared_data.skill_priority.values()) + 1
+
+            self.shared_data.skill_priority[skill_name] = value
+            # self.skill_sequence[skill_name].setText(str(value))
+
+        # 우선순위가 설정되어 있었다면
+        else:
+            # 우선순위 초기화
+            self.shared_data.skill_priority[skill_name] = 0
+            # self.skill_sequence[skill_name].setText("-")
+
+            # 다른 스킬들의 우선순위 조정
+            for priority in range(1, 7):
+                # 1~6 우선순위 중 사용되지 않는 우선순위라면
+                if priority not in self.shared_data.skill_priority.values():
+                    # 더 높은 우선순위를 가진 다른 스킬들의 우선순위 감소
+                    for idx, p in self.shared_data.skill_priority.items():
+                        # 더 높은 우선순위를 가진 스킬이라면
+                        if p > priority:
+                            # 우선순위 1 감소
+                            self.shared_data.skill_priority[idx] -= 1
+                            # self.skill_sequence[idx].setText(str(p - 1))
+
+        # 데이터 저장
+        save_data(self.shared_data)
 
 
 class LinkSkillSettings(QFrame):
@@ -816,13 +719,11 @@ class LinkSkillSettings(QFrame):
         self,
         shared_data: SharedData,
         popup_manager: PopupManager,
-        cancel_skill_selection: Callable,
     ):
         super().__init__()
 
         self.shared_data: SharedData = shared_data
         self.popup_manager: PopupManager = popup_manager
-        self.cancel_skill_selection: Callable = cancel_skill_selection
 
         layout = QVBoxLayout()
         self.setLayout(layout)
@@ -836,24 +737,23 @@ class LinkSkillSettings(QFrame):
         layout.addWidget(self.create_link_skill_btn)
 
         for i, data in enumerate(self.shared_data.link_skills):
-            link_skill = self.LinkSkill(self.shared_data, data, i)
+            link_skill = self.LinkSkill(
+                self.shared_data, data, i, self.edit, self.remove
+            )
             layout.addWidget(link_skill)
 
     def create_new(self):
         """새 연계스킬 만들기"""
 
-        def get_key() -> LiteralString | None:
+        def get_key() -> str | None:
             """사용되지 않는 단축키 반환"""
 
             for char in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
                 if not is_key_used(self.shared_data, char):
                     return char
-            return None
+            return ""
 
         self.popup_manager.close_popup()
-
-        # 스킬 장착 선택 중이었으면 취소
-        self.cancel_skill_selection()
 
         # 새 연계스킬 데이터 생성
         data = {
@@ -873,9 +773,6 @@ class LinkSkillSettings(QFrame):
 
         self.popup_manager.close_popup()
 
-        # 스킬 장착 선택 중이었으면 취소
-        self.cancel_skill_selection()
-
         # 연계스킬 데이터 복사
         data = copy.deepcopy(self.shared_data.link_skills[num])
         data["num"] = num
@@ -894,13 +791,21 @@ class LinkSkillSettings(QFrame):
         save_data(self.shared_data)
 
     class LinkSkill(QFrame):
-        def __init__(self, shared_data: SharedData, data, idx: int):
+        def __init__(
+            self,
+            shared_data: SharedData,
+            data,
+            idx: int,
+            edit_func: Callable[[int], None],
+            remove_func: Callable[[int], None],
+        ):
             super().__init__()
+            # todo: edit, remove 함수를 이 클래스에서 선언하고 사용하도록 구조 변경
 
             self.shared_data: SharedData = shared_data
 
             edit_btn = QPushButton()
-            edit_btn.clicked.connect(partial(lambda x: self.editLinkSkill(x), idx))
+            edit_btn.clicked.connect(partial(lambda x: edit_func(x), idx))
             edit_btn.setStyleSheet(
                 """QPushButton { background-color: transparent; border: 0px; }
                 QPushButton:hover { background-color: rgba(0, 0, 0, 32); border: 0px solid black; border-radius: 8px; }"""
@@ -934,7 +839,7 @@ class LinkSkillSettings(QFrame):
             layout.addWidget(key_btn)
 
             remove_btn = QPushButton("")
-            remove_btn.clicked.connect(partial(lambda x: self.removeLinkSkill(x), idx))
+            remove_btn.clicked.connect(partial(lambda x: remove_func(x), idx))
             pixmap = QPixmap(convert_resource_path("resources\\image\\x.png"))
             remove_btn.setIcon(QIcon(pixmap))
             remove_btn.setStyleSheet(
