@@ -77,13 +77,13 @@ class MainWindow(QWidget):
             self.version_timer: QTimer = QTimer(self)
             self.version_timer.singleShot(100, self.version_check_thread)
 
-    def change_layout(self, num: Literal[0, 1]) -> None:
+    def change_layout(self, num: int) -> None:
         """
         레이아웃 변경
 
         0: 메인 매크로
         1: 시뮬레이션
-        2: 매크로 공유
+        # 2: 매크로 공유
         """
 
         self.page_navigator.setCurrentIndex(num)

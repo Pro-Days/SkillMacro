@@ -64,7 +64,7 @@ class MainUI(QFrame):
 
         layout = QVBoxLayout()
         layout.addWidget(self.tab_widget)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(30, 30, 30, 10)
         layout.setSpacing(0)
         self.setLayout(layout)
 
@@ -446,7 +446,7 @@ class TabWidget(QTabWidget):
         # 초기 탭 설정
         self._init_tabs()
 
-        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        # self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
         tab_bar: QTabBar | None = self.tabBar()
         if tab_bar is not None:

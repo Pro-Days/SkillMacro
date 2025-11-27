@@ -14,10 +14,14 @@ from PyQt6.QtWidgets import (
     QLabel,
     QPushButton,
     QScrollArea,
+    QScrollBar,
+    QSizePolicy,
     QStackedWidget,
     QVBoxLayout,
+    QWidget,
 )
 
+from app.scripts.config import config
 from app.scripts.custom_classes import CustomFont, SkillImage
 from app.scripts.data_manager import save_data
 from app.scripts.misc import (
@@ -43,16 +47,22 @@ class Sidebar(QFrame):
     ):
         super().__init__(master)
 
+        self.setStyleSheet("QFrame { background-color: #FFFFFF; }")
+
         self.master: MainWindow = master
         self.shared_data: SharedData = shared_data
 
         self.ui_var = UI_Variable()
         self.popup_manager: PopupManager = self.master.get_popup_manager()
 
+        # 사이드바 페이지들
         general_settings = GeneralSettings(self.shared_data, self.popup_manager)
         skill_settings = SkillSettings(self.shared_data, self.popup_manager)
         link_skill_settings = LinkSkillSettings(self.shared_data, self.popup_manager)
         link_skill_editor = LinkSkillEditor(self.shared_data, self.popup_manager)
+
+        # 네비게이션 버튼
+        self.nav_button = NavigationButtons(self.change_page, self.master.change_layout)
 
         self.page_navigator = QStackedWidget()
         self.page_navigator.addWidget(general_settings)
@@ -60,16 +70,28 @@ class Sidebar(QFrame):
         self.page_navigator.addWidget(link_skill_settings)
         self.page_navigator.addWidget(link_skill_editor)
         self.page_navigator.setContentsMargins(0, 0, 0, 0)
+        self.page_navigator.setFixedWidth(300)
+
+        # 초기 페이지 설정
         self.page_navigator.setCurrentIndex(0)
+        self.nav_button.set_active_button(0)
+        self.adjust_stack_height()
 
         # 스크롤바
-        self.scroll_area: QScrollArea = QScrollArea(self)
+        self.scroll_area: QScrollArea = QScrollArea()
         self.scroll_area.setWidget(self.page_navigator)
+        self.scroll_area.setStyleSheet(
+            """
+            QScrollArea {
+                background-color: #FFFFFF;
+                border: 0px solid black;
+                border-right: 1px solid #bbbbbb;
+            }
+            """
+        )
+
         # 위젯이 스크롤 영역에 맞춰 크기 조절되도록
         self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setStyleSheet(
-            "QScrollArea { background-color: #FFFFFF; border: 0px solid black; border-radius: 10px; }"
-        )
 
         # 스크롤바 스크롤 설정
         self.scroll_area.setVerticalScrollBarPolicy(
@@ -79,7 +101,9 @@ class Sidebar(QFrame):
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
 
-        self.nav_button = NavigationButtons()
+        vertical_scroll_bar: QScrollBar = self.scroll_area.verticalScrollBar()  # type: ignore
+        scroll_bar_width: int = vertical_scroll_bar.sizeHint().width()
+        self.scroll_area.setFixedWidth(300 + scroll_bar_width)
 
         layout = QHBoxLayout()
         layout.addWidget(self.scroll_area)
@@ -89,12 +113,36 @@ class Sidebar(QFrame):
 
         self.setLayout(layout)
 
+        self.change_page(3)
+
+    def change_page(self, index: int) -> None:
+        """페이지 변경"""
+
+        self.page_navigator.setCurrentIndex(index)
+        self.nav_button.set_active_button(index)
+        self.adjust_stack_height()
+
+    def adjust_stack_height(self) -> None:
+        """현재 표시 중인 UI 높이에 맞춰 스택 위젯 높이를 동기화."""
+
+        current_widget: QWidget | None = self.page_navigator.currentWidget()
+        if current_widget is None:
+            return
+
+        current_widget.adjustSize()
+        height: int = current_widget.sizeHint().height()
+
+        if height > 0:
+            self.page_navigator.setFixedHeight(height)
+
 
 class GeneralSettings(QFrame):
     """사이드바 타입 1 - 일반 설정"""
 
     def __init__(self, shared_data: SharedData, popup_manager: PopupManager):
         super().__init__()
+
+        # self.setStyleSheet("QFrame { background-color: #FFFFFF; }")
 
         self.shared_data: SharedData = shared_data
         self.popup_manager: PopupManager = popup_manager
@@ -176,15 +224,18 @@ class GeneralSettings(QFrame):
         )
 
         layout = QVBoxLayout()
+
         layout.addWidget(self.title)
         layout.addWidget(self.server_job_setting)
         layout.addWidget(self.delay_setting)
         layout.addWidget(self.cooltime_setting)
         layout.addWidget(self.start_key_setting)
         layout.addWidget(self.click_setting)
-        # layout.addStretch(1)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(10)
+
+        layout.setContentsMargins(10, 20, 10, 10)
+        layout.setSpacing(30)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
         self.setLayout(layout)
 
     def on_servers_clicked(self):
@@ -473,23 +524,11 @@ class GeneralSettings(QFrame):
             self.title.setStyleSheet(
                 "QLabel { border: 0px solid black; border-radius: 10px; }"
             )
+            if config.ui.debug_colors:
+                self.title.setStyleSheet("QLabel { background-color: #FF0000; }")
+
             self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            # self.title.setToolTip(tooltip)
-
-            self.info_icon = QLabel("ⓘ")
-            self.info_icon.setFont(CustomFont(12))
-            self.info_icon.setStyleSheet(
-                "QLabel { color: #888888; background-color: transparent; }"
-            )
-            self.info_icon.setToolTip(tooltip)
-            self.info_icon.setFixedSize(20, 20)
-            self.info_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-            header_layout = QHBoxLayout()
-            header_layout.addWidget(self.title)
-            header_layout.addWidget(self.info_icon)
-            header_layout.setStretch(0, 1)
-            header_layout.setStretch(1, 0)
+            self.title.setToolTip(tooltip)
 
             rgb: dict[bool, str] = {
                 True: "#000000",
@@ -500,19 +539,22 @@ class GeneralSettings(QFrame):
             self.button0.clicked.connect(func0)
             self.button0.setFont(CustomFont(12))
             self.button0.setStyleSheet(f"QPushButton {{color: {rgb[btn0_enabled]};}}")
+            self.button0.setFixedWidth(120)
 
             self.button1 = QPushButton(btn1_text)
             self.button1.clicked.connect(func1)
             self.button1.setFont(CustomFont(12))
             self.button1.setStyleSheet(f"QPushButton {{color: {rgb[btn1_enabled]};}}")
+            self.button1.setFixedWidth(120)
 
             layout = QGridLayout()
-            layout.addLayout(header_layout, 0, 0, 1, 2)
+            layout.addWidget(self.title, 0, 0, 1, 2)
             layout.addWidget(self.button0, 1, 0)
             layout.addWidget(self.button1, 1, 1)
-            layout.setContentsMargins(10, 10, 10, 10)
+            layout.setContentsMargins(0, 0, 0, 0)
             layout.setSpacing(10)
 
+            # self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
             self.setLayout(layout)
 
 
@@ -527,8 +569,12 @@ class SkillSettings(QFrame):
 
         self.title = Title("스킬 사용설정")
 
-        grid_frame = QFrame()
         grid_layout = QGridLayout()
+        grid_layout.setContentsMargins(0, 0, 0, 0)
+        grid_layout.setHorizontalSpacing(0)
+        grid_layout.setVerticalSpacing(15)
+
+        grid_frame = QFrame()
         grid_frame.setLayout(grid_layout)
 
         titles: list[str] = ["사용\n여부", "단독\n사용", "콤보\n횟수", "우선\n순위"]
@@ -561,12 +607,13 @@ class SkillSettings(QFrame):
             label.setStyleSheet("QLabel { border: 0px; border-radius: 0px; }")
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             label.setFont(CustomFont(12))
+            label.setFixedSize(40, 40)
 
-            grid_layout.addWidget(label, 0, i + 1)
+            grid_layout.addWidget(label, 0, i + 1, Qt.AlignmentFlag.AlignCenter)
 
         check_btn_style = """
             QPushButton {
-                background-color: transparent; border-radius: 12px;
+                background-color: transparent; border-radius: 8px;
             }
             QPushButton:hover {
                 background-color: #dddddd;
@@ -581,8 +628,8 @@ class SkillSettings(QFrame):
                 skill_name=name,
                 state=-1 if name in self.shared_data.equipped_skills else -2,
             )
-            skill_image: SkillImage = SkillImage(parent=self, pixmap=pixmap, size=50)
-            grid_layout.addWidget(skill_image, idx + 1, 0)
+            skill_image: SkillImage = SkillImage(parent=self, pixmap=pixmap, size=30)
+            grid_layout.addWidget(skill_image, idx + 1, 0, Qt.AlignmentFlag.AlignCenter)
 
             # 사용 여부 버튼
             pixmap = QPixmap(
@@ -595,9 +642,10 @@ class SkillSettings(QFrame):
                 partial(lambda x: self.change_skill_usage(x), idx)
             )
             usage_btn.setIcon(QIcon(pixmap))
-            usage_btn.setIconSize(QSize(32, 32))
             usage_btn.setStyleSheet(check_btn_style)
-            grid_layout.addWidget(usage_btn, idx + 1, 1)
+            usage_btn.setIconSize(QSize(40, 40))
+            usage_btn.setFixedSize(30, 30)
+            grid_layout.addWidget(usage_btn, idx + 1, 1, Qt.AlignmentFlag.AlignCenter)
 
             # 단독 사용 버튼
             pixmap = QPixmap(
@@ -610,9 +658,12 @@ class SkillSettings(QFrame):
                 partial(lambda x: self.change_use_sole(x), idx)
             )
             use_sole_btn.setIcon(QIcon(pixmap))
-            use_sole_btn.setIconSize(QSize(32, 32))
             use_sole_btn.setStyleSheet(check_btn_style)
-            grid_layout.addWidget(use_sole_btn, idx + 1, 2)
+            use_sole_btn.setIconSize(QSize(40, 40))
+            use_sole_btn.setFixedSize(30, 30)
+            grid_layout.addWidget(
+                use_sole_btn, idx + 1, 2, Qt.AlignmentFlag.AlignCenter
+            )
 
             # 콤보 횟수 버튼
             combo_btn = QPushButton(
@@ -620,7 +671,8 @@ class SkillSettings(QFrame):
             )
             # combo_btn.clicked.connect()
             combo_btn.setFont(CustomFont(12))
-            grid_layout.addWidget(combo_btn, idx + 1, 3)
+            combo_btn.setFixedWidth(40)
+            grid_layout.addWidget(combo_btn, idx + 1, 3, Qt.AlignmentFlag.AlignCenter)
 
             priority: int = self.shared_data.skill_priority[name]
             txt: str = "-" if priority == 0 else str(priority)
@@ -630,11 +682,20 @@ class SkillSettings(QFrame):
                 partial(lambda x: self.change_priority(x), idx)
             )
             priority_btn.setFont(CustomFont(12))
-            grid_layout.addWidget(priority_btn, idx + 1, 4)
+            priority_btn.setFixedWidth(40)
+            grid_layout.addWidget(
+                priority_btn, idx + 1, 4, Qt.AlignmentFlag.AlignCenter
+            )
 
         layout = QVBoxLayout()
-        layout.addWidget(self.title)
+
+        layout.addWidget(self.title, 0, Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(grid_frame)
+
+        layout.setContentsMargins(10, 20, 10, 10)
+        layout.setSpacing(30)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
         self.setLayout(layout)
 
     def change_skill_usage(self, skill_idx: int):
@@ -722,10 +783,15 @@ class LinkSkillSettings(QFrame):
     ):
         super().__init__()
 
+        # self.setStyleSheet("QFrame { background-color: #FFFFFF; }")
+
         self.shared_data: SharedData = shared_data
         self.popup_manager: PopupManager = popup_manager
 
         layout = QVBoxLayout()
+        layout.setContentsMargins(10, 20, 10, 10)
+        layout.setSpacing(30)
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setLayout(layout)
 
         self.title = Title("스킬 연계설정")
@@ -862,11 +928,19 @@ class LinkSkillEditor(QFrame):
     def __init__(self, shared_data: SharedData, popup_manager: PopupManager):
         super().__init__()
 
+        # self.setStyleSheet("QFrame { background-color: #FFFFFF; }")
+
         self.shared_data: SharedData = shared_data
         self.popup_manager: PopupManager = popup_manager
 
         layout = QVBoxLayout()
+        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.setContentsMargins(10, 20, 10, 10)
+        layout.setSpacing(5)
         self.setLayout(layout)
+
+        self.title = Title("연계스킬 편집")
+        layout.addWidget(self.title, 0, Qt.AlignmentFlag.AlignCenter)
 
         type_setting = self.SettingItem(
             title="연계 유형",
@@ -1200,74 +1274,124 @@ class LinkSkillEditor(QFrame):
 
 
 class NavigationButtons(QFrame):
-    def __init__(self):
+    def __init__(
+        self, change_page: Callable[[int], None], change_layout: Callable[[int], None]
+    ):
         super().__init__()
 
+        self.change_page: Callable[[int], None] = change_page
+        self.change_layout: Callable[[int], None] = change_layout
+
         self.setStyleSheet(
-            """QFrame { 
-                background-color: #f0f0f0;
-                border: 0px solid;
-            }"""
+            """
+            QFrame {
+                background-color: #ffffff; 
+            }
+            """
         )
 
         layout = QVBoxLayout()
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(0, 30, 0, 0)
         layout.setSpacing(0)
         self.setLayout(layout)
 
-        icon_paths: list[str] = [
-            convert_resource_path("resources\\image\\setting.png"),
-            convert_resource_path("resources\\image\\usageSetting.png"),
-            convert_resource_path("resources\\image\\linkSetting.png"),
-            convert_resource_path("resources\\image\\simulationSidebar.png"),
+        icons: list[QPixmap] = [
+            QPixmap(convert_resource_path("resources\\image\\setting.png")),
+            QPixmap(convert_resource_path("resources\\image\\usageSetting.png")),
+            QPixmap(convert_resource_path("resources\\image\\linkSetting.png")),
+            QPixmap(convert_resource_path("resources\\image\\simulationSidebar.png")),
         ]
-        border_radiuses: list[list[int]] = [
+        border_widthes: list[list[int]] = [
             [0, 8, 0, 0],
             [0, 0, 0, 0],
             [0, 0, 0, 0],
             [0, 0, 0, 8],
         ]
+        border_widths: list[list[int]] = [
+            # top, right, bottom, left
+            [1, 1, 1, 0],
+            [0, 1, 1, 0],
+            [0, 1, 1, 0],
+            [0, 1, 1, 0],
+        ]
 
-        for i in range(4):
-            button = self.NavigationButton(
-                icon_path=icon_paths[i],
-                border_radius=border_radiuses[i],
+        self.buttons: list[NavigationButtons.NavigationButton] = [
+            self.NavigationButton(
+                icon=icons[i],
+                border_radius=border_widthes[i],
+                border_width=border_widths[i],
             )
+            for i in range(4)
+        ]
+
+        for idx, button in enumerate(self.buttons):
             layout.addWidget(button)
 
+            if idx != 3:
+                button.clicked.connect(partial(lambda x: self.change_page(x), idx))
+            else:
+                button.clicked.connect(lambda: self.change_layout(1))
+
+        layout.addStretch(1)
+
+    def set_active_button(self, index: int):
+        """활성화된 버튼 설정"""
+
+        for i, button in enumerate(self.buttons):
+            button.set_active(i == index)
+
     class NavigationButton(QPushButton):
-        def __init__(self, icon_path: str, border_radius: list[int]):
+        def __init__(
+            self,
+            icon: QPixmap,
+            border_radius: list[int],
+            border_width: list[int],
+        ):
             super().__init__()
 
-            pixmap = QPixmap(icon_path)
-            self.setStyleSheet(
-                f"""
-                    QPushButton {{
-                        background-color: #dddddd; 
-                        border: 1px solid #b4b4b4; 
-                        border-top-left-radius :{border_radius[0]}px; 
-                        border-top-right-radius : {border_radius[1]}px; 
-                        border-bottom-left-radius : {border_radius[2]}px; 
-                        border-bottom-right-radius : {border_radius[3]}px;
-                    }}
-                    QPushButton:hover {{
-                        background-color: #dddddd;
-                    }}
-                """
+            self.base_style: str = f"""
+                QPushButton {{
+                    background-color: #FFFFFF; 
+                    border: 0px solid #b4b4b4;
+                    border-top-width: {border_width[0]}px;
+                    border-right-width: {border_width[1]}px;
+                    border-bottom-width: {border_width[2]}px;
+                    border-left-width: {border_width[3]}px;
+                    border-top-left-radius: {border_radius[0]}px; 
+                    border-top-right-radius: {border_radius[1]}px; 
+                    border-bottom-left-radius: {border_radius[2]}px; 
+                    border-bottom-right-radius: {border_radius[3]}px;
+                }}
+                QPushButton:hover {{
+                    background-color: #F0F0F0;
+                }}
+            """
+
+            self.active_style: str = (
+                self.base_style + "QPushButton { background-color: #E0E0E0; }"
             )
 
-            self.setIcon(QIcon(pixmap))
+            self.setStyleSheet(self.base_style)
+
+            self.setIcon(QIcon(icon))
             self.setIconSize(QSize(32, 32))
+
+        def set_active(self, active: bool) -> None:
+            """버튼 활성화 상태 설정"""
+
+            if active:
+                self.setStyleSheet(self.active_style)
+            else:
+                self.setStyleSheet(self.base_style)
 
 
 class Title(QLabel):
     def __init__(self, text: str):
-        super().__init__(text, None)
-
-        self = QLabel("", self)
+        super().__init__(text)
         self.setFont(CustomFont(20))
         self.setStyleSheet(
             "border: 0px solid black; border-radius: 10px; background-color: #CADEFC;"
         )
-        # self.title.setFixedSize(200, 100)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.setFixedSize(250, 80)
