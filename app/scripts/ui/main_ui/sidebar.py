@@ -113,13 +113,18 @@ class Sidebar(QFrame):
 
         self.setLayout(layout)
 
-        self.change_page(3)
+        # self.change_page(3)
 
     def change_page(self, index: int) -> None:
         """페이지 변경"""
 
         self.page_navigator.setCurrentIndex(index)
-        self.nav_button.set_active_button(index)
+
+        # 인덱스 3은 연계스킬 편집 페이지,
+        # 버튼 3은 계산기 페이지이므로 활성화하지 않음
+        if index != 3:
+            self.nav_button.set_active_button(index)
+
         self.adjust_stack_height()
 
     def adjust_stack_height(self) -> None:
