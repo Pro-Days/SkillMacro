@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import QSize, Qt
-from PyQt6.QtGui import QIcon, QPixmap
+from PyQt6.QtCore import QSize, Qt, pyqtSignal
+from PyQt6.QtGui import QColor, QIcon, QPixmap
 from PyQt6.QtWidgets import (
     QFrame,
+    QGraphicsDropShadowEffect,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -35,10 +36,6 @@ if TYPE_CHECKING:
 
 
 class MainUI(QFrame):
-    """
-    탭위젯, 사이드바를 포함하는 메인 UI 프레임
-    """
-
     def __init__(
         self,
         master: MainWindow,
@@ -53,6 +50,14 @@ class MainUI(QFrame):
         self.ui_var = UI_Variable()
 
         self.tab_widget = TabWidget(self, self.shared_data)
+
+        # Tab 내부 이벤트를 MainUI에서 처리
+        # 매크로 작동 중 팝업 요청
+        self.tab_widget.noticeRequested.connect(self.popup_manager.make_notice_popup)
+        # 키 설정 팝업 요청
+        self.tab_widget.skillKeyRequested.connect(self.onSkillKeyClick)
+        # 데이터 변경 신호
+        self.tab_widget.dataChanged.connect(lambda: save_data(self.shared_data))
 
         # 기능 함수들 연결
         # 탭 클릭시
@@ -93,12 +98,19 @@ class MainUI(QFrame):
         # 데이터 로드
         load_data(self.shared_data, index)
 
+        # 현재 탭 확정 및 UI 갱신
+        # (tabBarClicked 시점에 currentIndex가 아직 바뀌지 않았을 수 있어 명시적으로 지정)
+        self.tab_widget.setCurrentIndex(index)
+
         # 사이드바 업데이트
         # self.sidebar.set_index(0)
         # self.sidebar.update_content()
 
         # 선택중인 스킬이 있었다면 취소
         self.cancel_skill_selection()
+
+        # shared_data 변경사항을 현재 탭 UI에 반영
+        self.tab_widget.refresh_current_tab()
 
         # 사이드바로 이동
 
@@ -242,6 +254,9 @@ class MainUI(QFrame):
         new_index: int = self.tab_widget.currentIndex()
         load_data(self.shared_data, new_index)
 
+        # 삭제 후 로드된 데이터를 현재 탭 UI에 반영
+        self.tab_widget.refresh_current_tab()
+
         save_data(self.shared_data)
 
     def cancel_skill_selection(self) -> None:
@@ -249,122 +264,7 @@ class MainUI(QFrame):
         스킬 장착 취소. 다른 곳 클릭시 실행됨
         """
 
-        self.tab_widget.select_equipped_skill(-1)
-
-    def on_equipped_skill_clicked(self, index: int) -> None:
-        """
-        하단 스킬 아이콘 클릭시 실행
-        """
-
-        # print(self.shared_data.selectedSkillList[index])
-
-        # 연계스킬 편집 중이면 수정 불가능
-        if self.shared_data.sidebar_type == 4:
-            self.cancel_skill_selection()
-            self.popup_manager.make_notice_popup("editingLinkSkill")
-
-            return
-
-        # 매크로가 실행중이면 수정 불가능
-        if self.shared_data.is_activated:
-            self.cancel_skill_selection()
-            self.popup_manager.make_notice_popup("MacroIsRunning")
-
-            return
-
-        # 지금 선택한 슬롯에 장착되어있던 스킬
-        equipped_skill: str = self.shared_data.equipped_skills[index]
-        # 이전에 선택된 스킬 인덱스
-        selected_index: int = self.tab_widget.get_selected_index()
-
-        # 스킬 선택중이 아닐 때 -> 선택
-        if selected_index == -1:
-            self.tab_widget.select_equipped_skill(index)
-
-            return
-
-        # 지금 선택한 슬롯과 다를 때
-        if selected_index != index:
-            # 이전에 빈 스킬이 장착되어있었다면 -> 취소
-            self.cancel_skill_selection()
-
-            return
-
-        # 선택된 스킬을 다시 클릭했을 때
-
-        # 장착이 되어있지 않았다면 -> 취소
-        if not equipped_skill:
-            self.cancel_skill_selection()
-
-            return
-
-        # 스킬이 장착되어있다면 -> 해제
-
-        # 빈 스킬 아이콘으로 변경
-        self.tab_widget.set_equipped_skill(index, "")
-
-        # 장착된 스킬 설정 초기화
-        self.clear_equipped_skill(skill=equipped_skill)
-
-        # 데이터 초기화
-        self.shared_data.equipped_skills[index] = ""
-
-        # 선택 취소
-        self.cancel_skill_selection()
-
-        # 데이터 저장
-        save_data(self.shared_data)
-
-    def on_equippable_skill_clicked(self, index: int) -> None:
-        """
-        상단 스킬 아이콘 클릭 (8개)
-        """
-
-        # 선택된 스킬
-        selected_skill: str = get_available_skills(shared_data=self.shared_data)[index]
-        selected_index: int = self.tab_widget.get_selected_index()
-        # 선택된 칸에 장착되어있던 스킬
-        equipped_skill: str = self.shared_data.equipped_skills[selected_index]
-
-        # 연계스킬 편집 중이면 수정 불가능
-        if self.shared_data.sidebar_type == 4:
-            self.cancel_skill_selection()
-            return
-
-        # 스킬 선택중이 아닐 때 -> 아무것도 하지 않음
-        if selected_index == -1:
-            return
-
-        # 이미 장착된 스킬을 선택했을 때 -> 취소
-        if selected_skill in self.shared_data.equipped_skills:
-            self.cancel_skill_selection()
-            return
-
-        # 이미 스킬이 장착된 칸의 스킬을 변경하는 경우 -> 기존 스킬 초기화
-        if equipped_skill:
-            self.clear_equipped_skill(skill=equipped_skill)
-
-        # 선택된 스킬칸에 새로운 스킬 장착
-        self.shared_data.equipped_skills[selected_index] = get_available_skills(
-            shared_data=self.shared_data
-        )[index]
-
-        # 스킬 아이콘 변경
-        self.tab_widget.set_equipped_skill(selected_index, selected_skill)
-
-        # 사이드바가 스킬 사용설정이라면 아이콘 변경
-        # if self.shared_data.sidebar_type == 2:
-        #     self.sidebar.skill_icons[selected_skill].setPixmap(
-        #         get_skill_pixmap(
-        #             shared_data=self.shared_data, skill_name=selected_skill
-        #         )
-        #     )
-
-        # 선택 취소
-        self.cancel_skill_selection()
-
-        # 데이터 저장
-        save_data(self.shared_data)
+        self.tab_widget.cancel_skill_selection()
 
     ## 스킬 단축키 설정 버튼 클릭
     def onSkillKeyClick(self, num):
@@ -381,54 +281,15 @@ class MainUI(QFrame):
         self.master.get_popup_manager().activatePopup("skillKey")
         self.master.get_popup_manager().makeKeyboardPopup(["skillKey", num])
 
-    def clear_equipped_skill(self, skill: str):
-        """
-        장착된 스킬 초기화
-        """
-
-        # 연계스킬 수동 사용으로 변경
-        for link in self.shared_data.link_skills:
-            for skill_info in link["skills"]:
-                if skill_info["name"] == skill:
-                    link["useType"] = "manual"
-
-        # 스킬 사용 우선순위 리로드
-        prev_priority: int = self.shared_data.skill_priority[skill]
-
-        # 해제되는 스킬의 우선순위가 있다면
-        if prev_priority:
-            self.shared_data.skill_priority[skill] = 0
-
-            # 해당 스킬보다 높은 우선순위의 스킬들 우선순위 1 감소
-            for sk, pri in self.shared_data.skill_priority.items():
-                if pri > prev_priority:
-                    self.shared_data.skill_priority[sk] -= 1
-
-                    # if self.shared_data.sidebar_type == 2:
-                    #     self.sidebar.skill_sequence[sk].setText(
-                    #         str(pri - 1)
-                    #     )
-
-        # 스킬 연계설정이라면 -> 리로드
-        # if self.shared_data.sidebar_type == 3:
-        #     self.master.get_sidebar().delete_sidebar_3()
-        #     self.shared_data.sidebar_type = -1
-        #     self.master.get_sidebar().change_sidebar_to_3()
-
-        # 사이드바가 스킬 사용설정이라면
-        # if self.shared_data.sidebar_type == 2:
-        #     self.sidebar.skill_icons[skill].setPixmap(
-        #         get_skill_pixmap(
-        #             shared_data=self.shared_data,
-        #             skill_name=skill,
-        #             state=-2,
-        #         )
-        #     )
-
-        #     self.master.get_sidebar().skill_sequence[skill].setText("-")
+    # NOTE: clear_equipped_skill / on_equipped_skill_clicked 로직은 Tab으로 이동됨
 
 
 class TabWidget(QTabWidget):
+    # 시그널 정의
+    noticeRequested = pyqtSignal(str)
+    skillKeyRequested = pyqtSignal(int)
+    dataChanged = pyqtSignal()
+
     def __init__(self, master: QWidget, shared_data: SharedData):
         super().__init__(master)
 
@@ -500,13 +361,21 @@ class TabWidget(QTabWidget):
         self.tab_count += 1
 
         new_tab: Tab = self._create_tab(name, available_skills, equipped_skills, keys)
-        tab_name: str = "탭 " + str(self.tab_count)
+        tab_name: str = "스킬매크로"
+
+        # 탭 시그널 연결
+        self._connect_tab_signals(new_tab)
 
         # QTabWidget에 탭 추가
         index: int = self.addTab(new_tab, tab_name)
 
         # 새로 추가된 탭으로 이동
         self.setCurrentIndex(index)
+
+    def _connect_tab_signals(self, tab: "Tab") -> None:
+        tab.noticeRequested.connect(self.noticeRequested.emit)
+        tab.skillKeyRequested.connect(self.skillKeyRequested.emit)
+        tab.dataChanged.connect(self.dataChanged.emit)
 
     def _init_tabs(self):
         """
@@ -555,6 +424,7 @@ class TabWidget(QTabWidget):
             border: 1px solid {TAB_BORDER_COLOR};
             border-bottom-left-radius: 10px;
             border-bottom-right-radius: 10px;
+            border-top-right-radius: 10px;
             background: {TAB_BACKGROUND_COLOR};
         }}
 
@@ -611,6 +481,18 @@ class TabWidget(QTabWidget):
     def get_current_tab(self) -> "Tab":
         return self.currentWidget()  # type: ignore
 
+    def cancel_skill_selection(self) -> None:
+        """현재 탭의 스킬 선택 취소 (Tab으로 위임)"""
+
+        tab: Tab = self.get_current_tab()
+        tab.cancel_skill_selection()
+
+    def refresh_current_tab(self) -> None:
+        """현재 탭 UI 갱신 (Tab으로 위임)"""
+
+        tab: Tab = self.get_current_tab()
+        tab.refresh_ui()
+
     def select_equipped_skill(self, index: int) -> None:
         tab: Tab = self.get_current_tab()
         tab.select_equipped_skill(index)
@@ -629,6 +511,11 @@ class TabWidget(QTabWidget):
 
 
 class Tab(QFrame):
+    # 시그널 정의
+    noticeRequested = pyqtSignal(str)
+    skillKeyRequested = pyqtSignal(int)
+    dataChanged = pyqtSignal()
+
     def __init__(self, shared_data: SharedData):
         super().__init__()
 
@@ -644,6 +531,11 @@ class Tab(QFrame):
 
         self.equipped_skills = EquippedSkill(shared_data=self.shared_data)
 
+        # 하위 위젯 이벤트를 Tab에서 처리
+        self.equipped_skills.slotClicked.connect(self.on_equipped_skill_clicked)
+        self.equipped_skills.keyClicked.connect(self.on_skill_key_clicked)
+        self.equippable_skills.skillClicked.connect(self.on_available_skill_clicked)
+
         layout = QVBoxLayout(self)
         layout.addWidget(self.preview, alignment=Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.equippable_skills)
@@ -652,6 +544,131 @@ class Tab(QFrame):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(20)
         self.setLayout(layout)
+
+        # 초기 표시
+        self.refresh_ui()
+
+    def refresh_ui(self) -> None:
+        """현재 shared_data를 기준으로 탭 UI를 갱신"""
+
+        # self.equippable_skills.display_available_skills()
+        self.preview.update_preview()
+
+    def cancel_skill_selection(self) -> None:
+        """장착 스킬 선택 취소"""
+
+        self.select_equipped_skill(-1)
+
+    def on_skill_key_clicked(self, index: int) -> None:
+        if self.shared_data.is_activated:
+            self.noticeRequested.emit("MacroIsRunning")
+            return
+
+        self.skillKeyRequested.emit(index)
+
+    def on_equipped_skill_clicked(self, index: int) -> None:
+        """하단 장착 슬롯 클릭 처리(선택/해제)"""
+
+        # 연계스킬 편집 중이면 수정 불가능
+        if self.shared_data.sidebar_type == 4:
+            self.cancel_skill_selection()
+            self.noticeRequested.emit("editingLinkSkill")
+            return
+
+        # 매크로 실행중이면 수정 불가능
+        if self.shared_data.is_activated:
+            self.cancel_skill_selection()
+            self.noticeRequested.emit("MacroIsRunning")
+            return
+
+        equipped_skill: str = self.shared_data.equipped_skills[index]
+        selected_index: int = self.get_selected_index()
+
+        # 스킬 선택중이 아닐 때 -> 선택
+        if selected_index == -1:
+            self.select_equipped_skill(index)
+            return
+
+        # 다른 슬롯을 눌렀다면 -> 선택 취소
+        if selected_index != index:
+            self.cancel_skill_selection()
+            return
+
+        # 같은 슬롯 재클릭
+        if not equipped_skill:
+            self.cancel_skill_selection()
+            return
+
+        # 장착된 스킬 해제
+        self.set_equipped_skill(index, "")
+        self.clear_equipped_skill(skill=equipped_skill)
+        self.shared_data.equipped_skills[index] = ""
+        self.cancel_skill_selection()
+
+        self.refresh_ui()
+        self.dataChanged.emit()
+
+    def on_available_skill_clicked(self, available_index: int) -> None:
+        """상단(장착 가능) 스킬 클릭 처리(현재 선택된 슬롯에 장착)"""
+
+        # 연계스킬 편집 중이면 수정 불가능
+        if self.shared_data.sidebar_type == 4:
+            self.cancel_skill_selection()
+            self.noticeRequested.emit("editingLinkSkill")
+            return
+
+        # 매크로 실행중이면 수정 불가능
+        if self.shared_data.is_activated:
+            self.cancel_skill_selection()
+            self.noticeRequested.emit("MacroIsRunning")
+            return
+
+        selected_slot: int = self.get_selected_index()
+        if selected_slot == -1:
+            return
+
+        available_skills: list[str] = get_available_skills(self.shared_data)
+        if available_index < 0 or available_index >= len(available_skills):
+            return
+
+        selected_skill: str = available_skills[available_index]
+
+        # 이미 장착된 스킬을 선택했을 때 -> 취소
+        if selected_skill in self.shared_data.equipped_skills:
+            self.cancel_skill_selection()
+            return
+
+        equipped_skill: str = self.shared_data.equipped_skills[selected_slot]
+        if equipped_skill:
+            self.clear_equipped_skill(skill=equipped_skill)
+
+        # 선택된 슬롯에 장착
+        self.shared_data.equipped_skills[selected_slot] = selected_skill
+        self.set_equipped_skill(selected_slot, selected_skill)
+
+        self.cancel_skill_selection()
+        self.refresh_ui()
+        self.dataChanged.emit()
+
+    def clear_equipped_skill(self, skill: str) -> None:
+        """장착된 스킬 초기화(우선순위/연계스킬 등)"""
+
+        # 연계스킬 수동 사용으로 변경
+        for link in self.shared_data.link_skills:
+            for skill_info in link["skills"]:
+                if skill_info["name"] == skill:
+                    link["useType"] = "manual"
+
+        # 스킬 사용 우선순위 리로드
+        prev_priority: int = self.shared_data.skill_priority.get(skill, 0)
+
+        if prev_priority:
+            self.shared_data.skill_priority[skill] = 0
+
+            # 해당 스킬보다 높은 우선순위의 스킬들 우선순위 1 감소
+            for sk, pri in self.shared_data.skill_priority.items():
+                if pri > prev_priority:
+                    self.shared_data.skill_priority[sk] -= 1
 
     def select_equipped_skill(self, index: int) -> None:
         self.equipped_skills.select(index)
@@ -667,7 +684,9 @@ class Tab(QFrame):
 
 
 class SkillPreview(QFrame):
-    def __init__(self, shared_data: SharedData):
+    """스킬 미리보기 프레임"""
+
+    def __init__(self, shared_data: SharedData) -> None:
         super().__init__()
 
         self.shared_data: SharedData = shared_data
@@ -686,26 +705,28 @@ class SkillPreview(QFrame):
         self.skill_count = 0
         self.skills: list[QLabel] = []
 
-    def set_icons(self) -> None:
-        """
-        스킬 미리보기 프레임에 스킬 아이콘 설정
-        """
+    def update_preview(self) -> None:
+        """프리뷰 업데이트"""
 
         # 매크로가 실행중이 아니라면 매크로 초반 시뮬레이션 실행
         if not self.shared_data.is_activated:
             init_macro(self.shared_data)
             add_task_list(self.shared_data, print_info=False)
-            # self.printMacroInfo(True)
-            # print(self.shared_data.taskList)
 
+        # 표시할 스킬 개수 (최대 6개)
         count: int = min(len(self.shared_data.task_list), 6)
 
+        # 기존 아이콘 정리
+        for icon in self.skills:
+            icon.deleteLater()
+        self.skills.clear()
+
         # 각 미리보기 스킬 이미지 추가
-        for i in range(count):
+        for slot in self.shared_data.task_list[:count]:
             pixmap: QPixmap = get_skill_pixmap(
                 self.shared_data,
-                self.shared_data.equipped_skills[self.shared_data.task_list[i]],
-                1 if self.shared_data.is_activated else -2,
+                skill_name=self.shared_data.equipped_skills[slot],
+                state=1 if self.shared_data.is_activated else -2,
             )
 
             skill: SkillImage = SkillImage(parent=self, pixmap=pixmap, size=48)
@@ -714,7 +735,11 @@ class SkillPreview(QFrame):
 
 
 class EquippableSkill(QFrame):
-    def __init__(self, shared_data: SharedData):
+    """장착 가능한 스킬 프레임 (상단)"""
+
+    skillClicked = pyqtSignal(int)
+
+    def __init__(self, shared_data: SharedData) -> None:
         super().__init__()
 
         self.shared_data: SharedData = shared_data
@@ -723,15 +748,17 @@ class EquippableSkill(QFrame):
 
         layout = QGridLayout()
 
+        # 스킬 모음
         self.skills: list[EquippableSkill.Skill] = []
         COLS = 4
         for i in range(8):
             skill = self.Skill(shared_data=self.shared_data, index=i)
             self.skills.append(skill)
 
+            skill.clicked.connect(self.skillClicked.emit)
+
             row: int = i // COLS
             col: int = i % COLS
-
             layout.addWidget(skill, row, col)
 
         layout.setContentsMargins(0, 0, 0, 0)
@@ -739,20 +766,22 @@ class EquippableSkill(QFrame):
         self.setLayout(layout)
 
     def display_available_skills(self):
-        for i in range(8):
-            name: str = get_available_skills(self.shared_data)[i]
+        """
+        장착 가능한 스킬 목록 표시
+        장착되지 않은 스킬에 빨간 테두리 표시
+        """
 
-            # 장착되지 않은 스킬에 빨간 테두리 표시
-            if name in self.shared_data.equipped_skills:
-                self.skills[i].button.setStyleSheet("QPushButton { border: none; }")
-            else:
-                self.skills[i].button.setStyleSheet(
-                    "QPushButton { border: 1px solid red; }"
-                )
+        # 장착되지 않은 스킬에 빨간 테두리 표시
+        for name, skill in zip(get_available_skills(self.shared_data), self.skills):
+            skill.set_equipped_style(name in self.shared_data.equipped_skills)
 
     class Skill(QFrame):
-        def __init__(self, shared_data: SharedData, index: int):
+        clicked = pyqtSignal(int)
+
+        def __init__(self, shared_data: SharedData, index: int) -> None:
             super().__init__()
+
+            self.index: int = index
 
             self.setStyleSheet("QFrame { background-color: transparent; }")
 
@@ -762,17 +791,10 @@ class EquippableSkill(QFrame):
             self.button.setStyleSheet("QPushButton { border-radius :10px; }")
             self.button.setFixedSize(48, 48)
             self.button.setIcon(
-                QIcon(
-                    get_skill_pixmap(
-                        shared_data=shared_data,
-                        skill_name=name,
-                    )
-                )
+                QIcon(get_skill_pixmap(shared_data=shared_data, skill_name=name))
             )
             self.button.setIconSize(QSize(48, 48))
-            # self.button.clicked.connect(
-            #     partial(lambda x: self.on_equippable_skill_clicked(x), i)
-            # )
+            self.button.clicked.connect(lambda: self.clicked.emit(self.index))
 
             self.name: QLabel = QLabel(name, self)
             self.name.setStyleSheet(
@@ -790,8 +812,23 @@ class EquippableSkill(QFrame):
 
             self.setLayout(layout)
 
+        def set_equipped_style(self, is_equipped: bool) -> None:
+            """장착 여부에 따른 버튼 테두리 표시"""
+
+            border: str = "border: none;" if is_equipped else "border: 1px solid red;"
+
+            # 기존 radius 스타일이 덮어씌워지지 않도록 함께 설정
+            self.button.setStyleSheet(
+                f"QPushButton {{ border-radius :10px; {border} }}"
+            )
+
 
 class EquippedSkill(QFrame):
+    """장착된 스킬 프레임 (하단)"""
+
+    slotClicked = pyqtSignal(int)
+    keyClicked = pyqtSignal(int)
+
     def __init__(self, shared_data: SharedData):
         super().__init__()
 
@@ -801,10 +838,15 @@ class EquippedSkill(QFrame):
 
         layout = QHBoxLayout()
 
+        # 슬롯 모음
         self.skills: list[EquippedSkill.Skill] = []
         for i in range(6):
             skill = self.Skill(shared_data=self.shared_data, index=i)
             self.skills.append(skill)
+
+            # 시그널 연결
+            skill.slotClicked.connect(self.slotClicked.emit)
+            skill.keyClicked.connect(self.keyClicked.emit)
 
             layout.addWidget(skill)
 
@@ -812,66 +854,140 @@ class EquippedSkill(QFrame):
         layout.setSpacing(24)
         self.setLayout(layout)
 
+        # 선택된 스킬 인덱스
+        # -1: 선택된 스킬 없음
         self.selected_index: int = -1
 
     def select(self, index: int) -> None:
-        for i in range(6):
-            self.skills[i].button.setStyleSheet("QPushButton { border: none; }")
+        """슬롯 선택"""
 
-        if index != -1:
-            self.skills[index].button.setStyleSheet(
-                "QPushButton { border: 1px solid red;}"
-            )
+        for i in range(6):
+            self.skills[i].set_selected_style(i == index)
 
         self.selected_index = index
 
     def set_key(self, index: int, key: str) -> None:
+        """스킬 단축키 설정"""
 
-        self.skills[index].key.setText(key)
+        self.skills[index].set_key(key)
 
     def set_skill(self, index: int, skill_name: str) -> None:
-        self.skills[index].button.setIcon(
-            QIcon(get_skill_pixmap(shared_data=self.shared_data, skill_name=skill_name))
-        )
+        """스킬 장착"""
+
+        self.skills[index].set_skill(skill_name)
 
     def get_selected_index(self) -> int:
         return self.selected_index
 
     class Skill(QFrame):
+        slotClicked = pyqtSignal(int)
+        keyClicked = pyqtSignal(int)
+
         def __init__(self, shared_data: SharedData, index: int):
             super().__init__()
+
+            self.shared_data: SharedData = shared_data
+            self.index: int = index
 
             self.setStyleSheet("QFrame { background-color: transparent; }")
 
             size = 48
+            self._base_button_size: int = size
+            self._selected_button_size: int = size + 8
+
+            # 그림자 효과 설정
+            self._shadow_blur_radius: int = 8
+            self._shadow_offset_y: int = 2
+            self._shadow_padding: int = 4
+
             name: str = shared_data.equipped_skills[index]
 
-            self.button: QPushButton = QPushButton(self)
-            self.button.setStyleSheet("QPushButton { border-radius :10px; }")
-            self.button.setFixedSize(size, size)
-            self.button.setIcon(
-                QIcon(
-                    get_skill_pixmap(
-                        shared_data=shared_data,
-                        skill_name=name,
-                    )
-                )
+            self.button_container = QFrame(self)
+            self.button_container.setStyleSheet(
+                "QFrame { background-color: transparent; }"
             )
-            self.button.setIconSize(QSize(size, size))
-            # self.button.clicked.connect(
-            #     partial(lambda x: self.on_equipped_skill_clicked(x), i)
-            # )
+            container_size: int = self._selected_button_size + (
+                self._shadow_padding * 2
+            )
+            self.button_container.setFixedSize(container_size, container_size)
+
+            self.button: QPushButton = QPushButton(self.button_container)
+            self.button.setStyleSheet("QPushButton { border-radius: 10px; }")
+            self.button.setFixedSize(self._base_button_size, self._base_button_size)
+            self.button.setIcon(
+                QIcon(get_skill_pixmap(shared_data=shared_data, skill_name=name))
+            )
+            self.button.setIconSize(
+                QSize(self._base_button_size, self._base_button_size)
+            )
+            self.button.clicked.connect(lambda: self.slotClicked.emit(self.index))
+
+            button_layout = QVBoxLayout(self.button_container)
+            button_layout.setContentsMargins(0, 0, 0, 0)
+            button_layout.setSpacing(0)
+            button_layout.addWidget(self.button, alignment=Qt.AlignmentFlag.AlignCenter)
 
             self.key = QPushButton(shared_data.skill_keys[index], self)
             self.key.setFont(CustomFont(10))
             self.key.setFixedWidth(size)
-            # self.key_button.clicked.connect(partial(lambda x: self.onSkillKeyClick(x), i))
+            self.key.clicked.connect(lambda: self.keyClicked.emit(self.index))
 
             layout = QVBoxLayout()
-            layout.addWidget(self.button)
-            layout.addWidget(self.key)
+            layout.addWidget(
+                self.button_container, alignment=Qt.AlignmentFlag.AlignCenter
+            )
+            layout.addWidget(self.key, alignment=Qt.AlignmentFlag.AlignCenter)
             layout.setContentsMargins(0, 0, 0, 0)
             layout.setSpacing(0)
             layout.setSizeConstraint(QLayout.SizeConstraint.SetFixedSize)
 
             self.setLayout(layout)
+
+        def set_selected_style(self, selected: bool) -> None:
+            """슬롯 선택"""
+
+            # 이미지가 적용되면 보더가 안보임
+            # style: dict[bool, str] = {
+            #     True: "QPushButton { border-radius: 10px; border: 3px solid red; }",
+            #     False: "QPushButton { border-radius: 10px; border: none; }",
+            # }
+
+            # self.button.setStyleSheet(style[selected])
+
+            # 선택 시: 아이콘 확대 + 그림자
+            if selected:
+                self.button.setFixedSize(
+                    self._selected_button_size, self._selected_button_size
+                )
+                self.button.setIconSize(
+                    QSize(self._selected_button_size, self._selected_button_size)
+                )
+
+                shadow = QGraphicsDropShadowEffect(self.button)
+                shadow.setBlurRadius(self._shadow_blur_radius)
+                shadow.setOffset(0, self._shadow_offset_y)
+                shadow.setColor(QColor(0, 0, 0, 160))
+                self.button.setGraphicsEffect(shadow)
+
+            else:
+                self.button.setFixedSize(self._base_button_size, self._base_button_size)
+                self.button.setIconSize(
+                    QSize(self._base_button_size, self._base_button_size)
+                )
+                self.button.setGraphicsEffect(None)
+
+        def set_key(self, key: str) -> None:
+            """스킬 단축키 설정"""
+
+            self.key.setText(key)
+
+        def set_skill(self, skill_name: str) -> None:
+            """스킬 장착"""
+
+            self.button.setIcon(
+                QIcon(
+                    get_skill_pixmap(
+                        shared_data=self.shared_data, skill_name=skill_name
+                    )
+                )
+            )

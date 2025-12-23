@@ -1,15 +1,62 @@
 from __future__ import annotations
 
+import hashlib
 import os
 from typing import TYPE_CHECKING
 
-from PyQt6.QtGui import QFontDatabase, QFontMetrics, QPixmap
+from PyQt6.QtGui import QColor, QFontDatabase, QFontMetrics, QPainter, QPixmap
 from PyQt6.QtWidgets import QLabel, QPushButton
 
 from app.scripts.custom_classes import CustomFont
 
 if TYPE_CHECKING:
     from app.scripts.shared_data import SharedData
+
+
+# 스킬 아이콘 캐시
+_SKILL_PIXMAP_CACHE: dict[str, QPixmap] = {}
+
+
+def _get_unique_skill_color(skill_name: str) -> QColor:
+    """스킬 이름으로 고유한 색상 생성"""
+
+    # 해시 생성
+    digest: bytes = hashlib.sha256(skill_name.encode("utf-8")).digest()
+
+    # HSV 값 생성
+    hue: int = int.from_bytes(digest[0:2], "big") % 360
+    sat: int = 180 + (digest[2] % 60)  # 180..239
+    val: int = 200 + (digest[3] % 56)  # 200..255
+
+    return QColor.fromHsv(hue, sat, val, 255)
+
+
+def _fill_transparent_pixels(pixmap: QPixmap, fill_color: QColor) -> QPixmap:
+    """투명 영역을 매우 빠르게 채운 픽스맵 반환.
+
+    구현 방식:
+    1) 새 픽스맵을 fill_color로 채움
+    2) 그 위에 원본 pixmap을 그려서 투명한 부분이 배경색으로 보이도록 함
+
+    장점: 파이썬 레벨의 per-pixel 루프 없이 Qt 내부에서 합성되어 매우 빠릅니다.
+    참고: 반투명 픽셀은 배경색과 블렌딩된 결과가 되며, 아이콘 렌더링에선 보통 의도한 동작입니다.
+    """
+
+    if pixmap.isNull():
+        return pixmap
+
+    opaque_fill = QColor(fill_color)
+    opaque_fill.setAlpha(255)
+
+    result = QPixmap(pixmap.size())
+    result.setDevicePixelRatio(pixmap.devicePixelRatio())
+    result.fill(opaque_fill)
+
+    painter = QPainter(result)
+    painter.drawPixmap(0, 0, pixmap)
+    painter.end()
+
+    return result
 
 
 def convert_skill_name_to_slot(shared_data: SharedData, skill_name: str) -> int:
@@ -106,10 +153,31 @@ def get_skill_pixmap(
     if state == -1:
         state = get_skill_details(shared_data, skill_name)["max_combo_count"]
 
-    image_path: str = shared_data.skill_images_dir.get(
-        skill_name, "resources\\image\\skill_attack.png"
-    )
-    return QPixmap(convert_resource_path(image_path))
+    if skill_name in shared_data.skill_images_dir:
+        return QPixmap(convert_resource_path(shared_data.skill_images_dir[skill_name]))
+
+    image_path: str = convert_resource_path("resources\\image\\skill_attack.png")
+
+    cache_key = skill_name
+    cached: QPixmap | None = _SKILL_PIXMAP_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    # 적용할 이미지 불러오기
+    base_pixmap: QPixmap = QPixmap(image_path)
+    if base_pixmap.isNull():
+        return base_pixmap
+
+    # 고유 색상 생성
+    color: QColor = _get_unique_skill_color(skill_name)
+
+    # 색 채우기
+    colored: QPixmap = _fill_transparent_pixels(base_pixmap, color)
+
+    # 캐시에 저장
+    _SKILL_PIXMAP_CACHE[cache_key] = colored
+
+    return colored
 
     # state가 -2이면 비활성화 아이콘 반환
     # return QPixmap(

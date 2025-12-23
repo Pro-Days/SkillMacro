@@ -1,18 +1,32 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from enum import Enum, auto
 from functools import partial
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 from webbrowser import open_new
 
-from PyQt6.QtCore import QSize, Qt
-from PyQt6.QtGui import QIcon, QPixmap, QTransform
+from PyQt6.QtCore import (
+    QCoreApplication,
+    QEvent,
+    QPoint,
+    QRect,
+    QSize,
+    Qt,
+    QTimer,
+    pyqtSignal,
+)
+from PyQt6.QtGui import QGuiApplication, QIcon, QPixmap, QTransform
 from PyQt6.QtWidgets import (
+    QDialog,
     QFrame,
     QGridLayout,
     QLabel,
     QLineEdit,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
+    QWidget,
 )
 
 from app.scripts.custom_classes import CustomFont, CustomShadowEffect
@@ -34,6 +48,292 @@ if TYPE_CHECKING:
     from app.scripts.ui.main_ui.main_ui import MainUI
 
 
+class PopupPlacement(Enum):
+    """Anchor 기준 팝업을 배치하는 방향"""
+
+    BELOW_LEFT = auto()
+    BELOW_RIGHT = auto()
+    ABOVE_LEFT = auto()
+    ABOVE_RIGHT = auto()
+
+
+class PopupKind(str, Enum):
+    """PopupHost 기반 팝업의 종류(오타 방지용)."""
+
+    SETTING_SERVER = "settingServer"
+    SETTING_JOB = "settingJob"
+
+
+@dataclass(frozen=True)
+class PopupOptions:
+    """팝업의 표시 옵션"""
+
+    placement: PopupPlacement = PopupPlacement.BELOW_LEFT
+    margin: int = 6
+    screen_margin: int = 8
+
+
+@dataclass(frozen=True)
+class PopupAction:
+    """
+    팝업 내의 선택지 하나를 나타냄
+    예: "한월 RPG"
+    """
+
+    id: str
+    text: str
+    enabled: bool = True
+    is_selected: bool = False
+    on_trigger: Callable[[], None] | None = None
+
+
+def _clamp_rect_to_screen(rect: QRect, screen_rect: QRect, margin: int) -> QRect:
+    """팝업이 화면 밖으로 나가지 않도록 위치 보정"""
+
+    x = rect.x()
+    y = rect.y()
+
+    min_x = screen_rect.left() + margin
+    max_x = screen_rect.right() - margin - rect.width() + 1
+    min_y = screen_rect.top() + margin
+    max_y = screen_rect.bottom() - margin - rect.height() + 1
+
+    if x < min_x:
+        x = min_x
+    elif x > max_x:
+        x = max_x
+
+    if y < min_y:
+        y = min_y
+    elif y > max_y:
+        y = max_y
+
+    return QRect(x, y, rect.width(), rect.height())
+
+
+class ActionListContent(QFrame):
+    """
+    서버/직업 같은 목록 선택용 content
+    PopupAction 리스트를 받아 버튼 목록을 생성
+    """
+
+    triggered = pyqtSignal(str)
+
+    def __init__(
+        self,
+        actions: list[PopupAction],
+        fixed_width: int = 130,
+    ) -> None:
+        super().__init__()
+
+        # Content(=PopupHost 안의 내용물) 폭을 명확히 고정해
+        # 스크롤바 오른쪽(또는 스크롤바가 없을 때도) 불필요한 빈 공간이 생기지 않게 한다.
+        self.setFixedWidth(fixed_width)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+
+        self.setStyleSheet(
+            """
+            QFrame { background-color: white; }
+            QPushButton {
+                background-color: white;
+                border-radius: 10px;
+                border: none;
+                padding: 2px;
+                margin: 2px;
+            }
+            QPushButton[selected=true] { background-color: #dddddd; }
+            QPushButton:hover { background-color: #cccccc; }
+            QPushButton:!enabled { background-color: #f0f0f0; }
+            """
+        )
+
+        # 스크롤바 없이 전체 항목을 나열한다.
+        v = QVBoxLayout(self)
+        v.setContentsMargins(5, 5, 5, 5)
+        v.setSpacing(5)
+
+        row_height = 30
+        for act in actions:
+            btn = QPushButton(act.text, self)
+            btn.setFont(CustomFont(12))
+            btn.setEnabled(act.enabled)
+
+            # 폭은 컨테이너에 맞춰 자동으로 늘어나게 한다.
+            btn.setFixedHeight(row_height)
+            btn.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Fixed,
+            )
+
+            btn.setProperty("selected", act.is_selected)
+            btn.clicked.connect(lambda _, act_id=act.id: self.triggered.emit(act_id))
+
+            v.addWidget(btn)
+
+
+class PopupHost(QDialog):
+    """공통 팝업 껍데기: 배치/클릭-아웃/ESC/그림자 등을 일원화."""
+
+    closed = pyqtSignal()
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+
+        # Popup 대신 Tool 윈도우 사용 (일반 윈도우 렌더링 사용)
+        self.setWindowFlags(
+            Qt.WindowType.Tool
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+
+        # 포커스를 잃으면 자동으로 닫히도록 설정
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
+
+        self._container = QFrame(self)
+        self._container.setStyleSheet(
+            "QFrame { background-color: white; border-radius: 10px; }"
+        )
+        self._container.setGraphicsEffect(CustomShadowEffect(0, 5, 30, 150))
+
+        self._container_layout = QVBoxLayout(self._container)
+        self._container_layout.setContentsMargins(0, 0, 0, 0)
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.addWidget(self._container)
+
+        self._content: QWidget | None = None
+
+        # 스크롤 이벤트를 감지하기 위한 이벤트 필터 설치
+        app: QCoreApplication | None = QGuiApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
+
+    def set_content(self, content: QWidget) -> None:
+        if self._content is not None:
+            self._container_layout.removeWidget(self._content)
+            self._content.setParent(None)
+
+        self._content = content
+        content.setParent(self._container)
+        self._container_layout.addWidget(content)
+
+    def show_for(self, anchor: QWidget, options: PopupOptions = PopupOptions()) -> None:
+        if self._content is None:
+            raise RuntimeError("PopupHost.show_for() called without content")
+
+        self._container.adjustSize()
+        self.adjustSize()
+
+        anchor_top_left = anchor.mapToGlobal(QPoint(0, 0))
+        anchor_rect = QRect(anchor_top_left, anchor.size())
+
+        popup_size = self.sizeHint()
+        w, h = popup_size.width(), popup_size.height()
+
+        # 배치 계산
+        if options.placement == PopupPlacement.BELOW_LEFT:
+            x = anchor_rect.left()
+            y = anchor_rect.bottom() + options.margin
+        elif options.placement == PopupPlacement.BELOW_RIGHT:
+            x = anchor_rect.right() - w + 1
+            y = anchor_rect.bottom() + options.margin
+        elif options.placement == PopupPlacement.ABOVE_LEFT:
+            x = anchor_rect.left()
+            y = anchor_rect.top() - h - options.margin
+        else:  # ABOVE_RIGHT
+            x = anchor_rect.right() - w + 1
+            y = anchor_rect.top() - h - options.margin
+
+        desired = QRect(x, y, w, h)
+
+        screen = QGuiApplication.screenAt(anchor_rect.center())
+        if screen is None:
+            screen = QGuiApplication.primaryScreen()
+        screen_rect = (
+            screen.availableGeometry()
+            if screen is not None
+            else QRect(0, 0, 1920, 1080)
+        )
+
+        clamped = _clamp_rect_to_screen(desired, screen_rect, options.screen_margin)
+        self.move(clamped.topLeft())
+
+        self.show()
+        self.raise_()
+        self.activateWindow()
+
+        # 포커스를 팝업으로 가져와서 클릭 외부 감지
+        self.setFocus()
+
+    def eventFilter(self, obj, event: QEvent) -> bool:  # type: ignore
+        """부모 위젯의 이벤트를 감지 (스크롤 등)"""
+
+        # 스크롤 이벤트 감지
+        if self.isVisible() and event.type() == QEvent.Type.Wheel:
+            # 휠 이벤트는 원래 대상 위젯으로 계속 전달되게 두고,
+            # 팝업만 닫아 UX를 자연스럽게 만든다.
+            self.close()
+            return False
+
+        return super().eventFilter(obj, event)
+
+    def focusOutEvent(self, a0) -> None:
+        """
+        포커스를 잃으면 클릭 이벤트가 처리되기 위해
+        약간의 지연을 두고 팝업 닫기
+        """
+
+        QTimer.singleShot(1, self.close)
+        super().focusOutEvent(a0)
+
+    def closeEvent(self, a0):
+        self.closed.emit()
+        super().closeEvent(a0)
+
+
+class PopupController:
+    """단일 PopupHost를 재사용하며 content 교체로 팝업을 표시한다."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        self._host = PopupHost(parent)
+        self._actions_by_id: dict[str, PopupAction] = {}
+
+    @property
+    def host(self) -> PopupHost:
+        return self._host
+
+    def is_visible(self) -> bool:
+        return self._host.isVisible()
+
+    def close(self) -> None:
+        self._host.close()
+
+    def show_action_list(
+        self,
+        anchor: QWidget,
+        actions: list[PopupAction],
+        options: PopupOptions = PopupOptions(),
+    ) -> None:
+        self._actions_by_id = {a.id: a for a in actions}
+
+        content = ActionListContent(actions)
+        content.triggered.connect(self._on_triggered)
+
+        self._host.set_content(content)
+        self._host.show_for(anchor, options)
+
+    def _on_triggered(self, action_id: str) -> None:
+        act = self._actions_by_id.get(action_id)
+        self.close()
+
+        if act is None:
+            return
+        if act.on_trigger is not None:
+            act.on_trigger()
+
+
 class PopupManager:
     """
     팝업을 관리하는 클래스
@@ -46,6 +346,24 @@ class PopupManager:
     ):
         self.master: MainWindow = master
         self.shared_data: SharedData = shared_data
+
+        self._popup_controller: PopupController = PopupController(parent=self.master)
+        self._popup_controller.host.closed.connect(self._on_popup_host_closed)
+        self._active_popup: PopupKind | None = None
+
+    def _on_popup_host_closed(self) -> None:
+        self._active_popup = None
+
+    def is_popup_open(self, kind: PopupKind | None = None) -> bool:
+        """특정 종류의 팝업이 열려있는지 확인"""
+
+        if not self._popup_controller.is_visible():
+            return False
+
+        if kind is None:
+            return True
+
+        return self._active_popup == kind
 
     ## 알림 창 생성
     # pyqtSignal을 이용하도록 수정
@@ -234,19 +552,6 @@ class PopupManager:
         # self.activeErrorPopup.pop(0)
         self.shared_data.active_error_popup_count -= 1
         self.update_position()
-
-    ## 모든 팝업창 제거
-    def close_popup(self):
-        if self.shared_data.active_popup == "":
-            return
-        else:
-            self.settingPopupFrame.deleteLater()
-        self.shared_data.active_popup = ""
-
-    ## 팝업창 할당
-    def activatePopup(self, text: str) -> None:
-        self.close_popup()
-        self.shared_data.active_popup = text
 
     ## 인풋 팝업 생성
     def makePopupInput(self, popup_type: str, var: int | None = None) -> None:
@@ -864,99 +1169,89 @@ class PopupManager:
             for i in self.shared_data.active_error_popup:
                 i[0].raise_()
 
-    ## 사이드바 설정 - 서버 클릭
-    def make_server_popup(self):
-        self.activatePopup("settingServer")
+    def close_popup(self):
+        pass
 
-        self.settingPopupFrame = QFrame(self.master.get_sidebar().frame)
-        self.settingPopupFrame.setStyleSheet(
-            "background-color: white; border-radius: 10px;"
-        )
-        self.settingPopupFrame.setFixedSize(130, 5 + 35 * len(self.shared_data.SERVERS))
-        self.settingPopupFrame.move(25, 240)
-        self.settingPopupFrame.setGraphicsEffect(CustomShadowEffect(0, 5, 30, 150))
-        self.settingPopupFrame.show()
+    def make_popup(
+        self,
+        kind: PopupKind,
+        anchor: QWidget,
+        actions: list[PopupAction],
+        placement: PopupPlacement,
+    ) -> None:
+        """팝업 생성 공통 부분"""
 
-        for i in range(len(self.shared_data.SERVERS)):
-            self.settingServerButton = QPushButton(
-                self.shared_data.SERVERS[i], self.settingPopupFrame
-            )
-            self.settingServerButton.setFont(CustomFont(12))
-            self.settingServerButton.clicked.connect(
-                partial(lambda x: self.onServerPopupClick(x), i)
-            )
-            self.settingServerButton.setStyleSheet(
-                f"""
-                            QPushButton {{
-                                background-color: {"white" if i != self.shared_data.server_ID else "#dddddd"}; border-radius: 10px;
-                            }}
-                            QPushButton:hover {{
-                                background-color: #cccccc;
-                            }}
-                        """
-            )
-            self.settingServerButton.setFixedSize(120, 30)
-            self.settingServerButton.move(5, 5 + 35 * i)
-            # self.settingServerFrame.setGraphicsEffect(CustomShadowEffect(0, 5))
-
-            self.settingServerButton.show()
-
-    ## 사이드바 서버 목록 팝업창 클릭시 실행
-    def onServerPopupClick(self, num):
+        # 매크로 실행 중일 때는 무시
         if self.shared_data.is_activated:
-            self.close_popup()
             self.make_notice_popup("MacroIsRunning")
             return
 
-        self.close_popup()
+        self._active_popup = kind
 
-    ## 사이드바 설정 - 직업 클릭
-    def make_job_popup(self):
-        self.activatePopup("settingJob")
-
-        self.settingPopupFrame = QFrame(self.master.get_sidebar().frame)
-        self.settingPopupFrame.setStyleSheet(
-            "background-color: white; border-radius: 10px;"
+        self._popup_controller.show_action_list(
+            anchor=anchor,
+            actions=actions,
+            options=PopupOptions(placement=placement),
         )
-        self.settingPopupFrame.setFixedSize(
-            130, 5 + 35 * len(self.shared_data.JOBS[self.shared_data.server_ID])
+
+    def make_server_popup(
+        self,
+        anchor: QWidget,
+        on_selected: Callable[[str], None],
+    ) -> None:
+        """서버 선택 팝업"""
+
+        current_server: str = self.shared_data.server_ID
+
+        actions: list[PopupAction] = [
+            PopupAction(
+                id=server_name,
+                text=server_name,
+                enabled=True,
+                is_selected=(server_name == current_server),
+                on_trigger=lambda s=server_name: on_selected(s),
+            )
+            for server_name in self.shared_data.SERVERS
+        ]
+
+        self.make_popup(
+            kind=PopupKind.SETTING_SERVER,
+            anchor=anchor,
+            actions=actions,
+            placement=PopupPlacement.BELOW_LEFT,
         )
-        self.settingPopupFrame.move(145, 240)
-        self.settingPopupFrame.setGraphicsEffect(CustomShadowEffect(0, 5, 30, 150))
-        self.settingPopupFrame.show()
 
-        for i in range(len(self.shared_data.JOBS[self.shared_data.server_ID])):
-            self.settingJobButton = QPushButton(
-                self.shared_data.JOBS[self.shared_data.server_ID][i],
-                self.settingPopupFrame,
-            )
-            self.settingJobButton.setFont(CustomFont(12))
-            self.settingJobButton.clicked.connect(
-                partial(lambda x: self.onJobPopupClick(x), i)
-            )
-            self.settingJobButton.setStyleSheet(
-                f"""
-                            QPushButton {{
-                                background-color: {"white" if i != self.shared_data.job_ID else "#dddddd"}; border-radius: 10px;
-                            }}
-                            QPushButton:hover {{
-                                background-color: #cccccc;
-                            }}
-                        """
-            )
-            self.settingJobButton.setFixedSize(120, 30)
-            self.settingJobButton.move(5, 5 + 35 * i)
-            # self.settingServerFrame.setGraphicsEffect(CustomShadowEffect(0, 5))
+    def make_job_popup(
+        self,
+        anchor: QWidget,
+        on_selected: Callable[[str], None],
+    ) -> None:
+        """직업 선택 팝업"""
 
-            self.settingJobButton.show()
+        current_server: str = self.shared_data.server_ID
+        jobs: list[str] = self.shared_data.JOBS[current_server]
+        current_job: str = self.shared_data.job_ID
+
+        actions: list[PopupAction] = [
+            PopupAction(
+                id=job_name,
+                text=job_name,
+                enabled=True,
+                is_selected=(job_name == current_job),
+                on_trigger=lambda j=job_name: on_selected(j),
+            )
+            for job_name in jobs
+        ]
+
+        self.make_popup(
+            kind=PopupKind.SETTING_JOB,
+            anchor=anchor,
+            actions=actions,
+            placement=PopupPlacement.BELOW_LEFT,
+        )
 
     ## 사이드바 직업 목록 팝업창 클릭시 실행
     def onJobPopupClick(self, num):
-        if self.shared_data.is_activated:
-            self.close_popup()
-            self.make_notice_popup("MacroIsRunning")
-            return
-
         job_name = self.shared_data.JOBS[self.shared_data.server_ID][num]
 
         if self.shared_data.job_ID != job_name:

@@ -208,9 +208,11 @@ class SharedData:
         "end": "End",
     }
 
-    SERVERS: ClassVar[list[str]] = ["name"]
+    # 서버를 이름이 아니라 int ID로 구분하도록 변경 필요
+    SERVERS: ClassVar[list[str]] = ["name", "한월 RPG"]
     JOBS: ClassVar[dict[str, list[str]]] = {
         "name": ["a", "매화", "살수", "도제", "술사", "도사", "빙궁", "귀궁"],
+        "한월 RPG": ["a", "매화", "살수", "도제", "술사", "도사", "빙궁", "귀궁"],
     }
 
     DEFAULT_SERVER_ID: str = "name"

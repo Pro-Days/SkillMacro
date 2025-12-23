@@ -31,6 +31,7 @@ from app.scripts.misc import (
     get_skill_pixmap,
     is_key_used,
 )
+from app.scripts.popup import PopupKind
 from app.scripts.shared_data import UI_Variable
 
 if TYPE_CHECKING:
@@ -246,36 +247,29 @@ class GeneralSettings(QFrame):
     def on_servers_clicked(self):
         """서버 목록 클릭시 실행"""
 
-        self.popup_manager.close_popup()
+        def apply(server_name: str) -> None:
+            """서버 선택 적용 함수"""
 
-        # 매크로 실행 중일 때는 무시
-        if self.shared_data.is_activated:
-            self.popup_manager.make_notice_popup("MacroIsRunning")
-            return
+            self.shared_data.server_ID = server_name
+            self.shared_data.job_ID = self.shared_data.JOBS[server_name][0]
 
-        # 이미 서버 선택 팝업이 열려있다면 닫기
-        if self.shared_data.active_popup == "settingServer":
-            return
+            # 탭위젯에 반영
 
-        # 서버 선택 팝업 열기
-        self.popup_manager.make_server_popup()
+            save_data(self.shared_data)
+
+        self.popup_manager.make_server_popup(
+            self.server_job_setting.server_button, apply
+        )
 
     def on_jobs_clicked(self):
         """직업 목록 클릭시 실행"""
 
-        self.popup_manager.close_popup()
+        def apply(job_name: str) -> None:
+            self.shared_data.job_ID = job_name
+            self.server_job_setting.job_button.setText(self.shared_data.job_ID)
+            save_data(self.shared_data)
 
-        # 매크로 실행 중일 때는 무시
-        if self.shared_data.is_activated:
-            self.popup_manager.make_notice_popup("MacroIsRunning")
-            return
-
-        # 이미 직업 선택 팝업이 열려있다면 닫기
-        if self.shared_data.active_popup == "settingJob":
-            return
-
-        # 직업 선택 팝업 열기
-        self.popup_manager.make_job_popup()
+        self.popup_manager.make_job_popup(self.server_job_setting.job_button, apply)
 
     def on_default_delay_clicked(self):
         """기본 딜레이 클릭시 실행"""
@@ -540,22 +534,26 @@ class GeneralSettings(QFrame):
                 False: "#999999",
             }
 
-            self.button0 = QPushButton(btn0_text)
-            self.button0.clicked.connect(func0)
-            self.button0.setFont(CustomFont(12))
-            self.button0.setStyleSheet(f"QPushButton {{color: {rgb[btn0_enabled]};}}")
-            self.button0.setFixedWidth(120)
+            self.server_button = QPushButton(btn0_text)
+            self.server_button.clicked.connect(func0)
+            self.server_button.setFont(CustomFont(12))
+            self.server_button.setStyleSheet(
+                f"QPushButton {{color: {rgb[btn0_enabled]};}}"
+            )
+            self.server_button.setFixedWidth(120)
 
-            self.button1 = QPushButton(btn1_text)
-            self.button1.clicked.connect(func1)
-            self.button1.setFont(CustomFont(12))
-            self.button1.setStyleSheet(f"QPushButton {{color: {rgb[btn1_enabled]};}}")
-            self.button1.setFixedWidth(120)
+            self.job_button = QPushButton(btn1_text)
+            self.job_button.clicked.connect(func1)
+            self.job_button.setFont(CustomFont(12))
+            self.job_button.setStyleSheet(
+                f"QPushButton {{color: {rgb[btn1_enabled]};}}"
+            )
+            self.job_button.setFixedWidth(120)
 
             layout = QGridLayout()
             layout.addWidget(self.title, 0, 0, 1, 2)
-            layout.addWidget(self.button0, 1, 0)
-            layout.addWidget(self.button1, 1, 1)
+            layout.addWidget(self.server_button, 1, 0)
+            layout.addWidget(self.job_button, 1, 1)
             layout.setContentsMargins(0, 0, 0, 0)
             layout.setSpacing(10)
 

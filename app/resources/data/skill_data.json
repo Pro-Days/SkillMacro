@@ -6550,8 +6550,8 @@
         }
     },
 
-    "서버B": {
-        "name": "Server B (직업 없음)",
+    "한월 RPG": {
+        "name": "한월 RPG",
         "skills": ["스킬1", "스킬2"],
         "skill_details": {
             "스킬1": {
