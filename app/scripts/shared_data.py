@@ -6,6 +6,8 @@ from typing import Any, ClassVar
 
 from app.scripts.misc import convert_resource_path
 
+from .custom_classes import Stats
+
 
 # 공유 데이터 클래스
 # SharedData가 여러번 선언된다면, 리스트로 초기화된 변수들은 모든 SharedData 인스턴스에서 공유되어 오류가 발생할 수 있음
@@ -208,27 +210,15 @@ class SharedData:
         "end": "End",
     }
 
-    # 서버를 이름이 아니라 int ID로 구분하도록 변경 필요
-    SERVERS: ClassVar[list[str]] = ["name", "한월 RPG"]
-    JOBS: ClassVar[dict[str, list[str]]] = {
-        "name": ["a", "매화", "살수", "도제", "술사", "도사", "빙궁", "귀궁"],
-        "한월 RPG": ["a", "매화", "살수", "도제", "술사", "도사", "빙궁", "귀궁"],
-    }
+    SERVERS: ClassVar[list[str]] = ["한월 RPG"]
 
-    DEFAULT_SERVER_ID: str = "name"
-    # DEFAULT_SERVER_ID: str = "한월 RPG"
-    DEFAULT_JOB_ID: str = "a"
+    DEFAULT_SERVER_ID: str = "한월 RPG"
 
     # 장착 가능한 스킬 개수
-    USABLE_SKILL_COUNT: ClassVar[dict[str, int]] = {"name": 6}
+    USABLE_SKILL_COUNT: ClassVar[dict[str, int]] = {"한월 RPG": 6}
 
     # 스킬 레벨 최대값
-    MAX_SKILL_LEVEL: ClassVar[dict[str, int]] = {"name": 5}
-
-    ################################
-
-    # ICON = QIcon(QPixmap(convertResourcePath("resources\\image\\icon\\icon.ico")))
-    # ICON_ON = QIcon(QPixmap(convertResourcePath("resources\\image\\icon\\icon_on.ico")))
+    MAX_SKILL_LEVEL: ClassVar[dict[str, int]] = {"한월 RPG": 1}
 
     # pag.PAUSE = 0.01  # pag click delay 설정
 
@@ -252,6 +242,7 @@ class SharedData:
 
     # 스킬 아이콘 디렉토리 정보
     # 이 딕셔너리에 없는 스킬은 기본 아이콘 사용
+    # todo: 다른 파일에 저장해서 불러오는 방식으로 변경
     skill_images_dir: ClassVar[dict[str, str]] = {}
 
     # 변수 초기화
@@ -264,9 +255,6 @@ class SharedData:
 
     # 매크로 실행 번호
     loop_num: int = 0
-
-    # 매크로 실행 중 게임 내에서 선택된 아이템 슬롯. -1이면 모르는 상태.
-    selected_item_slot: int = -1
 
     # 사이드바 페이지 번호
     sidebar_type: int = -1
@@ -307,7 +295,7 @@ class SharedData:
     # 서버 ID와 직업 ID
     # 기본값은 첫 번째 직업
     server_ID: str = SERVERS[0]
-    job_ID: str = JOBS[server_ID][0]
+    # job_ID: str = JOBS[server_ID][0]
 
     # 딜레이 설정: 0이면 기본, 1이면 직접입력
     delay_type: int = 0
@@ -337,31 +325,24 @@ class SharedData:
 
     # 사용 여부
     is_use_skill: ClassVar[dict[str, bool]] = {
-        skill: False for skill in skill_data[server_ID]["jobs"][job_ID]["skills"]
+        skill: False for skill in skill_data[server_ID]["skills"]
     }
     # 단독 사용
     is_use_sole: ClassVar[dict[str, bool]] = {
-        skill: False for skill in skill_data[server_ID]["jobs"][job_ID]["skills"]
-    }
-    # 콤보 횟수
-    combo_count: ClassVar[dict[str, int]] = {
-        skill: 0 for skill in skill_data[server_ID]["jobs"][job_ID]["skills"]
+        skill: False for skill in skill_data[server_ID]["skills"]
     }
     # 우선 순위
+    # todo: class, list로 변경
     skill_priority: ClassVar[dict[str, int]] = {
-        skill: 0 for skill in skill_data[server_ID]["jobs"][job_ID]["skills"]
+        skill: 0 for skill in skill_data[server_ID]["skills"]
     }  # 스킬 우선순위, 0: 지정되지 않음
 
+    # todo: class로 변경
     link_skills: ClassVar[list[dict[str, Any]]] = []
     """
     [
-        { "useType": 1, "keyType": 0, "key": "A", "skills": [[0, 1]] },
-        { "useType": 1, "keyType": 0, "key": "A", "skills": [[0, 1]] }
-    ]
-    ->
-    [
-        { "useType": "auto", "keyType": "on", "key": "A", "skills": [{"name": "스킬1", "count": 1}] },
-        { "useType": "manual", "keyType": "off", "key": "B", "skills": [{"name": "스킬1", "count": 1}] }
+        { "useType": "auto", "keyType": "on", "key": "A", "skills": ["스킬1"] },
+        { "useType": "manual", "keyType": "off", "key": "B", "skills": ["스킬1", "스킬2"] }
     ]
     """
 
@@ -370,35 +351,31 @@ class SharedData:
 
     # 준비된 스킬 리스트
     prepared_skills: ClassVar[list[list[int]]] = []
-    # 준비된 스킬 개수 리스트
-    prepared_skill_counts: ClassVar[list[list[int]]] = []
+
+    # 스킬 사용 가능 여부
+    is_skills_ready: ClassVar[list[bool]] = []
 
     # 준비된 연계스킬 리스트
+    # todo: class로 변경
     prepared_link_skill_indices: ClassVar[list[int]] = []
-
-    # 준비된 스킬 개수 리스트
-    prepared_skill_combos: ClassVar[list[int]] = []
 
     # 연계스킬 수행에 필요한 스킬 정보 리스트
     link_skills_requirements: ClassVar[list[list[int]]] = []
-    link_skills_combo_requirements: ClassVar[list[list[int]]] = []
 
     # 매크로 작동 중 사용하는 연계스킬 리스트
     using_link_skills: ClassVar[list[list[int]]] = []
-    using_link_skill_combos: ClassVar[list[list[int]]] = []
 
     # 연계가 아닌 스킬의 사용 순서
     skill_sequence: ClassVar[list[int]] = []
 
-    afk_started_time: float = 0.0  # AFK 모드 시작 시간
+    # AFK 모드 시작 시간
+    afk_started_time: float = 0.0
 
-    skill_cooltime_timers: ClassVar[list[float]] = []  # 스킬 쿨타임 타이머
-    available_skill_counts: ClassVar[list[int]] = []
+    # 스킬 쿨타임 타이머
+    skill_cooltime_timers: ClassVar[list[float]] = []
 
     # 시뮬레이션 정보
     # 스탯
-    from .custom_classes import Stats
-
     info_stats: Stats = Stats()
     # 스킬 레벨
     info_skill_levels: ClassVar[dict[str, int]] = {}
@@ -413,7 +390,6 @@ class SharedData:
         data_to_hash = (
             self.equipped_skills,
             self.server_ID,
-            self.job_ID,
             self.delay,
             self.cooltime_reduction,
             self.is_use_skill,

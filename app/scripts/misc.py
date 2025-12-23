@@ -32,26 +32,28 @@ def _get_unique_skill_color(skill_name: str) -> QColor:
 
 
 def _fill_transparent_pixels(pixmap: QPixmap, fill_color: QColor) -> QPixmap:
-    """투명 영역을 매우 빠르게 채운 픽스맵 반환.
+    """
+    투명 영역을 빠르게 채운 픽스맵 반환.
 
     구현 방식:
     1) 새 픽스맵을 fill_color로 채움
     2) 그 위에 원본 pixmap을 그려서 투명한 부분이 배경색으로 보이도록 함
-
-    장점: 파이썬 레벨의 per-pixel 루프 없이 Qt 내부에서 합성되어 매우 빠릅니다.
-    참고: 반투명 픽셀은 배경색과 블렌딩된 결과가 되며, 아이콘 렌더링에선 보통 의도한 동작입니다.
     """
 
+    # 유효성 검사
     if pixmap.isNull():
         return pixmap
 
+    # 불투명한 채우기 색상 생성
     opaque_fill = QColor(fill_color)
     opaque_fill.setAlpha(255)
 
+    # 새 픽스맵 생성 및 채우기
     result = QPixmap(pixmap.size())
     result.setDevicePixelRatio(pixmap.devicePixelRatio())
     result.fill(opaque_fill)
 
+    # 원본 픽스맵 그리기
     painter = QPainter(result)
     painter.drawPixmap(0, 0, pixmap)
     painter.end()
@@ -60,9 +62,7 @@ def _fill_transparent_pixels(pixmap: QPixmap, fill_color: QColor) -> QPixmap:
 
 
 def convert_skill_name_to_slot(shared_data: SharedData, skill_name: str) -> int:
-    """
-    스킬 이름을 슬롯 번호로 변환
-    """
+    """스킬 이름을 슬롯 번호로 변환"""
 
     return (
         shared_data.equipped_skills.index(skill_name)
@@ -72,9 +72,7 @@ def convert_skill_name_to_slot(shared_data: SharedData, skill_name: str) -> int:
 
 
 def is_key_used(shared_data: SharedData, key: str) -> bool:
-    """
-    키가 사용중인지 확인
-    """
+    """키가 사용중인지 확인"""
 
     # "\n"이 포함되어 있으면 "_"로 대체
     key = key.replace("\n", "_")
@@ -83,10 +81,7 @@ def is_key_used(shared_data: SharedData, key: str) -> bool:
     used_keys: list[str] = []
 
     # 시작 키
-    if shared_data.start_key_type == 1:
-        used_keys.append(shared_data.start_key_input)
-    else:
-        used_keys.append("F9")
+    used_keys.extend(shared_data.start_key)
 
     # 스킬 사용 키
     used_keys.extend(shared_data.skill_keys)
@@ -100,18 +95,11 @@ def is_key_used(shared_data: SharedData, key: str) -> bool:
         ]
     )
 
-    # if self.settingType == 3:
-    #     usingKey.append(self.ButtonLinkKey1.text())
-
-    # print(usingKey, key)
-
     return key in used_keys
 
 
 def convert_resource_path(relative_path: str) -> str:
-    """
-    리소스 경로 변경
-    """
+    """리소스 경로 변경"""
 
     base_path: str = os.path.dirname(os.path.abspath(__file__))
     base_path = os.path.dirname(base_path)
@@ -120,9 +108,7 @@ def convert_resource_path(relative_path: str) -> str:
 
 
 def set_default_fonts() -> None:
-    """
-    기본 폰트 설정
-    """
+    """기본 폰트 설정"""
 
     font_path: str = convert_resource_path("resources\\font\\NotoSansKR-Regular.ttf")
 
@@ -131,35 +117,25 @@ def set_default_fonts() -> None:
     # print(QFontDatabase.families())
 
 
-def get_skill_pixmap(
-    shared_data: SharedData, skill_name: str = "", state: int = -1
-) -> QPixmap:
-    """
-    스킬 아이콘 반환
-
-    skill_name == ""이면 빈 스킬 아이콘 반환
-    state == -1이면 해당 스킬의 최대 카운트 반환, -2이면 비활성화 아이콘 반환
-    """
-
-    # return QPixmap(convert_resource_path(f"resources\\image\\emptySkill.png"))
-
-    # 계속 반복적으로 실행이 되는 문제가 있음.
+def get_skill_pixmap(shared_data: SharedData, skill_name: str = "") -> QPixmap:
+    """스킬 아이콘 반환"""
 
     # skill_name == ""이면 빈 스킬 아이콘 반환
     if not skill_name:
         return QPixmap(convert_resource_path(f"resources\\image\\emptySkill.png"))
 
-    # count가 -1이면 shared_data에서 해당 스킬의 최대 카운트 가져오기
-    if state == -1:
-        state = get_skill_details(shared_data, skill_name)["max_combo_count"]
-
+    # 스킬 이미지가 있으면 해당 이미지 반환
     if skill_name in shared_data.skill_images_dir:
-        return QPixmap(convert_resource_path(shared_data.skill_images_dir[skill_name]))
+        return QPixmap(shared_data.skill_images_dir[skill_name])
 
+    # 스킬 이미지가 없으면 기본 스킬 아이콘을 고유 색상으로 채운 이미지 반환
     image_path: str = convert_resource_path("resources\\image\\skill_attack.png")
 
-    cache_key = skill_name
+    # 스킬 이름을 캐시 키로 사용
+    cache_key: str = skill_name
     cached: QPixmap | None = _SKILL_PIXMAP_CACHE.get(cache_key)
+
+    # 캐시에 있으면 반환
     if cached is not None:
         return cached
 
@@ -178,13 +154,6 @@ def get_skill_pixmap(
     _SKILL_PIXMAP_CACHE[cache_key] = colored
 
     return colored
-
-    # state가 -2이면 비활성화 아이콘 반환
-    # return QPixmap(
-    #     convert_resource_path(
-    #         f"resources\\image\\skills\\{shared_data.server_ID}\\{shared_data.job_ID}\\{skill_id}\\{state if state != -2 else 'off'}.png"
-    #     )
-    # )
 
 
 ## 위젯 크기에 맞는 폰트로 변경
@@ -274,9 +243,7 @@ def get_available_skills(shared_data: SharedData) -> list[str]:
     서버, 직업에 따라 사용 가능한 스킬 목록 반환
     """
 
-    return shared_data.skill_data[shared_data.server_ID]["jobs"][shared_data.job_ID][
-        "skills"
-    ]
+    return shared_data.skill_data[shared_data.server_ID]["skills"]
 
 
 def get_every_skills(shared_data: SharedData) -> list[str]:
@@ -284,17 +251,7 @@ def get_every_skills(shared_data: SharedData) -> list[str]:
     서버의 모든 스킬 목록 반환
     """
 
-    skills: list[str] = sum(
-        [
-            skills["skills"]
-            for job, skills in shared_data.skill_data[shared_data.server_ID][
-                "jobs"
-            ].items()
-        ],
-        [],
-    )
-
-    return skills
+    return shared_data.skill_data[shared_data.server_ID]["skills"]
 
 
 def get_skill_details(shared_data: SharedData, skill_name: str) -> dict:

@@ -158,13 +158,13 @@ class GeneralSettings(QFrame):
         # 서버 - 직업
         self.server_job_setting = self.SettingItem(
             title="서버 - 직업",
-            tooltip="서버와 직업을 선택합니다.\n새로운 서버가 오픈될 경우 새 항목이 추가될 수 있습니다.",
+            tooltip="서버와 직업을 선택합니다.",
             btn0_text=self.shared_data.server_ID,
             btn0_enabled=True,
-            btn1_text=self.shared_data.job_ID,
-            btn1_enabled=True,
+            btn1_text="X",
+            btn1_enabled=False,
             func0=self.on_servers_clicked,
-            func1=self.on_jobs_clicked,
+            func1=None,
         )
 
         # 딜레이
@@ -244,37 +244,25 @@ class GeneralSettings(QFrame):
 
         self.setLayout(layout)
 
-    def on_servers_clicked(self):
+    def on_servers_clicked(self) -> None:
         """서버 목록 클릭시 실행"""
 
         def apply(server_name: str) -> None:
-            """서버 선택 적용 함수"""
+            """적용 함수"""
+
+            if server_name == self.shared_data.server_ID:
+                return
 
             self.shared_data.server_ID = server_name
-            self.shared_data.job_ID = self.shared_data.JOBS[server_name][0]
 
             # 탭위젯에 반영
 
             save_data(self.shared_data)
 
-        self.popup_manager.make_server_popup(
-            self.server_job_setting.server_button, apply
-        )
+        self.popup_manager.make_server_popup(self.server_job_setting.left_button, apply)
 
-    def on_jobs_clicked(self):
-        """직업 목록 클릭시 실행"""
-
-        def apply(job_name: str) -> None:
-            self.shared_data.job_ID = job_name
-            self.server_job_setting.job_button.setText(self.shared_data.job_ID)
-            save_data(self.shared_data)
-
-        self.popup_manager.make_job_popup(self.server_job_setting.job_button, apply)
-
-    def on_default_delay_clicked(self):
+    def on_default_delay_clicked(self) -> None:
         """기본 딜레이 클릭시 실행"""
-
-        self.popup_manager.close_popup()
 
         # 매크로 실행 중일 때는 무시
         if self.shared_data.is_activated:
@@ -290,31 +278,37 @@ class GeneralSettings(QFrame):
         self.shared_data.delay = self.shared_data.DEFAULT_DELAY
 
         # 버튼 색상 변경
-        # self.buttonDefaultDelay.setStyleSheet("QPushButton { color: #000000; }")
-        # self.buttonInputDelay.setStyleSheet("QPushButton { color: #999999; }")
+        self.delay_setting.set_left_button_enabled(True)
+        self.delay_setting.set_right_button_enabled(False)
 
         # 데이터 저장
         save_data(self.shared_data)
 
-    def on_user_delay_clicked(self):
+    def on_user_delay_clicked(self) -> None:
         """유저 딜레이 클릭시 실행"""
 
-        self.popup_manager.close_popup()
+        def apply(delay_value: int) -> None:
+            """적용 함수"""
+
+            if delay_value == self.shared_data.delay_input:
+                return
+
+            self.shared_data.delay_input = delay_value
+            self.shared_data.delay = delay_value
+
+            # 버튼 텍스트 갱신
+            self.delay_setting.set_right_button_text(str(delay_value))
+
+            save_data(self.shared_data)
 
         # 매크로 실행 중일 때는 무시
         if self.shared_data.is_activated:
             self.popup_manager.make_notice_popup("MacroIsRunning")
             return
 
-        # 이미 딜레이 입력 팝업이 열려있다면 무시
-        if self.shared_data.active_popup == "settingDelay":
-            return
-
         # 이미 유저 딜레이라면 딜레이 입력 팝업 열기
         if self.shared_data.delay_type == 1:
-            self.popup_manager.activatePopup("settingDelay")
-            self.popup_manager.makePopupInput("delay")
-
+            self.popup_manager.make_delay_popup(self.delay_setting.right_button, apply)
             return
 
         # 유저 딜레이로 변경
@@ -322,8 +316,8 @@ class GeneralSettings(QFrame):
         self.shared_data.delay = self.shared_data.delay_input
 
         # 버튼 색상 변경
-        # self.buttonDefaultDelay.setStyleSheet("QPushButton { color: #999999; }")
-        # self.buttonInputDelay.setStyleSheet("QPushButton { color: #000000; }")
+        self.delay_setting.set_left_button_enabled(False)
+        self.delay_setting.set_right_button_enabled(True)
 
         # 데이터 저장
         save_data(self.shared_data)
@@ -513,8 +507,8 @@ class GeneralSettings(QFrame):
             btn0_enabled: bool,
             btn1_text: str,
             btn1_enabled: bool,
-            func0: Callable,
-            func1: Callable,
+            func0: Callable | None,
+            func1: Callable | None,
         ):
             super().__init__()
 
@@ -529,36 +523,69 @@ class GeneralSettings(QFrame):
             self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.title.setToolTip(tooltip)
 
-            rgb: dict[bool, str] = {
-                True: "#000000",
-                False: "#999999",
-            }
+            button_style = """
+                QPushButton[active=true] {
+                    color: #000000;
+                }
+                QPushButton[active=false] {
+                    color: #999999;
+                }
+            """
 
-            self.server_button = QPushButton(btn0_text)
-            self.server_button.clicked.connect(func0)
-            self.server_button.setFont(CustomFont(12))
-            self.server_button.setStyleSheet(
-                f"QPushButton {{color: {rgb[btn0_enabled]};}}"
-            )
-            self.server_button.setFixedWidth(120)
+            self.left_button = QPushButton(btn0_text)
+            self.left_button.setFont(CustomFont(12))
+            self.left_button.setStyleSheet(button_style)
+            self.left_button.setProperty("active", btn0_enabled)
+            self.left_button.setFixedWidth(120)
+            self.left_button.setEnabled(func0 is not None)
 
-            self.job_button = QPushButton(btn1_text)
-            self.job_button.clicked.connect(func1)
-            self.job_button.setFont(CustomFont(12))
-            self.job_button.setStyleSheet(
-                f"QPushButton {{color: {rgb[btn1_enabled]};}}"
-            )
-            self.job_button.setFixedWidth(120)
+            self.right_button = QPushButton(btn1_text)
+            self.right_button.setFont(CustomFont(12))
+            self.right_button.setStyleSheet(button_style)
+            self.right_button.setProperty("active", btn1_enabled)
+            self.right_button.setFixedWidth(120)
+            self.right_button.setEnabled(func1 is not None)
+
+            # 함수 연결
+            if func0 is not None:
+                self.left_button.clicked.connect(func0)
+            if func1 is not None:
+                self.right_button.clicked.connect(func1)
 
             layout = QGridLayout()
             layout.addWidget(self.title, 0, 0, 1, 2)
-            layout.addWidget(self.server_button, 1, 0)
-            layout.addWidget(self.job_button, 1, 1)
+            layout.addWidget(self.left_button, 1, 0)
+            layout.addWidget(self.right_button, 1, 1)
             layout.setContentsMargins(0, 0, 0, 0)
             layout.setSpacing(10)
 
-            # self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
             self.setLayout(layout)
+
+        def set_left_button_enabled(self, enabled: bool) -> None:
+            """왼쪽 버튼 활성화 상태 설정"""
+
+            self.left_button.setProperty("active", enabled)
+            self.left_button.style().unpolish(self.left_button)  # type: ignore
+            self.left_button.style().polish(self.left_button)  # type: ignore
+            self.left_button.update()
+
+        def set_right_button_enabled(self, enabled: bool) -> None:
+            """오른쪽 버튼 활성화 상태 설정"""
+
+            self.right_button.setProperty("active", enabled)
+            self.right_button.style().unpolish(self.right_button)  # type: ignore
+            self.right_button.style().polish(self.right_button)  # type: ignore
+            self.right_button.update()
+
+        def set_right_button_text(self, text: str) -> None:
+            """오른쪽 버튼 텍스트 설정"""
+
+            self.right_button.setText(text)
+
+        def set_left_button_text(self, text: str) -> None:
+            """왼쪽 버튼 텍스트 설정"""
+
+            self.left_button.setText(text)
 
 
 class SkillSettings(QFrame):
@@ -580,7 +607,7 @@ class SkillSettings(QFrame):
         grid_frame = QFrame()
         grid_frame.setLayout(grid_layout)
 
-        titles: list[str] = ["사용\n여부", "단독\n사용", "콤보\n횟수", "우선\n순위"]
+        titles: list[str] = ["사용\n여부", "단독\n사용", "우선\n순위"]
         tooltips: list[str] = [
             (
                 "매크로가 작동 중일 때 자동으로 스킬을 사용할지 결정합니다.\n"
@@ -593,18 +620,13 @@ class SkillSettings(QFrame):
                 "사용여부가 활성화되지 않았다면 단독으로 사용되지 않습니다."
             ),
             (
-                "매크로가 작동 중일 때 한 번에 스킬을 몇 번 사용할 지를 결정합니다.\n"
-                "콤보가 존재하는 스킬에 사용하는 것을 추천합니다.\n"
-                "연계스킬에는 적용되지 않습니다."
-            ),
-            (
                 "매크로가 작동 중일 때 여러 스킬이 준비되었더라도 우선순위가 더 높은(숫자가 낮은) 스킬을 먼저 사용합니다.\n"
                 "우선순위를 설정하지 않은 스킬들은 준비된 시간 순서대로 사용합니다.\n"
                 "버프스킬의 우선순위를 높이는 것을 추천합니다.\n"
                 "연계스킬은 우선순위가 적용되지 않습니다."
             ),
         ]
-        for i in range(4):
+        for i in range(3):
             label = QLabel(titles[i])
             label.setToolTip(tooltips[i])
             label.setStyleSheet("QLabel { border: 0px; border-radius: 0px; }")
@@ -627,9 +649,7 @@ class SkillSettings(QFrame):
         for idx, name in enumerate(skill_names):
             # 스킬 이미지
             pixmap: QPixmap = get_skill_pixmap(
-                shared_data=self.shared_data,
-                skill_name=name,
-                state=-1 if name in self.shared_data.equipped_skills else -2,
+                shared_data=self.shared_data, skill_name=name
             )
             skill_image: SkillImage = SkillImage(parent=self, pixmap=pixmap, size=30)
             grid_layout.addWidget(skill_image, idx + 1, 0, Qt.AlignmentFlag.AlignCenter)
@@ -668,15 +688,7 @@ class SkillSettings(QFrame):
                 use_sole_btn, idx + 1, 2, Qt.AlignmentFlag.AlignCenter
             )
 
-            # 콤보 횟수 버튼
-            combo_btn = QPushButton(
-                f"{self.shared_data.combo_count[name]} / {get_skill_details(self.shared_data, name)['max_combo_count']}"
-            )
-            # combo_btn.clicked.connect()
-            combo_btn.setFont(CustomFont(12))
-            combo_btn.setFixedWidth(40)
-            grid_layout.addWidget(combo_btn, idx + 1, 3, Qt.AlignmentFlag.AlignCenter)
-
+            # 우선순위 버튼
             priority: int = self.shared_data.skill_priority[name]
             txt: str = "-" if priority == 0 else str(priority)
 
@@ -687,7 +699,7 @@ class SkillSettings(QFrame):
             priority_btn.setFont(CustomFont(12))
             priority_btn.setFixedWidth(40)
             grid_layout.addWidget(
-                priority_btn, idx + 1, 4, Qt.AlignmentFlag.AlignCenter
+                priority_btn, idx + 1, 3, Qt.AlignmentFlag.AlignCenter
             )
 
         layout = QVBoxLayout()
@@ -889,7 +901,6 @@ class LinkSkillSettings(QFrame):
                 pixmap: QPixmap = get_skill_pixmap(
                     shared_data=self.shared_data,
                     skill_name=data["skills"][i]["name"],
-                    state=data["skills"][i]["count"],
                 )
 
                 skill = SkillImage(
@@ -1198,7 +1209,7 @@ class LinkSkillEditor(QFrame):
             #         (data, i),
             #     )
             # )
-            skill.setIcon(QIcon(get_skill_pixmap(shared_data, name, count)))
+            skill.setIcon(QIcon(get_skill_pixmap(shared_data, name)))
             # skill.setIconSize(QSize(50, 50))
             skill.setToolTip(
                 "연계스킬을 구성하는 스킬의 목록과 사용 횟수를 설정할 수 있습니다.\n하나의 스킬이 너무 많이 사용되면 연계가 정상적으로 작동하지 않을 수 있습니다."

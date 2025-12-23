@@ -59,7 +59,7 @@ def calculate_req_stat(
     base_stat: int | float = shared_data.info_stats.get_stat_from_name(stat=stat_type)
 
     # 현재 전투력 계산
-    current_power: float = detSimulate(
+    current_power: float = simulate_deterministic(
         shared_data=shared_data,
         stats=stats,
         sim_details=shared_data.info_sim_details,
@@ -85,7 +85,7 @@ def calculate_req_stat(
         stats.set_stat_from_name(stat=stat_type, value=base_stat + high)
 
         # 전투력 계산
-        current_power = detSimulate(
+        current_power = simulate_deterministic(
             shared_data=shared_data,
             stats=stats,
             sim_details=shared_data.info_sim_details,
@@ -121,7 +121,7 @@ def calculate_req_stat(
         # print(stats)
 
         # 전투력 계산
-        current_power = detSimulate(
+        current_power = simulate_deterministic(
             shared_data=shared_data,
             stats=stats,
             sim_details=shared_data.info_sim_details,
@@ -280,7 +280,7 @@ def execute_simulation(
 
 
 # 최소, 최대, 평균, 표준편차 등을 계산하는 확률론적 시뮬레이션
-def randSimulate(
+def simulate_random(
     shared_data: SharedData,
     stats: Stats,
     sim_details: dict[str, int],
@@ -290,7 +290,7 @@ def randSimulate(
     # 스킬 레벨 정보를 추가
     skill_levels_tuple: tuple = tuple(sorted(shared_data.info_skill_levels.items()))
 
-    return simulateMacro(
+    return simulate(
         shared_data=shared_data,
         stats=stats,
         sim_details_tuple=sim_details_tuple,
@@ -301,7 +301,7 @@ def randSimulate(
 
 # 전투력 계산을 위한 결정론적 시뮬레이션
 # 캐시를 사용하여 성능 향상
-def detSimulate(
+def simulate_deterministic(
     shared_data: SharedData,
     stats: Stats,
     sim_details: dict[str, int],
@@ -313,7 +313,7 @@ def detSimulate(
         sim_details_tuple: tuple[tuple[str, int]],
         skill_levels_tuple: tuple[tuple[str, int]],
     ) -> SimResult:
-        return simulateMacro(
+        return simulate(
             shared_data=shared_data,
             stats=stats,
             sim_details_tuple=sim_details_tuple,
@@ -333,7 +333,7 @@ def detSimulate(
 
 
 # 61초 -> 60초로 변경, 처음 0일 때 총 데미지를 0으로 설정
-def simulateMacro(
+def simulate(
     shared_data: SharedData,
     stats: Stats,
     sim_details_tuple: tuple[tuple[str, int]],
@@ -387,7 +387,7 @@ def simulateMacro(
         random.seed(random_seed)
 
     # 사용한 스킬 목록
-    attack_details, buff_details = getSimulatedSKillList(
+    attack_details, buff_details = get_simulated_skills(
         shared_data=shared_data,
         cooltimeReduce=stats.ATK_SPD,
         skill_levels_tuple=skill_levels_tuple,
@@ -559,7 +559,7 @@ def simulateMacro(
     )
 
 
-def getSimulatedSKillList(
+def get_simulated_skills(
     shared_data: SharedData,
     cooltimeReduce: int | float,
     skill_levels_tuple: tuple[tuple[str, int]],
@@ -569,21 +569,6 @@ def getSimulatedSKillList(
     스킬 쿨타임 감소 스텟을 증가시키는 스킬이 있을 수 있기 때문에 로직을 수정해야함.
     실제와 다른 경우가 있어서 시뮬레이션 진행할 때 옵션 추가해야함
     """
-
-    def use(skill, additional_time=0) -> None:
-        """
-        스킬 사용 함수
-        """
-
-        used_skills.append(
-            SimSkill(skill=skill, time=elapsed_time + additional_time, combo=0)
-        )
-
-        skill_apply_delay.skill = skill
-        skill_apply_delay.delay = additional_time
-        # availableSkillCount[skill] -= 1
-
-        # print(f"{(elapsedTime + additionalTime) * 0.001:.3f} - {skill}")
 
     # 시뮬레이션 초기 설정
     init_macro(shared_data=shared_data)
@@ -595,10 +580,6 @@ def getSimulatedSKillList(
     # 다음 테스크 실행까지 대기 시간 (ms)
     delay_to_next_task: int = 0
 
-    # availableSkillCount -= 1까지 남은 시간 (doClick을 할때 delay가 있기 때문)
-    # skill = None, delay = None 으로 시작
-    skill_apply_delay: SimSkillApplyDelay = SimSkillApplyDelay()
-
     used_skills: list[SimSkill] = []
 
     # 스킬 남은 쿨타임 : [0, 0, 0, 0, 0, 0]
@@ -608,16 +589,9 @@ def getSimulatedSKillList(
         shared_data.server_ID
     ]
 
-    # 스킬 사용 가능 횟수 : [3, 2, 2, 1, 3, 3]
-    available_skill_counts: list[int] = [
-        (
-            get_skill_details(
-                shared_data=shared_data, skill_name=shared_data.equipped_skills[i]
-            )["max_combo_count"]
-            if shared_data.equipped_skills[i]
-            else 0
-        )
-        for i in range(shared_data.USABLE_SKILL_COUNT[shared_data.server_ID])
+    # 스킬 사용 가능 여부
+    is_skills_ready: list[bool] = [True] * shared_data.USABLE_SKILL_COUNT[
+        shared_data.server_ID
     ]
 
     # 스킬 레벨
@@ -634,35 +608,9 @@ def getSimulatedSKillList(
             # 스킬 슬롯
             slot: int = shared_data.task_list.pop(0)
 
-            # 스킬 사용 시 클릭 여부
-            is_click: bool = get_skill_details(
-                shared_data=shared_data, skill_name=shared_data.equipped_skills[slot]
-            )["is_casting"]
-
-            # 스킬 슬롯에 따라 다르게 사용
-            if shared_data.selected_item_slot != slot:
-                if is_click:  # press -> delay -> click => use
-                    use(skill=slot, additional_time=shared_data.delay)
-                    shared_data.selected_item_slot = slot
-
-                    delay_to_next_task = shared_data.delay * 2
-
-                else:  # press => use
-                    use(skill=slot)
-                    shared_data.selected_item_slot = slot
-
-                    delay_to_next_task = shared_data.delay
-
-            else:
-                if is_click:  # click => use
-                    use(skill=slot)
-
-                    delay_to_next_task = shared_data.delay
-
-                else:  # press => use
-                    use(skill=slot)
-
-                    delay_to_next_task = shared_data.delay
+            used_skills.append(SimSkill(skill=slot, time=elapsed_time))
+            is_skills_ready[slot] = False
+            delay_to_next_task = shared_data.delay
 
         # 스킬 쿨타임
         for slot in range(shared_data.USABLE_SKILL_COUNT[shared_data.server_ID]):  # 0~6
@@ -671,13 +619,7 @@ def getSimulatedSKillList(
                 continue
 
             # 스킬 사용해서 쿨타임 기다리는 중이면
-            if (
-                available_skill_counts[slot]
-                < get_skill_details(
-                    shared_data=shared_data,
-                    skill_name=shared_data.equipped_skills[slot],
-                )["max_combo_count"]
-            ):
+            if not is_skills_ready[slot]:
                 # 쿨타임 타이머 UNIT_TIME(1tick) 100배 만큼 증가
                 skill_cooltime_timers[slot] += int(shared_data.UNIT_TIME * 100)
 
@@ -691,25 +633,10 @@ def getSimulatedSKillList(
                 ):
                     # 대기열에 추가
                     shared_data.prepared_skills[2].append(slot)
-                    # 사용 가능 횟수 증가
-                    available_skill_counts[slot] += 1
+                    # 사용 가능 표시
+                    is_skills_ready[slot] = True
 
                     skill_cooltime_timers[slot] = 0  # 쿨타임 초기화
-                    # print(f"{(elapsedTime) * 0.001:.3f} - {skill} 쿨타임")
-
-        # 스킬 사용 대기 시간이 지나면
-        if skill_apply_delay.delay == 0 and skill_apply_delay.skill is not None:
-            # 준비된 스킬 개수 1 감소
-            available_skill_counts[skill_apply_delay.skill] -= 1
-            # 스킬 사용 대기 시간 초기화
-            skill_apply_delay.clear()
-
-        # 스킬 사용 대기 시간이 남아있으면
-        if skill_apply_delay.delay is not None:
-            # 스킬 사용 대기 시간 감소 (최소 0)
-            skill_apply_delay.delay = max(
-                0, skill_apply_delay.delay - int(shared_data.UNIT_TIME * 1000)
-            )
 
         # 다음 테스크까지 대기 시간 감소
         delay_to_next_task = max(
@@ -718,47 +645,14 @@ def getSimulatedSKillList(
         # 현재 시간 증가
         elapsed_time += int(shared_data.UNIT_TIME * 1000)
 
-    used_skills = [skill for skill in used_skills if skill.time < 60000]
-
-    # 1초 이내에 같은 스킬 사용 => 콤보
-    for num, skill in enumerate(used_skills):
-        # used_skills[num]의 콤보를 변경
-        # 이전에 사용한 스킬이 num 스킬의 이전 콤보인지 확인
-        # 직전 스킬부터 시작해서 1초 이내에 사용한 스킬인지 확인함.
-        # 1초는 임시로 설정한 값이며, 실제 서버에서의 콤보 시간을 설정해야 함.
-
-        # 최대 콤보 수 미리 저장
-        max_combo_count: int = get_skill_details(
-            shared_data=shared_data,
-            skill_name=shared_data.equipped_skills[skill.skill],
-        )["max_combo_count"]
-
-        for used_skill in reversed(used_skills[:num]):
-            # 1초 이내에 사용한 스킬이 아니면 중단
-            if skill.time - used_skill.time > 1000:
-                break
-
-            if (
-                # 스킬이 같고
-                used_skill.skill == skill.skill
-                # 콤보가 최대 콤보 수보다 작으면
-                and used_skill.combo < max_combo_count
-            ):
-                # 콤보 증가
-                used_skills[num].combo = used_skill.combo + 1
-                break
-
     # 평타 추가
-
-    # 평타 횟수
-    num = 0
     # 평타는 1초마다 사용
-    # 1초는 임시로 설정한 값이며, 실제 서버에서의 콤보 시간을 설정해야 함.
+    # 1초는 임시로 설정한 값이며, 실제 서버에서의 시간을 설정해야 함.
     # ms 단위로 사용
     delay: int = int((100 - cooltimeReduce) * 10 * 1)
     for t in range(0, 60000, delay):
         # 평타는 스킬 번호 -1로 설정
-        used_skills.append(SimSkill(skill=-1, time=t, combo=0))
+        used_skills.append(SimSkill(skill=-1, time=t))
 
     # 시간 단위를 1초로 변경
     # 반올림은 0.01초 단위로
@@ -785,13 +679,7 @@ def getSimulatedSKillList(
         skill_effects: dict = get_skill_details(
             shared_data=shared_data,
             skill_name=shared_data.equipped_skills[skill.skill],
-        )["levels"][str(skill_levels[shared_data.equipped_skills[skill.skill]])][
-            "combos"
-        ][
-            skill.combo
-        ][
-            "effects"
-        ]
+        )["levels"][str(skill_levels[shared_data.equipped_skills[skill.skill]])]
 
         # 각 effect에 대해
         # 공격 효과와 버프 효과를 구분하여 처리

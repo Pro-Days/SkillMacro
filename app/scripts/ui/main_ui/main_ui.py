@@ -700,10 +700,17 @@ class SkillPreview(QFrame):
             }
             """
         )
-        self.setFixedSize(288, 48)
+        self.setFixedHeight(58)
+        self.setMinimumWidth(200)
 
         self.skill_count = 0
         self.skills: list[QLabel] = []
+
+        self.skills_layout: QHBoxLayout = QHBoxLayout()
+        self.skills_layout.setContentsMargins(6, 6, 6, 6)
+        self.skills_layout.setSpacing(6)
+        self.skills_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setLayout(self.skills_layout)
 
     def update_preview(self) -> None:
         """프리뷰 업데이트"""
@@ -719,19 +726,20 @@ class SkillPreview(QFrame):
         # 기존 아이콘 정리
         for icon in self.skills:
             icon.deleteLater()
+            self.skills_layout.removeWidget(icon)
+
         self.skills.clear()
 
         # 각 미리보기 스킬 이미지 추가
         for slot in self.shared_data.task_list[:count]:
             pixmap: QPixmap = get_skill_pixmap(
-                self.shared_data,
-                skill_name=self.shared_data.equipped_skills[slot],
-                state=1 if self.shared_data.is_activated else -2,
+                self.shared_data, skill_name=self.shared_data.equipped_skills[slot]
             )
 
-            skill: SkillImage = SkillImage(parent=self, pixmap=pixmap, size=48)
+            skill: SkillImage = SkillImage(parent=self, pixmap=pixmap, size=44)
 
             self.skills.append(skill)
+            self.skills_layout.addWidget(skill)
 
 
 class EquippableSkill(QFrame):

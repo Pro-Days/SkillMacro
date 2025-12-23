@@ -38,7 +38,11 @@ from app.scripts.misc import (
     get_skill_pixmap,
 )
 from app.scripts.shared_data import UI_Variable
-from app.scripts.simulate_macro import detSimulate, get_req_stats, randSimulate
+from app.scripts.simulate_macro import (
+    get_req_stats,
+    simulate_deterministic,
+    simulate_random,
+)
 from app.scripts.ui.sim_ui.graph import (
     DMGCanvas,
     DpmDistributionCanvas,
@@ -444,7 +448,7 @@ class Sim2UI(QFrame):
         # 진행 상황이 실시간으로 보이도록 그래핑 방식도 변경
         # GPU를 사용하는 것도 고려.
         # 레벨을 사용하도록 변경
-        sim_result: SimResult = randSimulate(
+        sim_result: SimResult = simulate_random(
             self.shared_data,
             self.shared_data.info_stats,
             self.shared_data.info_sim_details,
@@ -627,7 +631,7 @@ class Sim3UI(QFrame):
         self.ui_var = UI_Variable()
 
         # 초기 전투력 계산
-        powers: list[float] = detSimulate(
+        powers: list[float] = simulate_deterministic(
             self.shared_data,
             self.shared_data.info_stats,
             self.shared_data.info_sim_details,
@@ -765,7 +769,7 @@ class Sim3UI(QFrame):
             stats.add_stat_from_index(left_index, value)
 
             # 적용 후 전투력 계산
-            powers: list[float] = detSimulate(
+            powers: list[float] = simulate_deterministic(
                 self.shared_data,
                 stats,
                 self.shared_data.info_sim_details,
@@ -955,7 +959,7 @@ class Sim3UI(QFrame):
             }
 
             # 전투력 계산
-            powers: list[float] = detSimulate(
+            powers: list[float] = simulate_deterministic(
                 self.shared_data,
                 stats,
                 self.shared_data.info_sim_details,
@@ -1027,7 +1031,7 @@ class Sim3UI(QFrame):
                 stat, value = self.shared_data.POTENTIAL_STATS[opt]
                 stats.add_stat_from_name(stat, value)
 
-            powers: list[float] = detSimulate(
+            powers: list[float] = simulate_deterministic(
                 self.shared_data,
                 stats,
                 self.shared_data.info_sim_details,
@@ -1497,7 +1501,7 @@ class PotentialRank(QFrame):
             stats: Stats = shared_data.info_stats.copy()
             stats.add_stat_from_name(stat, value)
 
-            powers: list[float] = detSimulate(
+            powers: list[float] = simulate_deterministic(
                 shared_data, stats, shared_data.info_sim_details
             ).powers
 

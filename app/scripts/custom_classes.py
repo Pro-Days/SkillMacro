@@ -30,11 +30,27 @@ class CustomLineEdit(QLineEdit):
         connected_function: Callable | None = None,
         text: str = "",
         point_size: int = 14,
+        border_radius: int = 4,
     ) -> None:
         super().__init__(text, parent)
 
         self.setFont(CustomFont(point_size))
-        self.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.setStyleSheet(
+            f"""
+            QLineEdit[valid=true] {{
+                background-color: #f0f0f0;
+                border: 1px solid #D9D9D9;
+                border-radius: {border_radius}px;
+            }}
+            QLineEdit[valid=false] {{
+                background-color: #f0f0f0;
+                border: 2px solid #FF6060;
+                border-radius: {border_radius}px;
+            }}
+            """
+        )
 
         self.set_valid(True)
 
@@ -46,17 +62,10 @@ class CustomLineEdit(QLineEdit):
         입력이 유효한지에 따라 스타일 변경
         """
 
-        # 유효하다면
-        if is_valid:
-            self.setStyleSheet(
-                "QLineEdit { background-color: #f0f0f0; border: 1px solid #D9D9D9; border-radius: 4px; }"
-            )
-
-        # 유효하지 않다면
-        else:
-            self.setStyleSheet(
-                "QLineEdit { background-color: #f0f0f0; border: 2px solid #FF6060; border-radius: 4px; }"
-            )
+        self.setProperty("valid", is_valid)
+        self.style().unpolish(self)  # type: ignore
+        self.style().polish(self)  # type: ignore
+        self.update()
 
 
 class KVInput(QFrame):
@@ -262,9 +271,6 @@ class SimSkill:
 
     # 사용 시간
     time: float
-
-    # 스킬 콤보 번호
-    combo: int
 
 
 @dataclass(unsafe_hash=True)
