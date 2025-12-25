@@ -4,13 +4,14 @@ import hashlib
 import os
 from typing import TYPE_CHECKING
 
+from pynput import keyboard as pynput_keyboard
 from PyQt6.QtGui import QColor, QFontDatabase, QFontMetrics, QPainter, QPixmap
 from PyQt6.QtWidgets import QLabel, QPushButton
 
 from app.scripts.custom_classes import CustomFont
 
 if TYPE_CHECKING:
-    from app.scripts.shared_data import SharedData
+    from app.scripts.shared_data import KeySpec, SharedData
 
 
 # 스킬 아이콘 캐시
@@ -71,17 +72,14 @@ def convert_skill_name_to_slot(shared_data: SharedData, skill_name: str) -> int:
     )
 
 
-def is_key_used(shared_data: SharedData, key: str) -> bool:
+def is_key_using(shared_data: SharedData, key: KeySpec) -> bool:
     """키가 사용중인지 확인"""
 
-    # "\n"이 포함되어 있으면 "_"로 대체
-    key = key.replace("\n", "_")
-
     # 사용중인 키 목록
-    used_keys: list[str] = []
+    used_keys: list[KeySpec] = []
 
     # 시작 키
-    used_keys.extend(shared_data.start_key)
+    used_keys.append(shared_data.start_key)
 
     # 스킬 사용 키
     used_keys.extend(shared_data.skill_keys)
@@ -96,6 +94,24 @@ def is_key_used(shared_data: SharedData, key: str) -> bool:
     )
 
     return key in used_keys
+
+
+def _key_to_KeySpec(
+    shared_data: SharedData, k: pynput_keyboard.Key | pynput_keyboard.KeyCode | None
+) -> KeySpec | None:
+
+    if k is None:
+        return None
+
+    # KeyCode: 일반 문자
+    if isinstance(k, pynput_keyboard.KeyCode):
+        ch: str | None = k.char
+        if not ch:
+            return None
+
+        return shared_data.KEY_DICT.get(ch, None)
+
+    return shared_data.KEY_DICT.get(k.name, None)
 
 
 def convert_resource_path(relative_path: str) -> str:

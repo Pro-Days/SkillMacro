@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum, auto
 from functools import partial
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 from webbrowser import open_new
 
+from pynput import keyboard as pynput_keyboard
 from PyQt6.QtCore import (
     QCoreApplication,
     QEvent,
@@ -16,7 +18,7 @@ from PyQt6.QtCore import (
     QTimer,
     pyqtSignal,
 )
-from PyQt6.QtGui import QGuiApplication, QIcon, QPixmap, QTransform
+from PyQt6.QtGui import QGuiApplication, QIcon, QPixmap, QScreen, QTransform
 from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
@@ -34,15 +36,17 @@ from PyQt6.QtWidgets import (
 from app.scripts.custom_classes import CustomFont, CustomLineEdit, CustomShadowEffect
 from app.scripts.data_manager import save_data
 from app.scripts.misc import (
+    _key_to_KeySpec,
     adjust_font_size,
     convert_resource_path,
     get_available_skills,
     get_every_skills,
     get_skill_details,
     get_skill_pixmap,
-    is_key_used,
+    is_key_using,
     set_var_to_ClassVar,
 )
+from app.scripts.shared_data import KeySpec
 
 if TYPE_CHECKING:
     from app.scripts.main_window import MainWindow
@@ -65,6 +69,10 @@ class PopupKind(str, Enum):
     SETTING_SERVER = "settingServer"
     SETTING_JOB = "settingJob"
     SETTING_DELAY = "settingDelay"
+    SETTING_COOLTIME = "settingCooltime"
+    SETTING_START_KEY = "settingStartKey"
+    TAB_NAME = "tabName"
+    SKILL_KEY = "skillKey"
 
 
 @dataclass(frozen=True)
@@ -93,13 +101,13 @@ class PopupAction:
 def _clamp_rect_to_screen(rect: QRect, screen_rect: QRect, margin: int) -> QRect:
     """팝업이 화면 밖으로 나가지 않도록 위치 보정"""
 
-    x = rect.x()
-    y = rect.y()
+    x: int = rect.x()
+    y: int = rect.y()
 
-    min_x = screen_rect.left() + margin
-    max_x = screen_rect.right() - margin - rect.width() + 1
-    min_y = screen_rect.top() + margin
-    max_y = screen_rect.bottom() - margin - rect.height() + 1
+    min_x: int = screen_rect.left() + margin
+    max_x: int = screen_rect.right() - margin - rect.width() + 1
+    min_y: int = screen_rect.top() + margin
+    max_y: int = screen_rect.bottom() - margin - rect.height() + 1
 
     if x < min_x:
         x = min_x
@@ -180,7 +188,6 @@ class InputConfirmContent(QFrame):
     def __init__(
         self,
         default_text: str = "",
-        button_text: str = "확인",
         fixed_width: int = 170,
     ) -> None:
         super().__init__()
@@ -196,7 +203,7 @@ class InputConfirmContent(QFrame):
         self._edit.setFixedHeight(30)
         self._edit.returnPressed.connect(self._emit_submit)
 
-        self._btn = QPushButton(button_text, self)
+        self._btn = QPushButton("확인", self)
         self._btn.setFont(CustomFont(12))
         self._btn.setStyleSheet(
             """
@@ -231,6 +238,74 @@ class InputConfirmContent(QFrame):
         self.submitted.emit(self._edit.text())
 
 
+class KeyCaptureContent(QFrame):
+    """QLabel + 확인 버튼 형태의 시작키 입력 팝업 (키는 외부 리스너가 주입)"""
+
+    submitted = pyqtSignal(KeySpec)
+    _key_received = pyqtSignal(KeySpec)
+
+    def __init__(
+        self,
+        default_key: KeySpec,
+        fixed_width: int = 200,
+    ) -> None:
+        super().__init__()
+
+        self.setFixedWidth(fixed_width)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.setStyleSheet("QFrame { background-color: transparent; }")
+
+        self._current_key: KeySpec = default_key
+
+        self._label = QLabel(self)
+        self._label.setFont(CustomFont(12))
+        self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._label.setStyleSheet(
+            "QLabel { background-color: white; border-radius: 10px; border: 1px solid #bbbbbb; padding: 2px; }"
+        )
+        self._label.setFixedHeight(30)
+        self._label.setText("키를 입력해주세요")
+
+        self._btn = QPushButton("확인", self)
+        self._btn.setFont(CustomFont(12))
+        self._btn.setStyleSheet(
+            """
+            QPushButton {
+                background-color: white;
+                border-radius: 10px;
+                border: 1px solid #bbbbbb;
+            }
+            QPushButton:hover {
+                background-color: #cccccc;
+            }
+            """
+        )
+        self._btn.setFixedSize(50, 30)
+        self._btn.clicked.connect(self._emit_submit)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(5, 5, 5, 5)
+        layout.setSpacing(5)
+        layout.addWidget(self._label)
+        layout.addWidget(self._btn)
+        self.setLayout(layout)
+
+        # 다른 리스너에서 안전하게 label 업데이트
+        self._key_received.connect(self._apply_key)
+
+    def set_key(self, key: KeySpec) -> None:
+        """외부 리스너에서 호출 -> 현재 키를 업데이트"""
+
+        self._key_received.emit(key)
+
+    def _apply_key(self, key: KeySpec) -> None:
+        self._current_key = key
+        self._label.setText(str(key))
+
+    def _emit_submit(self) -> None:
+        self.submitted.emit(self._current_key)
+
+
 class PopupHost(QDialog):
     """공통 팝업 껍데기: 배치/클릭-아웃/ESC/그림자 등을 일원화."""
 
@@ -239,12 +314,13 @@ class PopupHost(QDialog):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
-        # Popup 대신 Tool 윈도우 사용 (일반 윈도우 렌더링 사용)
+        # 팝업 창 설정
         self.setWindowFlags(
             Qt.WindowType.Tool
             | Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
         )
+        # 배경 투명화
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAutoFillBackground(False)
         self.setStyleSheet("background: transparent;")
@@ -269,7 +345,7 @@ class PopupHost(QDialog):
         self._container_layout = QVBoxLayout(self._container)
         self._container_layout.setContentsMargins(0, 0, 0, 0)
 
-        # blur 만큼 여유를 주고, offset 방향은 추가로 더 준다.
+        # blur 만큼 여유를 주고, offset 방향은 추가로 더 여유를 줌
         root = QVBoxLayout(self)
         root.setContentsMargins(10, 8, 10, 20)
         root.addWidget(self._container)
@@ -282,6 +358,9 @@ class PopupHost(QDialog):
             app.installEventFilter(self)
 
     def set_content(self, content: QWidget) -> None:
+        """팝업 내용 설정"""
+
+        # 기존 내용 제거
         if self._content is not None:
             self._container_layout.removeWidget(self._content)
             self._content.setParent(None)
@@ -291,17 +370,24 @@ class PopupHost(QDialog):
         self._container_layout.addWidget(content)
 
     def show_for(self, anchor: QWidget, options: PopupOptions = PopupOptions()) -> None:
+        """팝업 표시"""
+
+        # 내용이 설정되지 않은 경우 예외 발생
         if self._content is None:
             raise RuntimeError("PopupHost.show_for() called without content")
 
+        # 크기 조정
         self._container.adjustSize()
         self.adjustSize()
 
-        anchor_top_left = anchor.mapToGlobal(QPoint(0, 0))
+        # 앵커 위치 계산
+        anchor_top_left: QPoint = anchor.mapToGlobal(QPoint(0, 0))
         anchor_rect = QRect(anchor_top_left, anchor.size())
 
-        popup_size = self.sizeHint()
-        w, h = popup_size.width(), popup_size.height()
+        # 팝업 크기 계산
+        popup_size: QSize = self.sizeHint()
+        w: int = popup_size.width()
+        h: int = popup_size.height()
 
         # 배치 계산
         if options.placement == PopupPlacement.BELOW:
@@ -317,20 +403,28 @@ class PopupHost(QDialog):
             x = anchor_rect.right() + options.margin
             y = anchor_rect.top() + (anchor_rect.height() - h) // 2
 
-        desired = QRect(x, y, w, h)
-
-        screen = QGuiApplication.screenAt(anchor_rect.center())
+        # 화면 경계 내로 위치 보정
+        screen: QScreen | None = QGuiApplication.screenAt(anchor_rect.center())
         if screen is None:
             screen = QGuiApplication.primaryScreen()
-        screen_rect = (
+
+        screen_rect: QRect = (
             screen.availableGeometry()
             if screen is not None
             else QRect(0, 0, 1920, 1080)
         )
 
-        clamped = _clamp_rect_to_screen(desired, screen_rect, options.screen_margin)
+        desired = QRect(x, y, w, h)
+
+        # 보정된 위치 계산
+        clamped: QRect = _clamp_rect_to_screen(
+            desired, screen_rect, options.screen_margin
+        )
+
+        # 팝업 위치 설정
         self.move(clamped.topLeft())
 
+        # 팝업 표시 및 포커스 설정
         self.show()
         self.raise_()
         self.activateWindow()
@@ -339,12 +433,12 @@ class PopupHost(QDialog):
         self.setFocus()
 
     def eventFilter(self, obj, event: QEvent) -> bool:  # type: ignore
-        """부모 위젯의 이벤트를 감지 (스크롤 등)"""
+        """부모 위젯의 스크롤 이벤트를 감지"""
 
         # 스크롤 이벤트 감지
         if self.isVisible() and event.type() == QEvent.Type.Wheel:
             # 휠 이벤트는 원래 대상 위젯으로 계속 전달되게 두고,
-            # 팝업만 닫아 UX를 자연스럽게 만든다.
+            # 팝업만 닫아 UX를 자연스럽게 유지
             self.close()
             return False
 
@@ -382,7 +476,7 @@ class PopupHost(QDialog):
 
 
 class PopupController:
-    """단일 PopupHost를 재사용하며 content 교체로 팝업을 표시한다."""
+    """PopupHost를 재사용하며 content 교체로 팝업을 표시"""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         self._host = PopupHost(parent)
@@ -404,6 +498,8 @@ class PopupController:
         actions: list[PopupAction],
         options: PopupOptions = PopupOptions(),
     ) -> None:
+        """ActionList 형태의 팝업 표시."""
+
         self._actions_by_id = {a.id: a for a in actions}
 
         content = ActionListContent(actions)
@@ -420,14 +516,16 @@ class PopupController:
     ) -> None:
         """ActionList가 아닌 임의의 content(입력 팝업 등)를 표시."""
 
-        # 기존 액션 매핑은 비운다(커스텀 content는 자체 핸들링).
+        # 기존 액션 매핑 제거
         self._actions_by_id = {}
 
         self._host.set_content(content)
         self._host.show_for(anchor, options)
 
     def _on_triggered(self, action_id: str) -> None:
-        act = self._actions_by_id.get(action_id)
+        """액션 선택시 호출"""
+
+        act: PopupAction | None = self._actions_by_id.get(action_id)
         self.close()
 
         if act is None:
@@ -441,11 +539,7 @@ class PopupManager:
     팝업을 관리하는 클래스
     """
 
-    def __init__(
-        self,
-        master: MainWindow,
-        shared_data: SharedData,
-    ):
+    def __init__(self, master: MainWindow, shared_data: SharedData) -> None:
         self.master: MainWindow = master
         self.shared_data: SharedData = shared_data
 
@@ -453,19 +547,29 @@ class PopupManager:
         self._popup_controller.host.closed.connect(self._on_popup_host_closed)
         self._active_popup: PopupKind | None = None
 
+        # 시작키 입력 리스너(pynput) 관리
+        self._key_listener: pynput_keyboard.Listener | None = None
+
     def _on_popup_host_closed(self) -> None:
+        """팝업 호스트가 닫혔을 때 호출"""
+
         self._active_popup = None
+        self._stop_key_listener()
 
-    def is_popup_open(self, kind: PopupKind | None = None) -> bool:
-        """특정 종류의 팝업이 열려있는지 확인"""
+    def _stop_key_listener(self) -> None:
+        """키 입력 리스너 중지"""
 
-        if not self._popup_controller.is_visible():
-            return False
+        listener: pynput_keyboard.Listener | None = self._key_listener
 
-        if kind is None:
-            return True
+        # 리스너를 None으로 설정
+        self._key_listener = None
 
-        return self._active_popup == kind
+        # 키 입력 중 플래그 해제
+        self.shared_data.is_setting_key = False
+
+        # 리스너가 동작 중이면 중지
+        if listener is not None:
+            listener.stop()
 
     ## 알림 창 생성
     # pyqtSignal을 이용하도록 수정
@@ -987,13 +1091,13 @@ class PopupManager:
                     5,
                     30,
                     30,
-                    is_key_used(self.shared_data, key),
+                    is_key_using(self.shared_data, key),
                 )
 
         row = 0
         column = 1
         for key in k1:
-            makePresetKey(key, row, column, is_key_used(self.shared_data, key))
+            makePresetKey(key, row, column, is_key_using(self.shared_data, key))
             row += 1
         makeKey(
             "Back",
@@ -1010,12 +1114,12 @@ class PopupManager:
             75,
             40,
             30,
-            is_key_used(self.shared_data, "Tab"),
+            is_key_using(self.shared_data, "Tab"),
         )
         row = 0
         column += 1
         for key in k2:
-            makePresetKey(key, row, column, is_key_used(self.shared_data, key))
+            makePresetKey(key, row, column, is_key_using(self.shared_data, key))
             row += 1
 
         makeKey(
@@ -1029,7 +1133,7 @@ class PopupManager:
         row = 0
         column += 1
         for key in k3:
-            makePresetKey(key, row, column, is_key_used(self.shared_data, key))
+            makePresetKey(key, row, column, is_key_using(self.shared_data, key))
             row += 1
         makeKey(
             "Enter",
@@ -1037,7 +1141,7 @@ class PopupManager:
             110,
             55,
             30,
-            is_key_used(self.shared_data, "Enter"),
+            is_key_using(self.shared_data, "Enter"),
         )
 
         makeKey(
@@ -1046,12 +1150,12 @@ class PopupManager:
             145,
             70,
             30,
-            is_key_used(self.shared_data, "Shift"),
+            is_key_using(self.shared_data, "Shift"),
         )
         row = 0
         column += 1
         for key in k4:
-            makePresetKey(key, row, column, is_key_used(self.shared_data, key))
+            makePresetKey(key, row, column, is_key_using(self.shared_data, key))
             row += 1
         makeKey(
             "Shift",
@@ -1059,7 +1163,7 @@ class PopupManager:
             145,
             70,
             30,
-            is_key_used(self.shared_data, "Shift"),
+            is_key_using(self.shared_data, "Shift"),
         )
 
         makeKey(
@@ -1068,7 +1172,7 @@ class PopupManager:
             180,
             45,
             30,
-            is_key_used(self.shared_data, "Ctrl"),
+            is_key_using(self.shared_data, "Ctrl"),
         )
         makeImageKey(
             "Window",
@@ -1087,7 +1191,7 @@ class PopupManager:
             180,
             45,
             30,
-            is_key_used(self.shared_data, "Alt"),
+            is_key_using(self.shared_data, "Alt"),
         )
         makeKey(
             "Space",
@@ -1095,7 +1199,7 @@ class PopupManager:
             180,
             145,
             30,
-            is_key_used(self.shared_data, "Space"),
+            is_key_using(self.shared_data, "Space"),
         )
         makeKey(
             "Alt",
@@ -1103,7 +1207,7 @@ class PopupManager:
             180,
             45,
             30,
-            is_key_used(self.shared_data, "Alt"),
+            is_key_using(self.shared_data, "Alt"),
         )
         makeImageKey(
             "Window",
@@ -1130,7 +1234,7 @@ class PopupManager:
             180,
             45,
             30,
-            is_key_used(self.shared_data, "Ctrl"),
+            is_key_using(self.shared_data, "Ctrl"),
         )
 
         k5 = [
@@ -1146,7 +1250,7 @@ class PopupManager:
                     5 + 35 * i1,
                     30,
                     30,
-                    is_key_used(self.shared_data, j2),
+                    is_key_using(self.shared_data, j2),
                 )
 
         makeImageKey(
@@ -1158,7 +1262,7 @@ class PopupManager:
             convert_resource_path("resources\\image\\arrow.png"),
             16,
             0,
-            is_key_used(self.shared_data, "Up"),
+            is_key_using(self.shared_data, "Up"),
         )
         makeImageKey(
             "Left",
@@ -1169,7 +1273,7 @@ class PopupManager:
             convert_resource_path("resources\\image\\arrow.png"),
             16,
             270,
-            is_key_used(self.shared_data, "Left"),
+            is_key_using(self.shared_data, "Left"),
         )
         makeImageKey(
             "Down",
@@ -1180,7 +1284,7 @@ class PopupManager:
             convert_resource_path("resources\\image\\arrow.png"),
             16,
             180,
-            is_key_used(self.shared_data, "Down"),
+            is_key_using(self.shared_data, "Down"),
         )
         makeImageKey(
             "Right",
@@ -1191,7 +1295,7 @@ class PopupManager:
             convert_resource_path("resources\\image\\arrow.png"),
             16,
             90,
-            is_key_used(self.shared_data, "Right"),
+            is_key_using(self.shared_data, "Right"),
         )
 
     ## 시작키 설정용 가상키보드 키 클릭시 실행
@@ -1273,8 +1377,9 @@ class PopupManager:
 
     def close_popup(self):
         # PopupHost 기반 팝업 닫기
+        # self._stop_key_listener()
         self._popup_controller.close()
-        self._active_popup = None
+        # self._active_popup = None
 
     def make_action_list_popup(
         self,
@@ -1361,24 +1466,23 @@ class PopupManager:
         """딜레이 입력 팝업"""
 
         default_text = str(self.shared_data.delay_input)
-        content = InputConfirmContent(default_text=default_text, button_text="확인")
+        content = InputConfirmContent(default_text=default_text)
 
         def _submit(raw: str) -> None:
+            self.close_popup()
+
             try:
                 value = int(raw)
 
             except Exception:
-                self.close_popup()
                 self.make_notice_popup("delayInputError")
                 return
 
             if not (self.shared_data.MIN_DELAY <= value <= self.shared_data.MAX_DELAY):
-                self.close_popup()
                 self.make_notice_popup("delayInputError")
                 return
 
             # 콜백 실행
-            self.close_popup()
             on_selected(value)
 
         content.submitted.connect(_submit)
@@ -1392,17 +1496,193 @@ class PopupManager:
 
         content.focus_input()
 
+    def make_cooltime_popup(
+        self,
+        anchor: QWidget,
+        on_selected: Callable[[int], None],
+    ) -> None:
+        """쿨타임 감소 입력 팝업"""
+
+        default_text = str(self.shared_data.cooltime_reduction_input)
+        content = InputConfirmContent(default_text=default_text)
+
+        def _submit(raw: str) -> None:
+            self.close_popup()
+
+            try:
+                value = int(raw)
+
+            except Exception:
+                self.make_notice_popup("cooltimeInputError")
+                return
+
+            if not (
+                self.shared_data.MIN_COOLTIME_REDUCTION
+                <= value
+                <= self.shared_data.MAX_COOLTIME_REDUCTION
+            ):
+                self.make_notice_popup("cooltimeInputError")
+                return
+
+            # 콜백 실행
+            on_selected(value)
+
+        content.submitted.connect(_submit)
+
+        self.make_input_popup(
+            kind=PopupKind.SETTING_COOLTIME,
+            anchor=anchor,
+            content=content,
+            placement=PopupPlacement.BELOW,
+        )
+
+        content.focus_input()
+
+    def make_start_key_popup(
+        self,
+        anchor: QWidget,
+        on_selected: Callable[[KeySpec], None],
+    ) -> None:
+        """시작키 입력 팝업"""
+
+        # 기존 팝업/리스너 정리
+        if self._popup_controller.is_visible():
+            self._popup_controller.close()
+
+        self._stop_key_listener()
+
+        content = KeyCaptureContent(default_key=self.shared_data.start_key_input)
+
+        def _submit(key: KeySpec) -> None:
+            self.close_popup()
+
+            # 변경 없음
+            if key == self.shared_data.start_key_input:
+                return
+
+            # 키가 이미 사용중인 경우
+            if is_key_using(self.shared_data, key):
+                self.make_notice_popup("StartKeyChangeError")
+                return
+
+            on_selected(key)
+
+        content.submitted.connect(_submit)
+
+        self.make_input_popup(
+            kind=PopupKind.SETTING_START_KEY,
+            anchor=anchor,
+            content=content,
+            placement=PopupPlacement.BELOW,
+        )
+
+        def _on_press(k: pynput_keyboard.Key | pynput_keyboard.KeyCode | None) -> None:
+            key: KeySpec | None = _key_to_KeySpec(self.shared_data, k)
+
+            if not key:
+                return
+
+            content.set_key(key)
+
+        listener = pynput_keyboard.Listener(on_press=_on_press)
+        listener.daemon = True
+        listener.start()
+        self._key_listener = listener
+        self.shared_data.is_setting_key = True
+
+    def make_tab_name_popup(
+        self,
+        anchor: QWidget,
+        preset_index: int,
+        on_submitted: Callable[[str], None],
+    ) -> None:
+        """탭 이름 변경 팝업.
+
+        anchor 위치(보통 QTabBar 위의 특정 탭 영역)에 맞춰 팝업이 표시된다.
+        """
+
+        default_text: str = self.shared_data.tab_names[preset_index]
+
+        content = InputConfirmContent(default_text=default_text, fixed_width=200)
+
+        def _submit(text: str) -> None:
+            self.close_popup()
+            on_submitted(text)
+
+        content.submitted.connect(_submit)
+
+        self.make_input_popup(
+            kind=PopupKind.TAB_NAME,
+            anchor=anchor,
+            content=content,
+            placement=PopupPlacement.BELOW,
+        )
+
+        content.focus_input()
+
+    def make_skill_key_popup(
+        self,
+        anchor: QWidget,
+        index: int,
+        on_selected: Callable[[KeySpec], None],
+    ) -> None:
+        """시작키 입력 팝업"""
+
+        # 기존 팝업/리스너 정리
+        if self._popup_controller.is_visible():
+            self._popup_controller.close()
+
+        self._stop_key_listener()
+
+        content = KeyCaptureContent(default_key=self.shared_data.skill_keys[index])
+
+        def _submit(key: KeySpec) -> None:
+            self.close_popup()
+
+            # 변경 없음
+            if key == self.shared_data.skill_keys[index]:
+                return
+
+            # 키가 이미 사용중인 경우
+            if is_key_using(self.shared_data, key):
+                self.make_notice_popup("StartKeyChangeError")
+                return
+
+            on_selected(key)
+
+        content.submitted.connect(_submit)
+
+        self.make_input_popup(
+            kind=PopupKind.SKILL_KEY,
+            anchor=anchor,
+            content=content,
+            placement=PopupPlacement.BELOW,
+        )
+
+        def _on_press(k: pynput_keyboard.Key | pynput_keyboard.KeyCode | None) -> None:
+            key: KeySpec | None = _key_to_KeySpec(self.shared_data, k)
+
+            if not key:
+                return
+
+            content.set_key(key)
+
+        listener = pynput_keyboard.Listener(on_press=_on_press)
+        listener.daemon = True
+        listener.start()
+        self._key_listener = listener
+        self.shared_data.is_setting_key = True
+
     ## 스킬 사용설정 -> 콤보 횟수 클릭
     def onSkillComboCountsClick(self, num):
         skill_name = get_available_skills(self.shared_data)[num]
 
         combo = get_skill_details(self.shared_data, skill_name)["max_combo_count"]
 
+        self.close_popup()
         if self.shared_data.active_popup == "SkillComboCounts":
-            self.close_popup()
             return
 
-        self.close_popup()
         self.activatePopup("SkillComboCounts")
 
         self.settingPopupFrame = QFrame(self.master.get_sidebar().frame)

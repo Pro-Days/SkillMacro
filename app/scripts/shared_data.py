@@ -1,12 +1,39 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
-from typing import Any, ClassVar
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, ClassVar, Literal
+
+from pynput.keyboard import Key as PynputKey
+from pynput.keyboard import KeyCode
 
 from app.scripts.misc import convert_resource_path
 
 from .custom_classes import Stats
+
+if TYPE_CHECKING:
+    from app.scripts.macro_models import MacroPreset
+
+
+@dataclass(frozen=True)
+class KeySpec:
+    display: str
+    key_id: str
+    type: Literal["key", "char"]
+    value: PynputKey | KeyCode
+
+    @classmethod
+    def from_key(cls, display: str, key_id: str, key: PynputKey) -> "KeySpec":
+        return cls(display=display, key_id=key_id, type="key", value=key)
+
+    @classmethod
+    def from_char(cls, display: str, char: str) -> "KeySpec":
+        return cls(
+            display=display, key_id=char, type="char", value=KeyCode.from_char(char)
+        )
+
+    def __str__(self) -> str:
+        return self.display
 
 
 # 공유 데이터 클래스
@@ -39,9 +66,6 @@ class SharedData:
     MIN_COOLTIME_REDUCTION: int = 0
     MAX_COOLTIME_REDUCTION: int = 50
     DEFAULT_COOLTIME_REDUCTION: int = 0
-
-    # 시작 키 설정
-    DEFAULT_START_KEY = "F9"
 
     STAT_RANGES: ClassVar[dict[str, tuple[int, int]]] = {
         "ATK": (1, 10000),
@@ -147,68 +171,90 @@ class SharedData:
     POWER_TITLES: ClassVar[list[str]] = ["보스데미지", "일반데미지", "보스", "사냥"]
     POWER_DETAILS: ClassVar[list[str]] = ["min", "max", "std", "p25", "p50", "p75"]
 
-    KEY_DICT: ClassVar[dict[str, str]] = {
-        "f1": "F1",
-        "f2": "F2",
-        "f3": "F3",
-        "f4": "F4",
-        "f5": "F5",
-        "f6": "F6",
-        "f7": "F7",
-        "f8": "F8",
-        "f9": "F9",
-        "f10": "F10",
-        "f11": "F11",
-        "f12": "F12",
-        "a": "A",
-        "b": "B",
-        "c": "C",
-        "d": "D",
-        "e": "E",
-        "f": "F",
-        "g": "G",
-        "h": "H",
-        "i": "I",
-        "j": "J",
-        "k": "K",
-        "l": "L",
-        "m": "M",
-        "n": "N",
-        "o": "O",
-        "p": "P",
-        "q": "Q",
-        "r": "R",
-        "s": "S",
-        "t": "T",
-        "u": "U",
-        "v": "V",
-        "w": "W",
-        "x": "X",
-        "y": "Y",
-        "z": "Z",
-        "tab": "Tab",
-        "space": "Space",
-        "enter": "Enter",
-        "shift": "Shift",
-        "right shift": "Shift",
-        "ctrl": "Ctrl",
-        "right ctrl": "Ctrl",
-        "alt": "Alt",
-        "right alt": "Alt",
-        "up": "Up",
-        "down": "Down",
-        "left": "Left",
-        "right": "Right",
-        "print screen": "PrtSc",
-        "scroll lock": "ScrLk",
-        "pause": "Pause",
-        "insert": "Insert",
-        "home": "Home",
-        "page up": "Page_Up",
-        "page down": "Page_Down",
-        "delete": "Delete",
-        "end": "End",
+    KEY_DICT: ClassVar[dict[str, KeySpec]] = {
+        # F키
+        "f1": KeySpec.from_key("F1", "f1", PynputKey.f1),
+        "f2": KeySpec.from_key("F2", "f2", PynputKey.f2),
+        "f3": KeySpec.from_key("F3", "f3", PynputKey.f3),
+        "f4": KeySpec.from_key("F4", "f4", PynputKey.f4),
+        "f5": KeySpec.from_key("F5", "f5", PynputKey.f5),
+        "f6": KeySpec.from_key("F6", "f6", PynputKey.f6),
+        "f7": KeySpec.from_key("F7", "f7", PynputKey.f7),
+        "f8": KeySpec.from_key("F8", "f8", PynputKey.f8),
+        "f9": KeySpec.from_key("F9", "f9", PynputKey.f9),
+        "f10": KeySpec.from_key("F10", "f10", PynputKey.f10),
+        "f11": KeySpec.from_key("F11", "f11", PynputKey.f11),
+        "f12": KeySpec.from_key("F12", "f12", PynputKey.f12),
+        # 알파벳
+        "a": KeySpec.from_char("A", "a"),
+        "b": KeySpec.from_char("B", "b"),
+        "c": KeySpec.from_char("C", "c"),
+        "d": KeySpec.from_char("D", "d"),
+        "e": KeySpec.from_char("E", "e"),
+        "f": KeySpec.from_char("F", "f"),
+        "g": KeySpec.from_char("G", "g"),
+        "h": KeySpec.from_char("H", "h"),
+        "i": KeySpec.from_char("I", "i"),
+        "j": KeySpec.from_char("J", "j"),
+        "k": KeySpec.from_char("K", "k"),
+        "l": KeySpec.from_char("L", "l"),
+        "m": KeySpec.from_char("M", "m"),
+        "n": KeySpec.from_char("N", "n"),
+        "o": KeySpec.from_char("O", "o"),
+        "p": KeySpec.from_char("P", "p"),
+        "q": KeySpec.from_char("Q", "q"),
+        "r": KeySpec.from_char("R", "r"),
+        "s": KeySpec.from_char("S", "s"),
+        "t": KeySpec.from_char("T", "t"),
+        "u": KeySpec.from_char("U", "u"),
+        "v": KeySpec.from_char("V", "v"),
+        "w": KeySpec.from_char("W", "w"),
+        "x": KeySpec.from_char("X", "x"),
+        "y": KeySpec.from_char("Y", "y"),
+        "z": KeySpec.from_char("Z", "z"),
+        # 숫자
+        "0": KeySpec.from_char("0", "0"),
+        "1": KeySpec.from_char("1", "1"),
+        "2": KeySpec.from_char("2", "2"),
+        "3": KeySpec.from_char("3", "3"),
+        "4": KeySpec.from_char("4", "4"),
+        "5": KeySpec.from_char("5", "5"),
+        "6": KeySpec.from_char("6", "6"),
+        "7": KeySpec.from_char("7", "7"),
+        "8": KeySpec.from_char("8", "8"),
+        "9": KeySpec.from_char("9", "9"),
+        # 기호
+        "`": KeySpec.from_char("`", "`"),
+        "-": KeySpec.from_char("-", "-"),
+        "=": KeySpec.from_char("=", "="),
+        "[": KeySpec.from_char("[", "["),
+        "]": KeySpec.from_char("]", "]"),
+        "\\": KeySpec.from_char("\\", "\\"),
+        ";": KeySpec.from_char(";", ";"),
+        "'": KeySpec.from_char("'", "'"),
+        ",": KeySpec.from_char(",", ","),
+        ".": KeySpec.from_char(".", "."),
+        "/": KeySpec.from_char("/", "/"),
+        # 특수키
+        "up": KeySpec.from_key("Up", "up", PynputKey.up),
+        "down": KeySpec.from_key("Down", "down", PynputKey.down),
+        "left": KeySpec.from_key("Left", "left", PynputKey.left),
+        "right": KeySpec.from_key("Right", "right", PynputKey.right),
+        "print_screen": KeySpec.from_key(
+            "PrtSc", "print screen", PynputKey.print_screen
+        ),
+        "scroll_lock": KeySpec.from_key("ScrLk", "scroll lock", PynputKey.scroll_lock),
+        "pause": KeySpec.from_key("Pause", "pause", PynputKey.pause),
+        "insert": KeySpec.from_key("Insert", "insert", PynputKey.insert),
+        "home": KeySpec.from_key("Home", "home", PynputKey.home),
+        "page_up": KeySpec.from_key("PageUp", "page up", PynputKey.page_up),
+        "page_down": KeySpec.from_key("PageDown", "page down", PynputKey.page_down),
+        "delete": KeySpec.from_key("Delete", "delete", PynputKey.delete),
+        "end": KeySpec.from_key("End", "end", PynputKey.end),
     }
+
+    # 시작 키 설정
+    DEFAULT_START_KEY: KeySpec = KEY_DICT["f9"]
 
     SERVERS: ClassVar[list[str]] = ["한월 RPG"]
 
@@ -283,6 +329,16 @@ class SharedData:
     # 최근에 선택된 프리셋 번호
     recent_preset: int = 0
 
+    # --- 점진적 마이그레이션용 프리셋 컨테이너 ---
+    # 기존 코드(탭 UI 포함)가 SharedData의 ClassVar(예: equipped_skills)를 직접 읽고/쓰고 있어서,
+    # 당장 제거하지 않고 병행한다. 다음 단계에서 load_data가 이 presets/current_preset을 채우도록 바꾼다.
+    presets: list[MacroPreset] = field(default_factory=list, repr=False)
+    current_preset: MacroPreset | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
+
     # 탭 이름들
     tab_names: ClassVar[list[str]] = []
 
@@ -290,7 +346,7 @@ class SharedData:
     equipped_skills: ClassVar[list[str]] = []
 
     # 스킬 사용 키 목록
-    skill_keys: ClassVar[list[str]] = []
+    skill_keys: ClassVar[list[KeySpec]] = []
 
     # 서버 ID와 직업 ID
     # 기본값은 첫 번째 직업
@@ -314,9 +370,11 @@ class SharedData:
     # 시작키 설정: 0이면 기본, 1이면 직접입력
     start_key_type: int = 0
     # 입력된 시작키
-    start_key_input: str = ""
+    start_key_input: KeySpec = DEFAULT_START_KEY
     # 사용되는 시작키
-    start_key: str = DEFAULT_START_KEY
+    start_key: KeySpec = DEFAULT_START_KEY
+    # 시작키 설정 중인지
+    is_setting_key: bool = False
 
     # 마우스 클릭 설정: 0이면 스킬 사용시에만, 1이면 평타도 사용
     mouse_click_type: int = 0

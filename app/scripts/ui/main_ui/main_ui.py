@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import QSize, Qt, pyqtSignal
+from PyQt6.QtCore import QRect, QSize, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QIcon, QPixmap
 from PyQt6.QtWidgets import (
     QFrame,
@@ -20,7 +20,16 @@ from PyQt6.QtWidgets import (
 )
 
 from app.scripts.custom_classes import CustomFont, SkillImage
-from app.scripts.data_manager import add_preset, load_data, remove_preset, save_data
+from app.scripts.data_manager import (
+    add_preset,
+    apply_preset_to_shared_data,
+    load_data,
+    remove_preset,
+    save_data,
+    select_preset,
+    update_recent_preset,
+)
+from app.scripts.macro_models import SkillUsageSetting
 from app.scripts.misc import (
     convert_resource_path,
     get_available_skills,
@@ -31,8 +40,9 @@ from app.scripts.run_macro import add_task_list, init_macro
 from app.scripts.shared_data import UI_Variable
 
 if TYPE_CHECKING:
+    from app.scripts.macro_models import MacroPreset
     from app.scripts.main_window import MainWindow
-    from app.scripts.shared_data import SharedData
+    from app.scripts.shared_data import KeySpec, SharedData
 
 
 class MainUI(QFrame):
@@ -55,13 +65,16 @@ class MainUI(QFrame):
         # 매크로 작동 중 팝업 요청
         self.tab_widget.noticeRequested.connect(self.popup_manager.make_notice_popup)
         # 키 설정 팝업 요청
-        self.tab_widget.skillKeyRequested.connect(self.onSkillKeyClick)
+        self.tab_widget.skillKeyRequested.connect(self.on_skill_key_clicked)
         # 데이터 변경 신호
         self.tab_widget.dataChanged.connect(lambda: save_data(self.shared_data))
 
         # 기능 함수들 연결
         # 탭 클릭시
-        self.tab_widget.tabBar().tabBarClicked.connect(self.on_tab_clicked)  # type: ignore
+        tab_bar: QTabBar = self.tab_widget.get_tab_bar()
+        tab_bar.tabBarClicked.connect(self.on_tab_clicked)
+        # 탭이 실제로 변경되었을 때(클릭/코드 변경 모두 포함)
+        self.tab_widget.currentChanged.connect(self.on_tab_changed)
         # 탭 추가버튼 클릭시
         self.tab_widget.add_tab_button.clicked.connect(self.on_add_tab_clicked)
         # 탭 닫기 버튼 클릭시
@@ -73,8 +86,46 @@ class MainUI(QFrame):
         layout.setSpacing(0)
         self.setLayout(layout)
 
+    def on_tab_changed(self, index: int) -> None:
+        """탭이 바뀌었을 때 실행"""
+
+        # 프리셋 선택
+        select_preset(self.shared_data, index)
+
+        # 마지막으로 선택한 탭이 다음 실행에도 복원되도록 recent_preset만 최소 저장
+        update_recent_preset(self.shared_data, index)
+
+        # 로드된 shared_data 기준으로 현재 탭 UI를 갱신
+        self.tab_widget.get_current_tab().update_from_preset()
+
+        # 탭 제목/내용을 로드된 shared_data 기준으로 동기화
+        # self.tab_widget.sync_tab_titles(self.shared_data.tab_names)
+
+        # 사이드바 업데이트
+        # self.sidebar.set_index(0)
+        # self.sidebar.update_content()
+
+        # 선택중인 스킬이 있었다면 취소
+        self.cancel_skill_selection()
+
     def on_tab_clicked(self, index: int) -> None:
         """탭 클릭시 실행"""
+
+        def apply_tab_name(new_name: str) -> None:
+            """탭 이름 적용"""
+
+            # 프리셋/호환 데이터 반영
+            if self.shared_data.presets and 0 <= index < len(self.shared_data.presets):
+                self.shared_data.presets[index].name = new_name
+            if self.shared_data.tab_names and 0 <= index < len(
+                self.shared_data.tab_names
+            ):
+                self.shared_data.tab_names[index] = new_name
+
+            # 탭 라벨 반영
+            self.tab_widget.setTabText(index, new_name)
+
+            save_data(self.shared_data)
 
         # 활성화 상태인 팝업 닫기
         self.popup_manager.close_popup()
@@ -86,84 +137,13 @@ class MainUI(QFrame):
 
         # 같은 탭 클릭시 탭 이름 변경 팝업
         if index == self.tab_widget.currentIndex():
-            # 탭 이름 변경 팝업이 활성화되어있지 않을 때만 팝업 생성
-            if self.shared_data.active_popup != "changeTabName":
-                self.popup_manager.activatePopup("changeTabName")
-                self.popup_manager.makePopupInput("tabName", index)
+            tab_bar: QTabBar = self.tab_widget.get_tab_bar()
+            anchor: QWidget = self._get_tab_header_anchor(
+                tab_bar=tab_bar, tab_index=index
+            )
+            self.popup_manager.make_tab_name_popup(anchor, index, apply_tab_name)
 
             return
-
-        # 다른 탭 클릭시 탭 변경
-
-        # 데이터 로드
-        load_data(self.shared_data, index)
-
-        # 현재 탭 확정 및 UI 갱신
-        # (tabBarClicked 시점에 currentIndex가 아직 바뀌지 않았을 수 있어 명시적으로 지정)
-        self.tab_widget.setCurrentIndex(index)
-
-        # 사이드바 업데이트
-        # self.sidebar.set_index(0)
-        # self.sidebar.update_content()
-
-        # 선택중인 스킬이 있었다면 취소
-        self.cancel_skill_selection()
-
-        # shared_data 변경사항을 현재 탭 UI에 반영
-        self.tab_widget.refresh_current_tab()
-
-        # 사이드바로 이동
-
-        # self.master.get_sidebar().buttonServerList.setText(self.shared_data.server_ID)
-        # self.master.get_sidebar().buttonJobList.setText(self.shared_data.job_ID)
-
-        # self.master.get_sidebar().buttonInputDelay.setText(
-        #     str(self.shared_data.delay_input)
-        # )
-        # rgb = 153 if self.shared_data.delay_type == 1 else 0
-        # self.master.get_sidebar().buttonDefaultDelay.setStyleSheet(
-        #     f"QPushButton {{color: rgb({rgb}, {rgb}, {rgb});}}"
-        # )
-        # rgb = 153 if self.shared_data.delay_type == 0 else 0
-        # self.master.get_sidebar().buttonInputDelay.setStyleSheet(
-        #     f"QPushButton {{color: rgb({rgb}, {rgb}, {rgb});}}"
-        # )
-
-        # self.master.get_sidebar().buttonInputCooltime.setText(
-        #     str(self.shared_data.cooltime_reduction_input)
-        # )
-        # rgb = 153 if self.shared_data.cooltime_reduction_type == 1 else 0
-        # self.master.get_sidebar().buttonDefaultCooltime.setStyleSheet(
-        #     f"QPushButton {{color: rgb({rgb}, {rgb}, {rgb});}}"
-        # )
-        # rgb = 153 if self.shared_data.cooltime_reduction_type == 0 else 0
-        # self.master.get_sidebar().buttonInputCooltime.setStyleSheet(
-        #     f"QPushButton {{color: rgb({rgb}, {rgb}, {rgb});}}"
-        # )
-
-        # self.master.get_sidebar().buttonInputStartKey.setText(
-        #     str(self.shared_data.start_key_input)
-        # )
-        # rgb = 153 if self.shared_data.start_key_type == 1 else 0
-        # self.master.get_sidebar().buttonDefaultStartKey.setStyleSheet(
-        #     f"QPushButton {{color: rgb({rgb}, {rgb}, {rgb});}}"
-        # )
-        # rgb = 153 if self.shared_data.start_key_type == 0 else 0
-        # self.master.get_sidebar().buttonInputStartKey.setStyleSheet(
-        #     f"QPushButton {{color: rgb({rgb}, {rgb}, {rgb});}}"
-        # )
-
-        # rgb = 153 if self.shared_data.mouse_click_type == 1 else 0
-        # self.master.get_sidebar().button1stMouseType.setStyleSheet(
-        #     f"QPushButton {{color: rgb({rgb}, {rgb}, {rgb});}}"
-        # )
-        # rgb = 153 if self.shared_data.mouse_click_type == 0 else 0
-        # self.master.get_sidebar().button2ndMouseType.setStyleSheet(
-        #     f"QPushButton {{color: rgb({rgb}, {rgb}, {rgb});}}"
-        # )
-
-        # 데이터 저장
-        save_data(self.shared_data)
 
     def on_add_tab_clicked(self) -> None:
         """탭 추가버튼 클릭시 실행"""
@@ -182,18 +162,12 @@ class MainUI(QFrame):
     def add_new_tab(self) -> None:
         """새 탭 추가 함수"""
 
-        # 데이터 추가
+        # 데이터 추가(파일 + 메모리 presets 동시 반영)
         add_preset(shared_data=self.shared_data)
-        index: int = self.tab_widget.count()
-        load_data(self.shared_data, index)
 
-        # 탭 추가
-        self.tab_widget.add_tab(
-            name=self.shared_data.tab_names[-1],
-            available_skills=get_available_skills(self.shared_data),
-            equipped_skills=self.shared_data.equipped_skills,
-            keys=self.shared_data.skill_keys,
-        )
+        # 탭 추가 (마지막 프리셋)
+        preset = self.shared_data.presets[-1]
+        self.tab_widget.add_tab(preset)
 
     def on_remove_tab_clicked(self, index: int) -> None:
         """탭 닫기 버튼 클릭시 실행"""
@@ -226,8 +200,6 @@ class MainUI(QFrame):
     def on_remove_tab_popup_clicked(self, index: int, confirmed: bool) -> None:
         """탭 제거 팝업창에서 예/아니오 클릭시 실행"""
 
-        print(123)
-
         # 탭이 삭제되면 기존 인덱스와 달리지기 때문에 인덱스 대신 객체를 기반으로 탭을 찾도록 수정 필요
 
         # 팝업 제거
@@ -240,24 +212,41 @@ class MainUI(QFrame):
         if not confirmed:
             return
 
-        # 탭 제거
+        # 탭 제거(파일 + 메모리 presets 동시 반영)
         self.tab_widget.remove_tab(index)
-        remove_preset(index)
+        remove_preset(index, self.shared_data)
 
-        # 삭제 후 인덱스 데이터 로드
+        # 탭이 하나도 없으면 새 탭 추가
         tab_count: int = self.tab_widget.count()
-        if tab_count == 0:
-            # 탭이 하나도 없으면 새 탭 추가
+        if not tab_count:
             self.add_new_tab()
             return
 
+        # 삭제 후 현재 탭 프리셋 선택
         new_index: int = self.tab_widget.currentIndex()
-        load_data(self.shared_data, new_index)
+        select_preset(self.shared_data, new_index)
+        self.tab_widget.get_current_tab().update_from_preset()
 
-        # 삭제 후 로드된 데이터를 현재 탭 UI에 반영
-        self.tab_widget.refresh_current_tab()
+    def on_skill_key_clicked(self, index: int) -> None:
+        """스킬 단축키 설정 버튼 클릭시 실행"""
 
-        save_data(self.shared_data)
+        def apply(key: KeySpec) -> None:
+            """적용 함수"""
+
+            current_tab: Tab = self.tab_widget.get_current_tab()
+            if current_tab.apply_key(index, key):
+                save_data(self.shared_data)
+
+        self.popup_manager.close_popup()
+
+        # 매크로 실행 중일 때는 무시
+        if self.shared_data.is_activated:
+            self.popup_manager.make_notice_popup("MacroIsRunning")
+            return
+
+        self.popup_manager.make_skill_key_popup(
+            self.get_key_button(index), index, apply
+        )
 
     def cancel_skill_selection(self) -> None:
         """
@@ -266,26 +255,39 @@ class MainUI(QFrame):
 
         self.tab_widget.cancel_skill_selection()
 
-    ## 스킬 단축키 설정 버튼 클릭
-    def onSkillKeyClick(self, num):
-        if self.shared_data.is_activated:
-            self.master.get_popup_manager().close_popup()
-            self.master.get_popup_manager().make_notice_popup("MacroIsRunning")
-            return
+    def _get_tab_header_anchor(self, tab_bar: QTabBar, tab_index: int) -> QWidget:
+        """QTabBar의 특정 탭 영역(tabRect)에 맞춘 앵커 위젯을 반환"""
 
-        if self.shared_data.active_popup == "skillKey":
-            self.master.get_popup_manager().close_popup()
-            return
-        self.master.get_popup_manager().close_popup()
+        rect: QRect = tab_bar.tabRect(tab_index)
+        if rect.isNull() or rect.isEmpty():
+            return tab_bar
 
-        self.master.get_popup_manager().activatePopup("skillKey")
-        self.master.get_popup_manager().makeKeyboardPopup(["skillKey", num])
+        # 앵커 위젯 생성 및 재사용
+        anchor: QWidget | None = getattr(self, "_tab_header_anchor", None)
+        if anchor is None or anchor.parent() is not tab_bar:
+            anchor = QWidget(tab_bar)
+            anchor.setObjectName("tabHeaderAnchor")
+            anchor.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+            anchor.setStyleSheet("background: transparent;")
+            anchor.show()
+            self._tab_header_anchor: QWidget = anchor
 
-    # NOTE: clear_equipped_skill / on_equipped_skill_clicked 로직은 Tab으로 이동됨
+        anchor.setGeometry(rect)
+        anchor.raise_()
+        return anchor
+
+    def get_key_button(self, index: int) -> QPushButton:
+        """단축키 설정 버튼 반환"""
+
+        return self.tab_widget.get_key_button(index)
+
+    def set_key(self, index: int, key: str) -> None:
+        """스킬 단축키 설정"""
+
+        self.tab_widget.set_key(index, key)
 
 
 class TabWidget(QTabWidget):
-    # 시그널 정의
     noticeRequested = pyqtSignal(str)
     skillKeyRequested = pyqtSignal(int)
     dataChanged = pyqtSignal()
@@ -307,13 +309,11 @@ class TabWidget(QTabWidget):
         # 초기 탭 설정
         self._init_tabs()
 
-        # self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-
         tab_bar: QTabBar | None = self.tabBar()
         if tab_bar is not None:
             tab_bar.setFont(CustomFont(12))
 
-    def _setup_add_tab_button(self):
+    def _setup_add_tab_button(self) -> None:
         """
         탭 목록 오른쪽에 고정된 탭 추가 버튼 설정
         """
@@ -335,71 +335,72 @@ class TabWidget(QTabWidget):
         # 우측 상단 코너에 컨테이너 위젯 설정
         self.setCornerWidget(corner_container, Qt.Corner.TopRightCorner)
 
-    def _create_tab(
-        self,
-        name: str,
-        available_skills: list[str],
-        equipped_skills: list[str],
-        keys: list[str],
-    ) -> "Tab":
+    def _create_tab(self, preset: "MacroPreset", preset_index: int) -> "Tab":
         """
         새 탭 생성
         """
-        return Tab(self.shared_data)
+        return Tab(self.shared_data, preset=preset, preset_index=preset_index)
 
-    def add_tab(
-        self,
-        name: str,
-        available_skills: list[str],
-        equipped_skills: list[str],
-        keys: list[str],
-    ):
+    def add_tab(self, preset: "MacroPreset") -> None:
         """
         새로운 탭 생성 후 QTabWidget에 추가
         """
 
+        preset_index: int = self.count()
         self.tab_count += 1
 
-        new_tab: Tab = self._create_tab(name, available_skills, equipped_skills, keys)
-        tab_name: str = "스킬매크로"
+        new_tab: Tab = self._create_tab(preset, preset_index=preset_index)
 
         # 탭 시그널 연결
         self._connect_tab_signals(new_tab)
 
         # QTabWidget에 탭 추가
-        index: int = self.addTab(new_tab, tab_name)
+        index: int = self.addTab(new_tab, preset.name)
 
         # 새로 추가된 탭으로 이동
         self.setCurrentIndex(index)
+
+        # 새 탭을 현재 탭으로 만들고 shared_data를 해당 preset으로 동기화
+        select_preset(self.shared_data, index)
+        new_tab.update_from_preset()
 
     def _connect_tab_signals(self, tab: "Tab") -> None:
         tab.noticeRequested.connect(self.noticeRequested.emit)
         tab.skillKeyRequested.connect(self.skillKeyRequested.emit)
         tab.dataChanged.connect(self.dataChanged.emit)
 
-    def _init_tabs(self):
+    def _init_tabs(self) -> None:
         """
         초기 탭 설정
         """
 
         self.tab_count: int = 0
 
-        # 탭 데이터 인스턴스를 기반으로 탭 추가하도록 수정
-        # 임시로 최근 탭 데이터를 기반으로만 추가하도록 설정함.
-        for i in range(len(self.shared_data.tab_names)):
-            names: str = self.shared_data.tab_names[i]
-            available_skills: list[str] = get_available_skills(self.shared_data)
-            equipped_skills: list[str] = self.shared_data.equipped_skills
-            keys: list[str] = self.shared_data.skill_keys
+        # 기존 저장된 preset 목록을 그대로 UI에 반영
+        for i, preset in enumerate(self.shared_data.presets):
+            self.tab_count += 1
+            tab: Tab = self._create_tab(preset, preset_index=i)
+            self._connect_tab_signals(tab)
+            self.addTab(tab, preset.name)
 
-            self.add_tab(names, available_skills, equipped_skills, keys)
+        self.setCurrentIndex(self.shared_data.recent_preset)
+        select_preset(self.shared_data, self.shared_data.recent_preset)
+        self.get_current_tab().update_from_preset()
 
-    def remove_tab(self, index):
+    def remove_tab(self, index: int) -> None:
         """
         탭 제거
         """
 
         self.removeTab(index)
+        self._reindex_tabs()
+
+    def _reindex_tabs(self) -> None:
+        """탭 삭제 후 Tab.preset_index 재설정"""
+
+        for i in range(self.count()):
+            w: Tab = self.widget(i)  # type: ignore
+            w.preset_index = i
 
     def _apply_tab_style(self):
         """
@@ -482,44 +483,54 @@ class TabWidget(QTabWidget):
         return self.currentWidget()  # type: ignore
 
     def cancel_skill_selection(self) -> None:
-        """현재 탭의 스킬 선택 취소 (Tab으로 위임)"""
+        """현재 탭의 스킬 선택 취소"""
 
         tab: Tab = self.get_current_tab()
         tab.cancel_skill_selection()
 
-    def refresh_current_tab(self) -> None:
-        """현재 탭 UI 갱신 (Tab으로 위임)"""
+    # def sync_tab_titles(self, tab_names: list[str]) -> None:
+    #     """shared_data.tab_names를 기준으로 탭 제목을 동기화"""
 
-        tab: Tab = self.get_current_tab()
-        tab.refresh_ui()
+    #     for i in range(len(tab_names)):
+    #         if self.tabText(i) != tab_names[i]:
+    #             self.setTabText(i, tab_names[i])
 
-    def select_equipped_skill(self, index: int) -> None:
-        tab: Tab = self.get_current_tab()
-        tab.select_equipped_skill(index)
+    def get_tab_bar(self) -> QTabBar:
+        """
+        현재 TabWidget의 QTabBar를 반환
+        """
 
-    def set_equipped_skill(self, index: int, skill_name: str) -> None:
-        tab: Tab = self.get_current_tab()
-        tab.set_equipped_skill(index, skill_name)
+        tab_bar: QTabBar | None = self.tabBar()
 
-    def display_available_skills(self) -> None:
-        tab: Tab = self.get_current_tab()
-        tab.display_available_skills()
+        if tab_bar is None:
+            raise RuntimeError("QTabWidget.tabBar() returned None")
 
-    def get_selected_index(self) -> int:
-        tab: Tab = self.get_current_tab()
-        return tab.get_selected_index()
+        return tab_bar
+
+    def get_key_button(self, index: int) -> QPushButton:
+        """단축키 설정 버튼 반환"""
+
+        return self.get_current_tab().get_key_button(index)
+
+    def set_key(self, index: int, key: str) -> None:
+        """스킬 단축키 설정"""
+
+        self.get_current_tab().set_key(index, key)
 
 
 class Tab(QFrame):
-    # 시그널 정의
     noticeRequested = pyqtSignal(str)
     skillKeyRequested = pyqtSignal(int)
     dataChanged = pyqtSignal()
 
-    def __init__(self, shared_data: SharedData):
+    def __init__(
+        self, shared_data: SharedData, preset: "MacroPreset", preset_index: int
+    ) -> None:
         super().__init__()
 
         self.shared_data: SharedData = shared_data
+        self.preset: MacroPreset = preset
+        self.preset_index: int = preset_index
 
         self.preview = SkillPreview(shared_data=self.shared_data)
 
@@ -530,6 +541,9 @@ class Tab(QFrame):
         line.setFixedHeight(1)
 
         self.equipped_skills = EquippedSkill(shared_data=self.shared_data)
+
+        # 없어도 될 수도?
+        self.update_from_preset()
 
         # 하위 위젯 이벤트를 Tab에서 처리
         self.equipped_skills.slotClicked.connect(self.on_equipped_skill_clicked)
@@ -545,21 +559,14 @@ class Tab(QFrame):
         layout.setSpacing(20)
         self.setLayout(layout)
 
-        # 초기 표시
-        self.refresh_ui()
-
-    def refresh_ui(self) -> None:
-        """현재 shared_data를 기준으로 탭 UI를 갱신"""
-
-        # self.equippable_skills.display_available_skills()
-        self.preview.update_preview()
-
     def cancel_skill_selection(self) -> None:
         """장착 스킬 선택 취소"""
 
         self.select_equipped_skill(-1)
 
     def on_skill_key_clicked(self, index: int) -> None:
+        """장착 슬롯 단축키 설정 버튼 클릭"""
+
         if self.shared_data.is_activated:
             self.noticeRequested.emit("MacroIsRunning")
             return
@@ -581,31 +588,32 @@ class Tab(QFrame):
             self.noticeRequested.emit("MacroIsRunning")
             return
 
-        equipped_skill: str = self.shared_data.equipped_skills[index]
+        equipped_skill: str = self.preset.skills.active_skills[index]
         selected_index: int = self.get_selected_index()
 
-        # 스킬 선택중이 아닐 때 -> 선택
+        # 스킬 선택중이 아닐 때: 선택
         if selected_index == -1:
             self.select_equipped_skill(index)
             return
 
-        # 다른 슬롯을 눌렀다면 -> 선택 취소
+        # 다른 슬롯을 눌렀다면: 선택 취소
         if selected_index != index:
             self.cancel_skill_selection()
             return
 
         # 같은 슬롯 재클릭
+
+        # 장착된 스킬이 없으면 취소
         if not equipped_skill:
             self.cancel_skill_selection()
             return
 
         # 장착된 스킬 해제
-        self.set_equipped_skill(index, "")
         self.clear_equipped_skill(skill=equipped_skill)
-        self.shared_data.equipped_skills[index] = ""
+        self.set_equipped_skill(index, "")
+
         self.cancel_skill_selection()
 
-        self.refresh_ui()
         self.dataChanged.emit()
 
     def on_available_skill_clicked(self, available_index: int) -> None:
@@ -623,64 +631,110 @@ class Tab(QFrame):
             self.noticeRequested.emit("MacroIsRunning")
             return
 
+        # 장착 슬롯이 선택되지 않았으면 무시
         selected_slot: int = self.get_selected_index()
         if selected_slot == -1:
             return
 
-        available_skills: list[str] = get_available_skills(self.shared_data)
-        if available_index < 0 or available_index >= len(available_skills):
-            return
+        selected_skill: str = get_available_skills(self.shared_data)[available_index]
 
-        selected_skill: str = available_skills[available_index]
-
-        # 이미 장착된 스킬을 선택했을 때 -> 취소
-        if selected_skill in self.shared_data.equipped_skills:
+        # 이미 장착된 스킬을 선택했을 때: 취소
+        if selected_skill in self.preset.skills.active_skills:
             self.cancel_skill_selection()
             return
 
-        equipped_skill: str = self.shared_data.equipped_skills[selected_slot]
+        # 기존에 장착된 스킬이 있으면 해제
+        equipped_skill: str = self.preset.skills.active_skills[selected_slot]
         if equipped_skill:
             self.clear_equipped_skill(skill=equipped_skill)
 
         # 선택된 슬롯에 장착
-        self.shared_data.equipped_skills[selected_slot] = selected_skill
         self.set_equipped_skill(selected_slot, selected_skill)
 
         self.cancel_skill_selection()
-        self.refresh_ui()
         self.dataChanged.emit()
 
     def clear_equipped_skill(self, skill: str) -> None:
         """장착된 스킬 초기화(우선순위/연계스킬 등)"""
 
         # 연계스킬 수동 사용으로 변경
-        for link in self.shared_data.link_skills:
+        for link in self.preset.link_settings:
             for skill_info in link["skills"]:
                 if skill_info["name"] == skill:
                     link["useType"] = "manual"
 
         # 스킬 사용 우선순위 리로드
-        prev_priority: int = self.shared_data.skill_priority.get(skill, 0)
+        setting: SkillUsageSetting = self.preset.usage_settings[skill]
+        prev_priority: int = setting.skill_priority
 
+        # 우선순위가 있었다면 초기화
         if prev_priority:
-            self.shared_data.skill_priority[skill] = 0
+            self.preset.usage_settings[skill].skill_priority = 0
 
             # 해당 스킬보다 높은 우선순위의 스킬들 우선순위 1 감소
-            for sk, pri in self.shared_data.skill_priority.items():
-                if pri > prev_priority:
-                    self.shared_data.skill_priority[sk] -= 1
+            for setting in self.preset.usage_settings.values():
+                if setting.skill_priority > prev_priority:
+                    setting.skill_priority -= 1
+
+        self._sync_to_shared_data()
 
     def select_equipped_skill(self, index: int) -> None:
         self.equipped_skills.select(index)
 
     def set_equipped_skill(self, index: int, skill_name: str) -> None:
+        self.preset.skills.active_skills[index] = skill_name
+        self._sync_to_shared_data()
         self.equipped_skills.set_skill(index, skill_name)
+        self.update_preview()
 
     def display_available_skills(self) -> None:
         self.equippable_skills.display_available_skills()
 
     def get_selected_index(self) -> int:
         return self.equipped_skills.get_selected_index()
+
+    def get_key_button(self, index: int) -> QPushButton:
+        """단축키 설정 버튼 반환"""
+
+        return self.equipped_skills.get_key_button(index)
+
+    def set_key(self, index: int, key: str) -> None:
+        """스킬 단축키 설정"""
+
+        self.equipped_skills.set_key(index, key)
+
+    def update_preview(self) -> None:
+        """스킬 프리뷰 업데이트(현재 탭일 때만)"""
+
+        self.preview.update_preview()
+
+    def update_from_preset(self) -> None:
+        """이 탭이 들고 있는 preset 기준으로 UI를 갱신"""
+
+        self.equipped_skills.update_from_preset(self.preset)
+        self.update_preview()
+
+    def apply_key(self, index: int, key: "KeySpec") -> bool:
+        """키 설정 변경을 preset에 적용. 변경되었으면 True"""
+
+        if self.preset.skills.skill_keys[index] == key.key_id:
+            return False
+
+        self.preset.skills.skill_keys[index] = key.key_id
+        self._sync_to_shared_data()
+        self.equipped_skills.set_key(index, key.display)
+
+        return True
+
+    def _sync_to_shared_data(self) -> None:
+        """preset -> shared_data로 동기화"""
+
+        apply_preset_to_shared_data(
+            self.shared_data,
+            self.preset,
+            preset_index=self.preset_index,
+            all_presets=self.shared_data.presets,
+        )
 
 
 class SkillPreview(QFrame):
@@ -718,7 +772,7 @@ class SkillPreview(QFrame):
         # 매크로가 실행중이 아니라면 매크로 초반 시뮬레이션 실행
         if not self.shared_data.is_activated:
             init_macro(self.shared_data)
-            add_task_list(self.shared_data, print_info=False)
+            add_task_list(self.shared_data)
 
         # 표시할 스킬 개수 (최대 6개)
         count: int = min(len(self.shared_data.task_list), 6)
@@ -779,7 +833,6 @@ class EquippableSkill(QFrame):
         장착되지 않은 스킬에 빨간 테두리 표시
         """
 
-        # 장착되지 않은 스킬에 빨간 테두리 표시
         for name, skill in zip(get_available_skills(self.shared_data), self.skills):
             skill.set_equipped_style(name in self.shared_data.equipped_skills)
 
@@ -790,6 +843,7 @@ class EquippableSkill(QFrame):
             super().__init__()
 
             self.index: int = index
+            self.shared_data: SharedData = shared_data
 
             self.setStyleSheet("QFrame { background-color: transparent; }")
 
@@ -887,6 +941,20 @@ class EquippedSkill(QFrame):
     def get_selected_index(self) -> int:
         return self.selected_index
 
+    def get_key_button(self, index: int) -> QPushButton:
+        """단축키 설정 버튼 반환"""
+
+        return self.skills[index].get_key_button()
+
+    def update_from_preset(self, preset: "MacroPreset") -> None:
+        """preset 기준으로 슬롯 아이콘/키 텍스트를 동기화"""
+
+        for index, name in enumerate(preset.skills.active_skills):
+            self.set_skill(index, name)
+
+        for index, key_id in enumerate(preset.skills.skill_keys):
+            self.set_key(index, self.shared_data.KEY_DICT[key_id].display)
+
     class Skill(QFrame):
         slotClicked = pyqtSignal(int)
         keyClicked = pyqtSignal(int)
@@ -935,7 +1003,7 @@ class EquippedSkill(QFrame):
             button_layout.setSpacing(0)
             button_layout.addWidget(self.button, alignment=Qt.AlignmentFlag.AlignCenter)
 
-            self.key = QPushButton(shared_data.skill_keys[index], self)
+            self.key = QPushButton(shared_data.skill_keys[index].display, self)
             self.key.setFont(CustomFont(10))
             self.key.setFixedWidth(size)
             self.key.clicked.connect(lambda: self.keyClicked.emit(self.index))
@@ -953,14 +1021,6 @@ class EquippedSkill(QFrame):
 
         def set_selected_style(self, selected: bool) -> None:
             """슬롯 선택"""
-
-            # 이미지가 적용되면 보더가 안보임
-            # style: dict[bool, str] = {
-            #     True: "QPushButton { border-radius: 10px; border: 3px solid red; }",
-            #     False: "QPushButton { border-radius: 10px; border: none; }",
-            # }
-
-            # self.button.setStyleSheet(style[selected])
 
             # 선택 시: 아이콘 확대 + 그림자
             if selected:
@@ -999,3 +1059,7 @@ class EquippedSkill(QFrame):
                     )
                 )
             )
+
+        def get_key_button(self) -> QPushButton:
+            """단축키 설정 버튼 반환"""
+            return self.key

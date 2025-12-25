@@ -29,7 +29,7 @@ from app.scripts.misc import (
     get_available_skills,
     get_skill_details,
     get_skill_pixmap,
-    is_key_used,
+    is_key_using,
 )
 from app.scripts.popup import PopupKind
 from app.scripts.shared_data import UI_Variable
@@ -37,7 +37,7 @@ from app.scripts.shared_data import UI_Variable
 if TYPE_CHECKING:
     from app.scripts.main_window import MainWindow
     from app.scripts.popup import PopupManager
-    from app.scripts.shared_data import SharedData
+    from app.scripts.shared_data import KeySpec, SharedData
 
 
 class Sidebar(QFrame):
@@ -164,7 +164,7 @@ class GeneralSettings(QFrame):
             btn1_text="X",
             btn1_enabled=False,
             func0=self.on_servers_clicked,
-            func1=None,
+            func1=self.popup_manager.close_popup,
         )
 
         # 딜레이
@@ -211,21 +211,21 @@ class GeneralSettings(QFrame):
             btn1_text=str(self.shared_data.start_key_input),
             btn1_enabled=self.shared_data.start_key_type == 1,
             func0=self.on_default_start_key_clicked,
-            func1=self.onInputStartKeyClick,
+            func1=self.on_user_start_key_clicked,
         )
 
         # 마우스 클릭
         self.click_setting = self.SettingItem(
             title="마우스 클릭",
             tooltip=(
-                "스킬 사용시: 스킬을 사용하기 위해 마우스를 클릭합니다. 평타를 사용하기 위한 클릭은 하지 않습니다.\n"
-                "평타 포함: 스킬과 평타를 사용하기 위해 마우스를 클릭합니다."
+                "평타 사용 안함: 일반공격을 사용하지 않습니다.\n"
+                "평타 사용: 일반공격을 사용하기 위해 마우스를 클릭합니다."
             ),
-            btn0_text="스킬 사용시",
+            btn0_text="평타 사용 안함",
             btn0_enabled=self.shared_data.mouse_click_type == 0,
-            btn1_text="평타 포함",
+            btn1_text="평타 사용",
             btn1_enabled=self.shared_data.mouse_click_type == 1,
-            func0=self.on_mouse_type0_clicked,
+            func0=self.on_mouse_left_clicked,
             func1=self.on_mouse_type1_clicked,
         )
 
@@ -259,10 +259,14 @@ class GeneralSettings(QFrame):
 
             save_data(self.shared_data)
 
+        self.popup_manager.close_popup()
+
         self.popup_manager.make_server_popup(self.server_job_setting.left_button, apply)
 
     def on_default_delay_clicked(self) -> None:
         """기본 딜레이 클릭시 실행"""
+
+        self.popup_manager.close_popup()
 
         # 매크로 실행 중일 때는 무시
         if self.shared_data.is_activated:
@@ -278,8 +282,7 @@ class GeneralSettings(QFrame):
         self.shared_data.delay = self.shared_data.DEFAULT_DELAY
 
         # 버튼 색상 변경
-        self.delay_setting.set_left_button_enabled(True)
-        self.delay_setting.set_right_button_enabled(False)
+        self.delay_setting.set_buttons_enabled(True, False)
 
         # 데이터 저장
         save_data(self.shared_data)
@@ -301,6 +304,8 @@ class GeneralSettings(QFrame):
 
             save_data(self.shared_data)
 
+        self.popup_manager.close_popup()
+
         # 매크로 실행 중일 때는 무시
         if self.shared_data.is_activated:
             self.popup_manager.make_notice_popup("MacroIsRunning")
@@ -316,8 +321,7 @@ class GeneralSettings(QFrame):
         self.shared_data.delay = self.shared_data.delay_input
 
         # 버튼 색상 변경
-        self.delay_setting.set_left_button_enabled(False)
-        self.delay_setting.set_right_button_enabled(True)
+        self.delay_setting.set_buttons_enabled(False, True)
 
         # 데이터 저장
         save_data(self.shared_data)
@@ -338,17 +342,32 @@ class GeneralSettings(QFrame):
 
         # 기본 쿨타임 감소로 변경
         self.shared_data.cooltime_reduction_type = 0
-        self.shared_data.cooltime_reduction = 0
+        self.shared_data.cooltime_reduction = (
+            self.shared_data.DEFAULT_COOLTIME_REDUCTION
+        )
 
         # 버튼 색상 변경
-        # self.buttonDefaultCooltime.setStyleSheet("QPushButton { color: #000000; }")
-        # self.buttonInputCooltime.setStyleSheet("QPushButton { color: #999999; }")
+        self.cooltime_setting.set_buttons_enabled(True, False)
 
         # 데이터 저장
         save_data(self.shared_data)
 
     def on_user_cooltime_clicked(self):
         """유저 쿨타임 감소 클릭시 실행"""
+
+        def apply(cooltime_value: int) -> None:
+            """적용 함수"""
+
+            if cooltime_value == self.shared_data.cooltime_reduction_input:
+                return
+
+            self.shared_data.cooltime_reduction_input = cooltime_value
+            self.shared_data.cooltime_reduction = cooltime_value
+
+            # 버튼 텍스트 갱신
+            self.cooltime_setting.set_right_button_text(str(cooltime_value))
+
+            save_data(self.shared_data)
 
         self.popup_manager.close_popup()
 
@@ -357,15 +376,11 @@ class GeneralSettings(QFrame):
             self.popup_manager.make_notice_popup("MacroIsRunning")
             return
 
-        # 이미 쿨타임 감소 입력 팝업이 열려있다면 무시
-        if self.shared_data.active_popup == "settingCooltime":
-            return
-
         # 이미 유저 쿨타임 감소라면 쿨타임 감소 입력 팝업 열기
         if self.shared_data.cooltime_reduction_type == 1:
-            self.popup_manager.activatePopup("settingCooltime")
-            self.popup_manager.makePopupInput("cooltime")
-
+            self.popup_manager.make_cooltime_popup(
+                self.cooltime_setting.right_button, apply
+            )
             return
 
         # 유저 쿨타임 감소로 변경
@@ -373,8 +388,7 @@ class GeneralSettings(QFrame):
         self.shared_data.cooltime_reduction = self.shared_data.cooltime_reduction_input
 
         # 버튼 색상 변경
-        # self.buttonDefaultCooltime.setStyleSheet("QPushButton { color: #999999; }")
-        # self.buttonInputCooltime.setStyleSheet("QPushButton { color: #000000; }")
+        self.cooltime_setting.set_buttons_enabled(False, True)
 
         # 데이터 저장
         save_data(self.shared_data)
@@ -395,8 +409,9 @@ class GeneralSettings(QFrame):
 
         # 유저 시작키가 기본 시작키와 다르고
         # 기본 시작키가 다른 용도로 사용 중이면 변경 불가
-        default_key: str = self.shared_data.DEFAULT_START_KEY
-        if self.shared_data.start_key_input != default_key and is_key_used(
+        default_key: KeySpec = self.shared_data.DEFAULT_START_KEY
+
+        if self.shared_data.start_key_input != default_key and is_key_using(
             self.shared_data, default_key
         ):
             self.popup_manager.make_notice_popup("StartKeyChangeError")
@@ -407,14 +422,27 @@ class GeneralSettings(QFrame):
         self.shared_data.start_key = default_key
 
         # 버튼 색상 변경
-        # self.buttonDefaultStartKey.setStyleSheet("QPushButton { color: #000000; }")
-        # self.buttonInputStartKey.setStyleSheet("QPushButton { color: #999999; }")
+        self.start_key_setting.set_buttons_enabled(True, False)
 
         # 데이터 저장
         save_data(self.shared_data)
 
-    def onInputStartKeyClick(self):
+    def on_user_start_key_clicked(self):
         """유저 시작키 클릭시 실행"""
+
+        def apply(start_key: KeySpec) -> None:
+            """적용 함수"""
+
+            if start_key == self.shared_data.start_key_input:
+                return
+
+            self.shared_data.start_key_input = start_key
+            self.shared_data.start_key = start_key
+
+            # 버튼 텍스트 갱신
+            self.start_key_setting.set_right_button_text(str(start_key))
+
+            save_data(self.shared_data)
 
         self.popup_manager.close_popup()
 
@@ -423,20 +451,11 @@ class GeneralSettings(QFrame):
             self.popup_manager.make_notice_popup("MacroIsRunning")
             return
 
-        # 이미 시작키 입력 팝업이 열려있다면 무시
-        if self.shared_data.active_popup == "settingStartKey":
-            return
-
         # 이미 유저 시작키라면 시작키 입력 팝업 열기
         if self.shared_data.start_key_type == 1:
-            self.popup_manager.activatePopup("settingStartKey")
-            self.popup_manager.makeKeyboardPopup("StartKey")
-
-            return
-
-        # 유저 시작키가 사용 중이면 변경 불가
-        if is_key_used(self.shared_data, self.shared_data.start_key_input):
-            self.popup_manager.make_notice_popup("StartKeyChangeError")
+            self.popup_manager.make_start_key_popup(
+                self.start_key_setting.right_button, apply
+            )
             return
 
         # 유저 시작키로 변경
@@ -444,13 +463,12 @@ class GeneralSettings(QFrame):
         self.shared_data.start_key = self.shared_data.start_key_input
 
         # 버튼 색상 변경
-        # self.buttonDefaultStartKey.setStyleSheet("QPushButton { color: #999999; }")
-        # self.buttonInputStartKey.setStyleSheet("QPushButton { color: #000000; }")
+        self.start_key_setting.set_buttons_enabled(False, True)
 
         # 데이터 저장
         save_data(self.shared_data)
 
-    def on_mouse_type0_clicked(self):
+    def on_mouse_left_clicked(self):
         """마우스 클릭 타입0 (스킬 사용 시) 클릭시 실행"""
 
         self.popup_manager.close_popup()
@@ -468,8 +486,7 @@ class GeneralSettings(QFrame):
         self.shared_data.mouse_click_type = 0
 
         # 버튼 색상 변경
-        # self.button1stMouseType.setStyleSheet("QPushButton { color: #000000; }")
-        # self.button2ndMouseType.setStyleSheet("QPushButton { color: #999999; }")
+        self.click_setting.set_buttons_enabled(True, False)
 
         # 데이터 저장
         save_data(self.shared_data)
@@ -492,8 +509,7 @@ class GeneralSettings(QFrame):
         self.shared_data.mouse_click_type = 1
 
         # 버튼 색상 변경
-        # self.button1stMouseType.setStyleSheet("QPushButton { color: #999999; }")
-        # self.button2ndMouseType.setStyleSheet("QPushButton { color: #000000; }")
+        self.click_setting.set_buttons_enabled(False, True)
 
         # 데이터 저장
         save_data(self.shared_data)
@@ -561,18 +577,21 @@ class GeneralSettings(QFrame):
 
             self.setLayout(layout)
 
-        def set_left_button_enabled(self, enabled: bool) -> None:
-            """왼쪽 버튼 활성화 상태 설정"""
+        def set_buttons_enabled(
+            self, left_enabled: bool | None, right_enabled: bool | None
+        ) -> None:
+            """양쪽 버튼 활성화 상태 설정"""
 
-            self.left_button.setProperty("active", enabled)
+            if left_enabled is not None:
+                self.left_button.setProperty("active", left_enabled)
+
             self.left_button.style().unpolish(self.left_button)  # type: ignore
             self.left_button.style().polish(self.left_button)  # type: ignore
             self.left_button.update()
 
-        def set_right_button_enabled(self, enabled: bool) -> None:
-            """오른쪽 버튼 활성화 상태 설정"""
+            if right_enabled is not None:
+                self.right_button.setProperty("active", right_enabled)
 
-            self.right_button.setProperty("active", enabled)
             self.right_button.style().unpolish(self.right_button)  # type: ignore
             self.right_button.style().polish(self.right_button)  # type: ignore
             self.right_button.update()
@@ -830,7 +849,7 @@ class LinkSkillSettings(QFrame):
             """사용되지 않는 단축키 반환"""
 
             for char in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
-                if not is_key_used(self.shared_data, char):
+                if not is_key_using(self.shared_data, self.shared_data.KEY_DICT[char]):
                     return char
             return ""
 

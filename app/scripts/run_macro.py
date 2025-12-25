@@ -5,7 +5,7 @@ from threading import Thread
 from typing import TYPE_CHECKING, NoReturn
 
 from pynput import keyboard, mouse
-from PyQt6.QtCore import QThread, pyqtSignal
+from pynput.keyboard import Key, KeyCode
 
 from app.scripts.misc import (
     convert_skill_name_to_slot,
@@ -14,7 +14,7 @@ from app.scripts.misc import (
 )
 
 if TYPE_CHECKING:
-    from app.scripts.shared_data import SharedData
+    from app.scripts.shared_data import KeySpec, SharedData
 
 
 DEBUG_PRINT_INFO = False  # 디버깅용
@@ -25,80 +25,39 @@ pynput을 사용한 키보드 감지
 """
 
 # 전역 변수로 키 상태 추적
-pressed_keys = set()
+pressed_keys: set[Key | KeyCode] = set()
 any_key_pressed = False
 
 
-def on_press(key) -> None:
+def on_press(key: Key | KeyCode | None) -> None:
     """키가 눌렸을 때 호출되는 함수"""
 
     global pressed_keys, any_key_pressed
 
-    try:
-        # 일반 키의 경우
-        if hasattr(key, "char") and key.char:
-            pressed_keys.add(key.char.lower())
+    if key is None:
+        return
 
-        # 특수 키의 경우
-        else:
-            pressed_keys.add(str(key).replace("Key.", ""))
-
-        any_key_pressed = True
-
-    except AttributeError:
-        # 알 수 없는 키의 경우
-        pressed_keys.add(str(key))
-        any_key_pressed = True
+    pressed_keys.add(key)
+    any_key_pressed = True
 
 
-def on_release(key) -> None:
+def on_release(key: Key | KeyCode | None) -> None:
     """키가 떼어졌을 때 호출되는 함수"""
 
-    global pressed_keys, any_key_pressed
+    global pressed_keys
 
-    try:
-        # 일반 키의 경우
-        if hasattr(key, "char") and key.char:
-            pressed_keys.discard(key.char.lower())
+    if key is None:
+        return
 
-        # 특수 키의 경우
-        else:
-            pressed_keys.discard(str(key).replace("Key.", ""))
-
-    except AttributeError:
-        # 알 수 없는 키의 경우
-        pressed_keys.discard(str(key))
+    pressed_keys.discard(key)
 
 
-def is_key_pressed(key_name: str) -> bool:
+def is_key_pressed(key: KeySpec) -> bool:
     """특정 키가 눌려있는지 확인"""
 
     global pressed_keys
 
-    # 키 이름을 소문자로 변환하여 확인
-    key_lower: str = key_name.lower()
-
-    # 특수 키 매핑
-    special_keys: dict[str, str] = {
-        "space": "space",
-        "enter": "enter",
-        "shift": "shift",
-        "ctrl": "ctrl",
-        "alt": "alt",
-        "tab": "tab",
-        "up": "up",
-        "down": "down",
-        "left": "left",
-        "right": "right",
-        "page_up": "page_up",
-        "page_down": "page_down",
-    }
-
-    if key_lower in special_keys:
-        return special_keys[key_lower] in pressed_keys
-
-    else:
-        return key_lower in pressed_keys
+    return key.value in pressed_keys
 
 
 def checking_kb_thread(shared_data: SharedData) -> NoReturn:
@@ -111,6 +70,10 @@ def checking_kb_thread(shared_data: SharedData) -> NoReturn:
     listener.start()
 
     while True:
+        if shared_data.is_setting_key:
+            time.sleep(0.1)
+            continue
+
         # 매크로 실행중일 때 어떤 키보드 입력이 있으면 잠수 시간 초기화
         if shared_data.is_activated and any_key_pressed:
             shared_data.afk_started_time = time.time()
@@ -119,11 +82,7 @@ def checking_kb_thread(shared_data: SharedData) -> NoReturn:
             any_key_pressed = False
 
         # 매크로 시작/중지
-        # start_key가 KEY_DICT에 의해 변환된 상태라면 필요 없을 듯
-        start_key: str = shared_data.KEY_DICT.get(
-            shared_data.start_key, shared_data.start_key
-        )
-        if is_key_pressed(start_key):
+        if is_key_pressed(shared_data.start_key):
             # On -> Off
             if shared_data.is_activated:
                 shared_data.is_activated = False
@@ -150,7 +109,7 @@ def checking_kb_thread(shared_data: SharedData) -> NoReturn:
         # 연계스킬 사용
         for link_skill in shared_data.link_skills:
             # 연계스킬 키가 눌렸다면
-            link_key = shared_data.KEY_DICT.get(link_skill["key"], link_skill["key"])
+            link_key: KeySpec = shared_data.KEY_DICT[link_skill["key"]]
             if link_key and is_key_pressed(link_key):
                 # 연계스킬에 필요한 스킬이 모두 장착되어 있는지 확인
                 if all(
@@ -420,43 +379,25 @@ def use_skill(shared_data: SharedData, loop_num: int) -> int:
     # pynput 키보드 컨트롤러 생성
     kbd_controller = keyboard.Controller()
 
-    def press(key: str) -> None:
+    def press(key: KeySpec) -> None:
         """키 입력 함수"""
 
         if shared_data.is_activated and shared_data.loop_num == loop_num:
-            # 키 문자열을 pynput Key 객체로 변환
-            try:
-                # 일반 문자
-                if len(key) == 1:
-                    kbd_controller.press(key)
-                    kbd_controller.release(key)
-
-                # 특수 키
-                else:
-                    special_key = getattr(keyboard.Key, key.lower(), None)
-                    if special_key:
-                        kbd_controller.press(special_key)
-                        kbd_controller.release(special_key)
-
-                    else:
-                        raise ValueError(f"알 수 없는 키: {key}")
-
-            except Exception as e:
-                print(f"키 입력 오류: {key}, {e}")
+            kbd_controller.press(key.value)
+            kbd_controller.release(key.value)
 
     if not shared_data.task_list:
         return -1  # task_list가 비어있으면 -1 리턴
 
     slot: int = shared_data.task_list.pop(0)
 
-    key: str = shared_data.skill_keys[slot]
-    key = shared_data.KEY_DICT.get(key, key)
+    key: KeySpec = shared_data.skill_keys[slot]
 
     # 쿨타임 시작
     shared_data.skill_cooltime_timers[slot] = time.time()
 
     # 키보드 입력
-    press(key=key)
+    press(key)
 
     # print(
     #     f"{time.time() - self.startTime - 0.1 if doClick else time.time() - self.startTime:.3f} - {skill}"
@@ -478,35 +419,19 @@ def use_link_skill(shared_data: SharedData, num, loop_num: int) -> None:
     # pynput 키보드 컨트롤러 생성
     kbd_controller = keyboard.Controller()
 
-    def press(key: str) -> None:
+    def press(key: KeySpec) -> None:
         """키 입력 함수 todo: 공통 함수로 빼기"""
 
         if shared_data.loop_num == loop_num:
-            # 키 문자열을 pynput Key 객체로 변환
-            try:
-                if len(key) == 1:
-                    # 일반 문자
-                    kbd_controller.press(key)
-                    kbd_controller.release(key)
-                else:
-                    # 특수 키
-                    special_key = getattr(keyboard.Key, key.lower(), None)
-                    if special_key:
-                        kbd_controller.press(special_key)
-                        kbd_controller.release(special_key)
-                    else:
-                        raise ValueError(f"알 수 없는 키: {key}")
-
-            except Exception as e:
-                print(f"키 입력 오류: {key}, {e}")
+            kbd_controller.press(key.value)
+            kbd_controller.release(key.value)
 
     def use() -> None:
         """스킬 사용 함수"""
 
         skill: int = task_list.pop(0)
 
-        key: str = shared_data.skill_keys[skill]
-        key = shared_data.KEY_DICT.get(key, key)
+        key: KeySpec = shared_data.skill_keys[skill]
 
         press(key)
         time.sleep(shared_data.delay * 0.001 * shared_data.SLEEP_COEFFICIENT_NORMAL)
@@ -521,7 +446,7 @@ def use_link_skill(shared_data: SharedData, num, loop_num: int) -> None:
         use()
 
 
-def add_task_list(shared_data: SharedData, print_info: bool = False) -> None:
+def add_task_list(shared_data: SharedData) -> None:
     """
     task_list에 사용할 스킬 추가
     """
