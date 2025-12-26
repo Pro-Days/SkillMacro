@@ -213,7 +213,19 @@ class MainWindow(QWidget):
         self.main_ui: MainUI = MainUI(self, self.shared_data)
 
         # 사이드바
-        self.sidebar: Sidebar = Sidebar(self, self.shared_data)
+        self.sidebar: Sidebar = Sidebar(
+            self,
+            self.shared_data,
+            self.shared_data.presets[self.shared_data.recent_preset],
+            self.shared_data.recent_preset,
+        )
+
+        # 탭(프리셋) 변경 시 사이드바를 시그널로 동기화
+        self.main_ui.presetChanged.connect(self.sidebar.set_current_preset)
+        self.main_ui.emit_preset_changed()
+
+        # 사이드바에서 데이터 변경 시 저장은 MainUI 파이프라인(=tab_widget.dataChanged)로 위임
+        self.sidebar.dataChanged.connect(self.main_ui.tab_widget.dataChanged.emit)
 
         # 시뮬레이션 UI
         self.sim_ui: SimUI = SimUI(self, self.page2, self.shared_data)

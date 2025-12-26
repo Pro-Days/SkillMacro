@@ -333,11 +333,6 @@ class SharedData:
     # 기존 코드(탭 UI 포함)가 SharedData의 ClassVar(예: equipped_skills)를 직접 읽고/쓰고 있어서,
     # 당장 제거하지 않고 병행한다. 다음 단계에서 load_data가 이 presets/current_preset을 채우도록 바꾼다.
     presets: list[MacroPreset] = field(default_factory=list, repr=False)
-    current_preset: MacroPreset | None = field(
-        default=None,
-        repr=False,
-        compare=False,
-    )
 
     # 탭 이름들
     tab_names: ClassVar[list[str]] = []

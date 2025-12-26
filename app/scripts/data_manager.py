@@ -43,7 +43,6 @@ def apply_preset_to_shared_data(
     set_var_to_ClassVar(shared_data.tab_names, [p.name for p in shared_data.presets])
 
     update_recent_preset(shared_data, preset_index)
-    shared_data.current_preset = preset
 
     # 장착된 스킬들
     set_var_to_ClassVar(shared_data.equipped_skills, preset.skills.active_skills)

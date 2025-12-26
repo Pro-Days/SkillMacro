@@ -28,6 +28,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -73,6 +74,8 @@ class PopupKind(str, Enum):
     SETTING_START_KEY = "settingStartKey"
     TAB_NAME = "tabName"
     SKILL_KEY = "skillKey"
+    LINK_SKILL_KEY = "linkSkillKey"
+    LINK_SKILL_SELECT = "linkSkillSelect"
 
 
 @dataclass(frozen=True)
@@ -759,613 +762,6 @@ class PopupManager:
         self.shared_data.active_error_popup_count -= 1
         self.update_position()
 
-    ## 인풋 팝업 생성
-    def makePopupInput(self, popup_type: str, var: int | None = None) -> None:
-        match popup_type:
-            case "delay":
-                x = 140
-                y = 370
-                width = 140
-
-                frame = self.master.get_sidebar().frame
-
-            case "cooltime":
-                x = 140
-                y = 500
-                width = 140
-
-                frame = self.master.get_sidebar().frame
-
-            case "tabName":
-                x = 360 + 200 * self.shared_data.recent_preset
-                y = 80
-                width = 200
-
-                frame = self.master
-
-            case _:
-                return
-
-        self.settingPopupFrame = QFrame(frame)
-        self.settingPopupFrame.setStyleSheet(
-            "background-color: white; border-radius: 10px;"
-        )
-        self.settingPopupFrame.setFixedSize(width, 40)
-        self.settingPopupFrame.move(x, y)
-        self.settingPopupFrame.setGraphicsEffect(CustomShadowEffect(0, 0, 30, 150))
-        self.settingPopupFrame.show()
-
-        match popup_type:
-            case "delay":
-                default = str(self.shared_data.delay_input)
-
-            case "cooltime":
-                default = str(self.shared_data.cooltime_reduction_input)
-
-            case "tabName":
-                default = self.shared_data.tab_names[self.shared_data.recent_preset]
-
-        self.settingPopupInput = QLineEdit(default, self.settingPopupFrame)
-        self.settingPopupInput.setFont(CustomFont(12))
-        self.settingPopupInput.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.settingPopupInput.setStyleSheet(
-            "border: 1px solid black; border-radius: 10px;"
-        )
-        self.settingPopupInput.setFixedSize(width - 70, 30)
-        self.settingPopupInput.move(5, 5)
-        self.settingPopupInput.setFocus()
-
-        self.settingPopupButton = QPushButton("적용", self.settingPopupFrame)
-        self.settingPopupButton.setFont(CustomFont(12))
-        self.settingPopupButton.clicked.connect(
-            lambda: self.on_input_popup_clicked(popup_type, var)
-        )
-        self.settingPopupButton.setStyleSheet(
-            """
-                            QPushButton {
-                                background-color: "white"; border-radius: 10px; border: 1px solid black;
-                            }
-                            QPushButton:hover {
-                                background-color: #cccccc;
-                            }
-                        """
-        )
-        self.settingPopupButton.setFixedSize(50, 30)
-        self.settingPopupButton.move(width - 60, 5)
-        # self.settingServerFrame.setGraphicsEffect(CustomShadowEffect(0, 5))
-
-        self.settingPopupButton.show()
-        self.settingPopupInput.show()
-
-        # self.update()
-        self.update_position()
-
-    ## 인풋 팝업 확인 클릭시 실행
-    def on_input_popup_clicked(self, input_type: str, var: int | None = None) -> None:
-        text = self.settingPopupInput.text()
-
-        match input_type:
-            case "delay":
-                try:
-                    text = int(text)
-
-                except:
-                    self.close_popup()
-                    self.make_notice_popup("delayInputError")
-                    return
-
-                if not (
-                    self.shared_data.MIN_DELAY <= text <= self.shared_data.MAX_DELAY
-                ):
-                    self.close_popup()
-                    self.make_notice_popup("delayInputError")
-                    return
-
-                self.master.get_sidebar().buttonInputDelay.setText(str(text))
-                self.shared_data.delay_input = text
-                self.shared_data.delay = text
-
-            case "cooltime":
-                try:
-                    text = int(text)
-
-                except Exception:
-                    self.close_popup()
-                    self.make_notice_popup("cooltimeInputError")
-                    return
-
-                if not (
-                    self.shared_data.MIN_COOLTIME_REDUCTION
-                    <= text
-                    <= self.shared_data.MAX_COOLTIME_REDUCTION
-                ):
-                    self.close_popup()
-                    self.make_notice_popup("cooltimeInputError")
-                    return
-
-                self.master.get_sidebar().buttonInputCooltime.setText(str(text))
-                self.shared_data.cooltime_reduction_input = text
-                self.shared_data.cooltime_reduction = text
-
-            case "tabName":
-                if var is None:
-                    self.close_popup()
-                    return
-
-                # self.master.get_main_ui().tab_buttons[var].setText(
-                #     adjust_text_length(
-                #         " " + text, self.master.get_main_ui().tab_buttons[var]
-                #     )
-                # )
-                self.shared_data.tab_names[var] = text
-
-        save_data(self.shared_data)
-        self.close_popup()
-
-        # self.update()
-        self.update_position()
-
-    ## 가상키보드 생성
-    def makeKeyboardPopup(self, kb_type):
-        def makePresetKey(key, row, column, disabled=False):
-            button = QPushButton(key, self.settingPopupFrame)
-            match kb_type:
-                case "StartKey":
-                    button.clicked.connect(
-                        lambda: self.onStartKeyPopupKeyboardClick(key, disabled)
-                    )
-                case ("skillKey", _):
-                    button.clicked.connect(
-                        lambda: self.onSkillKeyPopupKeyboardClick(
-                            key, disabled, kb_type[1]
-                        )
-                    )
-                case ("LinkSkill", _):
-                    button.clicked.connect(
-                        lambda: self.onLinkSkillKeyPopupKeyboardClick(
-                            key, disabled, kb_type[1]
-                        )
-                    )
-            color1 = "#999999" if disabled else "white"
-            color2 = "#999999" if disabled else "#cccccc"
-            button.setStyleSheet(
-                f"""
-                    QPushButton {{
-                        background-color: {color1}; border-radius: 5px; border: 1px solid black;;
-                    }}
-                    QPushButton:hover {{
-                        background-color: {color2};
-                    }}
-                """
-            )
-            button.setFixedSize(30, 30)
-            match column:
-                case 0:
-                    defaultX = 115
-                case 1:
-                    defaultX = 5
-                case 2:
-                    defaultX = 50
-                case 3:
-                    defaultX = 60
-                case 4:
-                    defaultX = 80
-                case _:
-                    return
-
-            defaultY = 5
-
-            adjust_font_size(button, key, 20)
-            button.move(
-                defaultX + row * 35,
-                defaultY + column * 35,
-            )
-            button.show()
-
-        def makeKey(key, x, y, width, height, disabled=False):
-            button = QPushButton(key, self.settingPopupFrame)
-            match kb_type:
-                case "StartKey":
-                    button.clicked.connect(
-                        lambda: self.onStartKeyPopupKeyboardClick(key, disabled)
-                    )
-                case ("skillKey", _):
-                    button.clicked.connect(
-                        lambda: self.onSkillKeyPopupKeyboardClick(
-                            key, disabled, kb_type[1]
-                        )
-                    )
-                case ("LinkSkill", _):
-                    button.clicked.connect(
-                        lambda: self.onLinkSkillKeyPopupKeyboardClick(
-                            key, disabled, kb_type[1]
-                        )
-                    )
-            color1 = "#999999" if disabled else "white"
-            color2 = "#999999" if disabled else "#cccccc"
-            button.setStyleSheet(
-                f"""
-                    QPushButton {{
-                        background-color: {color1}; border-radius: 5px; border: 1px solid black;;
-                    }}
-                    QPushButton:hover {{
-                        background-color: {color2};
-                    }}
-                """
-            )
-            button.setFixedSize(width, height)
-            adjust_font_size(button, key, 20)
-            button.move(x, y)
-            button.show()
-
-        def makeImageKey(key, x, y, width, height, image, size, rot, disabled=False):
-            button = QPushButton(self.settingPopupFrame)
-            pixmap = QPixmap(image)
-            pixmap = pixmap.transformed(QTransform().rotate(rot))
-            button.setIcon(QIcon(pixmap))
-            button.setIconSize(QSize(size, size))
-            match kb_type:
-                case "StartKey":
-                    button.clicked.connect(
-                        lambda: self.onStartKeyPopupKeyboardClick(key, disabled)
-                    )
-                case ("skillKey", _):
-                    button.clicked.connect(
-                        lambda: self.onSkillKeyPopupKeyboardClick(
-                            key, disabled, kb_type[1]
-                        )
-                    )
-                case ("LinkSkill", _):
-                    button.clicked.connect(
-                        lambda: self.onLinkSkillKeyPopupKeyboardClick(
-                            key, disabled, kb_type[1]
-                        )
-                    )
-            color1 = "#999999" if disabled else "white"
-            color2 = "#999999" if disabled else "#cccccc"
-            button.setStyleSheet(
-                f"""
-                    QPushButton {{
-                        background-color: {color1}; border-radius: 5px; border: 1px solid black;;
-                    }}
-                    QPushButton:hover {{
-                        background-color: {color2};
-                    }}
-                """
-            )
-            button.setFixedSize(width, height)
-            button.move(x, y)
-            button.show()
-
-        self.settingPopupFrame = QFrame(self.master)
-        self.settingPopupFrame.setStyleSheet(
-            "background-color: white; border-radius: 10px;"
-        )
-        self.settingPopupFrame.setFixedSize(635, 215)
-        self.settingPopupFrame.move(30, 30)
-        self.settingPopupFrame.setGraphicsEffect(CustomShadowEffect(0, 0, 30, 150))
-        self.settingPopupFrame.show()
-
-        k0 = [
-            "Esc",
-            "F1",
-            "F2",
-            "F3",
-            "F4",
-            "F5",
-            "F6",
-            "F7",
-            "F8",
-            "F9",
-            "F10",
-            "F11",
-            "F12",
-        ]
-        k1 = ["`", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-", "="]
-        k2 = ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "[", "]", "\\"]
-        k3 = ["A", "S", "D", "F", "G", "H", "J", "K", "L", ";", "'"]
-        k4 = ["Z", "X", "C", "V", "B", "N", "M", ",", ".", "/"]
-
-        for i, key in enumerate(k0):
-            x = 5 + 35 * i
-            if i >= 1:
-                x += 15
-            if i >= 5:
-                x += 15
-            if i >= 9:
-                x += 15
-
-            if key == "Esc":
-                makeKey(
-                    key,
-                    x,
-                    5,
-                    30,
-                    30,
-                    True,
-                )
-            else:
-                makeKey(
-                    key,
-                    x,
-                    5,
-                    30,
-                    30,
-                    is_key_using(self.shared_data, key),
-                )
-
-        row = 0
-        column = 1
-        for key in k1:
-            makePresetKey(key, row, column, is_key_using(self.shared_data, key))
-            row += 1
-        makeKey(
-            "Back",
-            460,
-            40,
-            40,
-            30,
-            True,
-        )
-
-        makeKey(
-            "Tab",
-            5,
-            75,
-            40,
-            30,
-            is_key_using(self.shared_data, "Tab"),
-        )
-        row = 0
-        column += 1
-        for key in k2:
-            makePresetKey(key, row, column, is_key_using(self.shared_data, key))
-            row += 1
-
-        makeKey(
-            "Caps Lock",
-            5,
-            110,
-            50,
-            30,
-            True,
-        )
-        row = 0
-        column += 1
-        for key in k3:
-            makePresetKey(key, row, column, is_key_using(self.shared_data, key))
-            row += 1
-        makeKey(
-            "Enter",
-            445,
-            110,
-            55,
-            30,
-            is_key_using(self.shared_data, "Enter"),
-        )
-
-        makeKey(
-            "Shift",
-            5,
-            145,
-            70,
-            30,
-            is_key_using(self.shared_data, "Shift"),
-        )
-        row = 0
-        column += 1
-        for key in k4:
-            makePresetKey(key, row, column, is_key_using(self.shared_data, key))
-            row += 1
-        makeKey(
-            "Shift",
-            430,
-            145,
-            70,
-            30,
-            is_key_using(self.shared_data, "Shift"),
-        )
-
-        makeKey(
-            "Ctrl",
-            5,
-            180,
-            45,
-            30,
-            is_key_using(self.shared_data, "Ctrl"),
-        )
-        makeImageKey(
-            "Window",
-            55,
-            180,
-            45,
-            30,
-            convert_resource_path("resources\\image\\window.png"),
-            32,
-            0,
-            True,
-        )
-        makeKey(
-            "Alt",
-            105,
-            180,
-            45,
-            30,
-            is_key_using(self.shared_data, "Alt"),
-        )
-        makeKey(
-            "Space",
-            155,
-            180,
-            145,
-            30,
-            is_key_using(self.shared_data, "Space"),
-        )
-        makeKey(
-            "Alt",
-            305,
-            180,
-            45,
-            30,
-            is_key_using(self.shared_data, "Alt"),
-        )
-        makeImageKey(
-            "Window",
-            355,
-            180,
-            45,
-            30,
-            convert_resource_path("resources\\image\\window.png"),
-            32,
-            0,
-            True,
-        )
-        makeKey(
-            "Fn",
-            405,
-            180,
-            45,
-            30,
-            True,
-        )
-        makeKey(
-            "Ctrl",
-            455,
-            180,
-            45,
-            30,
-            is_key_using(self.shared_data, "Ctrl"),
-        )
-
-        k5 = [
-            ["PrtSc", "ScrLk", "Pause"],
-            ["Insert", "Home", """Page\nUp"""],
-            ["Delete", "End", "Page\nDown"],
-        ]
-        for i1, i2 in enumerate(k5):
-            for j1, j2 in enumerate(i2):
-                makeKey(
-                    j2,
-                    530 + j1 * 35,
-                    5 + 35 * i1,
-                    30,
-                    30,
-                    is_key_using(self.shared_data, j2),
-                )
-
-        makeImageKey(
-            "Up",
-            565,
-            145,
-            30,
-            30,
-            convert_resource_path("resources\\image\\arrow.png"),
-            16,
-            0,
-            is_key_using(self.shared_data, "Up"),
-        )
-        makeImageKey(
-            "Left",
-            530,
-            180,
-            30,
-            30,
-            convert_resource_path("resources\\image\\arrow.png"),
-            16,
-            270,
-            is_key_using(self.shared_data, "Left"),
-        )
-        makeImageKey(
-            "Down",
-            565,
-            180,
-            30,
-            30,
-            convert_resource_path("resources\\image\\arrow.png"),
-            16,
-            180,
-            is_key_using(self.shared_data, "Down"),
-        )
-        makeImageKey(
-            "Right",
-            600,
-            180,
-            30,
-            30,
-            convert_resource_path("resources\\image\\arrow.png"),
-            16,
-            90,
-            is_key_using(self.shared_data, "Right"),
-        )
-
-    ## 시작키 설정용 가상키보드 키 클릭시 실행
-    def onStartKeyPopupKeyboardClick(self, key, disabled):
-        if self.shared_data.is_activated:
-            self.close_popup()
-            self.make_notice_popup("MacroIsRunning")
-            return
-
-        match key:
-            case "Page\nUp":
-                key = "Page_Up"
-            case "Page\nDown":
-                key = "Page_Down"
-
-        if disabled:
-            return
-
-        self.master.get_sidebar().buttonInputStartKey.setText(key)
-        self.shared_data.start_key_input = key
-        self.shared_data.start_key = key
-
-        save_data(self.shared_data)
-        self.close_popup()
-
-    ## 링크스킬 단축키용 가상키보드 키 클릭시 실행
-    def onLinkSkillKeyPopupKeyboardClick(self, key, disabled, data):
-        if self.shared_data.is_activated:
-            self.close_popup()
-            self.make_notice_popup("MacroIsRunning")
-            return
-
-        match key:
-            case "Page\nUp":
-                key = "Page_Up"
-            case "Page\nDown":
-                key = "Page_Down"
-
-        if disabled:
-            return
-
-        self.close_popup()
-
-        data["key"] = key
-        data["keyType"] = 1
-        self.master.get_sidebar().reload_sidebar4(data)
-
-    ## 스킬 단축키용 가상키보드 키 클릭시 실행
-    def onSkillKeyPopupKeyboardClick(self, key, disabled, num):
-        if self.shared_data.is_activated:
-            self.close_popup()
-            self.make_notice_popup("MacroIsRunning")
-            return
-
-        match key:
-            case "Page\nUp":
-                key = "Page_Up"
-            case "Page\nDown":
-                key = "Page_Down"
-
-        if disabled:
-            return
-
-        # self.master.get_main_ui().equipped_skill_keys[num].setText(key)
-        # adjust_font_size(self.master.get_main_ui().equipped_skill_keys[num], key, 24)
-        self.shared_data.skill_keys[num] = key
-
-        save_data(self.shared_data)
-        self.close_popup()
-
     def update_position(self):
         for i, j in enumerate(self.shared_data.active_error_popup):
             j[0].move(
@@ -1673,137 +1069,167 @@ class PopupManager:
         self._key_listener = listener
         self.shared_data.is_setting_key = True
 
-    ## 스킬 사용설정 -> 콤보 횟수 클릭
-    def onSkillComboCountsClick(self, num):
-        skill_name = get_available_skills(self.shared_data)[num]
+    def make_link_skill_key_popup(
+        self,
+        anchor: QWidget,
+        default_key: KeySpec,
+        on_selected: Callable[[KeySpec], None],
+    ) -> None:
+        """연계스킬 키 입력 팝업"""
 
-        combo = get_skill_details(self.shared_data, skill_name)["max_combo_count"]
+        # 기존 팝업/리스너 정리
+        if self._popup_controller.is_visible():
+            self._popup_controller.close()
 
-        self.close_popup()
-        if self.shared_data.active_popup == "SkillComboCounts":
-            return
+        self._stop_key_listener()
 
-        self.activatePopup("SkillComboCounts")
+        content = KeyCaptureContent(default_key)
 
-        self.settingPopupFrame = QFrame(self.master.get_sidebar().frame)
-        self.settingPopupFrame.setStyleSheet(
-            "QFrame { background-color: white; border-radius: 5px; }"
-        )
-        width = 4 + 36 * combo
-        self.settingPopupFrame.setFixedSize(width, 40)
-        self.settingPopupFrame.move(170 - width, 206 + 51 * num)
-        self.settingPopupFrame.setGraphicsEffect(CustomShadowEffect(0, 0, 30, 150))
-        self.settingPopupFrame.show()
-
-        for i in range(1, combo + 1):
-            button = QPushButton(str(i), self.settingPopupFrame)
-            button.clicked.connect(
-                partial(lambda x: self.onSkillComboCountsPopupClick(x), (num, i))
-            )
-            button.setFont(CustomFont(12))
-            button.setFixedSize(32, 32)
-            button.move(36 * i - 32, 4)
-            button.show()
-
-    ## 콤보 횟수 팝업 버튼 클릭
-    def onSkillComboCountsPopupClick(self, var):
-        num, count = var
-
-        skill_name = get_available_skills(self.shared_data)[num]
-
-        self.shared_data.combo_count[skill_name] = count
-        self.master.get_sidebar().settingSkillComboCounts[num].setText(
-            f"{count} / {get_skill_details(
-            self.shared_data, skill_name
-        )["max_combo_count"]}"
-        )
-
-        save_data(self.shared_data)
-        self.close_popup()
-
-    def change_link_skill_type(self, var: tuple[dict, int]) -> None:
-        """
-        링크스킬 스킬 변경
-        """
-
-        data: dict = var[0]
-        num: int = var[1]
-
-        if self.shared_data.active_popup == "editLinkSkillType":
+        def _submit(key: KeySpec) -> None:
             self.close_popup()
+
+            # 변경 없음
+            if key == default_key:
+                return
+
+            # 키가 이미 사용중인 경우
+            if is_key_using(self.shared_data, key):
+                self.make_notice_popup("StartKeyChangeError")
+                return
+
+            on_selected(key)
+
+        content.submitted.connect(_submit)
+
+        self.make_input_popup(
+            kind=PopupKind.LINK_SKILL_KEY,
+            anchor=anchor,
+            content=content,
+            placement=PopupPlacement.BELOW,
+        )
+
+        def _on_press(k: pynput_keyboard.Key | pynput_keyboard.KeyCode | None) -> None:
+            key: KeySpec | None = _key_to_KeySpec(self.shared_data, k)
+
+            if not key:
+                return
+
+            content.set_key(key)
+
+        listener = pynput_keyboard.Listener(on_press=_on_press)
+        listener.daemon = True
+        listener.start()
+        self._key_listener = listener
+        self.shared_data.is_setting_key = True
+
+    def make_link_skill_select_popup(
+        self,
+        anchor: QWidget,
+        skill_names: list[str],
+        on_selected: Callable[[str], None],
+    ) -> None:
+        """연계스킬 편집용 스킬 선택 팝업 (5열 그리드)."""
+
+        # 매크로 실행 중일 때는 무시
+        if self.shared_data.is_activated:
+            self.make_notice_popup("MacroIsRunning")
             return
 
-        self.activatePopup("editLinkSkillType")
+        if self._popup_controller.is_visible():
+            self._popup_controller.close()
 
-        self.settingPopupFrame = QFrame(self.master.get_sidebar().frame)
-        self.settingPopupFrame.setStyleSheet(
-            "QFrame { background-color: white; border-radius: 10px; }"
+        self._active_popup = PopupKind.LINK_SKILL_SELECT
+
+        content = SkillGridSelectContent(
+            shared_data=self.shared_data, skill_names=skill_names
         )
-        self.settingPopupFrame.setFixedSize(185, 95)
-        self.settingPopupFrame.move(100, 285 + 51 * num)
-        self.settingPopupFrame.setGraphicsEffect(CustomShadowEffect(0, 5, 30, 150))
-        self.settingPopupFrame.show()
 
-        for i in range(8):
-            button = QPushButton("", self.settingPopupFrame)
-            button.setIcon(
-                QIcon(
-                    get_skill_pixmap(self.shared_data, i)
-                    if i in self.shared_data.equipped_skills
-                    else get_skill_pixmap(
-                        self.shared_data, get_available_skills(self.shared_data)[i]
-                    )
-                )
-            )
-            button.setIconSize(QSize(40, 40))
-            button.clicked.connect(
-                partial(
-                    lambda x: self.master.get_sidebar().oneLinkSkillTypePopupClick(x),
-                    (data, num, i),
-                )
-            )
-            button.setFixedSize(40, 40)
-            # button.setStyleSheet("background-color: transparent;")
-            button.move(45 * (i % 4) + 5, 5 + (i // 4) * 45)
-
-            button.show()
-
-    ## 링크스킬 사용 횟수 설정
-    def editLinkSkillCount(self, var):
-        data, num = var
-
-        if self.shared_data.active_popup == "editLinkSkillCount":
+        def _picked(name: str) -> None:
             self.close_popup()
-            return
-        self.activatePopup("editLinkSkillCount")
+            on_selected(name)
 
-        count = get_skill_details(
-            self.shared_data,
-            data["skills"][num]["name"],
-        )["max_combo_count"]
+        content.selected.connect(_picked)
 
-        self.settingPopupFrame = QFrame(self.master.get_sidebar().frame)
-        self.settingPopupFrame.setStyleSheet(
-            "QFrame { background-color: white; border-radius: 10px; }"
+        self._popup_controller.show_content(
+            anchor=anchor,
+            content=content,
+            options=PopupOptions(placement=PopupPlacement.BELOW),
         )
-        self.settingPopupFrame.setFixedSize(5 + 35 * count, 40)
-        self.settingPopupFrame.move(200 - 35 * count, 285 + 51 * num)
-        self.settingPopupFrame.setGraphicsEffect(CustomShadowEffect(0, 5, 30, 150))
-        self.settingPopupFrame.show()
 
-        for i in range(1, count + 1):
-            button = QPushButton(str(i), self.settingPopupFrame)
-            button.setFont(CustomFont(12))
-            button.clicked.connect(
-                partial(
-                    lambda x: self.master.get_sidebar().onLinkSkillCountPopupClick(x),
-                    (data, num, i),
-                )
+
+class SkillGridSelectContent(QFrame):
+    """스킬 선택용 그리드 컨텐츠"""
+
+    selected = pyqtSignal(str)
+
+    def __init__(
+        self,
+        shared_data: SharedData,
+        skill_names: list[str],
+    ) -> None:
+        super().__init__()
+
+        self._shared_data: SharedData = shared_data
+        columns: int = 5
+        margin = 8
+        spacing = 6
+        icon_size: int = 40
+        button_size: int = 44
+        max_visible_rows: int = 6
+
+        # 전체 컨테이너
+        root = QVBoxLayout(self)
+        root.setContentsMargins(margin, margin, margin, margin)
+        root.setSpacing(spacing)
+
+        # 스크롤 영역
+        scroll = QScrollArea(self)
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+
+        container = QWidget(scroll)
+        grid = QGridLayout(container)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(spacing)
+        grid.setVerticalSpacing(spacing)
+
+        # 버튼들
+        for idx, name in enumerate(skill_names):
+            r: int = idx // columns
+            c: int = idx % columns
+
+            btn = QPushButton(container)
+            btn.setFixedSize(button_size, button_size)
+            btn.setIcon(QIcon(get_skill_pixmap(shared_data, name)))
+            btn.setIconSize(QSize(icon_size, icon_size))
+            btn.setToolTip(name)
+            btn.setStyleSheet(
+                """
+                QPushButton { background-color: white; border-radius: 10px; border: 1px solid #dddddd; }
+                QPushButton:hover { background-color: #eeeeee; }
+                """
             )
-            button.setFixedSize(30, 30)
-            button.move(35 * i - 30, 5)
+            btn.clicked.connect(lambda _, n=name: self.selected.emit(n))
 
-            button.show()
+            grid.addWidget(btn, r, c)
+
+        # 마지막 줄 정렬용 stretch
+        grid.setColumnStretch(columns, 1)
+
+        container.setLayout(grid)
+        scroll.setWidget(container)
+        root.addWidget(scroll)
+        self.setLayout(root)
+
+        # 보여줄 최대 행 수만큼 높이 제한(스크롤로 나머지 보기)
+        visible_rows: int = min(
+            max_visible_rows,
+            (len(skill_names) + columns - 1) // columns,
+        )
+        estimated_h: int = margin * 2 + visible_rows * (button_size + spacing) - spacing
+        scroll.setFixedHeight(estimated_h)
 
 
 class ConfirmRemovePopup(QFrame):

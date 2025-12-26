@@ -46,6 +46,10 @@ if TYPE_CHECKING:
 
 
 class MainUI(QFrame):
+    # Emits when the current preset (tab) is changed and SharedData is synced.
+    # Args: (preset, preset_index)
+    presetChanged = pyqtSignal(object, int)
+
     def __init__(
         self,
         master: MainWindow,
@@ -86,6 +90,20 @@ class MainUI(QFrame):
         layout.setSpacing(0)
         self.setLayout(layout)
 
+    def emit_preset_changed(self) -> None:
+        """Emit presetChanged for the currently selected tab.
+
+        Useful for initial UI sync after other widgets (e.g., Sidebar) connect.
+        """
+
+        index: int = self.tab_widget.currentIndex()
+        if not self.shared_data.presets or not (
+            0 <= index < len(self.shared_data.presets)
+        ):
+            return
+
+        self.presetChanged.emit(self.shared_data.presets[index], index)
+
     def on_tab_changed(self, index: int) -> None:
         """탭이 바뀌었을 때 실행"""
 
@@ -97,6 +115,10 @@ class MainUI(QFrame):
 
         # 로드된 shared_data 기준으로 현재 탭 UI를 갱신
         self.tab_widget.get_current_tab().update_from_preset()
+
+        # 사이드바 등 외부 UI에 현재 preset 컨텍스트 전달
+        if self.shared_data.presets and 0 <= index < len(self.shared_data.presets):
+            self.presetChanged.emit(self.shared_data.presets[index], index)
 
         # 탭 제목/내용을 로드된 shared_data 기준으로 동기화
         # self.tab_widget.sync_tab_titles(self.shared_data.tab_names)
