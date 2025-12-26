@@ -5,14 +5,13 @@ from collections.abc import Callable
 from functools import partial
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import QSize, Qt, pyqtSignal
+from PyQt6.QtCore import QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QIcon, QPixmap
 from PyQt6.QtWidgets import (
     QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
-    QLayout,
     QLayoutItem,
     QPushButton,
     QScrollArea,
@@ -1200,15 +1199,12 @@ class LinkSkillEditor(QFrame):
     ) -> None:
         super().__init__()
 
-        self.setStyleSheet("QFrame { background-color: #FF0000; }")
-
         self.shared_data: SharedData = shared_data
         self.popup_manager: PopupManager = popup_manager
         self._on_data_changed: Callable[[], None] = on_data_changed
 
         layout = QVBoxLayout()
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         layout.setContentsMargins(10, 20, 10, 10)
         layout.setSpacing(5)
         self.setLayout(layout)
@@ -1248,7 +1244,6 @@ class LinkSkillEditor(QFrame):
         # 연계 스킬 구성 목록
         self._skills_container = QWidget(self)
         self._skills_layout = QVBoxLayout(self._skills_container)
-        self._skills_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         self._skills_layout.setContentsMargins(0, 10, 0, 10)
         self._skills_layout.setSpacing(6)
         layout.addWidget(self._skills_container)
@@ -1336,8 +1331,6 @@ class LinkSkillEditor(QFrame):
     def _refresh_skill_items(self) -> None:
         """self.data['skills']로 스킬 구성 UI를 다시 그림"""
 
-        print("height before:", self.height())
-
         # 기존 위젯 제거
         for widget in self._skill_item_widgets:
             self._skills_layout.removeWidget(widget)
@@ -1358,9 +1351,8 @@ class LinkSkillEditor(QFrame):
             self._skills_layout.addWidget(skill_widget)
             self._skill_item_widgets.append(skill_widget)
 
-        print("height after:", self.height())
-
-        self.contentResized.emit()
+        # 페이지 크기 갱신
+        QTimer.singleShot(0, self.contentResized.emit)
 
     def _remove_skill_and_refresh(self, i: int) -> None:
         """i번째 스킬 제거 후 UI 갱신"""
