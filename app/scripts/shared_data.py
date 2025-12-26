@@ -12,7 +12,7 @@ from app.scripts.misc import convert_resource_path
 from .custom_classes import Stats
 
 if TYPE_CHECKING:
-    from app.scripts.macro_models import MacroPreset
+    from app.scripts.macro_models import LinkSkill, MacroPreset
 
 
 @dataclass(frozen=True)
@@ -391,13 +391,7 @@ class SharedData:
     }  # 스킬 우선순위, 0: 지정되지 않음
 
     # todo: class로 변경
-    link_skills: ClassVar[list[dict[str, Any]]] = []
-    """
-    [
-        { "useType": "auto", "keyType": "on", "key": "A", "skills": ["스킬1"] },
-        { "useType": "manual", "keyType": "off", "key": "B", "skills": ["스킬1", "스킬2"] }
-    ]
-    """
+    link_skills: ClassVar[list[LinkSkill]] = []
 
     # 매크로 실행 중 실행할 스킬 목록
     task_list: ClassVar[list[int]] = []

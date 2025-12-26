@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, NoReturn
 from pynput import keyboard, mouse
 from pynput.keyboard import Key, KeyCode
 
+from app.scripts.macro_models import LinkKeyType, LinkUseType
 from app.scripts.misc import (
     convert_skill_name_to_slot,
     get_skill_details,
@@ -108,13 +109,16 @@ def checking_kb_thread(shared_data: SharedData) -> NoReturn:
 
         # 연계스킬 사용
         for link_skill in shared_data.link_skills:
+            # 단축키가 설정된 연계스킬만 검사
+            if not link_skill.key:
+                continue
+
             # 연계스킬 키가 눌렸다면
-            link_key: KeySpec = shared_data.KEY_DICT[link_skill["key"]]
+            link_key: KeySpec = shared_data.KEY_DICT[link_skill.key]
             if link_key and is_key_pressed(link_key):
                 # 연계스킬에 필요한 스킬이 모두 장착되어 있는지 확인
                 if all(
-                    skill in shared_data.equipped_skills
-                    for skill in link_skill["skills"]
+                    skill in shared_data.equipped_skills for skill in link_skill.skills
                 ):
                     # 연계스킬 쓰레드 시작
                     Thread(
@@ -340,12 +344,12 @@ def init_macro(shared_data: SharedData) -> None:
 
     for link_skill in shared_data.link_skills:
         # 연계 유형이 자동이라면: 매크로에서 사용되는 연계스킬이라면
-        if link_skill["useType"] == "auto":
+        if link_skill.use_type == LinkUseType.AUTO:
             # 연계스킬에서 사용되는 스킬 슬롯 번호로 변환 후 저장
             shared_data.using_link_skills.append(
                 [
                     convert_skill_name_to_slot(shared_data, name)
-                    for name in link_skill["skills"]
+                    for name in link_skill.skills
                 ]
             )
 
@@ -413,7 +417,7 @@ def use_skill(shared_data: SharedData, loop_num: int) -> int:
     return slot
 
 
-def use_link_skill(shared_data: SharedData, num, loop_num: int) -> None:
+def use_link_skill(shared_data: SharedData, link_skill, loop_num: int) -> None:
     """연계스킬 사용 함수"""
 
     # pynput 키보드 컨트롤러 생성
@@ -439,7 +443,7 @@ def use_link_skill(shared_data: SharedData, num, loop_num: int) -> None:
     # 초기 설정
     task_list: list[int] = [
         convert_skill_name_to_slot(shared_data=shared_data, skill_name=skill)
-        for skill in shared_data.link_skills[num]["skills"]
+        for skill in link_skill.skills
     ]
 
     for _ in range(len(task_list)):

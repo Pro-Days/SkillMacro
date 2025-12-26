@@ -24,7 +24,13 @@ from PyQt6.QtWidgets import (
 from app.scripts.config import config
 from app.scripts.custom_classes import CustomFont, SkillImage
 from app.scripts.data_manager import apply_preset_to_shared_data
-from app.scripts.macro_models import MacroPreset, SkillUsageSetting
+from app.scripts.macro_models import (
+    LinkKeyType,
+    LinkSkill,
+    LinkUseType,
+    MacroPreset,
+    SkillUsageSetting,
+)
 from app.scripts.misc import (
     convert_resource_path,
     get_available_skills,
@@ -37,7 +43,12 @@ from app.scripts.shared_data import UI_Variable
 if TYPE_CHECKING:
     from typing import Literal
 
-    from app.scripts.macro_models import MacroPreset
+    from app.scripts.macro_models import (
+        LinkKeyType,
+        LinkSkill,
+        LinkUseType,
+        MacroPreset,
+    )
     from app.scripts.main_window import MainWindow
     from app.scripts.popup import PopupManager
     from app.scripts.shared_data import KeySpec, SharedData
@@ -154,7 +165,7 @@ class Sidebar(QFrame):
 
         self.setLayout(layout)
 
-    def _on_link_skill_edit_requested(self, data: dict) -> None:
+    def _on_link_skill_edit_requested(self, data: LinkSkill) -> None:
         """연계스킬 편집 요청 처리: 편집기 로드 후 편집 페이지로 이동."""
 
         self.link_skill_editor.load(data)
@@ -990,7 +1001,7 @@ class LinkSkillSettings(QFrame):
     """사이드바 타입 3 - 연계설정 스킬 목록"""
 
     # draft_data
-    editRequested = pyqtSignal(dict)
+    editRequested = pyqtSignal(object)
 
     def __init__(
         self,
@@ -1072,17 +1083,17 @@ class LinkSkillSettings(QFrame):
         self.popup_manager.close_popup()
 
         # 새 연계스킬 데이터 생성
-        data: dict = {
-            "useType": "manual",
-            "keyType": "off",
-            "key": get_unused_alpha_key(),
-            "skills": [],
-            "num": -1,
-        }
+        data: LinkSkill = LinkSkill(
+            use_type=LinkUseType.MANUAL,
+            key_type=LinkKeyType.OFF,
+            key=get_unused_alpha_key(),
+            skills=[],
+            num=-1,
+        )
 
         self.edit(-1, draft=data)
 
-    def edit(self, num: int, draft: dict | None = None):
+    def edit(self, num: int, draft: LinkSkill | None = None):
         """
         연계스킬 편집
 
@@ -1096,9 +1107,12 @@ class LinkSkillSettings(QFrame):
 
         # draft가 주어졌으면 그대로 편집(새로 만들기), 아니면 현재 데이터 복사
         if draft is not None:
-            data: dict = copy.deepcopy(draft)
+            data: LinkSkill = copy.deepcopy(draft)
         else:
             data = copy.deepcopy(preset.link_settings[num])
+
+        # 편집 중인 인덱스 표시
+        data.num = num
 
         # 편집 요청 전달
         self.editRequested.emit(data)
@@ -1119,7 +1133,7 @@ class LinkSkillSettings(QFrame):
         def __init__(
             self,
             shared_data: SharedData,
-            data: dict,
+            data: LinkSkill,
             idx: int,
             edit_func: Callable[[int], None],
             remove_func: Callable[[int], None],
@@ -1139,11 +1153,11 @@ class LinkSkillSettings(QFrame):
             edit_btn.setLayout(layout)
 
             # 사용 스킬 개수: 최대 6개
-            skill_count: int = min(len(data["skills"]), 6)
+            skill_count: int = min(len(data.skills), 6)
             for i in range(skill_count):
                 pixmap: QPixmap = get_skill_pixmap(
                     shared_data=self.shared_data,
-                    skill_name=data["skills"][i],
+                    skill_name=data.skills[i],
                 )
 
                 skill = SkillImage(
@@ -1154,10 +1168,10 @@ class LinkSkillSettings(QFrame):
 
             # layout.addStretch(1)
 
-            if data.get("keyType") == "off":
+            if data.key_type == LinkKeyType.OFF:
                 key_text: str = ""
             else:
-                key_text = self.shared_data.KEY_DICT[data["key"]].display
+                key_text = self.shared_data.KEY_DICT[data.key].display
 
             key_btn = QLabel(key_text)
             key_btn.setStyleSheet(
@@ -1177,7 +1191,7 @@ class LinkSkillSettings(QFrame):
 
             use_type_display = QFrame()
             use_type_display.setStyleSheet(
-                f"QFrame {{ background-color: {"#0000ff" if data["useType"] == "manual" else "#ff0000"}; border: 0px solid black; border-radius: 2px; }}"
+                f"QFrame {{ background-color: {"#0000ff" if data.use_type == LinkUseType.MANUAL else "#ff0000"}; border: 0px solid black; border-radius: 2px; }}"
             )
             layout.addWidget(use_type_display)
 
@@ -1278,7 +1292,7 @@ class LinkSkillEditor(QFrame):
         self.save_btn.setFont(CustomFont(12))
         layout.addWidget(self.save_btn)
 
-        self.data: dict = {}
+        self.data: LinkSkill = LinkSkill()
 
     def _get_preset(self) -> "MacroPreset":
         return self.shared_data.presets[self.shared_data.recent_preset]
@@ -1291,7 +1305,7 @@ class LinkSkillEditor(QFrame):
             all_presets=self.shared_data.presets,
         )
 
-    def load(self, data: dict) -> None:
+    def load(self, data: LinkSkill) -> None:
         """연계스킬 데이터 로드"""
 
         self.data = data
@@ -1309,18 +1323,22 @@ class LinkSkillEditor(QFrame):
         """현재 self.data 상태에 맞춰 UI(버튼 색/텍스트)를 동기화."""
 
         # 연계 유형 버튼
-        use_type: str = self.data["useType"]
-        self.type_setting.set_buttons_enabled(use_type == "auto", use_type == "manual")
+        use_type: LinkUseType = self.data.use_type
+        self.type_setting.set_buttons_enabled(
+            use_type == LinkUseType.AUTO, use_type == LinkUseType.MANUAL
+        )
 
         # 단축키 버튼
-        key_type: str = self.data["keyType"]
-        if key_type == "on":
-            key_text: str = self.shared_data.KEY_DICT[self.data["key"]].display
+        key_type: LinkKeyType = self.data.key_type
+        if key_type == LinkKeyType.ON and self.data.key in self.shared_data.KEY_DICT:
+            key_text: str = self.shared_data.KEY_DICT[self.data.key].display
         else:
             key_text = ""
 
         self.key_setting.set_right_button_text(key_text)
-        self.key_setting.set_buttons_enabled(key_type == "off", key_type == "on")
+        self.key_setting.set_buttons_enabled(
+            key_type == LinkKeyType.OFF, key_type == LinkKeyType.ON
+        )
 
     def _get_all_skill_names(self) -> list[str]:
         """프리셋의 전체 스킬 목록을 반환"""
@@ -1339,7 +1357,7 @@ class LinkSkillEditor(QFrame):
         # 캐시 리스트 초기화
         self._skill_item_widgets = []
 
-        for idx, name in enumerate(self.data["skills"]):
+        for idx, name in enumerate(self.data.skills):
             skill_widget = self.SkillItem(
                 index=idx,
                 name=name,
@@ -1383,19 +1401,19 @@ class LinkSkillEditor(QFrame):
         self.popup_manager.close_popup()
 
         # 이미 자동이면 무시
-        if self.data["useType"] == "auto":
+        if self.data.use_type == LinkUseType.AUTO:
             return
 
         preset: MacroPreset = self._get_preset()
 
         # 모든 스킬이 장착되어 있는지 확인
-        if not all(i in preset.skills.active_skills for i in self.data["skills"]):
+        if not all(i in preset.skills.active_skills for i in self.data.skills):
             self.popup_manager.make_notice_popup("skillNotSelected")
             return
 
         # 지금 수정 중인 연계스킬의 인덱스
         # todo: 리스트 reference로 변경 후 제거
-        num: int = self.data["num"]
+        num: int = self.data.num
 
         # 자동 연계스킬 스킬 중복 검사
         auto_skills: list[str] = []
@@ -1405,18 +1423,18 @@ class LinkSkillEditor(QFrame):
                 continue
 
             # 자동 연계스킬인 경우
-            if link_skill["useType"] == "auto":
-                for j in link_skill["skills"]:
+            if link_skill.use_type == LinkUseType.AUTO:
+                for j in link_skill.skills:
                     auto_skills.append(j)
 
         # 중복되는 스킬이 있으면 알림 팝업 생성 후 종료
-        for i in self.data["skills"]:
+        for i in self.data.skills:
             if i in auto_skills:
                 self.popup_manager.make_notice_popup("autoAlreadyExist")
                 return
 
         # 중복되는 스킬이 없으면 자동으로 변경
-        self.data["useType"] = "auto"
+        self.data.set_auto()
         self._after_data_changed(update_skills=False)
 
     def set_manual(self) -> None:
@@ -1425,11 +1443,11 @@ class LinkSkillEditor(QFrame):
         self.popup_manager.close_popup()
 
         # 이미 수동이면 무시
-        if self.data["useType"] == "manual":
+        if self.data.use_type == LinkUseType.MANUAL:
             return
 
         # 수동으로 변경
-        self.data["useType"] = "manual"
+        self.data.set_manual()
         self._after_data_changed(update_skills=False)
 
     def clear_key(self) -> None:
@@ -1437,7 +1455,7 @@ class LinkSkillEditor(QFrame):
 
         self.popup_manager.close_popup()
 
-        self.data["keyType"] = "off"
+        self.data.clear_key()
         self._after_data_changed(update_skills=False)
 
     def on_key_btn_clicked(self) -> None:
@@ -1446,14 +1464,13 @@ class LinkSkillEditor(QFrame):
         def apply(key: KeySpec) -> None:
             """적용 함수"""
 
-            self.data["keyType"] = "on"
-            self.data["key"] = key.key_id
+            self.data.set_key(key.key_id)
             self._after_data_changed(update_skills=False)
 
         self.popup_manager.close_popup()
         self.popup_manager.make_link_skill_key_popup(
             self.key_setting.right_button,
-            self.shared_data.KEY_DICT[self.data["key"]],
+            self.shared_data.KEY_DICT[self.data.key],
             apply,
         )
 
@@ -1463,14 +1480,14 @@ class LinkSkillEditor(QFrame):
         self.popup_manager.close_popup()
 
         # 동일 스킬 선택 시 무시
-        if self.data["skills"][i] == skill_name:
+        if self.data.skills[i] == skill_name:
             return
 
         # 스킬명 설정, 사용횟수 초기화
-        self.data["skills"][i] = skill_name
+        self.data.skills[i] = skill_name
 
         # 수동 사용으로 변경
-        self.data["useType"] = "manual"
+        self.data.set_manual()
 
         if self.is_skill_exceeded(skill_name):
             self.popup_manager.make_notice_popup("exceedMaxLinkSkill")
@@ -1483,10 +1500,10 @@ class LinkSkillEditor(QFrame):
         self.popup_manager.close_popup()
 
         # 스킬 제거
-        self.data["skills"].pop(i)
+        self.data.skills.pop(i)
 
         # 수동 사용으로 변경
-        self.data["useType"] = "manual"
+        self.data.set_manual()
 
         self._after_data_changed(update_skills=True)
 
@@ -1498,10 +1515,10 @@ class LinkSkillEditor(QFrame):
         preset: MacroPreset = self._get_preset()
 
         name: str = self.shared_data.skill_data[preset.settings.server_id]["skills"][0]
-        self.data["skills"].append(name)
+        self.data.skills.append(name)
 
         # 수동 사용으로 변경
-        self.data["useType"] = "manual"
+        self.data.set_manual()
 
         # 최대 사용 횟수 초과 시 알림 팝업 생성
         if self.is_skill_exceeded(name):
@@ -1509,7 +1526,7 @@ class LinkSkillEditor(QFrame):
 
         # 추가 직후 바로 선택 팝업을 띄워서 변경할 수 있게 한다.
         self._after_data_changed(update_skills=True)
-        self._open_skill_select_popup(len(self.data["skills"]) - 1)
+        self._open_skill_select_popup(len(self.data.skills) - 1)
 
     def cancel(self) -> None:
         """편집 취소"""
@@ -1525,19 +1542,20 @@ class LinkSkillEditor(QFrame):
         preset: MacroPreset = self._get_preset()
 
         # 수정하던 연계스킬의 인덱스
-        index: int = self.data["num"]
+        index: int = self.data.num
 
         # 저장 시 편집용 필드 제거
-        store_data: dict = self.data
-        store_data.pop("num", None)
+        store_data: LinkSkill = self.data
 
         # 새로 만드는 경우
         if index == -1:
             preset.link_settings.append(store_data)
+            store_data.num = len(preset.link_settings) - 1
 
         # 기존 연계스킬 수정하는 경우
         else:
             preset.link_settings[index] = store_data
+            store_data.num = index
 
         self._sync_preset_to_shared_data(preset)
         self._on_data_changed()
@@ -1548,7 +1566,7 @@ class LinkSkillEditor(QFrame):
     def is_skill_exceeded(self, skill_name: str) -> bool:
         """연계스킬에서 특정 스킬의 최대 사용 횟수를 초과하는지 확인"""
 
-        count: int = self.data["skills"].count(skill_name)
+        count: int = self.data.skills.count(skill_name)
 
         # 최대 사용 횟수 초과 여부 반환
         return count > 1

@@ -9,6 +9,7 @@ from PyQt6.QtGui import QColor, QFontDatabase, QFontMetrics, QPainter, QPixmap
 from PyQt6.QtWidgets import QLabel, QPushButton
 
 from app.scripts.custom_classes import CustomFont
+from app.scripts.macro_models import LinkKeyType
 
 if TYPE_CHECKING:
     from app.scripts.shared_data import KeySpec, SharedData
@@ -87,9 +88,10 @@ def is_key_using(shared_data: SharedData, key: KeySpec) -> bool:
     # 연계 스킬 키
     used_keys.extend(
         [
-            link_skill["key"]
+            shared_data.KEY_DICT[link_skill.key]
             for link_skill in shared_data.link_skills
-            if link_skill["keyType"] == 1
+            if link_skill.key_type == LinkKeyType.ON
+            and link_skill.key in shared_data.KEY_DICT
         ]
     )
 

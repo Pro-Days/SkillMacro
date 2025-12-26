@@ -29,7 +29,7 @@ from app.scripts.data_manager import (
     select_preset,
     update_recent_preset,
 )
-from app.scripts.macro_models import SkillUsageSetting
+from app.scripts.macro_models import LinkUseType, SkillUsageSetting
 from app.scripts.misc import (
     convert_resource_path,
     get_available_skills,
@@ -681,9 +681,8 @@ class Tab(QFrame):
 
         # 연계스킬 수동 사용으로 변경
         for link in self.preset.link_settings:
-            for skill_info in link["skills"]:
-                if skill_info["name"] == skill:
-                    link["useType"] = "manual"
+            if skill in link.skills:
+                link.use_type = LinkUseType.MANUAL
 
         # 스킬 사용 우선순위 리로드
         setting: SkillUsageSetting = self.preset.usage_settings[skill]

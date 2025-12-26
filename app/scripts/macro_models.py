@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, ClassVar, cast
 
 from app.scripts.custom_classes import Stats
@@ -94,6 +95,64 @@ class SkillUsageSetting:
         }
 
 
+class LinkUseType(str, Enum):
+    AUTO = "auto"
+    MANUAL = "manual"
+
+
+class LinkKeyType(str, Enum):
+    ON = "on"
+    OFF = "off"
+
+
+@dataclass(slots=True)
+class LinkSkill:
+    """연계스킬 데이터 모델"""
+
+    use_type: LinkUseType = LinkUseType.MANUAL
+    key_type: LinkKeyType = LinkKeyType.OFF
+    key: str = ""
+    skills: list[str] = field(default_factory=list)
+    num: int = -1
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "LinkSkill":
+        # todo: snake case로 변경
+        use_type_raw: str = str(data["useType"])
+        key_type_raw: str = str(data["keyType"])
+
+        return cls(
+            use_type=LinkUseType(use_type_raw),
+            key_type=LinkKeyType(key_type_raw),
+            key=str(data["key"]),
+            skills=list(data["skills"]),
+            num=int(data["num"]),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "useType": self.use_type.value,
+            "keyType": self.key_type.value,
+            "key": self.key,
+            "skills": self.skills.copy(),
+            "num": self.num,
+        }
+
+    def set_manual(self) -> None:
+        self.use_type = LinkUseType.MANUAL
+
+    def set_auto(self) -> None:
+        self.use_type = LinkUseType.AUTO
+
+    def clear_key(self) -> None:
+        self.key_type = LinkKeyType.OFF
+        self.key = ""
+
+    def set_key(self, key_id: str) -> None:
+        self.key_type = LinkKeyType.ON
+        self.key = key_id
+
+
 @dataclass(slots=True)
 class PresetInfo:
     stats: dict[str, int | float] = field(default_factory=dict)
@@ -149,7 +208,7 @@ class MacroPreset:
     skills: MacroSkills = field(default_factory=MacroSkills)
     settings: MacroSettings = field(default_factory=MacroSettings)
     usage_settings: dict[str, SkillUsageSetting] = field(default_factory=dict)
-    link_settings: list[dict[str, Any]] = field(default_factory=list)
+    link_settings: list[LinkSkill] = field(default_factory=list)
     info: PresetInfo = field(default_factory=PresetInfo)
 
     # 모델 기본값(프리셋 단위 데이터)
@@ -182,16 +241,19 @@ class MacroPreset:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "MacroPreset":
-        usage_raw: dict[str, Any] = data.get("usage_settings", {})
+        usage_raw: dict[str, Any] = data["usage_settings"]
+
         return cls(
-            name=data.get("name", ""),
-            skills=MacroSkills.from_dict(data.get("skills", {})),
-            settings=MacroSettings.from_dict(data.get("settings", {})),
+            name=data["name"],
+            skills=MacroSkills.from_dict(data["skills"]),
+            settings=MacroSettings.from_dict(data["settings"]),
             usage_settings={
                 k: SkillUsageSetting.from_dict(v) for k, v in usage_raw.items()
             },
-            link_settings=list(data.get("link_settings", [])),
-            info=PresetInfo.from_dict(data.get("info", {})),
+            link_settings=[
+                LinkSkill.from_dict(ls) for ls in list(data["link_settings"])
+            ],
+            info=PresetInfo.from_dict(data["info"]),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -200,7 +262,7 @@ class MacroPreset:
             "skills": self.skills.to_dict(),
             "settings": self.settings.to_dict(),
             "usage_settings": {k: v.to_dict() for k, v in self.usage_settings.items()},
-            "link_settings": list(self.link_settings),
+            "link_settings": [ls.to_dict() for ls in self.link_settings],
             "info": self.info.to_dict(),
         }
 
@@ -287,6 +349,9 @@ __all__: list[str] = [
     "MacroSkills",
     "MacroSettings",
     "SkillUsageSetting",
+    "LinkUseType",
+    "LinkKeyType",
+    "LinkSkill",
     "PresetInfo",
     "MacroPresetRepository",
 ]
