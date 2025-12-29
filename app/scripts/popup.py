@@ -244,12 +244,12 @@ class InputConfirmContent(QFrame):
 class KeyCaptureContent(QFrame):
     """QLabel + 확인 버튼 형태의 시작키 입력 팝업 (키는 외부 리스너가 주입)"""
 
-    submitted = pyqtSignal(KeySpec)
+    submitted = pyqtSignal(KeySpec | None)
     _key_received = pyqtSignal(KeySpec)
 
     def __init__(
         self,
-        default_key: KeySpec,
+        default_key: KeySpec | None = None,
         fixed_width: int = 200,
     ) -> None:
         super().__init__()
@@ -258,7 +258,7 @@ class KeyCaptureContent(QFrame):
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.setStyleSheet("QFrame { background-color: transparent; }")
 
-        self._current_key: KeySpec = default_key
+        self._current_key: KeySpec | None = default_key
 
         self._label = QLabel(self)
         self._label.setFont(CustomFont(12))
@@ -1072,7 +1072,6 @@ class PopupManager:
     def make_link_skill_key_popup(
         self,
         anchor: QWidget,
-        default_key: KeySpec,
         on_selected: Callable[[KeySpec], None],
     ) -> None:
         """연계스킬 키 입력 팝업"""
@@ -1083,13 +1082,12 @@ class PopupManager:
 
         self._stop_key_listener()
 
-        content = KeyCaptureContent(default_key)
+        content = KeyCaptureContent()
 
-        def _submit(key: KeySpec) -> None:
+        def _submit(key: KeySpec | None) -> None:
             self.close_popup()
 
-            # 변경 없음
-            if key == default_key:
+            if key is None:
                 return
 
             # 키가 이미 사용중인 경우

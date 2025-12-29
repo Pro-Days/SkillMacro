@@ -110,12 +110,12 @@ def checking_kb_thread(shared_data: SharedData) -> NoReturn:
         # 연계스킬 사용
         for link_skill in shared_data.link_skills:
             # 단축키가 설정된 연계스킬만 검사
-            if not link_skill.key:
+            if link_skill.key is None:
                 continue
 
             # 연계스킬 키가 눌렸다면
             link_key: KeySpec = shared_data.KEY_DICT[link_skill.key]
-            if link_key and is_key_pressed(link_key):
+            if is_key_pressed(link_key):
                 # 연계스킬에 필요한 스킬이 모두 장착되어 있는지 확인
                 if all(
                     skill in shared_data.equipped_skills for skill in link_skill.skills

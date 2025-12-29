@@ -111,8 +111,10 @@ class LinkSkill:
 
     use_type: LinkUseType = LinkUseType.MANUAL
     key_type: LinkKeyType = LinkKeyType.OFF
-    key: str = ""
+    key: str | None = None
     skills: list[str] = field(default_factory=list)
+
+    # todo: Reference로 변경해서 index를 저장하지 않도록 수정
     num: int = -1
 
     @classmethod
@@ -124,7 +126,7 @@ class LinkSkill:
         return cls(
             use_type=LinkUseType(use_type_raw),
             key_type=LinkKeyType(key_type_raw),
-            key=str(data["key"]),
+            key=str(data["key"]) if data["key"] is not None else None,
             skills=list(data["skills"]),
             num=int(data["num"]),
         )
@@ -146,7 +148,7 @@ class LinkSkill:
 
     def clear_key(self) -> None:
         self.key_type = LinkKeyType.OFF
-        self.key = ""
+        self.key = None
 
     def set_key(self, key_id: str) -> None:
         self.key_type = LinkKeyType.ON

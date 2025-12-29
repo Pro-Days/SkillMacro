@@ -91,6 +91,7 @@ def is_key_using(shared_data: SharedData, key: KeySpec) -> bool:
             shared_data.KEY_DICT[link_skill.key]
             for link_skill in shared_data.link_skills
             if link_skill.key_type == LinkKeyType.ON
+            and link_skill.key is not None
             and link_skill.key in shared_data.KEY_DICT
         ]
     )

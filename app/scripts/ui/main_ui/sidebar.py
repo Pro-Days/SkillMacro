@@ -1072,21 +1072,13 @@ class LinkSkillSettings(QFrame):
     def create_new(self) -> None:
         """새 연계스킬 만들기"""
 
-        def get_unused_alpha_key() -> str:
-            """알파벳 키 중에서 사용되지 않는 키를 반환"""
-
-            for ch in "abcdefghijklmnopqrstuvwxyz":
-                if not is_key_using(self.shared_data, self.shared_data.KEY_DICT[ch]):
-                    return ch
-            return ""
-
         self.popup_manager.close_popup()
 
         # 새 연계스킬 데이터 생성
         data: LinkSkill = LinkSkill(
             use_type=LinkUseType.MANUAL,
             key_type=LinkKeyType.OFF,
-            key=get_unused_alpha_key(),
+            key=None,
             skills=[],
             num=-1,
         )
@@ -1168,10 +1160,10 @@ class LinkSkillSettings(QFrame):
 
             # layout.addStretch(1)
 
-            if data.key_type == LinkKeyType.OFF:
-                key_text: str = ""
-            else:
+            if data.key_type == LinkKeyType.ON and data.key is not None:
                 key_text = self.shared_data.KEY_DICT[data.key].display
+            else:
+                key_text: str = ""
 
             key_btn = QLabel(key_text)
             key_btn.setStyleSheet(
@@ -1330,7 +1322,11 @@ class LinkSkillEditor(QFrame):
 
         # 단축키 버튼
         key_type: LinkKeyType = self.data.key_type
-        if key_type == LinkKeyType.ON and self.data.key in self.shared_data.KEY_DICT:
+        if (
+            key_type == LinkKeyType.ON
+            and self.data.key is not None
+            and self.data.key in self.shared_data.KEY_DICT
+        ):
             key_text: str = self.shared_data.KEY_DICT[self.data.key].display
         else:
             key_text = ""
@@ -1470,7 +1466,6 @@ class LinkSkillEditor(QFrame):
         self.popup_manager.close_popup()
         self.popup_manager.make_link_skill_key_popup(
             self.key_setting.right_button,
-            self.shared_data.KEY_DICT[self.data.key],
             apply,
         )
 
@@ -1512,9 +1507,16 @@ class LinkSkillEditor(QFrame):
 
         self.popup_manager.close_popup()
 
-        preset: MacroPreset = self._get_preset()
+        all_skills: list[str] = self._get_all_skill_names()
+        for i in all_skills:
+            # 아직 추가되지 않은 스킬이면 추가
+            if i not in self.data.skills:
+                name: str = i
+                break
+        else:
+            # 모든 스킬이 추가되어 있으면 첫 번째 스킬 추가
+            name = all_skills[0]
 
-        name: str = self.shared_data.skill_data[preset.settings.server_id]["skills"][0]
         self.data.skills.append(name)
 
         # 수동 사용으로 변경
@@ -1524,9 +1526,7 @@ class LinkSkillEditor(QFrame):
         if self.is_skill_exceeded(name):
             self.popup_manager.make_notice_popup("exceedMaxLinkSkill")
 
-        # 추가 직후 바로 선택 팝업을 띄워서 변경할 수 있게 한다.
         self._after_data_changed(update_skills=True)
-        self._open_skill_select_popup(len(self.data.skills) - 1)
 
     def cancel(self) -> None:
         """편집 취소"""
@@ -1612,7 +1612,7 @@ class LinkSkillEditor(QFrame):
 
             layout = QHBoxLayout()
             layout.addWidget(self.skill)
-            layout.addStretch(1)
+            # layout.addStretch(1)
             layout.addWidget(self.remove)
             layout.setContentsMargins(0, 0, 0, 0)
             self.setLayout(layout)
