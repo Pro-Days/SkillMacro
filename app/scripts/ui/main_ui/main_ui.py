@@ -46,8 +46,6 @@ if TYPE_CHECKING:
 
 
 class MainUI(QFrame):
-    # Emits when the current preset (tab) is changed and SharedData is synced.
-    # Args: (preset, preset_index)
     presetChanged = pyqtSignal(object, int)
 
     def __init__(
@@ -313,6 +311,7 @@ class TabWidget(QTabWidget):
     noticeRequested = pyqtSignal(str)
     skillKeyRequested = pyqtSignal(int)
     dataChanged = pyqtSignal()
+    skillUnequipped = pyqtSignal(str)
 
     def __init__(self, master: QWidget, shared_data: SharedData):
         super().__init__(master)
@@ -390,6 +389,7 @@ class TabWidget(QTabWidget):
         tab.noticeRequested.connect(self.noticeRequested.emit)
         tab.skillKeyRequested.connect(self.skillKeyRequested.emit)
         tab.dataChanged.connect(self.dataChanged.emit)
+        tab.skillUnequipped.connect(self.skillUnequipped.emit)
 
     def _init_tabs(self) -> None:
         """
@@ -544,6 +544,7 @@ class Tab(QFrame):
     noticeRequested = pyqtSignal(str)
     skillKeyRequested = pyqtSignal(int)
     dataChanged = pyqtSignal()
+    skillUnequipped = pyqtSignal(str)
 
     def __init__(
         self, shared_data: SharedData, preset: "MacroPreset", preset_index: int
@@ -698,6 +699,8 @@ class Tab(QFrame):
                     setting.skill_priority -= 1
 
         self._sync_to_shared_data()
+
+        self.skillUnequipped.emit(skill)
 
     def select_equipped_skill(self, index: int) -> None:
         self.equipped_skills.select(index)

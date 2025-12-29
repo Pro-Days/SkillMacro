@@ -224,6 +224,12 @@ class MainWindow(QWidget):
         self.main_ui.presetChanged.connect(self.sidebar.set_current_preset)
         self.main_ui.emit_preset_changed()
 
+        # 메인 UI에서 스킬이 해제되면
+        # 사이드바의 스킬 사용설정/연계설정 페이지 새로고침
+        self.main_ui.tab_widget.skillUnequipped.connect(
+            lambda _skill: self.sidebar.refresh_skill_related_pages()
+        )
+
         # 사이드바에서 데이터 변경 시 저장은 MainUI 파이프라인(=tab_widget.dataChanged)로 위임
         self.sidebar.dataChanged.connect(self.main_ui.tab_widget.dataChanged.emit)
 

@@ -205,6 +205,17 @@ class Sidebar(QFrame):
 
         self.adjust_stack_height()
 
+    def refresh_skill_related_pages(self) -> None:
+        """
+        스킬 장착/해제에 영향 받는 페이지만 업데이트
+
+        - 스킬 사용설정(우선순위/사용여부 등)
+        - 연계설정(자동/수동 표시 등)
+        """
+
+        self.skill_settings.update_from_preset(self.preset)
+        self.link_skill_settings.update_from_preset(self.preset)
+
     def change_page(self, index: Literal[0, 1, 2, 3]) -> None:
         """페이지 변경"""
 
@@ -1085,7 +1096,7 @@ class LinkSkillSettings(QFrame):
 
         self.edit(-1, draft=data)
 
-    def edit(self, num: int, draft: LinkSkill | None = None):
+    def edit(self, num: int, draft: LinkSkill | None = None) -> None:
         """
         연계스킬 편집
 
@@ -1098,10 +1109,10 @@ class LinkSkillSettings(QFrame):
         preset: MacroPreset = self._get_preset()
 
         # draft가 주어졌으면 그대로 편집(새로 만들기), 아니면 현재 데이터 복사
-        if draft is not None:
-            data: LinkSkill = copy.deepcopy(draft)
+        if draft is None:
+            data: LinkSkill = copy.deepcopy(preset.link_settings[num])
         else:
-            data = copy.deepcopy(preset.link_settings[num])
+            data = copy.deepcopy(draft)
 
         # 편집 중인 인덱스 표시
         data.num = num
@@ -1134,15 +1145,27 @@ class LinkSkillSettings(QFrame):
 
             self.shared_data: SharedData = shared_data
 
+            # 전체 레이아웃
+            root = QHBoxLayout()
+            root.setContentsMargins(0, 0, 0, 0)
+            root.setSpacing(8)
+            self.setLayout(root)
+
+            # 편집 페이지 열기 버튼
             edit_btn = QPushButton()
-            edit_btn.clicked.connect(partial(lambda x: edit_func(x), idx))
+            edit_btn.clicked.connect(lambda _, i=idx: edit_func(i))
             edit_btn.setStyleSheet(
-                """QPushButton { background-color: transparent; border: 0px; }
+                """QPushButton { background-color: transparent; border: 0px; text-align: left; }
                 QPushButton:hover { background-color: rgba(0, 0, 0, 32); border: 0px solid black; border-radius: 8px; }"""
             )
+            edit_btn.setFixedHeight(40)
+            root.addWidget(edit_btn, 1)
 
-            layout = QHBoxLayout()
-            edit_btn.setLayout(layout)
+            # 편집 버튼 내부 레이아웃
+            edit_layout = QHBoxLayout()
+            edit_layout.setContentsMargins(10, 6, 10, 6)
+            edit_layout.setSpacing(6)
+            edit_btn.setLayout(edit_layout)
 
             # 사용 스킬 개수: 최대 6개
             skill_count: int = min(len(data.skills), 6)
@@ -1152,40 +1175,42 @@ class LinkSkillSettings(QFrame):
                     skill_name=data.skills[i],
                 )
 
-                skill = SkillImage(
-                    parent=self,
-                    pixmap=pixmap,
-                )
-                layout.addWidget(skill)
+                skill = SkillImage(parent=self, pixmap=pixmap, size=24)
+                edit_layout.addWidget(skill)
 
-            # layout.addStretch(1)
+            edit_layout.addStretch(1)
 
             if data.key_type == LinkKeyType.ON and data.key is not None:
-                key_text = self.shared_data.KEY_DICT[data.key].display
+                key_text: str = self.shared_data.KEY_DICT[data.key].display
             else:
-                key_text: str = ""
+                key_text = ""
 
-            key_btn = QLabel(key_text)
-            key_btn.setStyleSheet(
+            key_label = QLabel(key_text)
+            key_label.setStyleSheet(
                 "QLabel { background-color: transparent; border: 0px; }"
             )
-            layout.addWidget(key_btn)
+            key_label.setFont(CustomFont(12))
+            edit_layout.addWidget(key_label)
 
+            # 삭제 버튼
             remove_btn = QPushButton("")
-            remove_btn.clicked.connect(partial(lambda x: remove_func(x), idx))
+            remove_btn.clicked.connect(lambda _, i=idx: remove_func(i))
             pixmap = QPixmap(convert_resource_path("resources\\image\\x.png"))
             remove_btn.setIcon(QIcon(pixmap))
             remove_btn.setStyleSheet(
                 """QPushButton { background-color: transparent; border: 0px; }
-                QPushButton:hover { background-color: #dddddd; border: 0px solid black; border-radius: 18px; }"""
+                QPushButton:hover { background-color: #dddddd; border: 0px solid black; border-radius: 4px; }"""
             )
-            layout.addWidget(remove_btn)
+            remove_btn.setFixedSize(24, 24)
+            root.addWidget(remove_btn)
 
+            # 연계 유형 표시
             use_type_display = QFrame()
+            use_type_display.setFixedSize(6, 6)
             use_type_display.setStyleSheet(
                 f"QFrame {{ background-color: {"#0000ff" if data.use_type == LinkUseType.MANUAL else "#ff0000"}; border: 0px solid black; border-radius: 2px; }}"
             )
-            layout.addWidget(use_type_display)
+            root.addWidget(use_type_display)
 
 
 class LinkSkillEditor(QFrame):
