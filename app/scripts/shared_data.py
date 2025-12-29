@@ -241,14 +241,14 @@ class SharedData:
         "left": KeySpec.from_key("Left", "left", PynputKey.left),
         "right": KeySpec.from_key("Right", "right", PynputKey.right),
         "print_screen": KeySpec.from_key(
-            "PrtSc", "print screen", PynputKey.print_screen
+            "PrtSc", "print_screen", PynputKey.print_screen
         ),
-        "scroll_lock": KeySpec.from_key("ScrLk", "scroll lock", PynputKey.scroll_lock),
+        "scroll_lock": KeySpec.from_key("ScrLk", "scroll_lock", PynputKey.scroll_lock),
         "pause": KeySpec.from_key("Pause", "pause", PynputKey.pause),
         "insert": KeySpec.from_key("Insert", "insert", PynputKey.insert),
         "home": KeySpec.from_key("Home", "home", PynputKey.home),
-        "page_up": KeySpec.from_key("PageUp", "page up", PynputKey.page_up),
-        "page_down": KeySpec.from_key("PageDown", "page down", PynputKey.page_down),
+        "page_up": KeySpec.from_key("PageUp", "page_up", PynputKey.page_up),
+        "page_down": KeySpec.from_key("PageDown", "page_down", PynputKey.page_down),
         "delete": KeySpec.from_key("Delete", "delete", PynputKey.delete),
         "end": KeySpec.from_key("End", "end", PynputKey.end),
     }

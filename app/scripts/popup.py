@@ -244,7 +244,7 @@ class InputConfirmContent(QFrame):
 class KeyCaptureContent(QFrame):
     """QLabel + 확인 버튼 형태의 시작키 입력 팝업 (키는 외부 리스너가 주입)"""
 
-    submitted = pyqtSignal(KeySpec | None)
+    submitted = pyqtSignal(object)  # KeySpec | None
     _key_received = pyqtSignal(KeySpec)
 
     def __init__(
@@ -947,13 +947,15 @@ class PopupManager:
 
         self._stop_key_listener()
 
-        content = KeyCaptureContent(default_key=self.shared_data.start_key_input)
+        default_key: KeySpec = self.shared_data.start_key_input
 
-        def _submit(key: KeySpec) -> None:
+        content = KeyCaptureContent(default_key=default_key)
+
+        def _submit(key: KeySpec | None) -> None:
             self.close_popup()
 
             # 변경 없음
-            if key == self.shared_data.start_key_input:
+            if key is None or key == default_key:
                 return
 
             # 키가 이미 사용중인 경우
@@ -1030,13 +1032,15 @@ class PopupManager:
 
         self._stop_key_listener()
 
-        content = KeyCaptureContent(default_key=self.shared_data.skill_keys[index])
+        default_key: KeySpec = self.shared_data.skill_keys[index]
+
+        content = KeyCaptureContent(default_key=default_key)
 
         def _submit(key: KeySpec) -> None:
             self.close_popup()
 
             # 변경 없음
-            if key == self.shared_data.skill_keys[index]:
+            if key is None or key == default_key:
                 return
 
             # 키가 이미 사용중인 경우
