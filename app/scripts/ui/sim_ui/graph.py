@@ -102,6 +102,9 @@ class DpmDistributionCanvas(pg.PlotWidget):
             }"""
         )
         self.tooltip_label.setFont(CustomFont(10))
+        self.tooltip_label.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+        )
 
         # 히스토그램 생성
         self.create_histogram()
@@ -760,6 +763,9 @@ class DMGCanvas(pg.PlotWidget):
         )
         # 폰트 설정
         self.tooltip_label.setFont(CustomFont(point_size=10))
+        self.tooltip_label.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+        )
 
         # 처음에는 숨김
         self.tooltip_line.hide()
@@ -1084,6 +1090,10 @@ class SkillContributionCanvas(pg.PlotWidget):
         )
         # 폰트 설정
         self.tooltip_label.setFont(CustomFont(point_size=10))
+
+        self.tooltip_label.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+        )
 
         # 처음에는 숨김
         self.tooltip_line.hide()
