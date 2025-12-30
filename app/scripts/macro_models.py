@@ -114,9 +114,6 @@ class LinkSkill:
     key: str | None = None
     skills: list[str] = field(default_factory=list)
 
-    # todo: Reference로 변경해서 index를 저장하지 않도록 수정
-    num: int = -1
-
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "LinkSkill":
         # todo: snake case로 변경
@@ -128,7 +125,6 @@ class LinkSkill:
             key_type=LinkKeyType(key_type_raw),
             key=str(data["key"]) if data["key"] is not None else None,
             skills=list(data["skills"]),
-            num=int(data["num"]),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -137,7 +133,6 @@ class LinkSkill:
             "keyType": self.key_type.value,
             "key": self.key,
             "skills": self.skills.copy(),
-            "num": self.num,
         }
 
     def set_manual(self) -> None:

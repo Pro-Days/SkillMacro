@@ -170,10 +170,10 @@ class Sidebar(QFrame):
 
         self.setLayout(layout)
 
-    def _on_link_skill_edit_requested(self, data: LinkSkill) -> None:
+    def _on_link_skill_edit_requested(self, index: int, data: LinkSkill) -> None:
         """연계스킬 편집 요청 처리: 편집기 로드 후 편집 페이지로 이동."""
 
-        self.link_skill_editor.load(data)
+        self.link_skill_editor.load(data, int(index))
         self.change_page(3)
 
     def _on_link_skill_editor_closed(self) -> None:
@@ -1031,7 +1031,7 @@ class SkillSettings(QFrame):
 class LinkSkillSettings(QFrame):
     """사이드바 타입 3 - 연계설정 스킬 목록"""
 
-    editRequested = pyqtSignal(object)
+    editRequested = pyqtSignal(int, object)
     contentResized = pyqtSignal()
 
     def __init__(
@@ -1114,7 +1114,6 @@ class LinkSkillSettings(QFrame):
             key_type=LinkKeyType.OFF,
             key=None,
             skills=[],
-            num=-1,
         )
 
         self.edit(-1, draft=data)
@@ -1137,11 +1136,8 @@ class LinkSkillSettings(QFrame):
         else:
             data = copy.deepcopy(draft)
 
-        # 편집 중인 인덱스 표시
-        data.num = num
-
         # 편집 요청 전달
-        self.editRequested.emit(data)
+        self.editRequested.emit(num, data)
 
     def remove(self, num: int) -> None:
         """연계스킬 제거"""
@@ -1470,6 +1466,8 @@ class LinkSkillEditor(QFrame):
         layout.addWidget(self.save_btn)
 
         self.data: LinkSkill = LinkSkill()
+        # 편집 중인 연계스킬의 인덱스 (-1이면 새로 만들기)
+        self._editing_index: int = -1
 
     def _get_preset(self) -> "MacroPreset":
         return self.shared_data.presets[self.shared_data.recent_preset]
@@ -1482,10 +1480,11 @@ class LinkSkillEditor(QFrame):
             all_presets=self.shared_data.presets,
         )
 
-    def load(self, data: LinkSkill) -> None:
+    def load(self, data: LinkSkill, index: int) -> None:
         """연계스킬 데이터 로드"""
 
         self.data = data
+        self._editing_index = index
 
         self._after_data_changed(update_skills=True)
 
@@ -1593,8 +1592,7 @@ class LinkSkillEditor(QFrame):
             return
 
         # 지금 수정 중인 연계스킬의 인덱스
-        # todo: 리스트 reference로 변경 후 제거
-        num: int = self.data.num
+        num: int = self._editing_index
 
         # 자동 연계스킬 스킬 중복 검사
         auto_skills: list[str] = []
@@ -1732,17 +1730,17 @@ class LinkSkillEditor(QFrame):
         preset: MacroPreset = self._get_preset()
 
         # 수정하던 연계스킬의 인덱스
-        index: int = self.data.num
+        index: int = self._editing_index
 
         # 새로 만드는 경우
         if index == -1:
             preset.link_settings.append(self.data)
-            self.data.num = len(preset.link_settings) - 1
+            self._editing_index = len(preset.link_settings) - 1
 
         # 기존 연계스킬 수정하는 경우
         else:
             preset.link_settings[index] = self.data
-            self.data.num = index
+            self._editing_index = index
 
         self._sync_preset_to_shared_data(preset)
         self._on_data_changed()
