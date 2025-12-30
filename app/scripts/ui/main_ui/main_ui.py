@@ -29,7 +29,7 @@ from app.scripts.data_manager import (
     select_preset,
     update_recent_preset,
 )
-from app.scripts.macro_models import LinkUseType, SkillUsageSetting
+from app.scripts.macro_models import LinkUseType, MacroPreset, SkillUsageSetting
 from app.scripts.misc import (
     convert_resource_path,
     get_available_skills,
@@ -186,7 +186,7 @@ class MainUI(QFrame):
         add_preset(shared_data=self.shared_data)
 
         # 탭 추가 (마지막 프리셋)
-        preset = self.shared_data.presets[-1]
+        preset: MacroPreset = self.shared_data.presets[-1]
         self.tab_widget.add_tab(preset)
 
     def on_remove_tab_clicked(self, index: int) -> None:
@@ -198,7 +198,7 @@ class MainUI(QFrame):
         # 활성화 상태인 팝업 닫기
         # self.master.get_popup_manager().close_popup()
 
-        # 매크로 실행중일 때는 탭 추가 불가
+        # 매크로 실행중일 때는 탭 제거 불가
         if self.shared_data.is_activated:
             self.popup_manager.make_notice_popup("MacroIsRunning")
 
@@ -344,6 +344,7 @@ class TabWidget(QTabWidget):
             QIcon(QPixmap(convert_resource_path("resources\\image\\plus.png")))
         )
         self.add_tab_button.setFixedSize(QSize(26, 26))
+        self.add_tab_button.setCursor(Qt.CursorShape.PointingHandCursor)
 
         # 탭 추가 버튼을 담을 컨테이너 위젯 생성
         corner_container = QWidget()
@@ -475,7 +476,7 @@ class TabWidget(QTabWidget):
         /* 닫기 버튼 */
         QTabBar::close-button {{
             image: url({convert_resource_path("resources\\image\\x.png").replace("\\", "/")});
-            border-radius: 7px;
+            border-radius: 5px;
         }}
 
         QTabBar::close-button:hover {{
@@ -509,13 +510,6 @@ class TabWidget(QTabWidget):
 
         tab: Tab = self.get_current_tab()
         tab.cancel_skill_selection()
-
-    # def sync_tab_titles(self, tab_names: list[str]) -> None:
-    #     """shared_data.tab_names를 기준으로 탭 제목을 동기화"""
-
-    #     for i in range(len(tab_names)):
-    #         if self.tabText(i) != tab_names[i]:
-    #             self.setTabText(i, tab_names[i])
 
     def get_tab_bar(self) -> QTabBar:
         """
@@ -881,6 +875,7 @@ class EquippableSkill(QFrame):
             )
             self.button.setIconSize(QSize(48, 48))
             self.button.clicked.connect(lambda: self.clicked.emit(self.index))
+            self.button.setCursor(Qt.CursorShape.PointingHandCursor)
 
             self.name: QLabel = QLabel(name, self)
             self.name.setStyleSheet(
@@ -1021,6 +1016,7 @@ class EquippedSkill(QFrame):
                 QSize(self._base_button_size, self._base_button_size)
             )
             self.button.clicked.connect(lambda: self.slotClicked.emit(self.index))
+            self.button.setCursor(Qt.CursorShape.PointingHandCursor)
 
             button_layout = QVBoxLayout(self.button_container)
             button_layout.setContentsMargins(0, 0, 0, 0)
@@ -1031,6 +1027,7 @@ class EquippedSkill(QFrame):
             self.key.setFont(CustomFont(10))
             self.key.setFixedWidth(size)
             self.key.clicked.connect(lambda: self.keyClicked.emit(self.index))
+            self.key.setCursor(Qt.CursorShape.PointingHandCursor)
 
             layout = QVBoxLayout()
             layout.addWidget(
