@@ -226,7 +226,7 @@ class SimBuff:
     end_time: float
     stat: str
     value: float
-    skill_name: str
+    skill_id: str
 
 
 @dataclass
@@ -235,7 +235,7 @@ class SimAttack:
     시뮬레이션에서 공격의 정보를 담는 클래스
     """
 
-    skill_name: str
+    skill_id: str
     time: float
     damage: float
 
@@ -266,8 +266,8 @@ class SimSkill:
     시뮬레이션에서 스킬의 정보를 담는 클래스
     """
 
-    # 스킬 슬롯 번호
-    skill: int
+    # 스킬 ID
+    skill_id: str
 
     # 사용 시간
     time: float
@@ -439,6 +439,32 @@ class Stats:
 
         if isinstance(self.NAEGONG, float):
             self.NAEGONG = int(self.NAEGONG)
+
+    def to_dict(self) -> dict[str, int | float]:
+        """
+        Stats 객체를 딕셔너리로 변환
+        """
+
+        return {
+            "ATK": self.ATK,
+            "DEF": self.DEF,
+            "PWR": self.PWR,
+            "STR": self.STR,
+            "INT": self.INT,
+            "RES": self.RES,
+            "CRIT_RATE": self.CRIT_RATE,
+            "CRIT_DMG": self.CRIT_DMG,
+            "BOSS_DMG": self.BOSS_DMG,
+            "ACC": self.ACC,
+            "DODGE": self.DODGE,
+            "STATUS_RES": self.STATUS_RES,
+            "NAEGONG": self.NAEGONG,
+            "HP": self.HP,
+            "ATK_SPD": self.ATK_SPD,
+            "POT_HEAL": self.POT_HEAL,
+            "LUK": self.LUK,
+            "EXP": self.EXP,
+        }
 
 
 @dataclass

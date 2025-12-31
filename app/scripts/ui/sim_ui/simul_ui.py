@@ -34,7 +34,8 @@ from app.scripts.custom_classes import (
 from app.scripts.data_manager import save_data
 from app.scripts.misc import (
     convert_resource_path,
-    get_available_skills,
+    get_every_skills,
+    get_skill_name,
     get_skill_pixmap,
 )
 from app.scripts.shared_data import UI_Variable
@@ -306,7 +307,7 @@ class Sim1UI(QFrame):
 
             skills_data: dict[str, int] = {
                 name: self.shared_data.info_skill_levels[name]
-                for name in get_available_skills(self.shared_data)
+                for name in get_every_skills(self.shared_data)
             }
 
             # 스킬 입력 위젯 생성
@@ -352,7 +353,7 @@ class Sim1UI(QFrame):
             # 모두 통과했다면 저장 및 플래그 설정
             if all_valid:
                 for _input, name in zip(
-                    self.inputs, get_available_skills(self.shared_data)
+                    self.inputs, get_every_skills(self.shared_data)
                 ):
                     self.shared_data.info_skill_levels[name] = int(_input.text())
 
@@ -547,7 +548,7 @@ class Sim2UI(QFrame):
             )
 
             self.graph = SkillDpsRatioCanvas(
-                self, resultDet, self.shared_data.equipped_skills
+                self, resultDet, self.shared_data.equipped_skills, shared_data.server_ID
             )
             self.graph.setFixedHeight(300)
 
@@ -613,7 +614,10 @@ class Sim2UI(QFrame):
             )
 
             self.graph = SkillContributionCanvas(
-                self, resultDet, shared_data.equipped_skills.copy()
+                self,
+                resultDet,
+                shared_data.equipped_skills.copy(),
+                shared_data.server_ID,
             )
             self.graph.setFixedHeight(400)
 
@@ -845,7 +849,7 @@ class Sim3UI(QFrame):
 
             skills_data: dict[str, int] = {
                 name: self.shared_data.info_skill_levels[name]
-                for name in get_available_skills(self.shared_data)
+                for name in get_every_skills(self.shared_data)
             }
             self.skills = SkillInputs(
                 self, self.shared_data, skills_data, self.on_skill_changed
@@ -954,7 +958,7 @@ class Sim3UI(QFrame):
             skills: dict[str, int] = {
                 skill: int(j.text())
                 for j, skill in zip(
-                    self.skills.inputs, get_available_skills(self.shared_data)
+                    self.skills.inputs, get_every_skills(self.shared_data)
                 )
             }
 
@@ -1109,9 +1113,9 @@ class SkillInputs(QFrame):
 
         # column 수 설정
         COLS = 7
-        for i, (name, value) in enumerate(skills_data.items()):
+        for i, (skill_id, value) in enumerate(skills_data.items()):
             item_widget = self.SkillInput(
-                self, shared_data, name, value, connected_function
+                self, shared_data, skill_id, value, connected_function
             )
 
             # 위치 계산
@@ -1139,7 +1143,7 @@ class SkillInputs(QFrame):
             self,
             parent,
             shared_data: SharedData,
-            name: str,
+            skill_id: str,
             value: int,
             connected_function=None,
         ):
@@ -1155,7 +1159,7 @@ class SkillInputs(QFrame):
             grid.setContentsMargins(0, 0, 0, 0)
 
             # 레이블
-            label = QLabel(name, self)
+            label = QLabel(get_skill_name(shared_data, skill_id), self)
             label.setStyleSheet(f"QLabel {{ border: 0px solid; border-radius: 4px; }}")
             label.setFont(CustomFont(14))
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1176,7 +1180,7 @@ class SkillInputs(QFrame):
                 self,
                 get_skill_pixmap(
                     shared_data,
-                    name,
+                    skill_id,
                 ),
                 icon_size,
             )

@@ -8,6 +8,7 @@ from pynput.keyboard import Key as PynputKey
 from pynput.keyboard import KeyCode
 
 from app.scripts.misc import convert_resource_path
+from app.scripts.skill_registry import SkillRegistry
 
 from .custom_classes import Stats
 
@@ -17,6 +18,8 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class KeySpec:
+    """키 정보 클래스"""
+
     display: str
     key_id: str
     type: Literal["key", "char"]
@@ -24,10 +27,14 @@ class KeySpec:
 
     @classmethod
     def from_key(cls, display: str, key_id: str, key: PynputKey) -> "KeySpec":
+        """특수키로 키 객체 생성"""
+
         return cls(display=display, key_id=key_id, type="key", value=key)
 
     @classmethod
     def from_char(cls, display: str, char: str) -> "KeySpec":
+        """문자키로 키 객체 생성"""
+
         return cls(
             display=display, key_id=char, type="char", value=KeyCode.from_char(char)
         )
@@ -279,12 +286,15 @@ class SharedData:
     ) as f:
         skill_data = json.load(f)
 
-    # skillAttackData[serverID][jobID][skill][level:임시로 하나만][combo][attackNum]:
-    # [time, [type(0: damage, 1: buff), [buff_type, buff_value, buff_duration] or damage_value]]
-    # SKILL_ATTACK_DATA = skill_data["AttackData"]
-    # SKILL_COOLTIME_LIST = skill_data["CooltimeList"]
-    # SKILL_COMBO_COUNT_LIST = skill_data["ComboCounts"]
-    # IS_SKILL_CASTING = skill_data["IsSkillCasting"]
+    # 서버별 스킬 레지스트리
+    skill_registries: ClassVar[dict[str, SkillRegistry]] = {}
+    for _server_id in SERVERS:
+        skill_registries[_server_id] = SkillRegistry.from_skill_data(
+            skill_data, server_id=_server_id
+        )
+
+    # 기본 서버의 스킬 레지스트리
+    skills: ClassVar[SkillRegistry] = skill_registries[DEFAULT_SERVER_ID]
 
     # 스킬 아이콘 디렉토리 정보
     # 이 딕셔너리에 없는 스킬은 기본 아이콘 사용
@@ -329,9 +339,7 @@ class SharedData:
     # 최근에 선택된 프리셋 번호
     recent_preset: int = 0
 
-    # --- 점진적 마이그레이션용 프리셋 컨테이너 ---
-    # 기존 코드(탭 UI 포함)가 SharedData의 ClassVar(예: equipped_skills)를 직접 읽고/쓰고 있어서,
-    # 당장 제거하지 않고 병행한다. 다음 단계에서 load_data가 이 presets/current_preset을 채우도록 바꾼다.
+    # 매크로 프리셋 목록
     presets: list[MacroPreset] = field(default_factory=list, repr=False)
 
     # 탭 이름들
@@ -377,18 +385,19 @@ class SharedData:
     # -- 스킬 사용설정 --
 
     # 사용 여부
-    is_use_skill: ClassVar[dict[str, bool]] = {
-        skill: False for skill in skill_data[server_ID]["skills"]
-    }
+    is_use_skill: ClassVar[dict[str, bool]] = {}
+    for _skill_id in skills.all_skill_ids():
+        is_use_skill[_skill_id] = False
     # 단독 사용
-    is_use_sole: ClassVar[dict[str, bool]] = {
-        skill: False for skill in skill_data[server_ID]["skills"]
-    }
+    is_use_sole: ClassVar[dict[str, bool]] = {}
+    for _skill_id in skills.all_skill_ids():
+        is_use_sole[_skill_id] = False
     # 우선 순위
     # todo: class, list로 변경
-    skill_priority: ClassVar[dict[str, int]] = {
-        skill: 0 for skill in skill_data[server_ID]["skills"]
-    }  # 스킬 우선순위, 0: 지정되지 않음
+    skill_priority: ClassVar[dict[str, int]] = {}
+    for _skill_id in skills.all_skill_ids():
+        skill_priority[_skill_id] = 0
+    # 스킬 우선순위, 0: 지정되지 않음
 
     # todo: class로 변경
     link_skills: ClassVar[list[LinkSkill]] = []
@@ -426,6 +435,8 @@ class SharedData:
     info_stats: Stats = Stats()
     # 스킬 레벨
     info_skill_levels: ClassVar[dict[str, int]] = {}
+    for _skill_id in skills.all_skill_ids():
+        info_skill_levels[_skill_id] = 1
     # 기타 시뮬레이션 세부정보
     info_sim_details: ClassVar[dict[str, int]] = {}
 

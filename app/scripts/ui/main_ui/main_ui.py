@@ -32,7 +32,8 @@ from app.scripts.data_manager import (
 from app.scripts.macro_models import LinkUseType, MacroPreset, SkillUsageSetting
 from app.scripts.misc import (
     convert_resource_path,
-    get_available_skills,
+    get_every_skills,
+    get_skill_name,
     get_skill_pixmap,
 )
 from app.scripts.popup import PopupManager
@@ -626,7 +627,7 @@ class Tab(QFrame):
             return
 
         # 장착된 스킬 해제
-        self.clear_equipped_skill(skill=equipped_skill)
+        self.clear_equipped_skill(skill_id=equipped_skill)
         self.set_equipped_skill(index, "")
 
         self.cancel_skill_selection()
@@ -653,7 +654,7 @@ class Tab(QFrame):
         if selected_slot == -1:
             return
 
-        selected_skill: str = get_available_skills(self.shared_data)[available_index]
+        selected_skill: str = get_every_skills(self.shared_data)[available_index]
 
         # 이미 장착된 스킬을 선택했을 때: 취소
         if selected_skill in self.preset.skills.active_skills:
@@ -663,7 +664,7 @@ class Tab(QFrame):
         # 기존에 장착된 스킬이 있으면 해제
         equipped_skill: str = self.preset.skills.active_skills[selected_slot]
         if equipped_skill:
-            self.clear_equipped_skill(skill=equipped_skill)
+            self.clear_equipped_skill(skill_id=equipped_skill)
 
         # 선택된 슬롯에 장착
         self.set_equipped_skill(selected_slot, selected_skill)
@@ -671,21 +672,22 @@ class Tab(QFrame):
         self.cancel_skill_selection()
         self.dataChanged.emit()
 
-    def clear_equipped_skill(self, skill: str) -> None:
+    def clear_equipped_skill(self, skill_id: str) -> None:
         """장착된 스킬 초기화(우선순위/연계스킬 등)"""
 
-        # 연계스킬 수동 사용으로 변경
+        # 연계스킬 수동 사용으로 변경, 키 초기화
         for link in self.preset.link_settings:
-            if skill in link.skills:
-                link.use_type = LinkUseType.MANUAL
+            if skill_id in link.skills:
+                link.set_manual()
+                link.clear_key()
 
         # 스킬 사용 우선순위 리로드
-        setting: SkillUsageSetting = self.preset.usage_settings[skill]
+        setting: SkillUsageSetting = self.preset.usage_settings[skill_id]
         prev_priority: int = setting.skill_priority
 
         # 우선순위가 있었다면 초기화
         if prev_priority:
-            self.preset.usage_settings[skill].skill_priority = 0
+            self.preset.usage_settings[skill_id].skill_priority = 0
 
             # 해당 스킬보다 높은 우선순위의 스킬들 우선순위 1 감소
             for setting in self.preset.usage_settings.values():
@@ -694,15 +696,15 @@ class Tab(QFrame):
 
         self._sync_to_shared_data()
 
-        self.skillUnequipped.emit(skill)
+        self.skillUnequipped.emit(skill_id)
 
     def select_equipped_skill(self, index: int) -> None:
         self.equipped_skills.select(index)
 
-    def set_equipped_skill(self, index: int, skill_name: str) -> None:
-        self.preset.skills.active_skills[index] = skill_name
+    def set_equipped_skill(self, index: int, skill_id: str) -> None:
+        self.preset.skills.active_skills[index] = skill_id
         self._sync_to_shared_data()
-        self.equipped_skills.set_skill(index, skill_name)
+        self.equipped_skills.set_skill(index, skill_id)
         self.update_preview()
 
     def display_available_skills(self) -> None:
@@ -805,7 +807,7 @@ class SkillPreview(QFrame):
         # 각 미리보기 스킬 이미지 추가
         for slot in self.shared_data.task_list[:count]:
             pixmap: QPixmap = get_skill_pixmap(
-                self.shared_data, skill_name=self.shared_data.equipped_skills[slot]
+                self.shared_data, skill_id=self.shared_data.equipped_skills[slot]
             )
 
             skill: SkillImage = SkillImage(parent=self, pixmap=pixmap, size=44)
@@ -850,9 +852,13 @@ class EquippableSkill(QFrame):
         장착 가능한 스킬 목록 표시
         장착되지 않은 스킬에 빨간 테두리 표시
         """
+        skill_ids: list[str] = get_every_skills(self.shared_data)
 
-        for name, skill in zip(get_available_skills(self.shared_data), self.skills):
-            skill.set_equipped_style(name in self.shared_data.equipped_skills)
+        for index, skill_widget in enumerate(self.skills):
+            skill_id: str = skill_ids[index]
+            skill_widget.set_equipped_style(
+                skill_id in self.shared_data.equipped_skills
+            )
 
     class Skill(QFrame):
         clicked = pyqtSignal(int)
@@ -865,19 +871,20 @@ class EquippableSkill(QFrame):
 
             self.setStyleSheet("QFrame { background-color: transparent; }")
 
-            name: str = get_available_skills(shared_data)[index]
+            skill_id: str = get_every_skills(shared_data)[index]
 
             self.button: QPushButton = QPushButton(self)
             self.button.setStyleSheet("QPushButton { border-radius :10px; }")
             self.button.setFixedSize(48, 48)
             self.button.setIcon(
-                QIcon(get_skill_pixmap(shared_data=shared_data, skill_name=name))
+                QIcon(get_skill_pixmap(shared_data=shared_data, skill_id=skill_id))
             )
             self.button.setIconSize(QSize(48, 48))
             self.button.clicked.connect(lambda: self.clicked.emit(self.index))
             self.button.setCursor(Qt.CursorShape.PointingHandCursor)
 
-            self.name: QLabel = QLabel(name, self)
+            display_name: str = get_skill_name(shared_data, skill_id)
+            self.name: QLabel = QLabel(display_name, self)
             self.name.setStyleSheet(
                 "QLabel { background-color: transparent; border-radius :0px; }"
             )
@@ -952,10 +959,10 @@ class EquippedSkill(QFrame):
 
         self.skills[index].set_key(key)
 
-    def set_skill(self, index: int, skill_name: str) -> None:
+    def set_skill(self, index: int, skill_id: str) -> None:
         """스킬 장착"""
 
-        self.skills[index].set_skill(skill_name)
+        self.skills[index].set_skill(skill_id)
 
     def get_selected_index(self) -> int:
         return self.selected_index
@@ -1010,7 +1017,7 @@ class EquippedSkill(QFrame):
             self.button.setStyleSheet("QPushButton { border-radius: 10px; }")
             self.button.setFixedSize(self._base_button_size, self._base_button_size)
             self.button.setIcon(
-                QIcon(get_skill_pixmap(shared_data=shared_data, skill_name=name))
+                QIcon(get_skill_pixmap(shared_data=shared_data, skill_id=name))
             )
             self.button.setIconSize(
                 QSize(self._base_button_size, self._base_button_size)
@@ -1070,15 +1077,11 @@ class EquippedSkill(QFrame):
 
             self.key.setText(key)
 
-        def set_skill(self, skill_name: str) -> None:
+        def set_skill(self, skill_id: str) -> None:
             """스킬 장착"""
 
             self.button.setIcon(
-                QIcon(
-                    get_skill_pixmap(
-                        shared_data=self.shared_data, skill_name=skill_name
-                    )
-                )
+                QIcon(get_skill_pixmap(shared_data=self.shared_data, skill_id=skill_id))
             )
 
         def get_key_button(self) -> QPushButton:

@@ -12,12 +12,7 @@ from app.scripts.macro_models import (
     PresetInfo,
     SkillUsageSetting,
 )
-from app.scripts.misc import (
-    get_available_skills,
-    get_every_skills,
-    get_skill_details,
-    set_var_to_ClassVar,
-)
+from app.scripts.misc import get_every_skills, set_var_to_ClassVar
 
 if TYPE_CHECKING:
     from .shared_data import SharedData
@@ -25,6 +20,7 @@ if TYPE_CHECKING:
 
 data_version = 1
 
+# todo: 라이브러리를 통해 경로를 설정하도록 변경
 local_appdata: str = os.environ.get("LOCALAPPDATA", default="")
 
 data_path: str = os.path.join(local_appdata, "ProDays", "SkillMacro")
@@ -132,7 +128,6 @@ def load_data(shared_data: SharedData, num: int = -1) -> None:
     """
     실행, 탭 변경 시 데이터 로드
 
-    shared_data: SharedData 인스턴스
     num: 탭 번호, -1이면 최근 탭
     """
 
@@ -140,6 +135,8 @@ def load_data(shared_data: SharedData, num: int = -1) -> None:
         # 파일이 존재하지 않으면 데이터 생성
         if not os.path.isfile(file_dir):
             create_default_data(shared_data=shared_data)
+
+        update_data(shared_data=shared_data)
 
         repo = MacroPresetRepository(file_dir)
         preset_file: MacroPresetFile = repo.load()
@@ -161,9 +158,9 @@ def load_data(shared_data: SharedData, num: int = -1) -> None:
         )
 
     except Exception:
-        print("Error occurred during data loading.")
+        print("데이터 로드 중 오류 발생")
 
-        # 오류 발생 시 백업 데이터로 복원
+        # 오류 발생 시 백업 데이터 생성
         backup_data()
 
         # 기본 데이터 생성
@@ -192,16 +189,12 @@ def save_data(shared_data: SharedData) -> None:
     데이터 저장
     """
 
-    def apply_current_shared_state_into_preset(preset: MacroPreset) -> None:
+    def apply_to_preset(preset: MacroPreset) -> None:
         """shared_data 값을 preset에 반영"""
 
-        # 이름은 tab_names가 단일 출처가 아니므로 presets 기반을 우선하고, 없으면 tab_names 사용
-        if shared_data.tab_names and 0 <= shared_data.recent_preset < len(
-            shared_data.tab_names
-        ):
-            preset.name = shared_data.tab_names[shared_data.recent_preset]
+        preset.name = shared_data.tab_names[shared_data.recent_preset]
 
-        preset.skills.active_skills = list(shared_data.equipped_skills)
+        preset.skills.active_skills = shared_data.equipped_skills.copy()
         preset.skills.skill_keys = [key.key_id for key in shared_data.skill_keys]
 
         preset.settings.server_id = shared_data.server_ID
@@ -217,14 +210,17 @@ def save_data(shared_data: SharedData) -> None:
         preset.settings.mouse_click_type = shared_data.mouse_click_type
 
         # 스킬 사용 설정 저장
-        for skill in shared_data.skill_data[shared_data.server_ID]["skills"]:
-            preset.usage_settings[skill] = SkillUsageSetting(
-                is_use_skill=shared_data.is_use_skill[skill],
-                is_use_sole=shared_data.is_use_sole[skill],
-                skill_priority=shared_data.skill_priority[skill],
+        skills_all: list[str] = get_every_skills(shared_data=shared_data)
+        preset.usage_settings = {
+            skill_id: SkillUsageSetting(
+                is_use_skill=shared_data.is_use_skill[skill_id],
+                is_use_sole=shared_data.is_use_sole[skill_id],
+                skill_priority=shared_data.skill_priority[skill_id],
             )
+            for skill_id in skills_all
+        }
 
-        preset.link_settings = list(shared_data.link_skills)
+        preset.link_settings = shared_data.link_skills.copy()
 
         preset.info = PresetInfo.from_stats(
             shared_data.info_stats,
@@ -234,14 +230,12 @@ def save_data(shared_data: SharedData) -> None:
 
     repo = MacroPresetRepository(file_dir)
 
-    apply_current_shared_state_into_preset(
-        shared_data.presets[shared_data.recent_preset]
-    )
+    apply_to_preset(shared_data.presets[shared_data.recent_preset])
 
     preset_file = MacroPresetFile(
         version=data_version,
         recent_preset=shared_data.recent_preset,
-        preset=list(shared_data.presets),
+        preset=shared_data.presets.copy(),
     )
     repo.save(preset_file)
 
@@ -282,9 +276,6 @@ def add_preset(shared_data: SharedData) -> None:
     탭 추가시 데이터 생성
     """
 
-    if not os.path.isfile(file_dir):
-        create_default_data(shared_data=shared_data)
-
     repo = MacroPresetRepository(file_dir)
     preset_file: MacroPresetFile = repo.load()
 
@@ -292,8 +283,8 @@ def add_preset(shared_data: SharedData) -> None:
     preset_file.preset.append(new_preset)
     repo.save(preset_file)
 
-    # 메모리 상에도 반영(현재 메모리에 없는 경우까지 고려해 전체를 동기화)
-    shared_data.presets = list(preset_file.preset)
+    # 메모리에도 반영
+    shared_data.presets = preset_file.preset.copy()
     set_var_to_ClassVar(shared_data.tab_names, [p.name for p in shared_data.presets])
 
 
@@ -316,7 +307,7 @@ def get_default_preset(shared_data: SharedData) -> MacroPreset:
 
 def update_data(shared_data: SharedData) -> None:
     """
-    데이터 업데이트
+    데이터 포맷 업데이트
     """
 
     try:
@@ -328,48 +319,22 @@ def update_data(shared_data: SharedData) -> None:
         repo = MacroPresetRepository(file_dir)
         preset_file: MacroPresetFile = repo.load()
 
-        # 데이터 버전이 다르면 업데이트
-        # 버전 업데이트 함수 작성 필요
+        # 데이터 버전이 다르면 (구버전/타버전) 호환하지 않음
         if preset_file.version != data_version:
-            preset_file.version = data_version
+            pass
 
-        repo.save(preset_file)
+        return
 
     except Exception as e:
-        print(f"Error occurred: {e}")
+        print(f"데이터 업데이트 중 오류 발생: {e}")
 
         backup_data()
 
         create_default_data(shared_data=shared_data)
 
 
-def update_skill_data(shared_data: SharedData) -> None:
-    if not os.path.isfile(file_dir):
-        create_default_data(shared_data=shared_data)
-        return
-
-    repo = MacroPresetRepository(file_dir)
-    preset_file: MacroPresetFile = repo.load()
-
-    skills_all: list[str] = get_every_skills(shared_data=shared_data)
-
-    for preset in preset_file.preset:
-        for skill in skills_all:
-            preset.usage_settings.setdefault(
-                skill,
-                SkillUsageSetting(
-                    is_use_skill=True, is_use_sole=False, skill_priority=0
-                ),
-            )
-            preset.info.skill_levels.setdefault(skill, 1)
-
-    repo.save(preset_file)
-
-
 def backup_data() -> None:
-    """
-    데이터 백업
-    """
+    """데이터 백업"""
 
     # 백업 폴더가 없으면 생성
     backup_path: str = os.path.join(data_path, "backup")

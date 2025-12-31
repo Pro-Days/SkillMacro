@@ -8,9 +8,15 @@ from PyQt6.QtGui import QBrush, QPainter
 from PyQt6.QtWidgets import QLabel, QWidget
 
 from app.scripts.custom_classes import CustomFont, SimAttack
+from app.scripts.skill_registry import get_builtin_skill_id, parse_skill_id
+
+# todo: 재사용 가능하도록, 실시간 렌더링되도록 변경
+# todo: 크래시 문제 해결
 
 
 class DpmDistributionCanvas(pg.PlotWidget):
+    """DPM 분포"""
+
     def __init__(self, parent: QWidget, results: list[list[SimAttack]]) -> None:
         super().__init__(parent=parent)
 
@@ -379,28 +385,36 @@ class SkillDpsRatioCanvas(pg.PlotWidget):
         self,
         parent: QWidget,
         data: list[SimAttack],
-        skill_names: list[str],
+        skill_ids: list[str],
+        server_id: str,
     ) -> None:
         super().__init__(parent=parent)
+
+        # 장착된 스킬 ID 필터링
+        equipped_skill_ids: list[str] = [_id for _id in skill_ids if _id]
+
+        # 평타 ID
+        basic_attack_skill_id: str = get_builtin_skill_id(server_id, "평타")
+
+        tracked_skill_ids: list[str] = equipped_skill_ids + [basic_attack_skill_id]
 
         # 데이터와 레이블, 색상, 제목 설정
         # 존재하는 데이터만 필터링
         ratio_data: list[float] = [
-            sum(skill.damage for skill in data if skill.skill_name == skill_name)
-            for skill_name in skill_names + ["평타"]
+            sum(skill.damage for skill in data if skill.skill_id == skill_id)
+            for skill_id in tracked_skill_ids
         ]
         self.data: list[float] = [i for i in ratio_data if i]
 
-        # 레이블은 스킬 이름에서 데이터가 있는 것만 필터링
+        # 레이블은 데이터가 있는 것만 필터링
         self.labels: list[str] = [
-            f"{skill_names[i]}" for i, j in enumerate(ratio_data) if j and i != 6
+            parse_skill_id(tracked_skill_ids[i])[1]
+            for i, value in enumerate(ratio_data)
+            if value
         ]
 
-        # 평타 추가
-        self.labels.append(f"평타")
-
         # 색상 설정
-        self.colors: list[str] = [
+        palette: list[str] = [
             "#EF9A9A",
             "#90CAF9",
             "#A5D6A7",
@@ -408,6 +422,9 @@ class SkillDpsRatioCanvas(pg.PlotWidget):
             "#CE93D8",
             "#F0B070",
             "#2196F3",
+        ]
+        self.colors: list[str] = [
+            palette[i % len(palette)] for i in range(len(self.data))
         ]
 
         # PyQtGraph 위젯 생성
@@ -872,9 +889,16 @@ class SkillContributionCanvas(pg.PlotWidget):
         self,
         parent: QWidget,
         resultDet: list[SimAttack],
-        names: list[str],
+        skill_ids: list[str],
+        server_id: str,
     ) -> None:
         super().__init__(parent)
+
+        equipped_skill_ids: list[str] = [sid for sid in skill_ids if sid]
+
+        basic_attack_skill_id: str = get_builtin_skill_id(server_id, "평타")
+
+        tracked_skill_ids: list[str] = equipped_skill_ids + [basic_attack_skill_id]
 
         step, count = 1, 60
         times: list[int] = [i * step for i in range(count + 1)]
@@ -886,12 +910,12 @@ class SkillContributionCanvas(pg.PlotWidget):
                     [
                         j.damage
                         for j in resultDet
-                        if j.skill_name == skill_name and j.time < (i + 1) * step
+                        if j.skill_id == skill_id and j.time < (i + 1) * step
                     ]
                 )
                 for i in range(count)
             ]
-            for skill_name in names + ["평타"]
+            for skill_id in tracked_skill_ids
         ]
 
         # totalData = []
@@ -907,7 +931,7 @@ class SkillContributionCanvas(pg.PlotWidget):
         #     data_normalized.append([skillsData[i][j] / totalData[j] for j in range(timeStepCount)])
         data_normalized: list[list[float]] = [
             [0.0] + [skillsData[i][j] / totalData[j] * 100 for j in range(1, count + 1)]
-            for i in range(7)
+            for i in range(len(skillsData))
         ]
 
         data_cumsum: list[list[float]] = [[0.0 for _ in row] for row in data_normalized]
@@ -920,7 +944,10 @@ class SkillContributionCanvas(pg.PlotWidget):
             "time": times,
             "data": data_normalized,
         }
-        self.skill_names: list[str] = names
+
+        self.skill_names: list[str] = [
+            parse_skill_id(sid)[1] for sid in tracked_skill_ids
+        ]
 
         # 데미지가 0인 스킬 제거
         data_0idx = [i for i, j in enumerate(self.data["data"]) if not j[-1]]
@@ -929,8 +956,6 @@ class SkillContributionCanvas(pg.PlotWidget):
         for i in data_0idx:
             self.data["data"].pop(i)
             self.skill_names.pop(i)
-
-        self.skill_names.append("평타")
 
         # 안티 에일리어싱 활성화
         self.setRenderHint(QPainter.RenderHint.Antialiasing, True)

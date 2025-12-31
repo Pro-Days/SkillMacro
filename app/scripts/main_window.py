@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import (
 
 from app.scripts.config import config
 from app.scripts.custom_classes import CustomFont
-from app.scripts.data_manager import load_data, update_data, update_skill_data
+from app.scripts.data_manager import load_data, update_data
 from app.scripts.misc import convert_resource_path, set_default_fonts
 from app.scripts.popup import PopupManager
 from app.scripts.run_macro import checking_kb_thread
@@ -50,8 +50,6 @@ class MainWindow(QWidget):
         )
 
         # 매크로 데이터 불러오기
-        update_data(self.shared_data)
-        update_skill_data(self.shared_data)
         load_data(self.shared_data)
 
         # 프로그램 화면 설정

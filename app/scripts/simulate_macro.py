@@ -15,6 +15,7 @@ from app.scripts.custom_classes import (
 )
 from app.scripts.misc import get_skill_details
 from app.scripts.run_macro import add_task_list, init_macro
+from app.scripts.skill_registry import get_builtin_skill_id
 
 if TYPE_CHECKING:
     from app.scripts.shared_data import SharedData
@@ -219,7 +220,7 @@ def execute_simulation(
 
         for buff in buff_details:
             # 버프 종류와 값을 튜플로 묶음
-            key: str = buff.skill_name
+            key: str = buff.skill_id
 
             # 해당 키가 없으면 새로 생성
             if key not in grouped:
@@ -230,7 +231,7 @@ def execute_simulation(
 
         # 각 그룹의 겹치는 구간 병합
         merged_buffs: list[SimBuff] = []
-        for skill_name, buffs in grouped.items():
+        for buffs in grouped.values():
             # 시작 시간을 기준으로 정렬
             buffs.sort(key=lambda x: x.start_time)
 
@@ -267,7 +268,7 @@ def execute_simulation(
         damage: float = get_damage(stats=current_stats) * attack.damage
 
         new_attack: SimAttack = SimAttack(
-            skill_name=attack.skill_name,
+            skill_id=attack.skill_id,
             time=attack.time,
             damage=damage,
         )
@@ -582,6 +583,8 @@ def get_simulated_skills(
 
     used_skills: list[SimSkill] = []
 
+    basic_attack_skill_id: str = get_builtin_skill_id(shared_data.server_ID, "평타")
+
     # 스킬 남은 쿨타임 : [0, 0, 0, 0, 0, 0]
     # ms 단위
     # isUsed이면 shared_data.unitTime(x1000)씩 증가, 쿨타임이 지나면 0으로 초기화
@@ -608,7 +611,9 @@ def get_simulated_skills(
             # 스킬 슬롯
             slot: int = shared_data.task_list.pop(0)
 
-            used_skills.append(SimSkill(skill=slot, time=elapsed_time))
+            used_skills.append(
+                SimSkill(skill_id=shared_data.equipped_skills[slot], time=elapsed_time)
+            )
             is_skills_ready[slot] = False
             delay_to_next_task = shared_data.delay
 
@@ -627,7 +632,7 @@ def get_simulated_skills(
                 if skill_cooltime_timers[slot] >= int(
                     get_skill_details(
                         shared_data=shared_data,
-                        skill_name=shared_data.equipped_skills[slot],
+                        skill_id=shared_data.equipped_skills[slot],
                     )["cooltime"]
                     * (100 - cooltimeReduce)
                 ):
@@ -651,8 +656,7 @@ def get_simulated_skills(
     # ms 단위로 사용
     delay: int = int((100 - cooltimeReduce) * 10 * 1)
     for t in range(0, 60000, delay):
-        # 평타는 스킬 번호 -1로 설정
-        used_skills.append(SimSkill(skill=-1, time=t))
+        used_skills.append(SimSkill(skill_id=basic_attack_skill_id, time=t))
 
     # 시간 단위를 1초로 변경
     # 반올림은 0.01초 단위로
@@ -664,11 +668,11 @@ def get_simulated_skills(
     buff_details: list[SimBuff] = []
 
     for skill in used_skills:
-        # 평타
-        if skill.skill == -1:
+        # 평타 (기본 공격)
+        if skill.skill_id == basic_attack_skill_id:
             attack_details.append(
                 SimAttack(
-                    skill_name="평타",
+                    skill_id=basic_attack_skill_id,
                     time=skill.time,
                     damage=1.0,
                 )
@@ -678,8 +682,8 @@ def get_simulated_skills(
         # 스킬 효과: 공격 / 버프
         skill_effects: dict = get_skill_details(
             shared_data=shared_data,
-            skill_name=shared_data.equipped_skills[skill.skill],
-        )["levels"][str(skill_levels[shared_data.equipped_skills[skill.skill]])]
+            skill_id=skill.skill_id,
+        )["levels"][str(skill_levels[skill.skill_id])]
 
         # 각 effect에 대해
         # 공격 효과와 버프 효과를 구분하여 처리
@@ -687,7 +691,7 @@ def get_simulated_skills(
             # 공격
             if effect["type"] == "attack":
                 attack: SimAttack = SimAttack(
-                    skill_name=shared_data.equipped_skills[skill.skill],
+                    skill_id=skill.skill_id,
                     time=round(skill.time + effect["time"], 2),
                     damage=effect["value"],
                 )
@@ -701,7 +705,7 @@ def get_simulated_skills(
                     end_time=round(skill.time + effect["time"] + effect["duration"], 2),
                     stat=effect["stat"],
                     value=effect["value"],
-                    skill_name=shared_data.equipped_skills[skill.skill],
+                    skill_id=skill.skill_id,
                 )
 
                 buff_details.append(buff)

@@ -18,7 +18,7 @@ from PyQt6.QtCore import (
     QTimer,
     pyqtSignal,
 )
-from PyQt6.QtGui import QGuiApplication, QIcon, QPixmap, QScreen, QTransform
+from PyQt6.QtGui import QGuiApplication, QIcon, QPixmap, QScreen
 from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
@@ -26,7 +26,6 @@ from PyQt6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -35,17 +34,12 @@ from PyQt6.QtWidgets import (
 )
 
 from app.scripts.custom_classes import CustomFont, CustomLineEdit, CustomShadowEffect
-from app.scripts.data_manager import save_data
 from app.scripts.misc import (
-    _key_to_KeySpec,
-    adjust_font_size,
     convert_resource_path,
-    get_available_skills,
-    get_every_skills,
-    get_skill_details,
+    get_skill_name,
     get_skill_pixmap,
     is_key_using,
-    set_var_to_ClassVar,
+    key_to_KeySpec,
 )
 from app.scripts.shared_data import KeySpec
 
@@ -90,8 +84,8 @@ class PopupOptions:
 @dataclass(frozen=True)
 class PopupAction:
     """
-    팝업 내의 선택지 하나를 나타냄
-    예: "한월 RPG"
+    팝업 내의 선택지 하나
+    예: 서버 -> "한월 RPG" 선택지
     """
 
     id: str
@@ -101,7 +95,7 @@ class PopupAction:
     on_trigger: Callable[[], None] | None = None
 
 
-def _clamp_rect_to_screen(rect: QRect, screen_rect: QRect, margin: int) -> QRect:
+def _get_fit_position(rect: QRect, screen_rect: QRect, margin: int) -> QRect:
     """팝업이 화면 밖으로 나가지 않도록 위치 보정"""
 
     x: int = rect.x()
@@ -112,15 +106,8 @@ def _clamp_rect_to_screen(rect: QRect, screen_rect: QRect, margin: int) -> QRect
     min_y: int = screen_rect.top() + margin
     max_y: int = screen_rect.bottom() - margin - rect.height() + 1
 
-    if x < min_x:
-        x = min_x
-    elif x > max_x:
-        x = max_x
-
-    if y < min_y:
-        y = min_y
-    elif y > max_y:
-        y = max_y
+    x = max(min_x, min(x, max_x))
+    y = max(min_y, min(y, max_y))
 
     return QRect(x, y, rect.width(), rect.height())
 
@@ -136,11 +123,10 @@ class ActionListContent(QFrame):
     def __init__(
         self,
         actions: list[PopupAction],
-        fixed_width: int = 130,
     ) -> None:
         super().__init__()
 
-        self.setFixedWidth(fixed_width)
+        self.setFixedWidth(130)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
 
         self.setStyleSheet(
@@ -159,7 +145,7 @@ class ActionListContent(QFrame):
             """
         )
 
-        # 스크롤바 없이 전체 항목을 나열한다.
+        # 스크롤바 없이 전체 항목을 나열
         v = QVBoxLayout(self)
         v.setContentsMargins(5, 5, 5, 5)
         v.setSpacing(5)
@@ -170,7 +156,7 @@ class ActionListContent(QFrame):
             btn.setFont(CustomFont(12))
             btn.setEnabled(act.enabled)
 
-            # 폭은 컨테이너에 맞춰 자동으로 늘어나게 한다.
+            # 폭은 컨테이너에 맞춰 자동으로 늘어나도록
             btn.setFixedHeight(row_height)
             btn.setSizePolicy(
                 QSizePolicy.Policy.Expanding,
@@ -184,13 +170,13 @@ class ActionListContent(QFrame):
 
 
 class InputConfirmContent(QFrame):
-    """라인에딧 + 확인 버튼 형태의 팝업"""
+    """라인에딧 & 확인 버튼 형태의 팝업"""
 
     submitted = pyqtSignal(str)
 
     def __init__(
         self,
-        default_text: str = "",
+        default_text: str,
         fixed_width: int = 170,
     ) -> None:
         super().__init__()
@@ -200,12 +186,14 @@ class InputConfirmContent(QFrame):
 
         self.setStyleSheet("QFrame { background-color: transparent; }")
 
+        # 라인에딧
         self._edit = CustomLineEdit(
             self, text=default_text, point_size=12, border_radius=10
         )
         self._edit.setFixedHeight(30)
         self._edit.returnPressed.connect(self._emit_submit)
 
+        # 확인 버튼
         self._btn = QPushButton("확인", self)
         self._btn.setFont(CustomFont(12))
         self._btn.setStyleSheet(
@@ -230,19 +218,12 @@ class InputConfirmContent(QFrame):
         layout.addWidget(self._btn)
         self.setLayout(layout)
 
-    def focus_input(self) -> None:
-        self._edit.setFocus()
-        self._edit.selectAll()
-
-    def text(self) -> str:
-        return self._edit.text()
-
     def _emit_submit(self) -> None:
         self.submitted.emit(self._edit.text())
 
 
 class KeyCaptureContent(QFrame):
-    """QLabel + 확인 버튼 형태의 시작키 입력 팝업 (키는 외부 리스너가 주입)"""
+    """QLabel & 확인 버튼 형태의 시작키 입력 팝업"""
 
     submitted = pyqtSignal(object)  # KeySpec | None
     _key_received = pyqtSignal(KeySpec)
@@ -250,11 +231,10 @@ class KeyCaptureContent(QFrame):
     def __init__(
         self,
         default_key: KeySpec | None = None,
-        fixed_width: int = 200,
     ) -> None:
         super().__init__()
 
-        self.setFixedWidth(fixed_width)
+        self.setFixedWidth(200)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.setStyleSheet("QFrame { background-color: transparent; }")
 
@@ -293,7 +273,6 @@ class KeyCaptureContent(QFrame):
         layout.addWidget(self._btn)
         self.setLayout(layout)
 
-        # 다른 리스너에서 안전하게 label 업데이트
         self._key_received.connect(self._apply_key)
 
     def set_key(self, key: KeySpec) -> None:
@@ -310,11 +289,11 @@ class KeyCaptureContent(QFrame):
 
 
 class PopupHost(QDialog):
-    """공통 팝업 껍데기: 배치/클릭-아웃/ESC/그림자 등을 일원화."""
+    """공통 팝업 창 호스트"""
 
     closed = pyqtSignal()
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
 
         # 팝업 창 설정
@@ -348,7 +327,7 @@ class PopupHost(QDialog):
         self._container_layout = QVBoxLayout(self._container)
         self._container_layout.setContentsMargins(0, 0, 0, 0)
 
-        # blur 만큼 여유를 주고, offset 방향은 추가로 더 여유를 줌
+        # 그림자가 잘리는 것을 방지하기 위한 외부 레이아웃
         root = QVBoxLayout(self)
         root.setContentsMargins(10, 8, 10, 20)
         root.addWidget(self._container)
@@ -372,10 +351,10 @@ class PopupHost(QDialog):
         content.setParent(self._container)
         self._container_layout.addWidget(content)
 
-    def show_for(self, anchor: QWidget, options: PopupOptions = PopupOptions()) -> None:
+    def show_for(self, anchor: QWidget, options: PopupOptions) -> None:
         """팝업 표시"""
 
-        # 내용이 설정되지 않은 경우 예외 발생
+        # 내용이 설정되지 않은 경우 예외
         if self._content is None:
             raise RuntimeError("PopupHost.show_for() called without content")
 
@@ -420,12 +399,10 @@ class PopupHost(QDialog):
         desired = QRect(x, y, w, h)
 
         # 보정된 위치 계산
-        clamped: QRect = _clamp_rect_to_screen(
-            desired, screen_rect, options.screen_margin
-        )
+        fitted: QRect = _get_fit_position(desired, screen_rect, options.screen_margin)
 
         # 팝업 위치 설정
-        self.move(clamped.topLeft())
+        self.move(fitted.topLeft())
 
         # 팝업 표시 및 포커스 설정
         self.show()
@@ -440,8 +417,6 @@ class PopupHost(QDialog):
 
         # 스크롤 이벤트 감지
         if self.isVisible() and event.type() == QEvent.Type.Wheel:
-            # 휠 이벤트는 원래 대상 위젯으로 계속 전달되게 두고,
-            # 팝업만 닫아 UX를 자연스럽게 유지
             self.close()
             return False
 
@@ -449,31 +424,22 @@ class PopupHost(QDialog):
 
     def focusOutEvent(self, a0) -> None:
         """
-        포커스를 잃으면 클릭 이벤트가 처리되기 위해
-        약간의 지연을 두고 팝업 닫기
+        포커스를 잃었을 때 팝업 내부 클릭인지 확인 후 팝업 닫기
         """
 
-        def _maybe_close() -> None:
-            """팝업 내부 클릭인지 확인 후 닫기"""
+        fw: QWidget | None = QApplication.focusWidget()
 
-            if not self.isVisible():
-                return
-
-            fw: QWidget | None = QApplication.focusWidget()
-            if fw is None:
-                self.close()
-                return
-
-            # 포커스가 팝업(또는 팝업 자식) 안에 있으면 유지
-            if fw is self or self.isAncestorOf(fw):
-                return
-
+        if (
+            self.isVisible()
+            and fw is not None
+            and fw is not self
+            and not self.isAncestorOf(fw)
+        ):
             self.close()
 
-        QTimer.singleShot(0, _maybe_close)
         super().focusOutEvent(a0)
 
-    def closeEvent(self, a0):
+    def closeEvent(self, a0) -> None:
         self.closed.emit()
         super().closeEvent(a0)
 
@@ -481,7 +447,7 @@ class PopupHost(QDialog):
 class PopupController:
     """PopupHost를 재사용하며 content 교체로 팝업을 표시"""
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget) -> None:
         self._host = PopupHost(parent)
         self._actions_by_id: dict[str, PopupAction] = {}
 
@@ -499,9 +465,9 @@ class PopupController:
         self,
         anchor: QWidget,
         actions: list[PopupAction],
-        options: PopupOptions = PopupOptions(),
+        options: PopupOptions,
     ) -> None:
-        """ActionList 형태의 팝업 표시."""
+        """ActionList 형태의 팝업 표시"""
 
         self._actions_by_id = {a.id: a for a in actions}
 
@@ -515,12 +481,12 @@ class PopupController:
         self,
         anchor: QWidget,
         content: QWidget,
-        options: PopupOptions = PopupOptions(),
+        options: PopupOptions,
     ) -> None:
-        """ActionList가 아닌 임의의 content(입력 팝업 등)를 표시."""
+        """ActionList가 아닌 content(입력 팝업 등)를 표시"""
 
         # 기존 액션 매핑 제거
-        self._actions_by_id = {}
+        self._actions_by_id.clear()
 
         self._host.set_content(content)
         self._host.show_for(anchor, options)
@@ -528,11 +494,9 @@ class PopupController:
     def _on_triggered(self, action_id: str) -> None:
         """액션 선택시 호출"""
 
-        act: PopupAction | None = self._actions_by_id.get(action_id)
+        act: PopupAction = self._actions_by_id[action_id]
         self.close()
 
-        if act is None:
-            return
         if act.on_trigger is not None:
             act.on_trigger()
 
@@ -550,7 +514,7 @@ class PopupManager:
         self._popup_controller.host.closed.connect(self._on_popup_host_closed)
         self._active_popup: PopupKind | None = None
 
-        # 시작키 입력 리스너(pynput) 관리
+        # 시작키 입력 리스너(pynput)
         self._key_listener: pynput_keyboard.Listener | None = None
 
     def _on_popup_host_closed(self) -> None:
@@ -890,8 +854,6 @@ class PopupManager:
             placement=PopupPlacement.BELOW,
         )
 
-        content.focus_input()
-
     def make_cooltime_popup(
         self,
         anchor: QWidget,
@@ -931,8 +893,6 @@ class PopupManager:
             content=content,
             placement=PopupPlacement.BELOW,
         )
-
-        content.focus_input()
 
     def make_start_key_popup(
         self,
@@ -975,7 +935,7 @@ class PopupManager:
         )
 
         def _on_press(k: pynput_keyboard.Key | pynput_keyboard.KeyCode | None) -> None:
-            key: KeySpec | None = _key_to_KeySpec(self.shared_data, k)
+            key: KeySpec | None = key_to_KeySpec(self.shared_data, k)
 
             if not key:
                 return
@@ -994,13 +954,9 @@ class PopupManager:
         preset_index: int,
         on_submitted: Callable[[str], None],
     ) -> None:
-        """탭 이름 변경 팝업.
-
-        anchor 위치(보통 QTabBar 위의 특정 탭 영역)에 맞춰 팝업이 표시된다.
-        """
+        """탭 이름 변경 팝업"""
 
         default_text: str = self.shared_data.tab_names[preset_index]
-
         content = InputConfirmContent(default_text=default_text, fixed_width=200)
 
         def _submit(text: str) -> None:
@@ -1015,8 +971,6 @@ class PopupManager:
             content=content,
             placement=PopupPlacement.BELOW,
         )
-
-        content.focus_input()
 
     def make_skill_key_popup(
         self,
@@ -1033,7 +987,6 @@ class PopupManager:
         self._stop_key_listener()
 
         default_key: KeySpec = self.shared_data.skill_keys[index]
-
         content = KeyCaptureContent(default_key=default_key)
 
         def _submit(key: KeySpec) -> None:
@@ -1060,7 +1013,7 @@ class PopupManager:
         )
 
         def _on_press(k: pynput_keyboard.Key | pynput_keyboard.KeyCode | None) -> None:
-            key: KeySpec | None = _key_to_KeySpec(self.shared_data, k)
+            key: KeySpec | None = key_to_KeySpec(self.shared_data, k)
 
             if not key:
                 return
@@ -1079,6 +1032,7 @@ class PopupManager:
         on_selected: Callable[[KeySpec], None],
     ) -> None:
         """연계스킬 키 입력 팝업"""
+        # todo: 중복 코드 정리
 
         # 기존 팝업/리스너 정리
         if self._popup_controller.is_visible():
@@ -1111,7 +1065,7 @@ class PopupManager:
         )
 
         def _on_press(k: pynput_keyboard.Key | pynput_keyboard.KeyCode | None) -> None:
-            key: KeySpec | None = _key_to_KeySpec(self.shared_data, k)
+            key: KeySpec | None = key_to_KeySpec(self.shared_data, k)
 
             if not key:
                 return
@@ -1127,10 +1081,10 @@ class PopupManager:
     def make_link_skill_select_popup(
         self,
         anchor: QWidget,
-        skill_names: list[str],
+        skill_ids: list[str],
         on_selected: Callable[[str], None],
     ) -> None:
-        """연계스킬 편집용 스킬 선택 팝업 (5열 그리드)."""
+        """연계스킬 편집 페이지 스킬 선택 팝업"""
 
         # 매크로 실행 중일 때는 무시
         if self.shared_data.is_activated:
@@ -1143,12 +1097,12 @@ class PopupManager:
         self._active_popup = PopupKind.LINK_SKILL_SELECT
 
         content = SkillGridSelectContent(
-            shared_data=self.shared_data, skill_names=skill_names
+            shared_data=self.shared_data, skill_ids=skill_ids
         )
 
-        def _picked(name: str) -> None:
+        def _picked(skill_id: str) -> None:
             self.close_popup()
-            on_selected(name)
+            on_selected(skill_id)
 
         content.selected.connect(_picked)
 
@@ -1162,12 +1116,15 @@ class PopupManager:
 class SkillGridSelectContent(QFrame):
     """스킬 선택용 그리드 컨텐츠"""
 
+    # todo: 스킬 이름을 확인할 수 있도록 개선
+    # todo: 스킬을 선택하는 모든 팝업에 재사용 가능하도록 수정
+
     selected = pyqtSignal(str)
 
     def __init__(
         self,
         shared_data: SharedData,
-        skill_names: list[str],
+        skill_ids: list[str],
     ) -> None:
         super().__init__()
 
@@ -1198,22 +1155,23 @@ class SkillGridSelectContent(QFrame):
         grid.setVerticalSpacing(spacing)
 
         # 버튼들
-        for idx, name in enumerate(skill_names):
+        # todo: 마지막 줄 가운데 정렬로 변경
+        for idx, skill_id in enumerate(skill_ids):
             r: int = idx // columns
             c: int = idx % columns
 
             btn = QPushButton(container)
             btn.setFixedSize(button_size, button_size)
-            btn.setIcon(QIcon(get_skill_pixmap(shared_data, name)))
+            btn.setIcon(QIcon(get_skill_pixmap(shared_data, skill_id)))
             btn.setIconSize(QSize(icon_size, icon_size))
-            btn.setToolTip(name)
+            btn.setToolTip(get_skill_name(shared_data, skill_id))
             btn.setStyleSheet(
                 """
                 QPushButton { background-color: white; border-radius: 10px; border: 1px solid #dddddd; }
                 QPushButton:hover { background-color: #eeeeee; }
                 """
             )
-            btn.clicked.connect(lambda _, n=name: self.selected.emit(n))
+            btn.clicked.connect(lambda _, sid=skill_id: self.selected.emit(sid))
 
             grid.addWidget(btn, r, c)
 
@@ -1228,14 +1186,16 @@ class SkillGridSelectContent(QFrame):
         # 보여줄 최대 행 수만큼 높이 제한(스크롤로 나머지 보기)
         visible_rows: int = min(
             max_visible_rows,
-            (len(skill_names) + columns - 1) // columns,
+            (len(skill_ids) + columns - 1) // columns,
         )
         estimated_h: int = margin * 2 + visible_rows * (button_size + spacing) - spacing
         scroll.setFixedHeight(estimated_h)
 
 
 class ConfirmRemovePopup(QFrame):
-    def __init__(self, master: MainUI, tab_name: str, tab_index: int):
+    """탭 삭제 확인 팝업 (사용되지 않음)"""
+
+    def __init__(self, master: MainUI, tab_name: str, tab_index: int) -> None:
         # QFrame의 부모를 master(MainUI)의 master(MainWindow)로 설정
         super().__init__(master.master)
 
@@ -1298,13 +1258,13 @@ class ConfirmRemovePopup(QFrame):
         main_layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(main_layout)
 
-    def on_yes_clicked(self):
+    def on_yes_clicked(self) -> None:
         self.master.on_remove_tab_popup_clicked(
             index=self.tab_index,
             confirmed=True,
         )
 
-    def on_no_clicked(self):
+    def on_no_clicked(self) -> None:
         self.master.on_remove_tab_popup_clicked(
             index=self.tab_index,
             confirmed=False,

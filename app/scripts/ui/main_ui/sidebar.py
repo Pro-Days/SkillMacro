@@ -35,8 +35,9 @@ from app.scripts.macro_models import (
 )
 from app.scripts.misc import (
     convert_resource_path,
-    get_available_skills,
+    get_every_skills,
     get_skill_details,
+    get_skill_name,
     get_skill_pixmap,
     is_key_using,
 )
@@ -59,7 +60,6 @@ if TYPE_CHECKING:
 class Sidebar(QFrame):
     """좌측 사이드바 클래스"""
 
-    # 데이터 변경 시그널
     dataChanged = pyqtSignal()
 
     def __init__(
@@ -76,7 +76,6 @@ class Sidebar(QFrame):
         self.master: MainWindow = master
         self.shared_data: SharedData = shared_data
 
-        # Current preset context (set by MainUI when tab changes)
         self.preset: MacroPreset = preset
         self.preset_index: int = preset_index
 
@@ -787,7 +786,7 @@ class SkillSettings(QFrame):
             }
         """
 
-        self._skill_names: list[str] = []
+        self._skill_ids: list[str] = []
         self._usage_btns: list[QPushButton] = []
         self._sole_btns: list[QPushButton] = []
         self._priority_btns: list[QPushButton] = []
@@ -871,31 +870,32 @@ class SkillSettings(QFrame):
                 self._grid_layout.removeWidget(w)
                 w.deleteLater()
 
-        self._skill_names = []
+        self._skill_ids = []
         self._usage_btns = []
         self._sole_btns = []
         self._priority_btns = []
 
-    def _ensure_rows(self, skill_names: list[str]) -> None:
+    def _ensure_rows(self, skill_ids: list[str]) -> None:
         """스킬 행 생성"""
 
-        if skill_names == self._skill_names:
+        if skill_ids == self._skill_ids:
             return
 
         self._clear_rows()
-        self._skill_names = skill_names.copy()
+        self._skill_ids = skill_ids.copy()
 
-        for idx, name in enumerate(self._skill_names):
-            # icon
+        for idx, skill_id in enumerate(self._skill_ids):
+            # 스킬 아이콘
+            # todo: 스킬 이름을 표시하도록 변경
             pixmap: QPixmap = get_skill_pixmap(
-                shared_data=self.shared_data, skill_name=name
+                shared_data=self.shared_data, skill_id=skill_id
             )
             skill_image: SkillImage = SkillImage(parent=self, pixmap=pixmap, size=30)
             self._grid_layout.addWidget(
                 skill_image, idx + 1, 0, Qt.AlignmentFlag.AlignCenter
             )
 
-            # usage
+            # 스킬 사용 여부
             usage_btn = QPushButton()
             usage_btn.setStyleSheet(self._check_btn_style)
             usage_btn.setIconSize(QSize(40, 40))
@@ -909,7 +909,7 @@ class SkillSettings(QFrame):
             )
             self._usage_btns.append(usage_btn)
 
-            # sole
+            # 스킬 단독 사용 여부
             sole_btn = QPushButton()
             sole_btn.setStyleSheet(self._check_btn_style)
             sole_btn.setIconSize(QSize(40, 40))
@@ -921,7 +921,7 @@ class SkillSettings(QFrame):
             )
             self._sole_btns.append(sole_btn)
 
-            # priority
+            # 스킬 우선순위
             priority_btn = QPushButton("-")
             priority_btn.setFont(CustomFont(12))
             priority_btn.setFixedWidth(40)
@@ -937,13 +937,13 @@ class SkillSettings(QFrame):
     def update_from_preset(self, preset: "MacroPreset") -> None:
         """프리셋으로부터 위젯 상태를 업데이트"""
 
-        skill_names: list[str] = self.shared_data.skill_data[preset.settings.server_id][
-            "skills"
-        ]
-        self._ensure_rows(skill_names)
+        skill_ids: list[str] = self.shared_data.skill_registries[
+            preset.settings.server_id
+        ].all_skill_ids()
+        self._ensure_rows(skill_ids)
 
-        for idx, name in enumerate(self._skill_names):
-            setting: SkillUsageSetting = preset.usage_settings[name]
+        for idx, skill_id in enumerate(self._skill_ids):
+            setting: SkillUsageSetting = preset.usage_settings[skill_id]
 
             usage_icon = QIcon(
                 QPixmap(
@@ -970,9 +970,9 @@ class SkillSettings(QFrame):
         """사용 여부 변경"""
 
         preset: MacroPreset = self._get_preset()
-        skill_name: str = self._skill_names[skill_idx]
+        skill_id: str = self._skill_ids[skill_idx]
 
-        setting: SkillUsageSetting = preset.usage_settings[skill_name]
+        setting: SkillUsageSetting = preset.usage_settings[skill_id]
 
         setting.is_use_skill = not setting.is_use_skill
 
@@ -984,9 +984,9 @@ class SkillSettings(QFrame):
         """단독 사용 변경"""
 
         preset: MacroPreset = self._get_preset()
-        skill_name: str = self._skill_names[skill_idx]
+        skill_id: str = self._skill_ids[skill_idx]
 
-        setting: SkillUsageSetting | None = preset.usage_settings[skill_name]
+        setting: SkillUsageSetting = preset.usage_settings[skill_id]
 
         setting.is_use_sole = not setting.is_use_sole
 
@@ -998,13 +998,13 @@ class SkillSettings(QFrame):
         """스킬 우선순위 변경"""
 
         preset: MacroPreset = self._get_preset()
-        skill_name: str = self._skill_names[skill_idx]
+        skill_id: str = self._skill_ids[skill_idx]
 
         # 장착된 스킬이 아니면 무시
-        if skill_name not in preset.skills.active_skills:
+        if skill_id not in preset.skills.active_skills:
             return
 
-        setting: SkillUsageSetting = preset.usage_settings[skill_name]
+        setting: SkillUsageSetting = preset.usage_settings[skill_id]
 
         current = int(setting.skill_priority)
 
@@ -1227,7 +1227,7 @@ class LinkSkillSettings(QFrame):
 
                     pixmap: QPixmap = get_skill_pixmap(
                         shared_data=self.shared_data,
-                        skill_name=data.skills[i],
+                        skill_id=data.skills[i],
                     )
 
                     skill = SkillImage(parent=slot_frame, pixmap=pixmap, size=icon_size)
@@ -1520,11 +1520,13 @@ class LinkSkillEditor(QFrame):
             key_type == LinkKeyType.OFF, key_type == LinkKeyType.ON
         )
 
-    def _get_all_skill_names(self) -> list[str]:
-        """프리셋의 전체 스킬 목록을 반환"""
+    def _get_all_skill_ids(self) -> list[str]:
+        """프리셋 서버의 전체 스킬 ID 목록을 반환"""
 
         preset: MacroPreset = self._get_preset()
-        return self.shared_data.skill_data[preset.settings.server_id]["skills"]
+        return self.shared_data.skill_registries[
+            preset.settings.server_id
+        ].all_skill_ids()
 
     def _refresh_skill_items(self) -> None:
         """self.data['skills']로 스킬 구성 UI를 다시 그림"""
@@ -1566,12 +1568,12 @@ class LinkSkillEditor(QFrame):
         # anchor: i번째 SkillItem의 스킬 버튼
         anchor_btn: QPushButton = self._skill_item_widgets[i].skill
 
-        def apply(skill_name: str) -> None:
-            self.change_skill(i, skill_name)
+        def apply(skill_id: str) -> None:
+            self.change_skill(i, skill_id)
 
         self.popup_manager.make_link_skill_select_popup(
             anchor=anchor_btn,
-            skill_names=self._get_all_skill_names(),
+            skill_ids=self._get_all_skill_ids(),
             on_selected=apply,
         )
 
@@ -1652,22 +1654,22 @@ class LinkSkillEditor(QFrame):
             apply,
         )
 
-    def change_skill(self, i: int, skill_name: str) -> None:
-        """i번째 스킬을 skill_name으로 변경"""
+    def change_skill(self, i: int, skill_id: str) -> None:
+        """i번째 스킬을 skill_id로 변경"""
 
         self.popup_manager.close_popup()
 
         # 동일 스킬 선택 시 무시
-        if self.data.skills[i] == skill_name:
+        if self.data.skills[i] == skill_id:
             return
 
-        # 스킬명 설정, 사용횟수 초기화
-        self.data.skills[i] = skill_name
+        # 스킬명 설정 초기화
+        self.data.skills[i] = skill_id
 
         # 수동 사용으로 변경
         self.data.set_manual()
 
-        if self.is_skill_exceeded(skill_name):
+        if self.is_skill_exceeded(skill_id):
             self.popup_manager.make_notice_popup("exceedMaxLinkSkill")
 
         self._after_data_changed(update_skills=True)
@@ -1690,23 +1692,23 @@ class LinkSkillEditor(QFrame):
 
         self.popup_manager.close_popup()
 
-        all_skills: list[str] = self._get_all_skill_names()
+        all_skills: list[str] = self._get_all_skill_ids()
         for i in all_skills:
             # 아직 추가되지 않은 스킬이면 추가
             if i not in self.data.skills:
-                name: str = i
+                skill_id: str = i
                 break
         else:
             # 모든 스킬이 추가되어 있으면 첫 번째 스킬 추가
-            name = all_skills[0]
+            skill_id = all_skills[0]
 
-        self.data.skills.append(name)
+        self.data.skills.append(skill_id)
 
         # 수동 사용으로 변경
         self.data.set_manual()
 
         # 최대 사용 횟수 초과 시 알림 팝업 생성
-        if self.is_skill_exceeded(name):
+        if self.is_skill_exceeded(skill_id):
             self.popup_manager.make_notice_popup("exceedMaxLinkSkill")
 
         self._after_data_changed(update_skills=True)
@@ -1748,10 +1750,10 @@ class LinkSkillEditor(QFrame):
         self.saved.emit()
         self.closed.emit()
 
-    def is_skill_exceeded(self, skill_name: str) -> bool:
+    def is_skill_exceeded(self, skill_id: str) -> bool:
         """연계스킬에서 특정 스킬의 최대 사용 횟수를 초과하는지 확인"""
 
-        count: int = self.data.skills.count(skill_name)
+        count: int = self.data.skills.count(skill_id)
 
         # 최대 사용 횟수 초과 여부 반환
         return count > 1
@@ -1770,14 +1772,17 @@ class LinkSkillEditor(QFrame):
 
             self.index: int = int(index)
 
+            skill_id: str = name
+
             self.skill = QPushButton()
             self.skill.clicked.connect(self._emit_change)
-            self.skill.setIcon(QIcon(get_skill_pixmap(shared_data, name)))
+            self.skill.setIcon(QIcon(get_skill_pixmap(shared_data, skill_id)))
             # skill.setIconSize(QSize(50, 50))
             self.skill.setIconSize(QSize(36, 36))
             self.skill.setFixedSize(44, 44)
             self.skill.setToolTip(
-                "연계스킬을 구성하는 스킬의 목록과 사용 횟수를 설정할 수 있습니다.\n하나의 스킬이 너무 많이 사용되면 연계가 정상적으로 작동하지 않을 수 있습니다."
+                "연계스킬을 구성하는 스킬의 목록과 사용 횟수를 설정할 수 있습니다.\n"
+                "하나의 스킬이 너무 많이 사용되면 연계가 정상적으로 작동하지 않을 수 있습니다."
             )
             self.skill.setCursor(Qt.CursorShape.PointingHandCursor)
 

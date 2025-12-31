@@ -1,20 +1,21 @@
 {
     "한월 RPG": {
         "skills": [
-            "스킬1",
-            "스킬2",
-            "스킬3",
-            "스킬4",
-            "스킬5",
-            "스킬6",
-            "스킬7",
-            "스킬8",
-            "스킬9",
-            "스킬10"
+            "builtin:한월 RPG:스킬1",
+            "builtin:한월 RPG:스킬2",
+            "builtin:한월 RPG:스킬3",
+            "builtin:한월 RPG:스킬4",
+            "builtin:한월 RPG:스킬5",
+            "builtin:한월 RPG:스킬6",
+            "builtin:한월 RPG:스킬7",
+            "builtin:한월 RPG:스킬8",
+            "builtin:한월 RPG:스킬9",
+            "builtin:한월 RPG:스킬10",
+            "builtin:한월 RPG:평타"
         ],
         "skill_details": {
-            "스킬1": {
-                "image_id": 1001,
+            "builtin:한월 RPG:스킬1": {
+                "name": "스킬1",
                 "cooltime": 4.0,
                 "levels": {
                     "1": [
@@ -26,8 +27,8 @@
                     ]
                 }
             },
-            "스킬2": {
-                "image_id": 1002,
+            "builtin:한월 RPG:스킬2": {
+                "name": "스킬2",
                 "cooltime": 5.0,
                 "levels": {
                     "1": [
@@ -39,8 +40,8 @@
                     ]
                 }
             },
-            "스킬3": {
-                "image_id": 1003,
+            "builtin:한월 RPG:스킬3": {
+                "name": "스킬3",
                 "cooltime": 10.0,
                 "levels": {
                     "1": [
@@ -52,8 +53,8 @@
                     ]
                 }
             },
-            "스킬4": {
-                "image_id": 1004,
+            "builtin:한월 RPG:스킬4": {
+                "name": "스킬4",
                 "cooltime": 20.0,
                 "levels": {
                     "1": [
@@ -67,8 +68,8 @@
                     ]
                 }
             },
-            "스킬5": {
-                "image_id": 1005,
+            "builtin:한월 RPG:스킬5": {
+                "name": "스킬5",
                 "cooltime": 2.0,
                 "levels": {
                     "1": [
@@ -80,8 +81,8 @@
                     ]
                 }
             },
-            "스킬6": {
-                "image_id": 1006,
+            "builtin:한월 RPG:스킬6": {
+                "name": "스킬6",
                 "cooltime": 30.0,
                 "levels": {
                     "1": [
@@ -95,8 +96,8 @@
                     ]
                 }
             },
-            "스킬7": {
-                "image_id": 1007,
+            "builtin:한월 RPG:스킬7": {
+                "name": "스킬7",
                 "cooltime": 5.0,
                 "levels": {
                     "1": [
@@ -118,8 +119,8 @@
                     ]
                 }
             },
-            "스킬8": {
-                "image_id": 1008,
+            "builtin:한월 RPG:스킬8": {
+                "name": "스킬8",
                 "cooltime": 4.0,
                 "levels": {
                     "1": [
@@ -131,8 +132,8 @@
                     ]
                 }
             },
-            "스킬9": {
-                "image_id": 1009,
+            "builtin:한월 RPG:스킬9": {
+                "name": "스킬9",
                 "cooltime": 4.0,
                 "levels": {
                     "1": [
@@ -144,8 +145,8 @@
                     ]
                 }
             },
-            "스킬10": {
-                "image_id": 1008,
+            "builtin:한월 RPG:스킬10": {
+                "name": "스킬10",
                 "cooltime": 4.0,
                 "levels": {
                     "1": [
@@ -153,6 +154,19 @@
                             "time": 0.0,
                             "type": "attack",
                             "value": 2.9
+                        }
+                    ]
+                }
+            },
+            "builtin:한월 RPG:평타": {
+                "name": "평타",
+                "cooltime": 1.0,
+                "levels": {
+                    "1": [
+                        {
+                            "time": 0.0,
+                            "type": "attack",
+                            "value": 1.0
                         }
                     ]
                 }
