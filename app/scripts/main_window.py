@@ -66,10 +66,6 @@ class MainWindow(QWidget):
         # 키보드 입력 감지
         Thread(target=checking_kb_thread, args=[self.shared_data], daemon=True).start()
 
-        # 스킬 미리보기 쓰레드
-        # self.preview_timer: QTimer = QTimer(self)
-        # self.preview_timer.singleShot(100, self.tick)
-
         # 버전 확인 쓰레드
         if self.shared_data.IS_VERSION_CHECK_ENABLED:
             self.version_timer: QTimer = QTimer(self)
@@ -261,15 +257,6 @@ class MainWindow(QWidget):
         self.show()
 
         # self.change_layout(1)
-
-    def tick(self) -> None:  # main_ui로 이동
-        """
-        스킬 미리보기 표시
-        """
-
-        # self.preview_timer.singleShot(100, self.tick)
-        # self.main_ui.show_preview_skills()
-        pass
 
     ## 마우스 클릭하면 실행
     def mousePressEvent(self, a0: Any) -> None:

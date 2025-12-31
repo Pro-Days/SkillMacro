@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import QRect, QSize, Qt, pyqtSignal
+from PyQt6.QtCore import QRect, QSize, Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QColor, QIcon, QPixmap
 from PyQt6.QtWidgets import (
     QFrame,
@@ -62,6 +62,11 @@ class MainUI(QFrame):
         self.shared_data: SharedData = shared_data
         self.ui_var = UI_Variable()
 
+        # 프리뷰 업데이트 타이머
+        self._preview_timer: QTimer = QTimer(self)
+        self._preview_timer.timeout.connect(self._tick_preview_update)
+        self._preview_timer.start(100)
+
         self.tab_widget = TabWidget(self, self.shared_data)
 
         # Tab 내부 이벤트를 MainUI에서 처리
@@ -88,6 +93,14 @@ class MainUI(QFrame):
         layout.setContentsMargins(30, 30, 30, 10)
         layout.setSpacing(0)
         self.setLayout(layout)
+
+    def _tick_preview_update(self) -> None:
+        """매크로 실행 중일 때만 프리뷰 업데이트"""
+
+        # if not self.shared_data.is_activated:
+        #     return
+
+        self.tab_widget.get_current_tab().update_preview()
 
     def emit_preset_changed(self) -> None:
         """Emit presetChanged for the currently selected tab.
@@ -794,8 +807,10 @@ class SkillPreview(QFrame):
             init_macro(self.shared_data)
             add_task_list(self.shared_data)
 
+        task_list: list[int] = self.shared_data.task_list.copy()
+
         # 표시할 스킬 개수 (최대 6개)
-        count: int = min(len(self.shared_data.task_list), 6)
+        count: int = min(len(task_list), 6)
 
         # 기존 아이콘 정리
         for icon in self.skills:
@@ -805,7 +820,7 @@ class SkillPreview(QFrame):
         self.skills.clear()
 
         # 각 미리보기 스킬 이미지 추가
-        for slot in self.shared_data.task_list[:count]:
+        for slot in task_list[:count]:
             pixmap: QPixmap = get_skill_pixmap(
                 self.shared_data, skill_id=self.shared_data.equipped_skills[slot]
             )
