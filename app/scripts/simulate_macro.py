@@ -789,8 +789,20 @@ def get_simulated_skills(
             # 스킬 쿨타임 타이머 설정
             skill_cooltime_timers_ms[slot] = elapsed_time_ms
 
-        # 현재 시간 증가
-        elapsed_time_ms += int(shared_data.delay)
+            # 현재 시간 증가
+            elapsed_time_ms += int(shared_data.delay)
+
+        # task_list가 비어있다면 가장 가까운 쿨타임이 지난 스킬까지 시간 점프
+        else:
+            # 쿨타임이 가장 짧게 남은 스킬까지 시간 점프
+            next_cooltime_ms: int = min(
+                skill_cooltimes_ms[slot]
+                - (elapsed_time_ms - skill_cooltime_timers_ms[slot])
+                for slot in equipped_slots
+                if slot not in prepared_skills
+            )
+
+            elapsed_time_ms += next_cooltime_ms
 
     # 스킬 세부사항 모으기
     attack_details: list[SimAttack] = []

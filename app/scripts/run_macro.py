@@ -129,6 +129,7 @@ def checking_kb_thread(shared_data: SharedData) -> NoReturn:
 def running_macro_thread(shared_data: SharedData, loop_num: int) -> None:
     """
     매크로 메인 쓰레드
+    시뮬레이션과 약간의 오차가 있지만 무시할만 함 (나중에 개선 예정)
     """
 
     # 매크로 초기 설정
@@ -232,7 +233,10 @@ def init_macro(shared_data: SharedData) -> None:
 
 
 def use_skill(shared_data: SharedData, loop_num: int) -> bool:
-    """스킬 사용 함수"""
+    """
+    스킬 사용 함수
+    return: 스킬 사용 여부
+    """
 
     # pynput 키보드 컨트롤러 생성
     kbd_controller = keyboard.Controller()
