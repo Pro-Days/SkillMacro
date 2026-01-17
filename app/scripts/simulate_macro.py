@@ -13,8 +13,9 @@ from app.scripts.custom_classes import (
     SimSkillApplyDelay,
     Stats,
 )
+from app.scripts.macro_models import LinkUseType
 from app.scripts.misc import get_skill_details
-from app.scripts.run_macro import add_task_list, init_macro
+from app.scripts.run_macro import get_prepared_link_skill_indices
 from app.scripts.skill_registry import get_builtin_skill_id
 
 if TYPE_CHECKING:
@@ -560,6 +561,133 @@ def simulate(
     )
 
 
+def _get_skill_sequence(shared_data: SharedData) -> tuple[int, ...]:
+    """
+    스킬 사용 순서 반환
+    """
+
+    skill_sequence: list[int] = []
+
+    # 사용 우선순위에 등록되어있는 스킬 순서대로 등록
+    for target_priority in range(1, 7):
+        for skill, priority in shared_data.skill_priority.items():
+            if priority == target_priority:
+                # 우선순위 있는 스킬은 모두 장착되어있음
+                slot: int = shared_data.equipped_skills.index(skill)
+
+                skill_sequence.append(slot)
+
+    # 우선순위 등록 안된 스킬 모두 등록
+    for i in range(6):
+        if i not in skill_sequence:
+            skill_sequence.append(i)
+
+    return tuple(skill_sequence)
+
+
+def _get_task_list(
+    shared_data: SharedData,
+    prepared_skills: set[int],
+    link_skills_requirements: list[list[int]],
+    using_link_skills: list[list[int]],
+    equipped_skills: list[str],
+) -> list[int]:
+
+    task_list: list[int] = []
+
+    # 연계스킬 사용
+    # 준비된 연계스킬 리스트 인덱스
+    prepared_link_skill_indices: list[int] = get_prepared_link_skill_indices(
+        prepared_skills=prepared_skills,
+        link_skills_requirements=link_skills_requirements,
+    )
+
+    skill_sequence: tuple[int, ...] = _get_skill_sequence(shared_data)
+
+    # 준비된 연계스킬이 있다면
+    if prepared_link_skill_indices:
+        # 준비된 연계스킬 중 첫 번째에 포함된 스킬들 모두 task_list에 추가
+        for skill in using_link_skills[prepared_link_skill_indices[0]]:
+            # 준비된 스킬 리스트에서 제거
+            prepared_skills.discard(skill)
+
+            # task_list에 추가
+            task_list.append(skill)
+
+        return task_list
+
+    # 연계스킬을 사용하지 않는다면 준비된 스킬 정렬 순서대로 사용 (스킬 하나만 사용)
+    # 연계스킬 사용중인 스킬 전부 모으기
+    link_skill_reqs: list[int] = sum(link_skills_requirements, [])
+
+    # 스킬 정렬 순서대로 검사
+    for skill in skill_sequence:
+        # 연계스킬 O & 단독 사용 O -> O
+        # 연계스킬 O & 단독 사용 X -> X
+        # 연계스킬 X & 사용 O -> O
+        # 연계스킬 X & 사용 X -> X
+
+        if (
+            # 스킬이 준비되었고
+            skill in prepared_skills
+            # 연계스킬에 포함되었고
+            and skill in link_skill_reqs
+            # 단독 사용 옵션이 켜져있다면
+            and shared_data.is_use_sole[equipped_skills[skill]]
+        ):
+            # task_list에 추가
+            task_list.append(skill)
+
+            # 준비된 스킬 리스트에서 해당 스킬 제거
+            prepared_skills.discard(skill)
+
+            return task_list
+
+        elif (
+            # 스킬이 준비되었고
+            skill in prepared_skills
+            # 연계스킬에 포함되지 않았고
+            and skill not in link_skill_reqs
+            # 사용 옵션이 켜져있다면
+            and shared_data.is_use_skill[equipped_skills[skill]]
+        ):
+            # task_list에 스킬 추가
+            task_list.append(skill)
+
+            # 준비된 스킬 리스트에서 해당 스킬 제거
+            prepared_skills.discard(skill)
+
+            return task_list
+
+    return task_list
+
+
+# 쿨타임 지난 스킬들 업데이트
+def _update_skill_cooltimes(
+    equipped_slots: list[int],
+    skill_cooltime_timers_ms: list[int],
+    skill_cooltimes_ms: dict[int, int],
+    elapsed_time_ms: int,
+    prepared_skills: set[int],
+) -> None:
+    """
+    쿨타임이 지난 스킬들을 준비된 스킬 리스트에 추가
+    """
+
+    # 각 장착된 스킬에 대해
+    for slot in equipped_slots:
+        # 스킬 쿨타임이 지났는지 확인
+        if (
+            # 스킬 사용해서 쿨타임 기다리는 중이고
+            slot not in prepared_skills
+            # 쿨타임이 지났다면
+            and (elapsed_time_ms - skill_cooltime_timers_ms[slot])
+            >= skill_cooltimes_ms[slot]
+        ):
+            # 준비된 스킬 리스트에 추가
+            prepared_skills.add(slot)
+
+
 def get_simulated_skills(
     shared_data: SharedData,
     cooltimeReduce: int | float,
@@ -567,127 +695,147 @@ def get_simulated_skills(
 ) -> tuple[list[SimAttack], list[SimBuff]]:
     """
     사용한 스킬 목록을 반환하는 함수
-    스킬 쿨타임 감소 스텟을 증가시키는 스킬이 있을 수 있기 때문에 로직을 수정해야함.
+    스킬 쿨타임 감소 스텟을 증가시키는 스킬이 있을 수 있기 때문에 로직을 수정해야함
     실제와 다른 경우가 있어서 시뮬레이션 진행할 때 옵션 추가해야함
     """
 
     # 시뮬레이션 초기 설정
-    init_macro(shared_data=shared_data)
 
-    # 시뮬레이션 변수 초기화
+    # 장착한 스킬 리스트
+    equipped_skills: list[str] = shared_data.equipped_skills.copy()
 
-    # 지난 시간 (ms)
-    elapsed_time: int = 0
-    # 다음 테스크 실행까지 대기 시간 (ms)
-    delay_to_next_task: int = 0
+    # 장착된 스킬 슬롯 번호들
+    equipped_slots: list[int] = [
+        slot
+        for slot in range(shared_data.USABLE_SKILL_COUNT[shared_data.server_ID])
+        if equipped_skills[slot]
+    ]
 
-    used_skills: list[SimSkill] = []
+    # 사용 가능한 스킬 리스트: slot
+    prepared_skills: set[int] = set(equipped_slots)
 
-    basic_attack_skill_id: str = get_builtin_skill_id(shared_data.server_ID, "평타")
+    # 매크로 작동 중 사용하는 연계스킬 리스트 -> dict로 변환
+    using_link_skills: list[list[int]] = [
+        [equipped_skills.index(name) for name in link_skill.skills]
+        for link_skill in shared_data.link_skills
+        if link_skill.use_type == LinkUseType.AUTO
+    ]
 
-    # 스킬 남은 쿨타임 : [0, 0, 0, 0, 0, 0]
-    # ms 단위
-    # isUsed이면 shared_data.unitTime(x1000)씩 증가, 쿨타임이 지나면 0으로 초기화
-    skill_cooltime_timers: list[int] = [0] * shared_data.USABLE_SKILL_COUNT[
+    # 연계스킬 수행에 필요한 스킬 정보 리스트
+    link_skills_requirements: list[list[int]] = [
+        [slot for slot in link_skill] for link_skill in using_link_skills
+    ]
+
+    # 스킬 남은 쿨타임 (ms 단위)
+    skill_cooltime_timers_ms: list[int] = [0] * shared_data.USABLE_SKILL_COUNT[
         shared_data.server_ID
     ]
 
-    # 스킬 사용 가능 여부
-    is_skills_ready: list[bool] = [True] * shared_data.USABLE_SKILL_COUNT[
-        shared_data.server_ID
-    ]
+    # 장착된 스킬의 쿨타임 감소 스탯이 적용된 쿨타임
+    skill_cooltimes_ms: dict[int, int] = {
+        slot: int(
+            get_skill_details(
+                shared_data=shared_data,
+                skill_id=equipped_skills[slot],
+            )["cooltime"]
+            * (100 - shared_data.cooltime_reduction)
+            * 10
+        )
+        for slot in equipped_slots
+    }
 
     # 스킬 레벨
     skill_levels: dict[str, int] = dict(skill_levels_tuple)
 
+    # 수행할 스킬 리스트
+    task_list: list[int] = []
+
+    # 사용한 스킬 기록
+    used_skills: list[SimSkill] = []
+
+    # 지난 시간 (ms)
+    elapsed_time_ms: int = 0
+
     # 60초 미만 시뮬레이션
     # 0초를 포함하기 때문
-    while elapsed_time < 60000:
-        add_task_list(shared_data)
+    while elapsed_time_ms < 60000:
+        if not task_list:
+            # 쿨타임이 지난 스킬들 업데이트
+            _update_skill_cooltimes(
+                equipped_slots=equipped_slots,
+                skill_cooltime_timers_ms=skill_cooltime_timers_ms,
+                skill_cooltimes_ms=skill_cooltimes_ms,
+                elapsed_time_ms=elapsed_time_ms,
+                prepared_skills=prepared_skills,
+            )
+
+            task_list = _get_task_list(
+                shared_data=shared_data,
+                prepared_skills=prepared_skills,
+                link_skills_requirements=link_skills_requirements,
+                using_link_skills=using_link_skills,
+                equipped_skills=equipped_skills,
+            )
 
         # 스킬 사용
-        # 태스크 리스트가 있고 남은 지연 시간이 없으면
-        if shared_data.task_list and not delay_to_next_task:
-            # 스킬 슬롯
-            slot: int = shared_data.task_list.pop(0)
+        if task_list:
+            # 사용할 스킬 슬롯
+            slot: int = task_list.pop(0)
 
             used_skills.append(
-                SimSkill(skill_id=shared_data.equipped_skills[slot], time=elapsed_time)
+                SimSkill(skill_id=equipped_skills[slot], time=elapsed_time_ms)
             )
-            is_skills_ready[slot] = False
-            delay_to_next_task = shared_data.delay
 
-        # 스킬 쿨타임
-        for slot in range(shared_data.USABLE_SKILL_COUNT[shared_data.server_ID]):  # 0~6
-            # 스킬이 장착되어있지 않으면 continue
-            if not shared_data.equipped_skills[slot]:
-                continue
+            # 스킬 쿨타임 타이머 설정
+            skill_cooltime_timers_ms[slot] = elapsed_time_ms
 
-            # 스킬 사용해서 쿨타임 기다리는 중이면
-            if not is_skills_ready[slot]:
-                # 쿨타임 타이머 UNIT_TIME(1tick) 100배 만큼 증가
-                skill_cooltime_timers[slot] += int(shared_data.UNIT_TIME * 100)
-
-                # 쿨타임이 지나면
-                if skill_cooltime_timers[slot] >= int(
-                    get_skill_details(
-                        shared_data=shared_data,
-                        skill_id=shared_data.equipped_skills[slot],
-                    )["cooltime"]
-                    * (100 - cooltimeReduce)
-                ):
-                    # 대기열에 추가
-                    shared_data.prepared_skills[2].append(slot)
-                    # 사용 가능 표시
-                    is_skills_ready[slot] = True
-
-                    skill_cooltime_timers[slot] = 0  # 쿨타임 초기화
-
-        # 다음 테스크까지 대기 시간 감소
-        delay_to_next_task = max(
-            0, delay_to_next_task - int(shared_data.UNIT_TIME * 1000)
-        )
         # 현재 시간 증가
-        elapsed_time += int(shared_data.UNIT_TIME * 1000)
-
-    # 평타 추가
-    # 평타는 1초마다 사용
-    # 1초는 임시로 설정한 값이며, 실제 서버에서의 시간을 설정해야 함.
-    # ms 단위로 사용
-    delay: int = int((100 - cooltimeReduce) * 10 * 1)
-    for t in range(0, 60000, delay):
-        used_skills.append(SimSkill(skill_id=basic_attack_skill_id, time=t))
-
-    # 시간 단위를 1초로 변경
-    # 반올림은 0.01초 단위로
-    for used_skill in used_skills:
-        used_skill.time = round(used_skill.time * 0.001, 2)
+        elapsed_time_ms += int(shared_data.delay)
 
     # 스킬 세부사항 모으기
     attack_details: list[SimAttack] = []
     buff_details: list[SimBuff] = []
 
-    for skill in used_skills:
-        # 평타 (기본 공격)
-        if skill.skill_id == basic_attack_skill_id:
-            attack_details.append(
-                SimAttack(
-                    skill_id=basic_attack_skill_id,
-                    time=skill.time,
-                    damage=1.0,
-                )
-            )
-            continue
+    # 평타 (임시)1초마다 사용
+    default_delay_ms: int = 1000
+    delay_ms: int = int((100 - cooltimeReduce) * 0.01 * default_delay_ms)
 
-        # 스킬 효과: 공격 / 버프
-        skill_effects: dict = get_skill_details(
+    # 평타 스킬 ID
+    basic_attack_skill_id: str = get_builtin_skill_id(shared_data.server_ID, "평타")
+    for t in range(0, 60000, delay_ms):
+        attack_details.append(
+            SimAttack(
+                skill_id=basic_attack_skill_id,
+                time=round(t * 0.001, 2),
+                damage=1.0,
+            )
+        )
+
+    # 시간 단위를 초로 변경
+    # 반올림은 0.01초 단위로
+    for used_skill in used_skills:
+        used_skill.time = round(used_skill.time * 0.001, 2)
+
+    # 각 스킬 효과 리스트
+    skills_effects: dict[str, list[dict]] = {
+        skill_id: get_skill_details(
             shared_data=shared_data,
-            skill_id=skill.skill_id,
-        )["levels"][str(skill_levels[skill.skill_id])]
+            skill_id=skill_id,
+        )[
+            "levels"
+        ][str(skill_levels[skill_id])]
+        for skill_id in equipped_skills
+        if skill_id
+    }
+
+    # 사용한 스킬들에 대해 세부사항 저장
+    for skill in used_skills:
+        # 스킬 효과: 공격 / 버프
+        effects: list[dict] = skills_effects[skill.skill_id]
 
         # 각 effect에 대해
         # 공격 효과와 버프 효과를 구분하여 처리
-        for effect in skill_effects:
+        for effect in effects:
             # 공격
             if effect["type"] == "attack":
                 attack: SimAttack = SimAttack(

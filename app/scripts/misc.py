@@ -162,7 +162,7 @@ def get_skill_pixmap(shared_data: SharedData, skill_id: str = "") -> QPixmap:
     return colored
 
 
-def set_var_to_ClassVar(var: list | dict, value: list | dict) -> None:
+def set_var_to_ClassVar(var: list | dict | set, value: list | dict | set) -> None:
     """
     SharedData 클래스의 변수에 값을 설정
     """
@@ -177,8 +177,13 @@ def set_var_to_ClassVar(var: list | dict, value: list | dict) -> None:
         for key, v in value.items():
             var[key] = v
 
+    elif isinstance(var, set) and isinstance(value, set):
+        var.clear()
+        for v in value:
+            var.add(v)
+
     else:
-        raise TypeError("var와 value는 모두 list 또는 dict여야 합니다.")
+        raise TypeError("var와 value의 타입이 유효하지 않음")
 
 
 def get_every_skills(shared_data: SharedData) -> list[str]:

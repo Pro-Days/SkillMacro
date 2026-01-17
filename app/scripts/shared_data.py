@@ -405,15 +405,8 @@ class SharedData:
     # 매크로 실행 중 실행할 스킬 목록
     task_list: ClassVar[list[int]] = []
 
-    # 준비된 스킬 리스트
-    prepared_skills: ClassVar[list[list[int]]] = []
-
-    # 스킬 사용 가능 여부
-    is_skills_ready: ClassVar[list[bool]] = []
-
-    # 준비된 연계스킬 리스트
-    # todo: class로 변경
-    prepared_link_skill_indices: ClassVar[list[int]] = []
+    # 준비된 스킬 셋
+    prepared_skills: ClassVar[set[int]] = set()
 
     # 연계스킬 수행에 필요한 스킬 정보 리스트
     link_skills_requirements: ClassVar[list[list[int]]] = []

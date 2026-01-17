@@ -37,7 +37,7 @@ from app.scripts.misc import (
     get_skill_pixmap,
 )
 from app.scripts.popup import PopupManager
-from app.scripts.run_macro import add_task_list, init_macro
+from app.scripts.run_macro import build_preview_task_list, build_task_list, init_macro
 from app.scripts.shared_data import UI_Variable
 
 if TYPE_CHECKING:
@@ -65,7 +65,7 @@ class MainUI(QFrame):
         # 프리뷰 업데이트 타이머
         self._preview_timer: QTimer = QTimer(self)
         self._preview_timer.timeout.connect(self._tick_preview_update)
-        self._preview_timer.start(100)
+        self._preview_timer.start(10)
 
         self.tab_widget = TabWidget(self, self.shared_data)
 
@@ -792,6 +792,7 @@ class SkillPreview(QFrame):
 
         self.skill_count = 0
         self.skills: list[QLabel] = []
+        self.previous_task_list: tuple[int, ...] = ()
 
         self.skills_layout: QHBoxLayout = QHBoxLayout()
         self.skills_layout.setContentsMargins(6, 6, 6, 6)
@@ -802,12 +803,17 @@ class SkillPreview(QFrame):
     def update_preview(self) -> None:
         """프리뷰 업데이트"""
 
-        # 매크로가 실행중이 아니라면 매크로 초반 시뮬레이션 실행
+        # 매크로가 실행중이 아니라면 매크로 초기화 실행
         if not self.shared_data.is_activated:
             init_macro(self.shared_data)
-            add_task_list(self.shared_data)
 
-        task_list: list[int] = self.shared_data.task_list.copy()
+        task_list: tuple[int, ...] = build_preview_task_list(self.shared_data)
+
+        # 이전과 동일한 task_list라면 갱신하지 않음
+        if task_list == self.previous_task_list:
+            return
+
+        self.previous_task_list = task_list
 
         # 표시할 스킬 개수 (최대 6개)
         count: int = min(len(task_list), 6)
