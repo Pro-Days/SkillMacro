@@ -46,6 +46,8 @@ class DpmDistributionCanvas(pg.PlotWidget):
         self.getAxis("top").setStyle(showValues=False, tickLength=20)
         # 축 선 숨기기
         self.getAxis("top").setPen(None)
+        # (x1e+06) 같은 SI 스케일 표기 비활성화
+        self.getAxis("top").enableAutoSIPrefix(False)
 
         # 제목 폰트 설정
         font = CustomFont(14)
@@ -57,6 +59,12 @@ class DpmDistributionCanvas(pg.PlotWidget):
         # 아래쪽 축
         axis_bottom: pg.AxisItem = self.getAxis("bottom")
         axis_bottom.setStyle(showValues=True, tickLength=10)
+
+        # 지수 표기법 대신 천 단위 콤마 사용하도록 tickStrings 메서드 오버라이드
+        def tickStrings(values, scale, spacing) -> list[str]:
+            return [f"{v:,.0f}" for v in values]
+
+        axis_bottom.tickStrings = tickStrings
 
         # 축 폰트 설정
         axis_font = CustomFont(10)
@@ -686,6 +694,12 @@ class DMGCanvas(pg.PlotWidget):
         axis_left.setTextPen("black")
         # Y축 선 숨기기 (숫자는 표시하되 축 선은 숨김)
         axis_left.setPen(None)
+
+        # 지수 표기법 대신 천 단위 콤마 사용하도록 tickStrings 메서드 오버라이드
+        def tickStrings(values, scale, spacing):
+            return [f"{v:,.0f}" for v in values]
+
+        axis_left.tickStrings = tickStrings
 
         # 배경 색상 설정
         self.background_color = "#F8F8F8"
