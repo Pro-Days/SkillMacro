@@ -112,6 +112,8 @@ class SimulationState:
             "skill": True,
             # todo: sim_details로 변경
             "simDetails": True,
+            "sim3_stat": True,
+            "sim3_skill": True,
         }
     )
 

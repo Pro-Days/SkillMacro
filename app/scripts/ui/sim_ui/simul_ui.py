@@ -127,7 +127,10 @@ class SimUI:
 
     def change_layout(self, index: int) -> None:
         # 입력값 확인
-        if index in (1, 2, 3) and not all(app_state.simulation.is_input_valid.values()):
+        if index in (1, 2, 3) and not all(
+            app_state.simulation.is_input_valid[k]
+            for k in ("stat", "skill", "simDetails")
+        ):
             self.master.get_popup_manager().make_notice_popup("SimInputError")
 
             return
@@ -251,11 +254,11 @@ class Sim1UI(QFrame):
             # 첫 번째 입력 상자에 포커스 설정
             self.inputs[0].setFocus()
 
-            self.input_changed(None)
+            self.input_changed()
 
         # KVInput에서 bool
         # KVInput에 인덱스, 이름 저장 후 넘기기
-        def input_changed(self, _) -> None:
+        def input_changed(self) -> None:
             # 정상적으로 입력되었는지 확인
             def checkInput(num: int, text: str) -> bool:
                 if not text.isdigit():
@@ -307,11 +310,7 @@ class Sim1UI(QFrame):
             }
 
             # 스킬 입력 위젯 생성
-            self.skill_inputs = SkillInputs(
-                self,
-                skills_data,
-                self.input_changed,
-            )
+            self.skill_inputs = SkillInputs(self, skills_data, self.input_changed)
             self.inputs: list[CustomLineEdit] = self.skill_inputs.inputs
 
             # 레이아웃 설정
@@ -324,9 +323,9 @@ class Sim1UI(QFrame):
             # 크기 정책: 가로는 부모 크기 최대, 세로는 내용에 맞게 최소
             self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-            self.input_changed(None)
+            self.input_changed()
 
-        def input_changed(self, _) -> None:
+        def input_changed(self) -> None:
             # 정상적으로 입력되었는지 확인
             def checkInput(text: str) -> bool:
                 if not text.isdigit():
@@ -391,9 +390,9 @@ class Sim1UI(QFrame):
             # 크기 정책: 가로는 부모 크기 최대, 세로는 내용에 맞게 최소
             self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-            self.input_changed(None)
+            self.input_changed()
 
-        def input_changed(self, _) -> None:
+        def input_changed(self) -> None:
             # 정상적으로 입력되었는지 확인
             def checkInput(num, text) -> bool:
                 if not text.isdigit():
@@ -771,7 +770,7 @@ class Sim3UI(QFrame):
             # 요구량 계산
             reqStats: list[float] = get_req_stats(
                 powers,
-                [spec.label for spec in config.specs.STATS.values()][right_index],
+                list(config.specs.STATS.keys())[right_index],
             )
 
             # 텍스트 설정
@@ -780,7 +779,7 @@ class Sim3UI(QFrame):
         def efficiency_changed(self) -> None:
             text: str = self.input.text()
             index: int = self.combobox_left.currentIndex()
-            stat_name: str = [spec.label for spec in config.specs.STATS.values()][index]
+            stat_name: str = list(config.specs.STATS.keys())[index]
 
             # 입력이 숫자가 아니면 오류
             if not text.isdigit():
@@ -810,10 +809,7 @@ class Sim3UI(QFrame):
             return
 
     class Additional(QFrame):
-        def __init__(
-            self,
-            parent: QFrame,
-        ) -> None:
+        def __init__(self, parent: QFrame) -> None:
             super().__init__(parent)
 
             if config.ui.debug_colors:
@@ -826,7 +822,7 @@ class Sim3UI(QFrame):
                 )
 
             stat_data: dict[str, str] = {
-                name_ko: "0" for name_ko in config.specs.STATS.keys()
+                spec.label: "0" for spec in config.specs.STATS.values()
             }
             self.stats = StatInputs(self, stat_data, self.on_stat_changed)
 
@@ -837,6 +833,7 @@ class Sim3UI(QFrame):
             self.skills = SkillInputs(self, skills_data, self.on_skill_changed)
 
             self.power_labels = PowerLabels(self)
+            self.update_powers()
 
             layout = QVBoxLayout(self)
             layout.addWidget(self.stats)
@@ -849,7 +846,7 @@ class Sim3UI(QFrame):
             self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
         # todo: on_stat_changed, on_skill_changed를 합쳐서 하나로 만들기
-        def on_stat_changed(self):
+        def on_stat_changed(self) -> None:
             # 스탯이 정상적으로 입력되었는지 확인
             # 음수도 허용
             def checkInput(num: int, text: str) -> bool:
@@ -859,7 +856,7 @@ class Sim3UI(QFrame):
                 except ValueError:
                     return False
 
-                name: str = [spec.label for spec in config.specs.STATS.values()][num]
+                name: str = list(config.specs.STATS.keys())[num]
                 stat: float = (
                     app_state.simulation.stats.get_stat_from_name(name) + value
                 )
@@ -881,12 +878,13 @@ class Sim3UI(QFrame):
 
             # 모두 통과했다면 저장 및 플래그 설정
             if all_valid:
-                self.update_powers()
-                app_state.simulation.is_input_valid["stat"] = True
+                app_state.simulation.is_input_valid["sim3_stat"] = True
 
             # 하나라도 통과하지 못했다면 플래그 설정
             else:
-                app_state.simulation.is_input_valid["stat"] = False
+                app_state.simulation.is_input_valid["sim3_stat"] = False
+
+            self.update_powers()
 
         def on_skill_changed(self) -> None:
             # 스킬이 정상적으로 입력되었는지 확인
@@ -898,7 +896,7 @@ class Sim3UI(QFrame):
 
             # 모두 통과 여부 확인
             all_valid = True
-            for j in self.stats.inputs:
+            for j in self.skills.inputs:
                 is_valid: bool = checkInput(j.text())
 
                 # 스타일 업데이트
@@ -909,16 +907,20 @@ class Sim3UI(QFrame):
 
             # 모두 통과했다면 저장 및 플래그 설정
             if all_valid:
-                self.update_powers()
-                app_state.simulation.is_input_valid["skill"] = True
+                app_state.simulation.is_input_valid["sim3_skill"] = True
 
             # 하나라도 통과하지 못했다면 플래그 설정
             else:
-                app_state.simulation.is_input_valid["skill"] = False
+                app_state.simulation.is_input_valid["sim3_skill"] = False
+
+            self.update_powers()
 
         def update_powers(self) -> None:
             # 입력이 모두 정상인지 확인
-            if not all(app_state.simulation.is_input_valid.values()):
+            if not all(
+                app_state.simulation.is_input_valid[k]
+                for k in ("sim3_stat", "sim3_skill")
+            ):
                 self.power_labels.set_texts("오류")
 
                 return
@@ -975,8 +977,8 @@ class Sim3UI(QFrame):
                 )
 
             potential_options: list[str] = [
-                f"{stat} +{value}"
-                for stat, spec in config.specs.STATS.items()
+                f"{spec.label} +{value}"
+                for spec in config.specs.STATS.values()
                 if spec.potential
                 for value in spec.potential.values
             ]
@@ -1010,15 +1012,29 @@ class Sim3UI(QFrame):
             self.update_values()
 
         def update_values(self) -> None:
+            # 선택된 옵션들 가져오기
             options: list[str] = [
                 self.option_comboboxes[i].currentText() for i in range(3)
             ]
 
+            # 스탯에 옵션들 적용
             stats: Stats = app_state.simulation.stats.copy()
             for opt in options:
-                stat, value = opt.split(" +")
+                # 옵션 파싱
+                stat_ko, value = opt.split(" +")
                 value_int: int = int(value)
 
+                # 한글 스탯 이름을 영어 이름으로 변환
+                stat: str = ""
+                for name_en, spec in config.specs.STATS.items():
+                    if spec.label == stat_ko:
+                        stat: str = name_en
+                        break
+
+                if not stat:
+                    continue
+
+                # 스탯 적용
                 stats.add_stat_from_name(stat, value_int)
 
             powers: list[float] = simulate_deterministic(
@@ -1036,7 +1052,10 @@ class Sim3UI(QFrame):
 
 class StatInputs(QFrame):
     def __init__(
-        self, mainframe: QWidget, stats_data: dict[str, str], connected_function
+        self,
+        mainframe: QWidget,
+        stats_data: dict[str, str],
+        connected_function: Callable[[], None],
     ):
         super().__init__(mainframe)
 
@@ -1055,7 +1074,7 @@ class StatInputs(QFrame):
         # 그리드는 한 줄에 위젯이 부족하면 정렬이 안됨
         COLS = 6
         for i, (name, value) in enumerate(stats_data.items()):
-            item_widget = KVInput(self, name, value, connected_function, float)
+            item_widget = KVInput(self, name, value, connected_function)
 
             # 위치 계산
             row: int = i // COLS
@@ -1083,7 +1102,7 @@ class SkillInputs(QFrame):
         self,
         mainframe: QWidget,
         skills_data: dict[str, int],
-        connected_function,
+        connected_function: Callable[[], None],
     ):
         super().__init__(mainframe)
 
@@ -1127,7 +1146,7 @@ class SkillInputs(QFrame):
             parent,
             skill_id: str,
             value: int,
-            connected_function=None,
+            connected_function: Callable[[], None],
         ):
             super().__init__(parent)
 
@@ -1153,8 +1172,7 @@ class SkillInputs(QFrame):
                 self,
                 "레벨",
                 str(value),
-                connected_function=connected_function,
-                expected_type=int,
+                connected_function,
                 max_width=40,
             )
 
@@ -1186,7 +1204,10 @@ class SkillInputs(QFrame):
 
 class ConditionInputs(QFrame):
     def __init__(
-        self, mainframe: QWidget, stats_data: dict[str, str], connected_function
+        self,
+        mainframe: QWidget,
+        stats_data: dict[str, str],
+        connected_function: Callable[[], None],
     ):
         super().__init__(mainframe)
 
@@ -1203,7 +1224,7 @@ class ConditionInputs(QFrame):
         COLS = 6
         for i, (name, value) in enumerate(stats_data.items()):
             # 위젯 생성
-            item_widget = KVInput(self, name, value, connected_function, int)
+            item_widget = KVInput(self, name, value, connected_function)
 
             # 위치 계산
             # 시뮬 조건 항목이 많아지면 스탯 입력과 같이 조절 필요
@@ -1486,7 +1507,7 @@ class PotentialRank(QFrame):
                 continue
 
             for value in spec.potential.values:
-                key: str = f"{stat} +{value}"
+                key: str = f"{spec.label} +{value}"
 
                 stats: Stats = app_state.simulation.stats.copy()
                 stats.add_stat_from_name(stat, value)
