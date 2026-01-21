@@ -82,10 +82,8 @@ class MacroState:
         return self.current_preset.settings.use_default_attack
 
     # 매크로 실행 중 바뀌는 변수들
-    # todo: MacroState에서 제거해도 되는지 확인
+    # 여러 곳에서 참조되므로 여기에 보관
     task_list: list[int] = field(default_factory=list)
-
-    # 준비된 스킬 셋
     prepared_skills: set[int] = field(default_factory=set)
 
     # 연계스킬 수행에 필요한 스킬 정보 리스트
@@ -143,6 +141,7 @@ class SimulationState:
     )
 
     # 스탯
+    # todo: PresetInfo와 중복되므로 제거 고려 또는 property로 변경
     stats: Stats = field(default_factory=Stats)
 
     # 기타 시뮬레이션 세부정보

@@ -31,9 +31,6 @@ class KeySpec:
             display=display, key_id=char, type="char", value=KeyCode.from_char(char)
         )
 
-    def __str__(self) -> str:
-        return self.display
-
 
 @dataclass(frozen=True)
 class KeyRegistry:

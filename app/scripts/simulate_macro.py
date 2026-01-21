@@ -14,7 +14,13 @@ from app.scripts.custom_classes import (
     Stats,
 )
 from app.scripts.macro_models import LinkUseType
-from app.scripts.registry.skill_registry import get_builtin_skill_id
+from app.scripts.registry.skill_registry import (
+    BuffEffect,
+    DamageEffect,
+    HealEffect,
+    LevelEffect,
+    get_builtin_skill_id,
+)
 from app.scripts.run_macro import get_prepared_link_skill_indices
 
 
@@ -715,9 +721,9 @@ def get_simulated_skills(
     # 장착된 스킬의 쿨타임 감소 스탯이 적용된 쿨타임
     skill_cooltimes_ms: dict[int, int] = {
         slot: int(
-            app_state.macro.current_server.skill_registry.details(
+            app_state.macro.current_server.skill_registry.get(
                 equipped_skills[slot]
-            )["cooltime"]
+            ).cooltime
             * (100 - app_state.macro.current_cooltime_reduction)
             * 10
         )
@@ -791,10 +797,10 @@ def get_simulated_skills(
         used_skill.time = round(used_skill.time * 0.001, 2)
 
     # 각 스킬 효과 리스트
-    skills_effects: dict[str, list[dict]] = {
-        skill_id: app_state.macro.current_server.skill_registry.details(skill_id)[
-            "levels"
-        ][str(skill_levels[skill_id])]
+    skills_effects: dict[str, list[LevelEffect]] = {
+        skill_id: app_state.macro.current_server.skill_registry.get(skill_id).levels[
+            skill_levels[skill_id]
+        ]
         for skill_id in equipped_skills
         if skill_id
     }
@@ -802,32 +808,34 @@ def get_simulated_skills(
     # 사용한 스킬들에 대해 세부사항 저장
     for skill in used_skills:
         # 스킬 효과: 공격 / 버프
-        effects: list[dict] = skills_effects[skill.skill_id]
+        effects: list[LevelEffect] = skills_effects[skill.skill_id]
 
         # 각 effect에 대해
         # 공격 효과와 버프 효과를 구분하여 처리
         for effect in effects:
             # 공격
-            if effect["type"] == "attack":
+            if isinstance(effect, DamageEffect):
                 attack: SimAttack = SimAttack(
                     skill_id=skill.skill_id,
-                    time=round(skill.time + effect["time"], 2),
-                    damage=effect["value"],
+                    time=round(skill.time + effect.time, 2),
+                    damage=effect.damage,
                 )
 
                 attack_details.append(attack)
 
             # 버프
-            else:
+            elif isinstance(effect, BuffEffect):
                 buff: SimBuff = SimBuff(
-                    start_time=round(skill.time + effect["time"], 2),
-                    end_time=round(skill.time + effect["time"] + effect["duration"], 2),
-                    stat=effect["stat"],
-                    value=effect["value"],
+                    start_time=round(skill.time + effect.time, 2),
+                    end_time=round(skill.time + effect.time + effect.duration, 2),
+                    stat=effect.stat,
+                    value=effect.value,
                     skill_id=skill.skill_id,
                 )
 
                 buff_details.append(buff)
+
+            # 회복 (무시)
 
     # 시간순으로 정렬
     attack_details.sort(key=lambda x: x.time)

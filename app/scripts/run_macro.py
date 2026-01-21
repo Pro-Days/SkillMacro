@@ -316,9 +316,9 @@ def build_task_list(show_info: bool = False) -> None:
     ]
     # 장착된 스킬의 쿨타임 감소 스탯이 적용된 쿨타임
     cooltimes: dict[int, float] = {
-        slot: app_state.macro.current_server.skill_registry.details(
+        slot: app_state.macro.current_server.skill_registry.get(
             app_state.macro.current_preset.skills.equipped_skills[slot]
-        )["cooltime"]
+        ).cooltime
         * (100 - app_state.macro.current_cooltime_reduction)
         / 100.0
         for slot in equipped_slots

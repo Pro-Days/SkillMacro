@@ -1139,7 +1139,7 @@ class SkillInputs(QFrame):
 
             # 레이블
             label = QLabel(
-                app_state.macro.current_server.skill_registry.name(skill_id), self
+                app_state.macro.current_server.skill_registry.get(skill_id).name, self
             )
             label.setStyleSheet(f"QLabel {{ border: 0px solid; border-radius: 4px; }}")
             label.setFont(CustomFont(14))

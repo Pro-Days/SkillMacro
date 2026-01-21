@@ -1166,7 +1166,9 @@ class SkillGridSelectContent(QFrame):
             btn.setFixedSize(button_size, button_size)
             btn.setIcon(QIcon(resource_registry.get_skill_pixmap(skill_id)))
             btn.setIconSize(QSize(icon_size, icon_size))
-            btn.setToolTip(app_state.macro.current_server.skill_registry.name(skill_id))
+            btn.setToolTip(
+                app_state.macro.current_server.skill_registry.get(skill_id).name
+            )
             btn.setStyleSheet(
                 """
                 QPushButton { background-color: white; border-radius: 10px; border: 1px solid #dddddd; }

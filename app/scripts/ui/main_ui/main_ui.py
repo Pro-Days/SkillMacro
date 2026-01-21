@@ -879,9 +879,9 @@ class EquippableSkill(QFrame):
             self.button.clicked.connect(lambda: self.clicked.emit(self.index))
             self.button.setCursor(Qt.CursorShape.PointingHandCursor)
 
-            display_name: str = app_state.macro.current_server.skill_registry.name(
+            display_name: str = app_state.macro.current_server.skill_registry.get(
                 skill_id
-            )
+            ).name
             self.name: QLabel = QLabel(display_name, self)
             self.name.setStyleSheet(
                 "QLabel { background-color: transparent; border-radius :0px; }"

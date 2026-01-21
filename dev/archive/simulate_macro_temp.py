@@ -818,7 +818,7 @@ def getSimulatedSKillList(
         # 공격 효과와 버프 효과를 구분하여 처리
         for effect in skill_effects:
             # 공격
-            if effect["type"] == "attack":
+            if effect["type"] == "damage":
                 attack: SimAttack = SimAttack(
                     skill_name=app_state.macro.equipped_skills[skill.skill],
                     time=round(skill.time + effect["time"], 2),
