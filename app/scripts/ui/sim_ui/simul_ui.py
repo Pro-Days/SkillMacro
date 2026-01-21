@@ -282,7 +282,9 @@ class Sim1UI(QFrame):
             # 모두 통과했다면 저장 및 플래그 설정
             if all_valid:
                 for i, j in enumerate(self.inputs):
-                    app_state.simulation.stats.set_stat_from_index(i, int(j.text()))
+                    app_state.macro.current_preset.info.stats[
+                        list(config.specs.STATS.keys())[i]
+                    ] = int(j.text())
 
                 save_data()
 
