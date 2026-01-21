@@ -3,7 +3,7 @@ from __future__ import annotations
 import random
 from functools import lru_cache
 
-from app.scripts.app_state import SkillSetting, app_state
+from app.scripts.app_state import app_state
 from app.scripts.config import config
 from app.scripts.custom_classes import (
     SimAnalysis,
@@ -13,7 +13,7 @@ from app.scripts.custom_classes import (
     SimSkill,
     Stats,
 )
-from app.scripts.macro_models import LinkUseType
+from app.scripts.macro_models import LinkUseType, SkillUsageSetting
 from app.scripts.registry.skill_registry import (
     BuffEffect,
     DamageEffect,
@@ -60,7 +60,7 @@ def calculate_req_stat(power: float, stat_type: str, power_num: int) -> float:
     current_power: float = simulate_deterministic(
         stats=stats,
         sim_details=app_state.simulation.sim_details,
-        skills_info=list(app_state.skill.settings.values()),
+        skills_info=app_state.macro.current_preset.usage_settings,
     ).powers[power_num]
 
     # 스탯을 증가시키며 최대 범위 알아내기
@@ -86,7 +86,7 @@ def calculate_req_stat(power: float, stat_type: str, power_num: int) -> float:
         current_power = simulate_deterministic(
             stats=stats,
             sim_details=app_state.simulation.sim_details,
-            skills_info=list(app_state.skill.settings.values()),
+            skills_info=app_state.macro.current_preset.usage_settings,
         ).powers[power_num]
 
         # 최대값을 알아내면 break
@@ -120,7 +120,7 @@ def calculate_req_stat(power: float, stat_type: str, power_num: int) -> float:
         current_power = simulate_deterministic(
             stats=stats,
             sim_details=app_state.simulation.sim_details,
-            skills_info=list(app_state.skill.settings.values()),
+            skills_info=app_state.macro.current_preset.usage_settings,
         ).powers[power_num]
 
         if current_power < power:
@@ -265,8 +265,11 @@ def simulate_random(
     sim_details_tuple: tuple = tuple(sorted(sim_details.items()))
     # 스킬 레벨 정보를 추가
     # todo: 꼭 필요한 정보만 키로 사용하도록 수정
-    skills_info_tuple: tuple[SkillSetting, ...] = tuple(
-        sorted(app_state.skill.settings.values())
+    skills_info_tuple: tuple[tuple[str, tuple[bool, bool, int]], ...] = tuple(
+        sorted(
+            (k, v.to_tuple())
+            for k, v in app_state.macro.current_preset.usage_settings.items()
+        )
     )
 
     return simulate(
@@ -280,17 +283,18 @@ def simulate_random(
 def simulate_deterministic(
     stats: Stats,
     sim_details: dict[str, int],
-    skills_info: list[SkillSetting],
+    skills_info: dict[str, SkillUsageSetting],
 ) -> SimResult:
     """
     전투력 계산을 위한 결정론적 시뮬레이션
     캐시를 사용하여 성능 향상
     """
+    # todo: 스킬 레벨도 포함시키도록 수정
 
     @lru_cache(maxsize=1024)
     def _run(
         sim_details_tuple: tuple[tuple[str, int]],
-        skills_info_tuple: tuple[SkillSetting, ...],
+        skills_info_tuple: tuple[tuple[str, tuple[bool, bool, int]], ...],
     ) -> SimResult:
         return simulate(
             stats=stats,
@@ -302,7 +306,9 @@ def simulate_deterministic(
     # 시뮬레이션 세부정보를 튜플로 변환해서 해시 가능하게 만듦
     sim_details_tuple: tuple[tuple[str, int], ...] = tuple(sorted(sim_details.items()))
     # 스킬 정보를 추가
-    skills_info_tuple: tuple[SkillSetting, ...] = tuple(sorted(skills_info))
+    skills_info_tuple: tuple[tuple[str, tuple[bool, bool, int]], ...] = tuple(
+        sorted((k, v.to_tuple()) for k, v in skills_info.items())
+    )
 
     return _run(sim_details_tuple, skills_info_tuple)
 
@@ -311,7 +317,7 @@ def simulate_deterministic(
 def simulate(
     stats: Stats,
     sim_details_tuple: tuple[tuple[str, int], ...],
-    skills_info_tuple: tuple[SkillSetting, ...],
+    skills_info_tuple: tuple[tuple[str, tuple[bool, bool, int]], ...],
     random_seed: float,
 ) -> SimResult:
 
@@ -530,7 +536,7 @@ def _get_skill_sequence() -> tuple[int, ...]:
 
     # 사용 우선순위에 등록되어있는 스킬 순서대로 등록
     for target_priority in range(1, 7):
-        for skill, setting in app_state.skill.settings.items():
+        for skill, setting in app_state.macro.current_preset.usage_settings.items():
             if setting.priority == target_priority:
                 # 우선순위 있는 스킬은 모두 장착되어있음
                 slot: int = app_state.macro.current_preset.skills.equipped_skills.index(
@@ -594,7 +600,9 @@ def _get_task_list(
             # 연계스킬에 포함되었고
             and skill in link_skill_reqs
             # 단독 사용 옵션이 켜져있다면
-            and app_state.skill.settings[equipped_skills[skill]].use_alone
+            and app_state.macro.current_preset.usage_settings[
+                equipped_skills[skill]
+            ].use_alone
         ):
             # task_list에 추가
             task_list.append(skill)
@@ -610,7 +618,9 @@ def _get_task_list(
             # 연계스킬에 포함되지 않았고
             and skill not in link_skill_reqs
             # 사용 옵션이 켜져있다면
-            and app_state.skill.settings[equipped_skills[skill]].use_skill
+            and app_state.macro.current_preset.usage_settings[
+                equipped_skills[skill]
+            ].use_skill
         ):
             # task_list에 스킬 추가
             task_list.append(skill)
@@ -651,7 +661,7 @@ def _update_skill_cooltimes(
 
 def get_simulated_skills(
     cooltimeReduce: int | float,
-    skills_info_tuple: tuple[SkillSetting, ...],
+    skills_info_tuple: tuple[tuple[str, tuple[bool, bool, int]], ...],
 ) -> tuple[list[SimAttack], list[SimBuff]]:
     """
     사용한 스킬 목록을 반환하는 함수
@@ -704,7 +714,7 @@ def get_simulated_skills(
     # 매크로 작동 중 사용하는 연계스킬 리스트 -> dict로 변환
     using_link_skills: list[list[int]] = [
         [equipped_skills.index(name) for name in link_skill.skills]
-        for link_skill in app_state.skill.link_skills
+        for link_skill in app_state.macro.current_preset.link_skills
         if link_skill.use_type == LinkUseType.AUTO
     ]
 
@@ -731,9 +741,9 @@ def get_simulated_skills(
     }
 
     # 스킬 레벨
-    skill_levels: dict[str, int] = {
-        skill_setting.id: skill_setting.level for skill_setting in skills_info_tuple
-    }
+    # skill_levels: dict[str, int] = {
+    #     skill_id: setting. for skill_id, setting in skills_info_tuple
+    # }
 
     # 수행할 스킬 리스트
     task_list: list[int] = []
@@ -799,7 +809,8 @@ def get_simulated_skills(
     # 각 스킬 효과 리스트
     skills_effects: dict[str, list[LevelEffect]] = {
         skill_id: app_state.macro.current_server.skill_registry.get(skill_id).levels[
-            skill_levels[skill_id]
+            1
+            # skill_levels[skill_id]
         ]
         for skill_id in equipped_skills
         if skill_id

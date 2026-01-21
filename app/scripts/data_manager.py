@@ -4,7 +4,7 @@ import datetime
 import os
 import shutil
 
-from app.scripts.app_state import SkillSetting, app_state
+from app.scripts.app_state import app_state
 from app.scripts.config import config
 from app.scripts.macro_models import (
     MacroPreset,
@@ -23,46 +23,6 @@ local_appdata: str = os.environ.get("LOCALAPPDATA", default="")
 
 data_path: str = os.path.join(local_appdata, "ProDays", "SkillMacro")
 file_dir: str = os.path.join(data_path, "macros.json")
-
-
-def apply_preset_to_app_state(
-    preset: MacroPreset,
-    preset_index: int,
-    all_presets: list[MacroPreset],
-) -> None:
-    """MacroPreset -> AppState로 값을 반영"""
-
-    app_state.macro.presets = all_presets
-    app_state.ui.tab_names = [p.name for p in app_state.macro.presets]
-
-    update_recent_preset(preset_index)
-
-    # 스킬 사용설정
-    for skill, setting in preset.usage_settings.items():
-        app_state.skill.settings[skill] = SkillSetting(
-            id=skill,
-            use_skill=setting.use_skill,
-            use_alone=setting.use_alone,
-            priority=setting.priority,
-            level=preset.info.skill_levels.get(skill, 1),
-        )
-
-    # 링크 스킬
-    app_state.skill.link_skills = preset.link_settings.copy()
-
-    # 시뮬레이션 정보
-    app_state.simulation.stats = preset.info.to_stats()
-    app_state.simulation.sim_details = preset.info.sim_details.copy()
-
-
-def select_preset(index: int) -> None:
-    """메모리 상의 app_state.macro.presets를 기준으로 프리셋을 선택"""
-
-    apply_preset_to_app_state(
-        app_state.macro.presets[index],
-        preset_index=index,
-        all_presets=app_state.macro.presets,
-    )
 
 
 def load_data(num: int = -1) -> None:
@@ -88,13 +48,10 @@ def load_data(num: int = -1) -> None:
             target_index = num
 
         presets: list[MacroPreset] = preset_file.preset
-        preset: MacroPreset = presets[target_index]
 
-        apply_preset_to_app_state(
-            preset,
-            preset_index=target_index,
-            all_presets=presets,
-        )
+        # 프리셋 업데이트
+        app_state.macro.presets = presets
+        update_recent_preset(target_index)
 
     except Exception:
         print("데이터 로드 중 오류 발생")
@@ -128,45 +85,14 @@ def save_data() -> None:
     데이터 저장
     """
 
-    def apply_to_preset(preset: MacroPreset) -> None:
-        """app_state 값을 preset에 반영"""
-
-        # 프리셋 이름 저장
-        preset.name = app_state.ui.tab_names[app_state.macro.current_preset_index]
-
-        # 스킬 사용 설정 저장
-        skills_all: list[str] = (
-            app_state.macro.current_server.skill_registry.get_all_skill_ids()
-        )
-        preset.usage_settings = {
-            skill_id: SkillUsageSetting(
-                use_skill=app_state.skill.settings[skill_id].use_skill,
-                use_alone=app_state.skill.settings[skill_id].use_alone,
-                priority=app_state.skill.settings[skill_id].priority,
-            )
-            for skill_id in skills_all
-        }
-
-        preset.link_settings = app_state.skill.link_skills.copy()
-
-        preset.info = PresetInfo.from_stats(
-            app_state.simulation.stats,
-            skill_levels={
-                skill_id: app_state.skill.settings[skill_id].level
-                for skill_id in skills_all
-            },
-            sim_details=app_state.simulation.sim_details,
-        )
-
     repo = MacroPresetRepository(file_dir)
-
-    apply_to_preset(app_state.macro.presets[app_state.macro.current_preset_index])
 
     preset_file = MacroPresetFile(
         version=data_version,
         recent_preset=app_state.macro.current_preset_index,
         preset=app_state.macro.presets.copy(),
     )
+
     repo.save(preset_file)
 
 
@@ -199,9 +125,6 @@ def remove_preset(
     # 메모리 상에도 반영
     app_state.macro.presets.pop(num)
 
-    # tab_names 동기화
-    app_state.ui.tab_names = [p.name for p in app_state.macro.presets]
-
 
 def add_preset() -> None:
     """
@@ -217,13 +140,12 @@ def add_preset() -> None:
 
     # 메모리에도 반영
     app_state.macro.presets = preset_file.preset.copy()
-    app_state.ui.tab_names = [p.name for p in app_state.macro.presets]
 
 
 def get_default_preset() -> MacroPreset:
     """기본 프리셋 데이터 생성"""
 
-    server_id: str = config.specs.SERVERS.default.id
+    server_id: str = config.specs.DEFAULT_SERVER_ID
     skill_count: int = server_registry.SERVERS[server_id].usable_skill_count
     skills_all: list[str] = server_registry.SERVERS[
         server_id

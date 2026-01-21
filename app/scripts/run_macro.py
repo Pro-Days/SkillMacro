@@ -9,7 +9,7 @@ from pynput.keyboard import Key, KeyCode
 
 from app.scripts.app_state import app_state
 from app.scripts.config import config
-from app.scripts.macro_models import LinkKeyType, LinkUseType
+from app.scripts.macro_models import LinkKeyType, LinkUseType, SkillUsageSetting
 from app.scripts.registry.key_registry import KeyRegistry, KeySpec
 
 DEBUG_PRINT_INFO = False
@@ -96,13 +96,13 @@ def checking_kb_thread() -> NoReturn:
             continue
 
         # 연계스킬 사용
-        for link_skill in app_state.skill.link_skills:
+        for link_skill in app_state.macro.current_preset.link_skills:
             # 단축키가 설정된 연계스킬만 검사
             if link_skill.key_type == LinkKeyType.OFF or link_skill.key is None:
                 continue
 
             # 연계스킬 키가 눌렸다면
-            link_key: KeySpec = KeyRegistry.MAP[link_skill.key]
+            link_key: KeySpec = KeyRegistry.get(link_skill.key)
             if is_key_pressed(link_key):
                 # 연계스킬 쓰레드 시작
                 Thread(
@@ -187,7 +187,7 @@ def init_macro() -> None:
 
     # 사용 우선순위에 등록되어있는 스킬 순서대로 등록
     for target_priority in range(1, 7):
-        for skill, setting in app_state.skill.settings.items():
+        for skill, setting in app_state.macro.current_preset.usage_settings.items():
             if setting.priority == target_priority:
                 # 우선순위 있는 스킬은 모두 장착되어있음
                 slot: int = app_state.macro.current_preset.skills.equipped_skills.index(
@@ -208,7 +208,7 @@ def init_macro() -> None:
     # 매크로 작동 중 사용하는 연계스킬 리스트 -> dict로 변환
     app_state.macro.using_link_skills.clear()
 
-    for link_skill in app_state.skill.link_skills:
+    for link_skill in app_state.macro.current_preset.link_skills:
         # 연계 유형이 자동이라면: 매크로에서 사용되는 연계스킬이라면
         if link_skill.use_type == LinkUseType.AUTO:
             # 연계스킬에서 사용되는 스킬 슬롯 번호로 변환 후 저장
@@ -250,9 +250,9 @@ def use_skill(run_id: int) -> bool:
 
     slot: int = app_state.macro.task_list.pop(0)
 
-    key: KeySpec = KeyRegistry.MAP[
+    key: KeySpec = KeyRegistry.get(
         app_state.macro.current_preset.skills.skill_keys[slot]
-    ]
+    )
 
     # 쿨타임 시작
     app_state.macro.skill_cooltime_timers[slot] = time.perf_counter()
@@ -281,9 +281,9 @@ def use_link_skill(link_skill, run_id: int) -> None:
     def use(slot: int) -> None:
         """스킬 사용 함수"""
 
-        key: KeySpec = KeyRegistry.MAP[
+        key: KeySpec = KeyRegistry.get(
             app_state.macro.current_preset.skills.skill_keys[slot]
-        ]
+        )
 
         if app_state.macro.run_id == run_id:
             kbd_controller.press(key.value)
@@ -374,14 +374,14 @@ def build_task_list(show_info: bool = False) -> None:
             is_ready: bool = skill in app_state.macro.prepared_skills
             # 연계스킬 포함 여부
             in_link_skill: bool = skill in link_skill_reqs
+
+            setting: SkillUsageSetting = app_state.macro.current_preset.usage_settings[
+                app_state.macro.current_preset.skills.equipped_skills[skill]
+            ]
             # 단독 사용 여부
-            use_alone: bool = app_state.skill.settings[
-                app_state.macro.current_preset.skills.equipped_skills[skill]
-            ].use_alone
+            use_alone: bool = setting.use_alone
             # 사용 옵션이 켜져있는지 확인
-            use_skill_option: bool = app_state.skill.settings[
-                app_state.macro.current_preset.skills.equipped_skills[skill]
-            ].use_skill
+            use_skill_option: bool = setting.use_skill
 
             # 조건에 따라 스킬 사용
 
@@ -456,14 +456,14 @@ def build_preview_task_list() -> tuple[int, ...]:
         is_ready: bool = skill in prepared_skills
         # 연계스킬 포함 여부
         in_link_skill: bool = skill in link_skill_reqs
+
+        setting: SkillUsageSetting = app_state.macro.current_preset.usage_settings[
+            app_state.macro.current_preset.skills.equipped_skills[skill]
+        ]
         # 단독 사용 여부
-        use_alone: bool = app_state.skill.settings[
-            app_state.macro.current_preset.skills.equipped_skills[skill]
-        ].use_alone
+        use_alone: bool = setting.use_alone
         # 사용 옵션이 켜져있는지 확인
-        use_skill_option: bool = app_state.skill.settings[
-            app_state.macro.current_preset.skills.equipped_skills[skill]
-        ].use_skill
+        use_skill_option: bool = setting.use_skill
 
         if is_ready and in_link_skill and use_alone:
             # task_list에 추가

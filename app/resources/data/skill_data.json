@@ -62,8 +62,8 @@
                             "time": 0.0,
                             "type": "buff",
                             "stat": "ATK",
-                            "value": 10.0,
-                            "duration": 15.0
+                            "value": 1000.0,
+                            "duration": 10.0
                         }
                     ]
                 }

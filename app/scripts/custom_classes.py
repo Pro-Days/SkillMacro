@@ -487,6 +487,33 @@ class Stats:
             "EXP": self.EXP,
         }
 
+    @classmethod
+    def from_dict(cls, data: dict[str, int | float]) -> "Stats":
+        """
+        딕셔너리에서 Stats 객체를 생성
+        """
+
+        return cls(
+            ATK=data.get("ATK", 0),
+            DEF=data.get("DEF", 0),
+            PWR=data.get("PWR", 0),
+            STR=data.get("STR", 0),
+            INT=data.get("INT", 0),
+            RES=data.get("RES", 0),
+            CRIT_RATE=data.get("CRIT_RATE", 0),
+            CRIT_DMG=data.get("CRIT_DMG", 0),
+            BOSS_DMG=data.get("BOSS_DMG", 0),
+            ACC=data.get("ACC", 0),
+            DODGE=data.get("DODGE", 0),
+            STATUS_RES=data.get("STATUS_RES", 0),
+            NAEGONG=int(data.get("NAEGONG", 0)),
+            HP=data.get("HP", 0),
+            ATK_SPD=data.get("ATK_SPD", 0),
+            POT_HEAL=data.get("POT_HEAL", 0),
+            LUK=data.get("LUK", 0),
+            EXP=data.get("EXP", 0),
+        )
+
 
 @dataclass
 class SimAnalysis:

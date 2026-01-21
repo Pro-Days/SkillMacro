@@ -22,10 +22,8 @@ from app.scripts.app_state import app_state
 from app.scripts.custom_classes import CustomFont, SkillImage
 from app.scripts.data_manager import (
     add_preset,
-    apply_preset_to_app_state,
     remove_preset,
     save_data,
-    select_preset,
     update_recent_preset,
 )
 from app.scripts.registry.key_registry import KeyRegistry, KeySpec
@@ -111,7 +109,7 @@ class MainUI(QFrame):
         """탭이 바뀌었을 때 실행"""
 
         # 프리셋 선택
-        select_preset(index)
+        update_recent_preset(index)
 
         # 마지막으로 선택한 탭이 다음 실행에도 복원되도록 recent_preset만 최소 저장
         update_recent_preset(index)
@@ -135,8 +133,6 @@ class MainUI(QFrame):
             # 프리셋/호환 데이터 반영
             if app_state.macro.presets and 0 <= index < len(app_state.macro.presets):
                 app_state.macro.presets[index].name = new_name
-            if app_state.ui.tab_names and 0 <= index < len(app_state.ui.tab_names):
-                app_state.ui.tab_names[index] = new_name
 
             # 탭 라벨 반영
             self.tab_widget.setTabText(index, new_name)
@@ -223,7 +219,7 @@ class MainUI(QFrame):
 
         # 삭제 후 현재 탭 프리셋 선택
         new_index: int = self.tab_widget.currentIndex()
-        select_preset(new_index)
+        update_recent_preset(new_index)
         self.tab_widget.get_current_tab().update_from_preset()
 
     def on_skill_key_clicked(self, index: int) -> None:
@@ -365,7 +361,7 @@ class TabWidget(QTabWidget):
         self.setCurrentIndex(index)
 
         # 새 탭을 현재 탭으로 만들고 shared_data를 해당 preset으로 동기화
-        select_preset(index)
+        update_recent_preset(index)
         new_tab.update_from_preset()
 
     def _connect_tab_signals(self, tab: "Tab") -> None:
@@ -389,7 +385,6 @@ class TabWidget(QTabWidget):
             self.addTab(tab, preset.name)
 
         self.setCurrentIndex(app_state.macro.current_preset_index)
-        select_preset(app_state.macro.current_preset_index)
         self.get_current_tab().update_from_preset()
 
     def remove_tab(self, index: int) -> None:
@@ -662,7 +657,7 @@ class Tab(QFrame):
         """장착된 스킬 초기화(우선순위/연계스킬 등)"""
 
         # 연계스킬 수동 사용으로 변경, 키 초기화
-        for link in self.preset.link_settings:
+        for link in self.preset.link_skills:
             if skill_id in link.skills:
                 link.set_manual()
                 link.clear_key()
@@ -735,11 +730,7 @@ class Tab(QFrame):
     def _sync_to_shared_data(self) -> None:
         """preset -> shared_data로 동기화"""
 
-        apply_preset_to_app_state(
-            self.preset,
-            preset_index=self.preset_index,
-            all_presets=app_state.macro.presets,
-        )
+        update_recent_preset(self.preset_index)
 
 
 class SkillPreview(QFrame):
@@ -977,7 +968,7 @@ class EquippedSkill(QFrame):
             self.set_skill(index, name)
 
         for index, key_id in enumerate(preset.skills.skill_keys):
-            self.set_key(index, KeyRegistry.MAP[key_id].display)
+            self.set_key(index, KeyRegistry.get(key_id).display)
 
     class Skill(QFrame):
         slotClicked = pyqtSignal(int)

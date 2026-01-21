@@ -53,10 +53,8 @@ class KeyRegistry:
         char: KeySpec.from_char(char, char) for char in "0123456789"
     }
 
-    MAP: ClassVar[dict[str, KeySpec]] = {
-        **F_KEYS,
-        **ALPHABET_KEYS,
-        **NUMBER_KEYS,
+    # 특수키
+    SPECIAL_KEYS: ClassVar[dict[str, KeySpec]] = {
         "`": KeySpec.from_char("`", "`"),
         "-": KeySpec.from_char("-", "-"),
         "=": KeySpec.from_char("=", "="),
@@ -84,6 +82,17 @@ class KeyRegistry:
     }
 
     @classmethod
+    def get(cls, key_id: str) -> KeySpec:
+        """키 아이디로 KeySpec 반환"""
+
+        return (
+            cls.F_KEYS.get(key_id)
+            or cls.ALPHABET_KEYS.get(key_id)
+            or cls.NUMBER_KEYS.get(key_id)
+            or cls.SPECIAL_KEYS[key_id]
+        )
+
+    @classmethod
     def pynput_key_to_keyspec(cls, k: Key | KeyCode) -> KeySpec | None:
         """pynput 키를 KeySpec으로 변환"""
 
@@ -93,7 +102,7 @@ class KeyRegistry:
             if not ch:
                 return None
 
-            return cls.MAP.get(ch, None)
+            return cls.get(ch)
 
         # Key: 특수키
-        return cls.MAP.get(k.name, None)
+        return cls.get(k.name)

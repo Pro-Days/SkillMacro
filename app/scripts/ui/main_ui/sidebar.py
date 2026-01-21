@@ -26,7 +26,6 @@ from PyQt6.QtWidgets import (
 from app.scripts.app_state import app_state
 from app.scripts.config import config
 from app.scripts.custom_classes import CustomFont, SkillImage
-from app.scripts.data_manager import apply_preset_to_app_state
 from app.scripts.macro_models import (
     LinkKeyType,
     LinkSkill,
@@ -347,16 +346,7 @@ class GeneralSettings(QFrame):
 
         self.update_from_preset(app_state.macro.current_preset)
 
-    def _sync_preset_to_app_state(self, preset: "MacroPreset") -> None:
-        """프리셋을 app_state에 동기화"""
-
-        apply_preset_to_app_state(
-            preset,
-            preset_index=app_state.macro.current_preset_index,
-            all_presets=app_state.macro.presets,
-        )
-
-    def update_from_preset(self, preset: "MacroPreset") -> None:
+    def update_from_preset(self, preset: MacroPreset) -> None:
         """프리셋으로부터 위젯 상태를 업데이트"""
 
         # 서버 - 직업
@@ -402,7 +392,6 @@ class GeneralSettings(QFrame):
                 return
 
             app_state.macro.current_preset.settings.server_id = server.id
-            self._sync_preset_to_app_state(app_state.macro.current_preset)
             self.update_from_preset(app_state.macro.current_preset)
             self._on_data_changed()
 
@@ -426,7 +415,6 @@ class GeneralSettings(QFrame):
 
         # 기본 딜레이로 변경 (입력 값은 유지)
         app_state.macro.current_preset.settings.use_custom_delay = False
-        self._sync_preset_to_app_state(app_state.macro.current_preset)
         self.update_from_preset(app_state.macro.current_preset)
         self._on_data_changed()
 
@@ -442,7 +430,6 @@ class GeneralSettings(QFrame):
 
             app_state.macro.current_preset.settings.custom_delay = int(delay_value)
             app_state.macro.current_preset.settings.use_custom_delay = True
-            self._sync_preset_to_app_state(app_state.macro.current_preset)
             self.update_from_preset(app_state.macro.current_preset)
             self._on_data_changed()
 
@@ -460,7 +447,6 @@ class GeneralSettings(QFrame):
 
         # 유저 딜레이로 변경 (입력 값 유지)
         app_state.macro.current_preset.settings.use_custom_delay = True
-        self._sync_preset_to_app_state(app_state.macro.current_preset)
         self.update_from_preset(app_state.macro.current_preset)
         self._on_data_changed()
 
@@ -480,7 +466,6 @@ class GeneralSettings(QFrame):
 
         # 기본 쿨타임 감소로 변경 (입력 값은 유지)
         app_state.macro.current_preset.settings.use_custom_cooltime_reduction = False
-        self._sync_preset_to_app_state(app_state.macro.current_preset)
         self.update_from_preset(app_state.macro.current_preset)
         self._on_data_changed()
 
@@ -499,7 +484,6 @@ class GeneralSettings(QFrame):
             app_state.macro.current_preset.settings.custom_cooltime_reduction = int(
                 cooltime_value
             )
-            self._sync_preset_to_app_state(app_state.macro.current_preset)
             self.update_from_preset(app_state.macro.current_preset)
             self._on_data_changed()
 
@@ -519,7 +503,6 @@ class GeneralSettings(QFrame):
 
         # 유저 쿨타임 감소로 변경 (입력 값 유지)
         app_state.macro.current_preset.settings.use_custom_cooltime_reduction = True
-        self._sync_preset_to_app_state(app_state.macro.current_preset)
         self.update_from_preset(app_state.macro.current_preset)
         self._on_data_changed()
 
@@ -551,7 +534,6 @@ class GeneralSettings(QFrame):
         # 기본 시작키로 변경 (입력 값은 유지)
         app_state.macro.current_preset.settings.use_custom_start_key = False
 
-        self._sync_preset_to_app_state(app_state.macro.current_preset)
         self.update_from_preset(app_state.macro.current_preset)
         self._on_data_changed()
 
@@ -568,7 +550,6 @@ class GeneralSettings(QFrame):
                 return
 
             app_state.macro.current_preset.settings.custom_start_key = start_key.key_id
-            self._sync_preset_to_app_state(app_state.macro.current_preset)
             self.update_from_preset(app_state.macro.current_preset)
             self._on_data_changed()
 
@@ -593,14 +574,13 @@ class GeneralSettings(QFrame):
 
         # 유저 입력 키가 기본키와 다르고, 유저키가 다른 용도로 사용 중이면 변경 불가
         if current_input_key_id != default_key.key_id and app_state.is_key_using(
-            KeyRegistry.MAP[current_input_key_id]
+            KeyRegistry.get(current_input_key_id)
         ):
             self.popup_manager.make_notice_popup("StartKeyChangeError")
             return
 
         # 유저 시작키로 변경 (입력 값 유지)
         app_state.macro.current_preset.settings.use_custom_start_key = True
-        self._sync_preset_to_app_state(app_state.macro.current_preset)
         self.update_from_preset(app_state.macro.current_preset)
         self._on_data_changed()
 
@@ -619,7 +599,6 @@ class GeneralSettings(QFrame):
             return
 
         app_state.macro.current_preset.settings.use_default_attack = False
-        self._sync_preset_to_app_state(app_state.macro.current_preset)
         self.update_from_preset(app_state.macro.current_preset)
         self._on_data_changed()
 
@@ -638,7 +617,6 @@ class GeneralSettings(QFrame):
             return
 
         app_state.macro.current_preset.settings.use_default_attack = True
-        self._sync_preset_to_app_state(app_state.macro.current_preset)
         self.update_from_preset(app_state.macro.current_preset)
         self._on_data_changed()
 
@@ -784,13 +762,6 @@ class SkillSettings(QFrame):
 
     def _get_preset(self) -> "MacroPreset":
         return app_state.macro.presets[app_state.macro.current_preset_index]
-
-    def _sync_preset_to_shared_data(self, preset: "MacroPreset") -> None:
-        apply_preset_to_app_state(
-            preset,
-            preset_index=app_state.macro.current_preset_index,
-            all_presets=app_state.macro.presets,
-        )
 
     def _build_header(self) -> None:
         """헤더 행 생성"""
@@ -943,8 +914,6 @@ class SkillSettings(QFrame):
         setting: SkillUsageSetting = preset.usage_settings[skill_id]
 
         setting.use_skill = not setting.use_skill
-
-        self._sync_preset_to_shared_data(preset)
         self.update_from_preset(preset)
         self._on_data_changed()
 
@@ -957,8 +926,6 @@ class SkillSettings(QFrame):
         setting: SkillUsageSetting = preset.usage_settings[skill_id]
 
         setting.use_alone = not setting.use_alone
-
-        self._sync_preset_to_shared_data(preset)
         self.update_from_preset(preset)
         self._on_data_changed()
 
@@ -991,7 +958,6 @@ class SkillSettings(QFrame):
                 if s.priority > current:
                     s.priority -= 1
 
-        self._sync_preset_to_shared_data(preset)
         self.update_from_preset(preset)
         self._on_data_changed()
 
@@ -1040,13 +1006,6 @@ class LinkSkillSettings(QFrame):
     def _get_preset(self) -> "MacroPreset":
         return app_state.macro.presets[app_state.macro.current_preset_index]
 
-    def _sync_preset_to_shared_data(self, preset: "MacroPreset") -> None:
-        apply_preset_to_app_state(
-            preset,
-            preset_index=app_state.macro.current_preset_index,
-            all_presets=app_state.macro.presets,
-        )
-
     def update_from_preset(self, preset: "MacroPreset") -> None:
         """프리셋으로부터 위젯 상태를 업데이트"""
 
@@ -1060,7 +1019,7 @@ class LinkSkillSettings(QFrame):
             if w is not None:
                 w.deleteLater()
 
-        for i, data in enumerate(preset.link_settings):
+        for i, data in enumerate(preset.link_skills):
             link_skill = self.LinkSkillWidget(data, i, self.edit, self.remove)
             self._list_layout.addWidget(link_skill)
 
@@ -1095,7 +1054,7 @@ class LinkSkillSettings(QFrame):
 
         # draft가 주어졌으면 그대로 편집(새로 만들기), 아니면 현재 데이터 복사
         if draft is None:
-            data: LinkSkill = copy.deepcopy(preset.link_settings[num])
+            data: LinkSkill = copy.deepcopy(preset.link_skills[num])
         else:
             data = copy.deepcopy(draft)
 
@@ -1108,9 +1067,8 @@ class LinkSkillSettings(QFrame):
         self.popup_manager.close_popup()
 
         preset: MacroPreset = self._get_preset()
-        del preset.link_settings[num]
+        del preset.link_skills[num]
 
-        self._sync_preset_to_shared_data(preset)
         self.update_from_preset(preset)
         self._on_data_changed()
 
@@ -1257,7 +1215,7 @@ class LinkSkillSettings(QFrame):
 
             start_key_value = QLabel()
             if data.key_type == LinkKeyType.ON and data.key is not None:
-                key_val: str = KeyRegistry.MAP[data.key].display
+                key_val: str = KeyRegistry.get(data.key).display
                 start_key_value.setText(key_val)
                 start_key_value.setStyleSheet(
                     "QLabel { background-color: #343A40; color: white; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 12px; }"
@@ -1429,13 +1387,6 @@ class LinkSkillEditor(QFrame):
     def _get_preset(self) -> "MacroPreset":
         return app_state.macro.presets[app_state.macro.current_preset_index]
 
-    def _sync_preset_to_shared_data(self, preset: "MacroPreset") -> None:
-        apply_preset_to_app_state(
-            preset,
-            preset_index=app_state.macro.current_preset_index,
-            all_presets=app_state.macro.presets,
-        )
-
     def load(self, data: LinkSkill, index: int) -> None:
         """연계스킬 데이터 로드"""
 
@@ -1462,12 +1413,8 @@ class LinkSkillEditor(QFrame):
 
         # 단축키 버튼
         key_type: LinkKeyType = self.data.key_type
-        if (
-            key_type == LinkKeyType.ON
-            and self.data.key is not None
-            and self.data.key in KeyRegistry.MAP
-        ):
-            key_text: str = KeyRegistry.MAP[self.data.key].display
+        if key_type == LinkKeyType.ON and self.data.key is not None:
+            key_text: str = KeyRegistry.get(self.data.key).display
         else:
             key_text = ""
 
@@ -1551,7 +1498,7 @@ class LinkSkillEditor(QFrame):
 
         # 자동 연계스킬 스킬 중복 검사
         auto_skills: list[str] = []
-        for i, link_skill in enumerate(preset.link_settings):
+        for i, link_skill in enumerate(preset.link_skills):
             # 자기 자신은 무시
             if i == num:
                 continue
@@ -1689,15 +1636,14 @@ class LinkSkillEditor(QFrame):
 
         # 새로 만드는 경우
         if index == -1:
-            preset.link_settings.append(self.data)
-            self._editing_index = len(preset.link_settings) - 1
+            preset.link_skills.append(self.data)
+            self._editing_index = len(preset.link_skills) - 1
 
         # 기존 연계스킬 수정하는 경우
         else:
-            preset.link_settings[index] = self.data
+            preset.link_skills[index] = self.data
             self._editing_index = index
 
-        self._sync_preset_to_shared_data(preset)
         self._on_data_changed()
 
         self.saved.emit()

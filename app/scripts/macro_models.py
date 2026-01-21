@@ -102,7 +102,7 @@ class SkillUsageSetting:
     priority: int = 0
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "SkillUsageSetting":
+    def from_dict(cls, data: dict[str, Any]) -> SkillUsageSetting:
         """딕셔너리로부터 SkillUsageSetting 생성"""
 
         return cls(
@@ -119,6 +119,11 @@ class SkillUsageSetting:
             "use_alone": self.use_alone,
             "priority": self.priority,
         }
+
+    def to_tuple(self) -> tuple[bool, bool, int]:
+        """튜플로 변환"""
+
+        return (self.use_skill, self.use_alone, self.priority)
 
 
 class LinkUseType(str, Enum):
@@ -149,7 +154,7 @@ class LinkSkill:
     skills: list[str] = field(default_factory=list)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "LinkSkill":
+    def from_dict(cls, data: dict[str, Any]) -> LinkSkill:
         """딕셔너리로부터 LinkSkill 생성"""
 
         # todo: snake case로 변경
@@ -205,7 +210,7 @@ class PresetInfo:
     sim_details: dict[str, int] = field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "PresetInfo":
+    def from_dict(cls, data: dict[str, Any]) -> PresetInfo:
         """딕셔너리로부터 PresetInfo 생성"""
 
         return cls(
@@ -222,14 +227,6 @@ class PresetInfo:
             "skill_levels": self.skill_levels.copy(),
             "sim_details": self.sim_details.copy(),
         }
-
-    def to_stats(self) -> "Stats":
-        """스탯 dict를 Stats로 변환"""
-
-        kwargs = cast(dict[str, Any], self.stats.copy())
-        if "NAEGONG" in kwargs:
-            kwargs["NAEGONG"] = int(kwargs["NAEGONG"])
-        return Stats(**kwargs)
 
     @classmethod
     def from_stats(
@@ -261,8 +258,8 @@ class MacroPreset:
     settings: MacroSettings = field(default_factory=MacroSettings)
     # 스킬 사용 설정
     usage_settings: dict[str, SkillUsageSetting] = field(default_factory=dict)
-    # 연계스킬 설정
-    link_settings: list[LinkSkill] = field(default_factory=list)
+    # 연계스킬 목록
+    link_skills: list[LinkSkill] = field(default_factory=list)
     # 프리셋 정보
     info: PresetInfo = field(default_factory=PresetInfo)
 
@@ -295,7 +292,7 @@ class MacroPreset:
     }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "MacroPreset":
+    def from_dict(cls, data: dict[str, Any]) -> MacroPreset:
         """딕셔너리로부터 MacroPreset 생성"""
 
         preset: "MacroPreset" = cls(
@@ -306,9 +303,7 @@ class MacroPreset:
                 k: SkillUsageSetting.from_dict(v)
                 for k, v in data["usage_settings"].items()
             },
-            link_settings=[
-                LinkSkill.from_dict(ls) for ls in list(data["link_settings"])
-            ],
+            link_skills=[LinkSkill.from_dict(ls) for ls in list(data["link_skills"])],
             info=PresetInfo.from_dict(data["info"]),
         )
 
@@ -322,7 +317,7 @@ class MacroPreset:
             "skills": self.skills.to_dict(),
             "settings": self.settings.to_dict(),
             "usage_settings": {k: v.to_dict() for k, v in self.usage_settings.items()},
-            "link_settings": [ls.to_dict() for ls in self.link_settings],
+            "link_skills": [ls.to_dict() for ls in self.link_skills],
             "info": self.info.to_dict(),
         }
 
@@ -362,7 +357,7 @@ class MacroPreset:
                 )
                 for skill_id in skills_all.copy()
             },
-            link_settings=[],
+            link_skills=[],
             info=PresetInfo(
                 stats=cls.DEFAULT_STATS.copy(),
                 # todo: 설정을 변경 한 스킬만 저장하도록 수정
@@ -381,7 +376,7 @@ class MacroPresetFile:
     preset: list[MacroPreset] = field(default_factory=list)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "MacroPresetFile":
+    def from_dict(cls, data: dict[str, Any]) -> MacroPresetFile:
         """딕셔너리로부터 MacroPresetFile 생성"""
 
         return cls(

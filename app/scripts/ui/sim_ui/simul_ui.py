@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from app.scripts.app_state import SkillSetting, app_state
+from app.scripts.app_state import app_state
 from app.scripts.config import config
 from app.scripts.custom_classes import (
     CustomComboBox,
@@ -300,7 +300,7 @@ class Sim1UI(QFrame):
             super().__init__(parent)
 
             skills_data: dict[str, int] = {
-                name: app_state.skill.settings[name].level
+                name: app_state.macro.current_preset.info.skill_levels[name]
                 for name in app_state.macro.current_server.skill_registry.get_all_skill_ids()
             }
 
@@ -349,8 +349,8 @@ class Sim1UI(QFrame):
                     self.inputs,
                     app_state.macro.current_server.skill_registry.get_all_skill_ids(),
                 ):
-                    app_state.skill.settings[name] = replace(
-                        app_state.skill.settings[name], level=int(_input.text())
+                    app_state.macro.current_preset.info.skill_levels[name] = int(
+                        _input.text()
                     )
 
                 save_data()
@@ -625,7 +625,7 @@ class Sim3UI(QFrame):
         powers: list[float] = simulate_deterministic(
             stats=app_state.simulation.stats,
             sim_details=app_state.simulation.sim_details,
-            skills_info=list(app_state.skill.settings.values()),
+            skills_info=app_state.macro.current_preset.usage_settings,
         ).powers
 
         for i, power in enumerate(powers):
@@ -763,7 +763,7 @@ class Sim3UI(QFrame):
             powers: list[float] = simulate_deterministic(
                 stats=stats,
                 sim_details=app_state.simulation.sim_details,
-                skills_info=list(app_state.skill.settings.values()),
+                skills_info=app_state.macro.current_preset.usage_settings,
             ).powers
 
             # 요구량 계산
@@ -829,7 +829,7 @@ class Sim3UI(QFrame):
             self.stats = StatInputs(self, stat_data, self.on_stat_changed)
 
             skills_data: dict[str, int] = {
-                name: app_state.skill.settings[name].level
+                name: app_state.macro.current_preset.info.skill_levels[name]
                 for name in app_state.macro.current_server.skill_registry.get_all_skill_ids()
             }
             self.skills = SkillInputs(self, skills_data, self.on_skill_changed)
@@ -908,7 +908,7 @@ class Sim3UI(QFrame):
             # 모두 통과했다면 저장 및 플래그 설정
             if all_valid:
                 self.update_powers()
-                app_state.simulation.is_input_valid["skill"] = False
+                app_state.simulation.is_input_valid["skill"] = True
 
             # 하나라도 통과하지 못했다면 플래그 설정
             else:
@@ -928,19 +928,20 @@ class Sim3UI(QFrame):
                 stats.add_stat_from_index(self.stats.inputs.index(i), int(i.text()))
 
             # 스킬 적용
-            skills: list[SkillSetting] = [
-                replace(app_state.skill.settings[skill], level=int(j.text()))
-                for j, skill in zip(
-                    self.skills.inputs,
-                    app_state.macro.current_server.skill_registry.get_all_skill_ids(),
-                )
-            ]
+            # todo: 스킬 레벨을 적용시킬 때 다시 사용
+            # skills: list[SkillSetting] = [
+            #     replace(app_state.skill.settings[skill], level=int(j.text()))
+            #     for j, skill in zip(
+            #         self.skills.inputs,
+            #         app_state.macro.current_server.skill_registry.get_all_skill_ids(),
+            #     )
+            # ]
 
             # 전투력 계산
             powers: list[float] = simulate_deterministic(
                 stats,
                 app_state.simulation.sim_details,
-                skills,
+                app_state.macro.current_preset.usage_settings,
             ).powers
 
             # 차이 계산
@@ -1021,7 +1022,7 @@ class Sim3UI(QFrame):
             powers: list[float] = simulate_deterministic(
                 stats,
                 app_state.simulation.sim_details,
-                list(app_state.skill.settings.values()),
+                app_state.macro.current_preset.usage_settings,
             ).powers
 
             diff_powers: list[str] = [
@@ -1478,13 +1479,6 @@ class PotentialRank(QFrame):
     ) -> list[list[list[str]]]:
         options: list[list[tuple[str, float]]] = [[], [], [], []]
 
-        # 각 옵션에 대해 차이 계산
-        potential_options: list[str] = [
-            f"{stat} +{value}"
-            for stat, spec in config.specs.STATS.items()
-            if spec.potential
-            for value in spec.potential.values
-        ]
         for stat, spec in config.specs.STATS.items():
             if not spec.potential:
                 continue
@@ -1498,7 +1492,7 @@ class PotentialRank(QFrame):
                 powers: list[float] = simulate_deterministic(
                     stats,
                     app_state.simulation.sim_details,
-                    list(app_state.skill.settings.values()),
+                    app_state.macro.current_preset.usage_settings,
                 ).powers
 
                 diff_powers: list[float] = [

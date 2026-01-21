@@ -169,13 +169,9 @@ class MacroSpecs:
         label="쿨타임 감소", default=0, min=0, max=50
     )
 
-    DEFAULT_START_KEY: ClassVar[KeySpec] = KeyRegistry.MAP["f9"]
+    DEFAULT_START_KEY: ClassVar[KeySpec] = KeyRegistry.get("f9")
 
-    SERVERS: ClassVar[ChoiceSpec] = ChoiceSpec(
-        label="서버",
-        choices=tuple(server_registry.SERVERS.values()),
-        default=server_registry.get("한월 RPG"),
-    )
+    DEFAULT_SERVER_ID: ClassVar[str] = "한월 RPG"
 
 
 @dataclass(frozen=True)

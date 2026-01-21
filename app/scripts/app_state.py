@@ -12,28 +12,6 @@ from app.scripts.registry.server_registry import ServerSpec, server_registry
 # todo: preset에 종속된 인스턴스들 모두 옮기기
 
 
-@dataclass(order=True, frozen=True)
-class SkillSetting:
-    """개별 스킬의 설정을 담는 클래스"""
-
-    id: str
-    use_skill: bool
-    use_alone: bool
-    priority: int
-    level: int
-
-
-@dataclass
-class SkillState:
-    """스킬 상태를 담는 클래스"""
-
-    # 각 스킬의 설정
-    settings: dict[str, SkillSetting] = field(default_factory=dict)
-
-    # 연계 스킬 목록
-    link_skills: list[LinkSkill] = field(default_factory=list)
-
-
 @dataclass
 class MacroState:
     is_running: bool = False
@@ -73,7 +51,7 @@ class MacroState:
     def current_start_key(self) -> KeySpec:
         """실제로 사용되는 시작 키 값을 반환"""
         if self.current_preset.settings.use_custom_start_key:
-            return KeyRegistry.MAP[self.current_preset.settings.custom_start_key]
+            return KeyRegistry.get(self.current_preset.settings.custom_start_key)
         return config.specs.DEFAULT_START_KEY
 
     @property
@@ -117,10 +95,6 @@ class UiState:
     # todo: popup manager로 이동
     active_error_popups: list[tuple[object, int, int]] = field(default_factory=list)
 
-    # 탭 이름들
-    # todo: 프리셋에 포함된 정보이기 때문에 제거 고려
-    tab_names: list[str] = field(default_factory=list)
-
     # 시작키 설정 중인지
     # todo: SessionState로 이동 고려
     is_setting_key: bool = False
@@ -134,18 +108,23 @@ class SimulationState:
     # 입력값 유효성 검사 결과
     is_input_valid: dict[str, bool] = field(
         default_factory=lambda: {
-            "stat": False,
-            "skill": False,
-            "simDetails": False,
+            "stat": True,
+            "skill": True,
+            # todo: sim_details로 변경
+            "simDetails": True,
         }
     )
 
-    # 스탯
-    # todo: PresetInfo와 중복되므로 제거 고려 또는 property로 변경
-    stats: Stats = field(default_factory=Stats)
+    @property
+    def stats(self) -> Stats:
+        """현재 시뮬레이션 스탯 반환"""
+        return Stats.from_dict(app_state.macro.current_preset.info.stats)
 
-    # 기타 시뮬레이션 세부정보
-    sim_details: dict[str, int] = field(default_factory=dict)
+    @property
+    def sim_details(self) -> dict[str, int]:
+        """현재 시뮬레이션 상세 설정 반환"""
+        # todo: SimDetails 클래스로 변경 고려
+        return app_state.macro.current_preset.info.sim_details
 
 
 @dataclass
@@ -156,7 +135,6 @@ class AppState:
     # 싱글톤이 아니지만 값이 변하지 않는 클래스라면 ClassVar 사용
     _instance: ClassVar[AppState | None] = None
 
-    skill: SkillState = field(default_factory=SkillState)
     macro: MacroState = field(default_factory=MacroState)
     ui: UiState = field(default_factory=UiState)
     simulation: SimulationState = field(default_factory=SimulationState)
@@ -182,11 +160,11 @@ class AppState:
             return True
 
         # 연계 스킬 키
-        for link_skill in self.skill.link_skills:
+        for link_skill in self.macro.current_preset.link_skills:
             if (
                 link_skill.key_type == LinkKeyType.ON
                 and link_skill.key is not None
-                and key.key_id == KeyRegistry.MAP[link_skill.key].key_id
+                and key.key_id == KeyRegistry.get(link_skill.key).key_id
             ):
                 return True
 

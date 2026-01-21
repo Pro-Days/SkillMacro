@@ -947,12 +947,11 @@ class PopupManager:
     def make_tab_name_popup(
         self,
         anchor: QWidget,
-        preset_index: int,
         on_submitted: Callable[[str], None],
     ) -> None:
         """탭 이름 변경 팝업"""
 
-        default_text: str = app_state.ui.tab_names[preset_index]
+        default_text: str = app_state.macro.current_preset.name
         content = InputConfirmContent(default_text=default_text, fixed_width=200)
 
         def _submit(text: str) -> None:
@@ -982,9 +981,9 @@ class PopupManager:
 
         self._stop_key_listener()
 
-        default_key: KeySpec = KeyRegistry.MAP[
+        default_key: KeySpec = KeyRegistry.get(
             app_state.macro.current_preset.skills.skill_keys[index]
-        ]
+        )
         content = KeyCaptureContent(default_key=default_key)
 
         def _submit(key: KeySpec) -> None:
