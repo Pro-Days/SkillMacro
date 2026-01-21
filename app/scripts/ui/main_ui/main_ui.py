@@ -12,38 +12,33 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLayout,
     QPushButton,
-    QSizePolicy,
     QTabBar,
     QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
+from app.scripts.app_state import app_state
 from app.scripts.custom_classes import CustomFont, SkillImage
 from app.scripts.data_manager import (
     add_preset,
-    apply_preset_to_shared_data,
-    load_data,
+    apply_preset_to_app_state,
     remove_preset,
     save_data,
     select_preset,
     update_recent_preset,
 )
-from app.scripts.macro_models import LinkUseType, MacroPreset, SkillUsageSetting
-from app.scripts.misc import (
+from app.scripts.registry.key_registry import KeyRegistry, KeySpec
+from app.scripts.registry.resource_registry import (
     convert_resource_path,
-    get_every_skills,
-    get_skill_name,
-    get_skill_pixmap,
+    resource_registry,
 )
-from app.scripts.popup import PopupManager
-from app.scripts.run_macro import build_preview_task_list, build_task_list, init_macro
-from app.scripts.shared_data import UI_Variable
+from app.scripts.run_macro import build_preview_task_list, init_macro
 
 if TYPE_CHECKING:
-    from app.scripts.macro_models import MacroPreset
-    from app.scripts.main_window import MainWindow
-    from app.scripts.shared_data import KeySpec, SharedData
+    from app.scripts.macro_models import MacroPreset, SkillUsageSetting
+    from app.scripts.ui.main_window import MainWindow
+    from app.scripts.ui.popup import PopupManager
 
 
 class MainUI(QFrame):
@@ -52,22 +47,18 @@ class MainUI(QFrame):
     def __init__(
         self,
         master: MainWindow,
-        shared_data: SharedData,
     ) -> None:
         super().__init__()
 
         self.master: MainWindow = master
         self.popup_manager: PopupManager = master.get_popup_manager()
 
-        self.shared_data: SharedData = shared_data
-        self.ui_var = UI_Variable()
-
         # 프리뷰 업데이트 타이머
         self._preview_timer: QTimer = QTimer(self)
         self._preview_timer.timeout.connect(self._tick_preview_update)
         self._preview_timer.start(10)
 
-        self.tab_widget = TabWidget(self, self.shared_data)
+        self.tab_widget = TabWidget(self)
 
         # Tab 내부 이벤트를 MainUI에서 처리
         # 매크로 작동 중 팝업 요청
@@ -75,7 +66,7 @@ class MainUI(QFrame):
         # 키 설정 팝업 요청
         self.tab_widget.skillKeyRequested.connect(self.on_skill_key_clicked)
         # 데이터 변경 신호
-        self.tab_widget.dataChanged.connect(lambda: save_data(self.shared_data))
+        self.tab_widget.dataChanged.connect(lambda: save_data())
 
         # 기능 함수들 연결
         # 탭 클릭시
@@ -97,7 +88,7 @@ class MainUI(QFrame):
     def _tick_preview_update(self) -> None:
         """매크로 실행 중일 때만 프리뷰 업데이트"""
 
-        # if not self.shared_data.is_activated:
+        # if not app_state.macro.is_running:
         #     return
 
         self.tab_widget.get_current_tab().update_preview()
@@ -109,35 +100,28 @@ class MainUI(QFrame):
         """
 
         index: int = self.tab_widget.currentIndex()
-        if not self.shared_data.presets or not (
-            0 <= index < len(self.shared_data.presets)
+        if not app_state.macro.presets or not (
+            0 <= index < len(app_state.macro.presets)
         ):
             return
 
-        self.presetChanged.emit(self.shared_data.presets[index], index)
+        self.presetChanged.emit(app_state.macro.presets[index], index)
 
     def on_tab_changed(self, index: int) -> None:
         """탭이 바뀌었을 때 실행"""
 
         # 프리셋 선택
-        select_preset(self.shared_data, index)
+        select_preset(index)
 
         # 마지막으로 선택한 탭이 다음 실행에도 복원되도록 recent_preset만 최소 저장
-        update_recent_preset(self.shared_data, index)
+        update_recent_preset(index)
 
-        # 로드된 shared_data 기준으로 현재 탭 UI를 갱신
+        # 지금 프리셋을 기준으로 현재 탭 UI를 갱신
         self.tab_widget.get_current_tab().update_from_preset()
 
         # 사이드바 등 외부 UI에 현재 preset 컨텍스트 전달
-        if self.shared_data.presets and 0 <= index < len(self.shared_data.presets):
-            self.presetChanged.emit(self.shared_data.presets[index], index)
-
-        # 탭 제목/내용을 로드된 shared_data 기준으로 동기화
-        # self.tab_widget.sync_tab_titles(self.shared_data.tab_names)
-
-        # 사이드바 업데이트
-        # self.sidebar.set_index(0)
-        # self.sidebar.update_content()
+        if app_state.macro.presets and 0 <= index < len(app_state.macro.presets):
+            self.presetChanged.emit(app_state.macro.presets[index], index)
 
         # 선택중인 스킬이 있었다면 취소
         self.cancel_skill_selection()
@@ -149,23 +133,21 @@ class MainUI(QFrame):
             """탭 이름 적용"""
 
             # 프리셋/호환 데이터 반영
-            if self.shared_data.presets and 0 <= index < len(self.shared_data.presets):
-                self.shared_data.presets[index].name = new_name
-            if self.shared_data.tab_names and 0 <= index < len(
-                self.shared_data.tab_names
-            ):
-                self.shared_data.tab_names[index] = new_name
+            if app_state.macro.presets and 0 <= index < len(app_state.macro.presets):
+                app_state.macro.presets[index].name = new_name
+            if app_state.ui.tab_names and 0 <= index < len(app_state.ui.tab_names):
+                app_state.ui.tab_names[index] = new_name
 
             # 탭 라벨 반영
             self.tab_widget.setTabText(index, new_name)
 
-            save_data(self.shared_data)
+            save_data()
 
         # 활성화 상태인 팝업 닫기
         self.popup_manager.close_popup()
 
         # 매크로 실행중일 때는 탭 변경 불가
-        if self.shared_data.is_activated:
+        if app_state.macro.is_running:
             self.popup_manager.make_notice_popup("MacroIsRunning")
             return
 
@@ -186,7 +168,7 @@ class MainUI(QFrame):
         self.popup_manager.close_popup()
 
         # 매크로 실행중일 때는 탭 추가 불가
-        if self.shared_data.is_activated:
+        if app_state.macro.is_running:
             self.popup_manager.make_notice_popup("MacroIsRunning")
 
             return
@@ -197,10 +179,10 @@ class MainUI(QFrame):
         """새 탭 추가 함수"""
 
         # 데이터 추가(파일 + 메모리 presets 동시 반영)
-        add_preset(shared_data=self.shared_data)
+        add_preset()
 
         # 탭 추가 (마지막 프리셋)
-        preset: MacroPreset = self.shared_data.presets[-1]
+        preset: MacroPreset = app_state.macro.presets[-1]
         self.tab_widget.add_tab(preset)
 
     def on_remove_tab_clicked(self, index: int) -> None:
@@ -213,21 +195,10 @@ class MainUI(QFrame):
         # self.master.get_popup_manager().close_popup()
 
         # 매크로 실행중일 때는 탭 제거 불가
-        if self.shared_data.is_activated:
+        if app_state.macro.is_running:
             self.popup_manager.make_notice_popup("MacroIsRunning")
 
             return
-
-        # 탭 제거 팝업이 활성화되어있지 않을 때만 팝업 생성
-        # if self.shared_data.is_tab_remove_popup_activated:
-        #     return
-
-        # self.shared_data.is_tab_remove_popup_activated = True
-
-        # # 탭 제거 팝업 생성
-        # self.remove_confirmation_popup = ConfirmRemovePopup(
-        #     self, self.tab_widget.tabText(index), index
-        # )
 
         self.on_remove_tab_popup_clicked(index, True)
 
@@ -236,19 +207,13 @@ class MainUI(QFrame):
 
         # 탭이 삭제되면 기존 인덱스와 달리지기 때문에 인덱스 대신 객체를 기반으로 탭을 찾도록 수정 필요
 
-        # 팝업 제거
-        # self.remove_confirmation_popup.deleteLater()
-
-        # 탭 제거 팝업 활성화 상태 초기화
-        # self.shared_data.is_tab_remove_popup_activated = False
-
         # 아니오 클릭시 리턴
         if not confirmed:
             return
 
         # 탭 제거(파일 + 메모리 presets 동시 반영)
         self.tab_widget.remove_tab(index)
-        remove_preset(index, self.shared_data)
+        remove_preset(index)
 
         # 탭이 하나도 없으면 새 탭 추가
         tab_count: int = self.tab_widget.count()
@@ -258,7 +223,7 @@ class MainUI(QFrame):
 
         # 삭제 후 현재 탭 프리셋 선택
         new_index: int = self.tab_widget.currentIndex()
-        select_preset(self.shared_data, new_index)
+        select_preset(new_index)
         self.tab_widget.get_current_tab().update_from_preset()
 
     def on_skill_key_clicked(self, index: int) -> None:
@@ -269,12 +234,12 @@ class MainUI(QFrame):
 
             current_tab: Tab = self.tab_widget.get_current_tab()
             if current_tab.apply_key(index, key):
-                save_data(self.shared_data)
+                save_data()
 
         self.popup_manager.close_popup()
 
         # 매크로 실행 중일 때는 무시
-        if self.shared_data.is_activated:
+        if app_state.macro.is_running:
             self.popup_manager.make_notice_popup("MacroIsRunning")
             return
 
@@ -322,15 +287,18 @@ class MainUI(QFrame):
 
 
 class TabWidget(QTabWidget):
+    """
+    탭 위젯 클래스
+    탭을 추가/제거하고, 탭 내의 UI와 시그널을 관리
+    """
+
     noticeRequested = pyqtSignal(str)
     skillKeyRequested = pyqtSignal(int)
     dataChanged = pyqtSignal()
     skillUnequipped = pyqtSignal(str)
 
-    def __init__(self, master: QWidget, shared_data: SharedData):
+    def __init__(self, master: QWidget):
         super().__init__(master)
-
-        self.shared_data: SharedData = shared_data
 
         # 탭 닫기 버튼 활성화
         self.setTabsClosable(True)
@@ -375,7 +343,7 @@ class TabWidget(QTabWidget):
         """
         새 탭 생성
         """
-        return Tab(self.shared_data, preset=preset, preset_index=preset_index)
+        return Tab(preset=preset, preset_index=preset_index)
 
     def add_tab(self, preset: "MacroPreset") -> None:
         """
@@ -397,7 +365,7 @@ class TabWidget(QTabWidget):
         self.setCurrentIndex(index)
 
         # 새 탭을 현재 탭으로 만들고 shared_data를 해당 preset으로 동기화
-        select_preset(self.shared_data, index)
+        select_preset(index)
         new_tab.update_from_preset()
 
     def _connect_tab_signals(self, tab: "Tab") -> None:
@@ -414,14 +382,14 @@ class TabWidget(QTabWidget):
         self.tab_count: int = 0
 
         # 기존 저장된 preset 목록을 그대로 UI에 반영
-        for i, preset in enumerate(self.shared_data.presets):
+        for i, preset in enumerate(app_state.macro.presets):
             self.tab_count += 1
             tab: Tab = self._create_tab(preset, preset_index=i)
             self._connect_tab_signals(tab)
             self.addTab(tab, preset.name)
 
-        self.setCurrentIndex(self.shared_data.recent_preset)
-        select_preset(self.shared_data, self.shared_data.recent_preset)
+        self.setCurrentIndex(app_state.macro.current_preset_index)
+        select_preset(app_state.macro.current_preset_index)
         self.get_current_tab().update_from_preset()
 
     def remove_tab(self, index: int) -> None:
@@ -549,29 +517,30 @@ class TabWidget(QTabWidget):
 
 
 class Tab(QFrame):
+    """
+    매크로 탭 UI 클래스
+    """
+
     noticeRequested = pyqtSignal(str)
     skillKeyRequested = pyqtSignal(int)
     dataChanged = pyqtSignal()
     skillUnequipped = pyqtSignal(str)
 
-    def __init__(
-        self, shared_data: SharedData, preset: "MacroPreset", preset_index: int
-    ) -> None:
+    def __init__(self, preset: "MacroPreset", preset_index: int) -> None:
         super().__init__()
 
-        self.shared_data: SharedData = shared_data
         self.preset: MacroPreset = preset
         self.preset_index: int = preset_index
 
-        self.preview = SkillPreview(shared_data=self.shared_data)
+        self.preview = SkillPreview()
 
-        self.equippable_skills = EquippableSkill(shared_data=self.shared_data)
+        self.equippable_skills = EquippableSkill()
 
         line = QFrame(self)
         line.setStyleSheet("QFrame { background-color: #b4b4b4; }")
         line.setFixedHeight(1)
 
-        self.equipped_skills = EquippedSkill(shared_data=self.shared_data)
+        self.equipped_skills = EquippedSkill()
 
         # 없어도 될 수도?
         self.update_from_preset()
@@ -598,7 +567,7 @@ class Tab(QFrame):
     def on_skill_key_clicked(self, index: int) -> None:
         """장착 슬롯 단축키 설정 버튼 클릭"""
 
-        if self.shared_data.is_activated:
+        if app_state.macro.is_running:
             self.noticeRequested.emit("MacroIsRunning")
             return
 
@@ -608,18 +577,18 @@ class Tab(QFrame):
         """하단 장착 슬롯 클릭 처리(선택/해제)"""
 
         # 연계스킬 편집 중이면 수정 불가능
-        if self.shared_data.sidebar_type == 4:
+        if app_state.ui.current_sidebar_page == 4:
             self.cancel_skill_selection()
             self.noticeRequested.emit("editingLinkSkill")
             return
 
         # 매크로 실행중이면 수정 불가능
-        if self.shared_data.is_activated:
+        if app_state.macro.is_running:
             self.cancel_skill_selection()
             self.noticeRequested.emit("MacroIsRunning")
             return
 
-        equipped_skill: str = self.preset.skills.active_skills[index]
+        equipped_skill: str = self.preset.skills.equipped_skills[index]
         selected_index: int = self.get_selected_index()
 
         # 스킬 선택중이 아닐 때: 선택
@@ -651,13 +620,13 @@ class Tab(QFrame):
         """상단(장착 가능) 스킬 클릭 처리(현재 선택된 슬롯에 장착)"""
 
         # 연계스킬 편집 중이면 수정 불가능
-        if self.shared_data.sidebar_type == 4:
+        if app_state.ui.current_sidebar_page == 4:
             self.cancel_skill_selection()
             self.noticeRequested.emit("editingLinkSkill")
             return
 
         # 매크로 실행중이면 수정 불가능
-        if self.shared_data.is_activated:
+        if app_state.macro.is_running:
             self.cancel_skill_selection()
             self.noticeRequested.emit("MacroIsRunning")
             return
@@ -667,15 +636,19 @@ class Tab(QFrame):
         if selected_slot == -1:
             return
 
-        selected_skill: str = get_every_skills(self.shared_data)[available_index]
+        selected_skill: (
+            str
+        ) = app_state.macro.current_server.skill_registry.get_all_skill_ids()[
+            available_index
+        ]
 
         # 이미 장착된 스킬을 선택했을 때: 취소
-        if selected_skill in self.preset.skills.active_skills:
+        if selected_skill in self.preset.skills.equipped_skills:
             self.cancel_skill_selection()
             return
 
         # 기존에 장착된 스킬이 있으면 해제
-        equipped_skill: str = self.preset.skills.active_skills[selected_slot]
+        equipped_skill: str = self.preset.skills.equipped_skills[selected_slot]
         if equipped_skill:
             self.clear_equipped_skill(skill_id=equipped_skill)
 
@@ -696,16 +669,16 @@ class Tab(QFrame):
 
         # 스킬 사용 우선순위 리로드
         setting: SkillUsageSetting = self.preset.usage_settings[skill_id]
-        prev_priority: int = setting.skill_priority
+        prev_priority: int = setting.priority
 
         # 우선순위가 있었다면 초기화
         if prev_priority:
-            self.preset.usage_settings[skill_id].skill_priority = 0
+            self.preset.usage_settings[skill_id].priority = 0
 
             # 해당 스킬보다 높은 우선순위의 스킬들 우선순위 1 감소
             for setting in self.preset.usage_settings.values():
-                if setting.skill_priority > prev_priority:
-                    setting.skill_priority -= 1
+                if setting.priority > prev_priority:
+                    setting.priority -= 1
 
         self._sync_to_shared_data()
 
@@ -715,7 +688,7 @@ class Tab(QFrame):
         self.equipped_skills.select(index)
 
     def set_equipped_skill(self, index: int, skill_id: str) -> None:
-        self.preset.skills.active_skills[index] = skill_id
+        self.preset.skills.equipped_skills[index] = skill_id
         self._sync_to_shared_data()
         self.equipped_skills.set_skill(index, skill_id)
         self.update_preview()
@@ -762,21 +735,20 @@ class Tab(QFrame):
     def _sync_to_shared_data(self) -> None:
         """preset -> shared_data로 동기화"""
 
-        apply_preset_to_shared_data(
-            self.shared_data,
+        apply_preset_to_app_state(
             self.preset,
             preset_index=self.preset_index,
-            all_presets=self.shared_data.presets,
+            all_presets=app_state.macro.presets,
         )
 
 
 class SkillPreview(QFrame):
     """스킬 미리보기 프레임"""
 
-    def __init__(self, shared_data: SharedData) -> None:
+    def __init__(
+        self,
+    ) -> None:
         super().__init__()
-
-        self.shared_data: SharedData = shared_data
 
         self.setStyleSheet(
             """
@@ -804,10 +776,10 @@ class SkillPreview(QFrame):
         """프리뷰 업데이트"""
 
         # 매크로가 실행중이 아니라면 매크로 초기화 실행
-        if not self.shared_data.is_activated:
-            init_macro(self.shared_data)
+        if not app_state.macro.is_running:
+            init_macro()
 
-        task_list: tuple[int, ...] = build_preview_task_list(self.shared_data)
+        task_list: tuple[int, ...] = build_preview_task_list()
 
         # 이전과 동일한 task_list라면 갱신하지 않음
         if task_list == self.previous_task_list:
@@ -827,8 +799,8 @@ class SkillPreview(QFrame):
 
         # 각 미리보기 스킬 이미지 추가
         for slot in task_list[:count]:
-            pixmap: QPixmap = get_skill_pixmap(
-                self.shared_data, skill_id=self.shared_data.equipped_skills[slot]
+            pixmap: QPixmap = resource_registry.get_skill_pixmap(
+                skill_id=app_state.macro.current_preset.skills.equipped_skills[slot]
             )
 
             skill: SkillImage = SkillImage(parent=self, pixmap=pixmap, size=44)
@@ -842,10 +814,10 @@ class EquippableSkill(QFrame):
 
     skillClicked = pyqtSignal(int)
 
-    def __init__(self, shared_data: SharedData) -> None:
+    def __init__(
+        self,
+    ) -> None:
         super().__init__()
-
-        self.shared_data: SharedData = shared_data
 
         self.setStyleSheet("QFrame { background-color: transparent; }")
 
@@ -855,7 +827,7 @@ class EquippableSkill(QFrame):
         self.skills: list[EquippableSkill.Skill] = []
         COLS = 4
         for i in range(8):
-            skill = self.Skill(shared_data=self.shared_data, index=i)
+            skill = self.Skill(index=i)
             self.skills.append(skill)
 
             skill.clicked.connect(self.skillClicked.emit)
@@ -873,38 +845,43 @@ class EquippableSkill(QFrame):
         장착 가능한 스킬 목록 표시
         장착되지 않은 스킬에 빨간 테두리 표시
         """
-        skill_ids: list[str] = get_every_skills(self.shared_data)
+        skill_ids: list[str] = (
+            app_state.macro.current_server.skill_registry.get_all_skill_ids()
+        )
 
         for index, skill_widget in enumerate(self.skills):
             skill_id: str = skill_ids[index]
             skill_widget.set_equipped_style(
-                skill_id in self.shared_data.equipped_skills
+                skill_id in app_state.macro.current_preset.skills.equipped_skills
             )
 
     class Skill(QFrame):
         clicked = pyqtSignal(int)
 
-        def __init__(self, shared_data: SharedData, index: int) -> None:
+        def __init__(self, index: int) -> None:
             super().__init__()
 
             self.index: int = index
-            self.shared_data: SharedData = shared_data
 
             self.setStyleSheet("QFrame { background-color: transparent; }")
 
-            skill_id: str = get_every_skills(shared_data)[index]
+            skill_id: str = (
+                app_state.macro.current_server.skill_registry.get_all_skill_ids()[index]
+            )
 
             self.button: QPushButton = QPushButton(self)
             self.button.setStyleSheet("QPushButton { border-radius :10px; }")
             self.button.setFixedSize(48, 48)
             self.button.setIcon(
-                QIcon(get_skill_pixmap(shared_data=shared_data, skill_id=skill_id))
+                QIcon(resource_registry.get_skill_pixmap(skill_id=skill_id))
             )
             self.button.setIconSize(QSize(48, 48))
             self.button.clicked.connect(lambda: self.clicked.emit(self.index))
             self.button.setCursor(Qt.CursorShape.PointingHandCursor)
 
-            display_name: str = get_skill_name(shared_data, skill_id)
+            display_name: str = app_state.macro.current_server.skill_registry.name(
+                skill_id
+            )
             self.name: QLabel = QLabel(display_name, self)
             self.name.setStyleSheet(
                 "QLabel { background-color: transparent; border-radius :0px; }"
@@ -938,10 +915,10 @@ class EquippedSkill(QFrame):
     slotClicked = pyqtSignal(int)
     keyClicked = pyqtSignal(int)
 
-    def __init__(self, shared_data: SharedData):
+    def __init__(
+        self,
+    ):
         super().__init__()
-
-        self.shared_data: SharedData = shared_data
 
         self.setStyleSheet("QFrame { background-color: transparent; }")
 
@@ -950,7 +927,7 @@ class EquippedSkill(QFrame):
         # 슬롯 모음
         self.skills: list[EquippedSkill.Skill] = []
         for i in range(6):
-            skill = self.Skill(shared_data=self.shared_data, index=i)
+            skill = self.Skill(index=i)
             self.skills.append(skill)
 
             # 시그널 연결
@@ -996,20 +973,19 @@ class EquippedSkill(QFrame):
     def update_from_preset(self, preset: "MacroPreset") -> None:
         """preset 기준으로 슬롯 아이콘/키 텍스트를 동기화"""
 
-        for index, name in enumerate(preset.skills.active_skills):
+        for index, name in enumerate(preset.skills.equipped_skills):
             self.set_skill(index, name)
 
         for index, key_id in enumerate(preset.skills.skill_keys):
-            self.set_key(index, self.shared_data.KEY_DICT[key_id].display)
+            self.set_key(index, KeyRegistry.MAP[key_id].display)
 
     class Skill(QFrame):
         slotClicked = pyqtSignal(int)
         keyClicked = pyqtSignal(int)
 
-        def __init__(self, shared_data: SharedData, index: int):
+        def __init__(self, index: int):
             super().__init__()
 
-            self.shared_data: SharedData = shared_data
             self.index: int = index
 
             self.setStyleSheet("QFrame { background-color: transparent; }")
@@ -1023,7 +999,7 @@ class EquippedSkill(QFrame):
             self._shadow_offset_y: int = 2
             self._shadow_padding: int = 4
 
-            name: str = shared_data.equipped_skills[index]
+            name: str = app_state.macro.current_preset.skills.equipped_skills[index]
 
             self.button_container = QFrame(self)
             self.button_container.setStyleSheet(
@@ -1038,7 +1014,7 @@ class EquippedSkill(QFrame):
             self.button.setStyleSheet("QPushButton { border-radius: 10px; }")
             self.button.setFixedSize(self._base_button_size, self._base_button_size)
             self.button.setIcon(
-                QIcon(get_skill_pixmap(shared_data=shared_data, skill_id=name))
+                QIcon(resource_registry.get_skill_pixmap(skill_id=name))
             )
             self.button.setIconSize(
                 QSize(self._base_button_size, self._base_button_size)
@@ -1051,7 +1027,9 @@ class EquippedSkill(QFrame):
             button_layout.setSpacing(0)
             button_layout.addWidget(self.button, alignment=Qt.AlignmentFlag.AlignCenter)
 
-            self.key = QPushButton(shared_data.skill_keys[index].display, self)
+            self.key = QPushButton(
+                app_state.macro.current_preset.skills.skill_keys[index], self
+            )
             self.key.setFont(CustomFont(10))
             self.key.setFixedWidth(size)
             self.key.clicked.connect(lambda: self.keyClicked.emit(self.index))
@@ -1102,7 +1080,7 @@ class EquippedSkill(QFrame):
             """스킬 장착"""
 
             self.button.setIcon(
-                QIcon(get_skill_pixmap(shared_data=self.shared_data, skill_id=skill_id))
+                QIcon(resource_registry.get_skill_pixmap(skill_id=skill_id))
             )
 
         def get_key_button(self) -> QPushButton:

@@ -1,11 +1,14 @@
 import sys
+
 from PyQt6.QtWidgets import QApplication
-from app.scripts.main_window import MainWindow
+
+from app.scripts.ui.main_window import MainWindow
 
 
 def main() -> None:
     app: QApplication = QApplication(sys.argv)
     MainWindow()
+
     sys.exit(app.exec())
 
 

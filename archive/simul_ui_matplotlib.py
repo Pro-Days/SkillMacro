@@ -1,49 +1,47 @@
 from __future__ import annotations
 
-from .data_manager import save_data
-from .misc import (
-    get_skill_pixmap,
-    adjust_font_size,
-    get_available_skills,
-    convert_resource_path,
-    set_var_to_ClassVar,
-)
-from .shared_data import UI_Variable
-from .simulate_macro import randSimulate, detSimulate, get_req_stats
-from .sim_ui.graph import (
-    DpmDistributionCanvas,
-    SkillDpsRatioCanvas,
-    DMGCanvas,
-    SkillContributionCanvas,
-)
-from .custom_classes import (
-    CustomFont,
-    CustomLineEdit,
-    CustomComboBox,
-    SimResult,
-    SimAnalysis,
-)
-from .get_character_data import get_character_info, get_character_card_data
-
-import requests
 import os
 from functools import partial
 from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
-
+import requests
 from PyQt6.QtCore import QSize, Qt
-from PyQt6.QtGui import QPixmap, QPainter, QIcon
+from PyQt6.QtGui import QIcon, QPainter, QPixmap
 from PyQt6.QtWidgets import (
+    QComboBox,
+    QFileDialog,
     QFrame,
     QLabel,
     QPushButton,
-    QFileDialog,
     QScrollArea,
-    QComboBox,
     QWidget,
 )
 
+from .custom_classes import (
+    CustomComboBox,
+    CustomFont,
+    CustomLineEdit,
+    SimAnalysis,
+    SimResult,
+)
+from .data_manager import save_data
+from .get_character_data import get_character_card_data, get_character_info
+from .misc import (
+    adjust_font_size,
+    convert_resource_path,
+    get_available_skills,
+    get_skill_pixmap,
+    set_var_to_ClassVar,
+)
+from .shared_data import UI_Variable
+from .sim_ui.graph import (
+    DMGCanvas,
+    DpmDistributionCanvas,
+    SkillContributionCanvas,
+    SkillDpsRatioCanvas,
+)
+from .simulate_macro import detSimulate, get_req_stats, randSimulate
 
 if TYPE_CHECKING:
     from .main_window import MainWindow
@@ -55,9 +53,8 @@ class SimUI:
         self,
         master: MainWindow,
         parent: QFrame,
-        shared_data: SharedData,
     ):
-        self.shared_data: SharedData = shared_data
+
         self.parent: QFrame = parent
         self.master: MainWindow = master
 
@@ -224,7 +221,7 @@ class SimUI:
         """
 
         # 입력값 체크
-        if not all(self.shared_data.is_input_valid.values()):
+        if not all(app_state.simulation.is_input_valid.values()):
             self.master.get_popup_manager().make_notice_popup("SimInputError")
             return
 
@@ -233,7 +230,7 @@ class SimUI:
 
         self.shared_data.sim_page_type = 4
 
-        self.sim4_ui = Sim4UI(self.sim_main_frame, self.shared_data)
+        self.sim4_ui = Sim4UI(self.sim_main_frame)
 
         # 메인 프레임 크기 조정
         self.sim_main_frame.setFixedHeight(
@@ -251,7 +248,7 @@ class SimUI:
         """
 
         # 입력값 체크
-        if not all(self.shared_data.is_input_valid.values()):
+        if not all(app_state.simulation.is_input_valid.values()):
             self.master.get_popup_manager().make_notice_popup("SimInputError")
             return
 
@@ -260,7 +257,7 @@ class SimUI:
 
         self.shared_data.sim_page_type = 3
 
-        self.sim3_ui = Sim3UI(self.sim_main_frame, self.shared_data)
+        self.sim3_ui = Sim3UI(self.sim_main_frame)
 
         # 메인 프레임 크기 조정
         self.sim_main_frame.setFixedHeight(
@@ -278,7 +275,7 @@ class SimUI:
         """
 
         # 입력값 체크
-        if not all(self.shared_data.is_input_valid.values()):
+        if not all(app_state.simulation.is_input_valid.values()):
             self.master.get_popup_manager().make_notice_popup("SimInputError")
             return
 
@@ -287,7 +284,7 @@ class SimUI:
 
         self.shared_data.sim_page_type = 2
 
-        self.sim2_ui = Sim2UI(self.sim_main_frame, self.shared_data)
+        self.sim2_ui = Sim2UI(self.sim_main_frame)
 
         # 메인 프레임 크기 조정
         self.sim_main_frame.setFixedHeight(
@@ -309,7 +306,7 @@ class SimUI:
 
         self.shared_data.sim_page_type = 1
 
-        self.sim1_ui = Sim1UI(self.sim_main_frame, self.shared_data)
+        self.sim1_ui = Sim1UI(self.sim_main_frame)
 
         # Tab Order 설정
         tab_orders = (
@@ -421,7 +418,10 @@ class SimUI:
 
 
 class Sim1UI:
-    def __init__(self, parent, shared_data: SharedData):
+    def __init__(
+        self,
+        parent,
+    ):
         self.shared_data = shared_data
         self.parent = parent
 
@@ -444,9 +444,7 @@ class Sim1UI:
         )
 
         self.stat_title = Title(parent=self.stat_frame, text="캐릭터 스탯")
-        self.stat_inputs = StatInput(
-            self.stat_frame, self.shared_data, self.stat_inputChanged
-        )
+        self.stat_inputs = StatInput(self.stat_frame, self.stat_inputChanged)
         self.stat_inputs.inputs[0].setFocus()
 
         # 스탯 입력창 위치 조정
@@ -472,7 +470,7 @@ class Sim1UI:
                 self.ui_var.sim_stat_input_H,
             )
             self.stat_inputs.inputs[i].setText(
-                str(self.shared_data.info_stats.get_stat_from_index(i))
+                str(app_state.simulation.stats.get_stat_from_index(i))
             )
 
         # 스킬 레벨
@@ -489,9 +487,7 @@ class Sim1UI:
         )
 
         self.skill_title = Title(self.skill_frame, "스킬 레벨")
-        self.skill_inputs = SkillInput(
-            self.skill_frame, self.shared_data, self.skill_inputChanged
-        )
+        self.skill_inputs = SkillInput(self.skill_frame, self.skill_inputChanged)
 
         margin, count = 66, 4
         for i in range(8):
@@ -522,11 +518,7 @@ class Sim1UI:
             )
 
             self.skill_inputs.inputs[i].setText(
-                str(
-                    self.shared_data.info_skill_levels[
-                        get_available_skills(self.shared_data)[i]
-                    ]
-                )
+                str(self.shared_data.info_skill_levels[get_available_skills()[i]])
             )
 
         # 추가 정보 입력
@@ -543,9 +535,7 @@ class Sim1UI:
         )
 
         self.info_title = Title(self.info_frame, "추가 정보 입력")
-        self.info_inputs = SimInfoInput(
-            self.info_frame, self.shared_data, self.simInfo_inputChanged
-        )
+        self.info_inputs = SimInfoInput(self.info_frame, self.simInfo_inputChanged)
 
         margin = 60
         for i in range(3):
@@ -569,7 +559,7 @@ class Sim1UI:
 
             self.info_inputs.inputs[i].setText(
                 str(
-                    self.shared_data.info_sim_details[
+                    app_state.simulation.sim_details[
                         list(self.shared_data.SIM_DETAILS.keys())[i]
                     ]
                 )
@@ -600,10 +590,10 @@ class Sim1UI:
                 )
 
             for i, j in enumerate(self.stat_inputs.inputs):
-                self.shared_data.info_stats.set_stat_from_index(i, int(j.text()))
+                app_state.simulation.stats.set_stat_from_index(i, int(j.text()))
 
-            save_data(self.shared_data)
-            self.shared_data.is_input_valid["stat"] = True
+            save_data()
+            app_state.simulation.is_input_valid["stat"] = True
 
         else:  # 하나라도 통과X
             for i, j in enumerate(self.stat_inputs.inputs):
@@ -616,7 +606,7 @@ class Sim1UI:
                         f"QLineEdit {{ background-color: {self.ui_var.sim_input_colors[0]}; border: 1px solid {self.ui_var.sim_input_colors[1]}; border-radius: 4px; }}"
                     )
 
-            self.shared_data.is_input_valid["stat"] = False
+            app_state.simulation.is_input_valid["stat"] = False
 
     def skill_inputChanged(self):
         # 스킬이 정상적으로 입력되었는지 확인
@@ -635,11 +625,11 @@ class Sim1UI:
                 )
 
             for i, j in enumerate(self.skill_inputs.inputs):
-                self.shared_data.info_skill_levels[
-                    get_available_skills(self.shared_data)[i]
-                ] = int(j.text())
-            save_data(self.shared_data)
-            self.shared_data.is_input_valid["skill"] = True
+                self.shared_data.info_skill_levels[get_available_skills()[i]] = int(
+                    j.text()
+                )
+            save_data()
+            app_state.simulation.is_input_valid["skill"] = True
 
         else:  # 하나라도 통과X
             for i in self.skill_inputs.inputs:
@@ -652,7 +642,7 @@ class Sim1UI:
                         f"QLineEdit {{ background-color: {self.ui_var.sim_input_colors[0]}; border: 1px solid {self.ui_var.sim_input_colors[1]}; border-radius: 4px; }}"
                     )
 
-            self.shared_data.is_input_valid["skill"] = False
+            app_state.simulation.is_input_valid["skill"] = False
 
     def simInfo_inputChanged(self):
         # 스탯이 정상적으로 입력되었는지 확인
@@ -675,11 +665,11 @@ class Sim1UI:
                 )
 
             for i, j in enumerate(self.info_inputs.inputs):
-                self.shared_data.info_sim_details[
+                app_state.simulation.sim_details[
                     list(self.shared_data.SIM_DETAILS.keys())[i]
                 ] = int(j.text())
-            save_data(self.shared_data)
-            self.shared_data.is_input_valid["simInfo"] = True
+            save_data()
+            app_state.simulation.is_input_valid["simInfo"] = True
 
         else:  # 하나라도 통과X
             for i, j in enumerate(self.info_inputs.inputs):
@@ -692,11 +682,14 @@ class Sim1UI:
                         f"QLineEdit {{ background-color: {self.ui_var.sim_input_colors[0]}; border: 1px solid {self.ui_var.sim_input_colors[1]}; border-radius: 4px; }}"
                     )
 
-            self.shared_data.is_input_valid["simInfo"] = False
+            app_state.simulation.is_input_valid["simInfo"] = False
 
 
 class Sim2UI:
-    def __init__(self, parent, shared_data: SharedData):
+    def __init__(
+        self,
+        parent,
+    ):
         self.shared_data = shared_data
         self.parent = parent
 
@@ -706,9 +699,8 @@ class Sim2UI:
 
     def makeSim2UI(self):
         sim_result: SimResult = randSimulate(
-            self.shared_data,
-            self.shared_data.info_stats,
-            self.shared_data.info_sim_details,
+            app_state.simulation.stats,
+            app_state.simulation.sim_details,
         )
         powers = sim_result.powers
         analysis = sim_result.analysis
@@ -717,7 +709,7 @@ class Sim2UI:
         str_powers = sim_result.str_powers
 
         for i, power in enumerate(powers):
-            self.shared_data.powers[i] = power
+            app_state.simulation.powers[i] = power
 
         timeStep, timeStepCount = 1, 60  # 60초까지 시뮬레이션
         times = [i * timeStep for i in range(timeStepCount + 1)]
@@ -750,7 +742,7 @@ class Sim2UI:
         )
 
         self.power_title = Title(self.power_frame, "전투력")
-        self.power_labels = PowerLabels(self.power_frame, self.shared_data, str_powers)
+        self.power_labels = PowerLabels(self.power_frame, str_powers)
 
         for i in range(len(self.power_labels.frames)):
             frame = self.power_labels.frames[i]
@@ -859,12 +851,12 @@ class Sim2UI:
 
         ratio_data: list[float] = [
             sum([i.damage for i in resultDet if i.skill_name == skill_name])
-            for skill_name in self.shared_data.equipped_skills + ["평타"]
+            for skill_name in app_state.macro.equipped_skills + ["평타"]
         ]
         # data = [round(total_dmgs[i] / sum(total_dmgs) * 100, 1) for i in range(7)]
 
         self.skillRatioGraph = SkillDpsRatioCanvas(
-            self.skillRatioGraph_frame, ratio_data, self.shared_data.equipped_skills
+            self.skillRatioGraph_frame, ratio_data.equipped_skills
         )
         self.skillRatioGraph.move(10, 10)
         self.skillRatioGraph.resize(
@@ -961,7 +953,7 @@ class Sim2UI:
         )
 
         skillsData = []
-        for skill_name in self.shared_data.equipped_skills + ["평타"]:
+        for skill_name in app_state.macro.equipped_skills + ["평타"]:
             skillsData.append([])
             for i in range(timeStepCount + 1):
                 skillsData[-1].append(
@@ -1002,7 +994,7 @@ class Sim2UI:
             "skills_sum": data_cumsum,
         }
         self.skillContribute = SkillContributionCanvas(
-            self.skillContribute_frame, data, self.shared_data.equipped_skills
+            self.skillContribute_frame, data.equipped_skills
         )  # 시뮬레이션 결과
         self.skillContribute.move(5, 5)
         self.skillContribute.resize(
@@ -1012,7 +1004,10 @@ class Sim2UI:
 
 
 class Sim3UI:
-    def __init__(self, parent, shared_data: SharedData):
+    def __init__(
+        self,
+        parent,
+    ):
         self.shared_data = shared_data
         self.parent = parent
 
@@ -1022,18 +1017,17 @@ class Sim3UI:
 
     def makeSim3UI(self):
         powers = detSimulate(
-            self.shared_data,
-            self.shared_data.info_stats,
-            self.shared_data.info_sim_details,
+            app_state.simulation.stats,
+            app_state.simulation.sim_details,
         ).powers
 
         for i, power in enumerate(powers):
-            self.shared_data.powers[i] = power
+            app_state.simulation.powers[i] = power
 
         self.widgetList = []
 
-        self.shared_data.is_input_valid["stat"] = False
-        self.shared_data.is_input_valid["skill"] = False
+        app_state.simulation.is_input_valid["stat"] = False
+        app_state.simulation.is_input_valid["skill"] = False
 
         ## 스펙업 효율 계산기
         self.efficiency_frame = QFrame(self.parent)
@@ -1120,9 +1114,7 @@ class Sim3UI:
         )
         self.widgetList.append(self.efficiency_statR)
 
-        self.efficiency_power_labels = PowerLabels(
-            self.efficiency_frame, self.shared_data, ["0"] * 4
-        )
+        self.efficiency_power_labels = PowerLabels(self.efficiency_frame, ["0"] * 4)
 
         for i in range(len(self.efficiency_power_labels.labels)):
             frame = self.efficiency_power_labels.frames[i]
@@ -1179,9 +1171,7 @@ class Sim3UI:
         self.widgetList.append(self.additional_title.frame)
         self.widgetList.append(self.additional_title.label)
 
-        self.additional_power_labels = PowerLabels(
-            self.additional_frame, self.shared_data, ["0"] * 4
-        )
+        self.additional_power_labels = PowerLabels(self.additional_frame, ["0"] * 4)
 
         for i in range(len((self.additional_power_labels.labels))):
             frame = self.additional_power_labels.frames[i]
@@ -1217,9 +1207,7 @@ class Sim3UI:
             self.widgetList.append(label)
             self.widgetList.append(number)
 
-        self.additional_stats = StatInput(
-            self.additional_frame, self.shared_data, self.stat_inputChanged
-        )
+        self.additional_stats = StatInput(self.additional_frame, self.stat_inputChanged)
 
         margin, count = 21, 6
         for i in range(18):
@@ -1251,7 +1239,7 @@ class Sim3UI:
             self.widgetList.append(self.additional_stats.inputs[i])
 
         self.additional_skills = SkillInput(
-            self.additional_frame, self.shared_data, self.skill_inputChanged
+            self.additional_frame, self.skill_inputChanged
         )
 
         margin, count = 66, 4
@@ -1286,11 +1274,7 @@ class Sim3UI:
             )
 
             self.additional_skills.inputs[i].setText(
-                str(
-                    self.shared_data.info_skill_levels[
-                        get_available_skills(self.shared_data)[i]
-                    ]
-                )
+                str(self.shared_data.info_skill_levels[get_available_skills()[i]])
             )
 
             self.widgetList.append(self.additional_skills.frames[i])
@@ -1361,9 +1345,7 @@ class Sim3UI:
         )
         self.widgetList.append(self.potential_stat2)
 
-        self.potential_power_labels = PowerLabels(
-            self.potential_frame, self.shared_data, ["0"] * 4
-        )
+        self.potential_power_labels = PowerLabels(self.potential_frame, ["0"] * 4)
 
         for i in range(len(self.potential_power_labels.labels)):
             frame = self.potential_power_labels.frames[i]
@@ -1418,7 +1400,7 @@ class Sim3UI:
         self.widgetList.append(self.potentialRank_title.frame)
         self.widgetList.append(self.potentialRank_title.label)
 
-        self.potentialRanks = PotentialRank(self.potentialRank_frame, self.shared_data)
+        self.potentialRanks = PotentialRank(self.potentialRank_frame)
 
         for i in range(4):
             self.potentialRanks.frames[i].setGeometry(
@@ -1484,18 +1466,16 @@ class Sim3UI:
             ]
             return
 
-        stats = self.shared_data.info_stats.copy()
+        stats = app_state.simulation.stats.copy()
         stats.add_stat_from_index(
             self.efficiency_statL.currentIndex(), int(self.efficiency_statInput.text())
         )
 
         powers = detSimulate(
-            self.shared_data,
             stats,
-            self.shared_data.info_sim_details,
+            app_state.simulation.sim_details,
         ).powers
         reqStats = get_req_stats(
-            self.shared_data,
             powers,
             list(self.shared_data.STATS.keys())[self.efficiency_statR.currentIndex()],
         )
@@ -1511,7 +1491,7 @@ class Sim3UI:
             [self.efficiency_power_labels.labels[i].setText("오류") for i in range(4)]
             return
 
-        stat = self.shared_data.info_stats.get_stat_from_name(stat_name) + int(text)
+        stat = app_state.simulation.stats.get_stat_from_name(stat_name) + int(text)
 
         if self.shared_data.STAT_RANGES[stat_name][0] <= stat:
             if self.shared_data.STAT_RANGES[stat_name][1] == None:
@@ -1543,7 +1523,7 @@ class Sim3UI:
 
             stat_name = list(self.shared_data.STATS.keys())[num]
 
-            stat = self.shared_data.info_stats.get_stat_from_name(stat_name) + value
+            stat = app_state.simulation.stats.get_stat_from_name(stat_name) + value
 
             return (
                 self.shared_data.STAT_RANGES[stat_name][0]
@@ -1559,7 +1539,7 @@ class Sim3UI:
                     f"QLineEdit {{ background-color: {self.ui_var.sim_input_colors[0]}; border: 1px solid {self.ui_var.sim_input_colors[1]}; border-radius: 4px; }}"
                 )
 
-            self.shared_data.is_input_valid["stat"] = True
+            app_state.simulation.is_input_valid["stat"] = True
             self.update_additional_power_list()
 
         else:  # 하나라도 통과X
@@ -1574,7 +1554,7 @@ class Sim3UI:
                         f"QLineEdit {{ background-color: {self.ui_var.sim_input_colors[0]}; border: 1px solid {self.ui_var.sim_input_colors[1]}; border-radius: 4px; }}"
                     )
 
-            self.shared_data.is_input_valid["stat"] = False
+            app_state.simulation.is_input_valid["stat"] = False
 
     def skill_inputChanged(self):
         # 스킬이 정상적으로 입력되었는지 확인
@@ -1585,7 +1565,7 @@ class Sim3UI:
             return (
                 1
                 <= int(text)
-                <= self.shared_data.MAX_SKILL_LEVEL[self.shared_data.server_ID]
+                <= self.shared_data.MAX_SKILL_LEVEL[app_state.macro.server.id]
             )
 
         if not False in [
@@ -1596,7 +1576,7 @@ class Sim3UI:
                     f"QLineEdit {{ background-color: {self.ui_var.sim_input_colors[0]}; border: 1px solid {self.ui_var.sim_input_colors[1]}; border-radius: 4px; }}"
                 )
 
-            self.shared_data.is_input_valid["skill"] = True
+            app_state.simulation.is_input_valid["skill"] = True
             self.update_additional_power_list()
 
         else:  # 하나라도 통과X
@@ -1610,11 +1590,11 @@ class Sim3UI:
                         f"QLineEdit {{ background-color: {self.ui_var.sim_input_colors[0]}; border: 1px solid {self.ui_var.sim_input_colors[1]}; border-radius: 4px; }}"
                     )
 
-            self.shared_data.is_input_valid["skill"] = False
+            app_state.simulation.is_input_valid["skill"] = False
 
     def update_additional_power_list(self):
-        if all(self.shared_data.is_input_valid.values()):
-            stats = self.shared_data.info_stats.copy()
+        if all(app_state.simulation.is_input_valid.values()):
+            stats = app_state.simulation.stats.copy()
             for i in self.additional_stats.inputs:
                 stats.add_stat_from_index(
                     self.additional_stats.inputs.index(i), int(i.text())
@@ -1626,20 +1606,19 @@ class Sim3UI:
 
             skills: dict[str, int] = self.shared_data.info_skill_levels.copy()
             for i, j in enumerate(self.additional_skills.inputs):
-                skills[get_available_skills(self.shared_data)[i]] = int(j.text())
+                skills[get_available_skills()[i]] = int(j.text())
 
             powers = detSimulate(
-                self.shared_data,
                 stats,
-                self.shared_data.info_sim_details,
+                app_state.simulation.sim_details,
                 skills,
             ).powers
 
-            diff_powers = [powers[i] - self.shared_data.powers[i] for i in range(4)]
+            diff_powers = [powers[i] - app_state.simulation.powers[i] for i in range(4)]
 
             [
                 self.additional_power_labels.numbers[i].setText(
-                    f"{int(powers[i]):}\n({round(diff_powers[i]):+}, {round(diff_powers[i] / self.shared_data.powers[i] * 100, 2):+.1f}%)"
+                    f"{int(powers[i]):}\n({round(diff_powers[i]):+}, {round(diff_powers[i] / app_state.simulation.powers[i] * 100, 2):+.1f}%)"
                 )
                 for i in range(4)
             ]
@@ -1654,18 +1633,19 @@ class Sim3UI:
             self.potential_stat2.currentText(),
         ]
 
-        stats = self.shared_data.info_stats.copy()
+        stats = app_state.simulation.stats.copy()
         for i in range(3):
             stat, value = self.shared_data.POTENTIAL_STATS[indexList[i]]
             stats.add_stat_from_name(stat, value)
 
         powers = detSimulate(
-            self.shared_data,
             stats,
-            self.shared_data.info_sim_details,
+            app_state.simulation.sim_details,
         ).powers
 
-        diff_powers = [round(powers[i] - self.shared_data.powers[i]) for i in range(4)]
+        diff_powers = [
+            round(powers[i] - app_state.simulation.powers[i]) for i in range(4)
+        ]
 
         [
             self.potential_power_labels.numbers[i].setText(f"{diff_powers[i]:+}")
@@ -1674,7 +1654,10 @@ class Sim3UI:
 
 
 class Sim4UI:
-    def __init__(self, parent, shared_data: SharedData):
+    def __init__(
+        self,
+        parent,
+    ):
         self.shared_data = shared_data
         self.parent = parent
 
@@ -1686,12 +1669,11 @@ class Sim4UI:
         self.shared_data.is_card_updated = False
 
         powers = detSimulate(
-            self.shared_data,
-            self.shared_data.info_stats,
-            self.shared_data.info_sim_details,
+            app_state.simulation.stats,
+            app_state.simulation.sim_details,
         ).powers
         for i, power in enumerate(powers):
-            self.shared_data.powers[i] = power
+            app_state.simulation.powers[i] = power
         # self.sim_powers = [str(int(i)) for i in self.sim_powers]
 
         self.name = ""
@@ -2331,7 +2313,7 @@ class Sim4UI:
                     self.ui_var.sim_charCard_powerFrame_W,
                     self.ui_var.sim_charCard_powerFrame_H,
                 )
-                self.card_powers[i][2].setText(f"{int(self.shared_data.powers[i])}")
+                self.card_powers[i][2].setText(f"{int(app_state.simulation.powers[i])}")
 
                 self.card_powers[i][0].show()
                 count += 1
@@ -2343,7 +2325,7 @@ class Sim4UI:
 
 
 class StatInput:
-    def __init__(self, mainframe, shared_data: SharedData, connected_function):
+    def __init__(self, mainframe, connected_function):
         self.frames = []
         self.labels = []
         self.inputs = []
@@ -2369,10 +2351,10 @@ class StatInput:
 
 
 class SkillInput:
-    def __init__(self, mainframe, shared_data: SharedData, connected_function):
+    def __init__(self, mainframe, connected_function):
         ui_var = UI_Variable()
 
-        texts = shared_data.skill_data[shared_data.server_ID]["jobs"][
+        texts = shared_data.skill_data[app_state.macro.server.id]["jobs"][
             shared_data.job_ID
         ]["skills"]
 
@@ -2415,11 +2397,7 @@ class SkillInput:
                 "QPushButton { background-color: transparent; border: 0px solid; }"
             )
             image.setIcon(
-                QIcon(
-                    get_skill_pixmap(
-                        shared_data, skill_name=get_available_skills(shared_data)[i]
-                    )
-                )
+                QIcon(get_skill_pixmap(skill_name=get_available_skills(shared_data)[i]))
             )
             image.setIconSize(
                 QSize(ui_var.sim_skill_image_Size, ui_var.sim_skill_image_Size)
@@ -2433,7 +2411,7 @@ class SkillInput:
 
 
 class SimInfoInput:
-    def __init__(self, mainframe, shared_data: SharedData, connected_function):
+    def __init__(self, mainframe, connected_function):
         self.frames = []
         self.labels = []
         self.inputs = []
@@ -2458,7 +2436,7 @@ class SimInfoInput:
 
 
 class PowerLabels:
-    def __init__(self, mainframe, shared_data: SharedData, texts, font_size=18):
+    def __init__(self, mainframe, texts, font_size=18):
         ui_var = UI_Variable()
 
         self.frames = []
@@ -2585,7 +2563,10 @@ class AnalysisDetails:
 
 
 class PotentialRank:
-    def __init__(self, mainframe, shared_data: SharedData):
+    def __init__(
+        self,
+        mainframe,
+    ):
         ui_var = UI_Variable()
 
         texts = self.get_potential_rank(shared_data)
@@ -2681,16 +2662,17 @@ class PotentialRank:
                 self.labels[i].append(label)
                 self.powers[i].append(power)
 
-    def get_potential_rank(self, shared_data: SharedData):
+    def get_potential_rank(
+        self,
+    ):
         texts = [[], [], [], []]
         for key, (stat, value) in shared_data.POTENTIAL_STATS.items():
-            stats = shared_data.info_stats.copy()
+            stats = app_state.simulation.stats.copy()
             stats.add_stat_from_name(stat, value)
 
             powers = detSimulate(
-                shared_data,
                 stats,
-                shared_data.info_sim_details,
+                app_state.simulation.sim_details,
             ).powers
             diff_powers = [
                 round(powers[i] - shared_data.powers[i], 5) for i in range(4)

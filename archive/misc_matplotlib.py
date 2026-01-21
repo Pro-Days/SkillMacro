@@ -1,37 +1,32 @@
 from __future__ import annotations
 
 import os
+from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 from matplotlib import font_manager as fm
-
-from typing import TYPE_CHECKING
-
-from PyQt6.QtGui import QFontDatabase
-from PyQt6.QtGui import QPixmap, QFontMetrics
-from PyQt6.QtWidgets import QPushButton, QLabel
-
+from PyQt6.QtGui import QFontDatabase, QFontMetrics, QPixmap
+from PyQt6.QtWidgets import QLabel, QPushButton
 
 from .custom_classes import CustomFont
-
 
 if TYPE_CHECKING:
     from .shared_data import SharedData
 
 
-def convert_skill_name_to_slot(shared_data: SharedData, skill_name: str) -> int:
+def convert_skill_name_to_slot(skill_name: str) -> int:
     """
     스킬 이름을 슬롯 번호로 변환
     """
 
     return (
-        shared_data.equipped_skills.index(skill_name)
-        if skill_name in shared_data.equipped_skills
+        app_state.macro.equipped_skills.index(skill_name)
+        if skill_name in app_state.macro.equipped_skills
         else -1
     )
 
 
-def is_key_used(shared_data: SharedData, key: str) -> bool:
+def is_key_used(key: str) -> bool:
     """
     키가 사용중인지 확인
     """
@@ -49,7 +44,7 @@ def is_key_used(shared_data: SharedData, key: str) -> bool:
         used_keys.append("F9")
 
     # 스킬 사용 키
-    used_keys.extend(shared_data.skill_keys)
+    used_keys.extend(app_state.macro.skill_keys)
 
     # 연계 스킬 키
     used_keys.extend(
@@ -103,9 +98,7 @@ def set_default_fonts() -> None:
     # print(QFontDatabase.families())
 
 
-def get_skill_pixmap(
-    shared_data: SharedData, skill_name: str, state: int = -1
-) -> QPixmap:
+def get_skill_pixmap(skill_name: str, state: int = -1) -> QPixmap:
     """
     스킬 아이콘 반환
 
@@ -118,14 +111,14 @@ def get_skill_pixmap(
 
     # count가 -1이면 shared_data에서 해당 스킬의 최대 카운트 가져오기
     if state == -1:
-        state = get_skill_details(shared_data, skill_name)["max_combo_count"]
+        state = get_skill_details(skill_name)["max_combo_count"]
 
     skill_id: int = get_available_skills(shared_data).index(skill_name)
 
     # state가 -2이면 비활성화 아이콘 반환
     return QPixmap(
         convert_resource_path(
-            f"resources\\image\\skills\\{shared_data.server_ID}\\{shared_data.job_ID}\\{skill_id}\\{state if state != -2 else 'off'}.png"
+            f"resources\\image\\skills\\{app_state.macro.server.id}\\{shared_data.job_ID}\\{skill_id}\\{state if state != -2 else 'off'}.png"
         )
     )
 
@@ -212,17 +205,17 @@ def set_var_to_ClassVar(var: list | dict, value: list | dict) -> None:
         raise TypeError("var와 value는 모두 list 또는 dict여야 합니다.")
 
 
-def get_available_skills(shared_data: SharedData) -> list[str]:
+def get_available_skills() -> list[str]:
     """
     서버, 직업에 따라 사용 가능한 스킬 목록 반환
     """
 
-    return shared_data.skill_data[shared_data.server_ID]["jobs"][shared_data.job_ID][
-        "skills"
-    ]
+    return shared_data.skill_data[app_state.macro.server.id]["jobs"][
+        shared_data.job_ID
+    ]["skills"]
 
 
-def get_every_skills(shared_data: SharedData) -> list[str]:
+def get_every_skills() -> list[str]:
     """
     서버의 모든 스킬 목록 반환
     """
@@ -230,7 +223,7 @@ def get_every_skills(shared_data: SharedData) -> list[str]:
     skills: list[str] = sum(
         [
             skills["skills"]
-            for job, skills in shared_data.skill_data[shared_data.server_ID][
+            for job, skills in shared_data.skill_data[app_state.macro.server.id][
                 "jobs"
             ].items()
         ],
@@ -240,9 +233,11 @@ def get_every_skills(shared_data: SharedData) -> list[str]:
     return skills
 
 
-def get_skill_details(shared_data: SharedData, skill_name: str) -> dict:
+def get_skill_details(skill_name: str) -> dict:
     """
     서버, 직업에 따른 스킬 상세 정보 반환
     """
 
-    return shared_data.skill_data[shared_data.server_ID]["skill_details"][skill_name]
+    return shared_data.skill_data[app_state.macro.server.id]["skill_details"][
+        skill_name
+    ]

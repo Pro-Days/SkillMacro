@@ -133,21 +133,6 @@ python flag.optimize, pyinstaller optimize
 서버 정보를 shared_data에 저장하지 말고, 서버 정보를 저장하는 클래스를 만들어 사용하기
 config.py
 
-모듈 레벨 싱글톤:
-"""
-# shared_data.py 파일 내용
-class ProgramState:
-    def __init__(self):
-        self.count = 0
-        ...
-STATE_MANAGER = ProgramState()
-
-# 다른 파일
-from shared_data import STATE_MANAGER
-STATE_MANAGER.count += 10
-"""
-=> 프로그램 전역에서 이 데이터를 공유함.
-
 그래프를 그리고 스크롤 할 때 렉이 걸린다면 캐시를 쓰는 방법 검토
 
 StyleSheet들을 모아 따로 빼기

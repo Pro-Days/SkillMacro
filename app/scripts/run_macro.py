@@ -2,19 +2,17 @@ from __future__ import annotations
 
 import time
 from threading import Thread
-from typing import TYPE_CHECKING, NoReturn
+from typing import NoReturn
 
 from pynput import keyboard, mouse
 from pynput.keyboard import Key, KeyCode
 
+from app.scripts.app_state import app_state
+from app.scripts.config import config
 from app.scripts.macro_models import LinkKeyType, LinkUseType
-from app.scripts.misc import get_skill_details, set_var_to_ClassVar
+from app.scripts.registry.key_registry import KeyRegistry, KeySpec
 
-if TYPE_CHECKING:
-    from app.scripts.shared_data import KeySpec, SharedData
-
-
-DEBUG_PRINT_INFO = False  # 디버깅용
+DEBUG_PRINT_INFO = False
 
 
 # 전역 변수로 키 상태 추적
@@ -53,7 +51,7 @@ def is_key_pressed(key: KeySpec) -> bool:
     return key.value in pressed_keys
 
 
-def checking_kb_thread(shared_data: SharedData) -> NoReturn:
+def checking_kb_thread() -> NoReturn:
     """키보드 입력 감지 쓰레드"""
 
     global any_key_pressed
@@ -64,175 +62,180 @@ def checking_kb_thread(shared_data: SharedData) -> NoReturn:
 
     while True:
         # 다른 키 설정 중일 때는 패스
-        if shared_data.is_setting_key:
+        if app_state.ui.is_setting_key:
             time.sleep(0.1)
             continue
 
         # 매크로 실행중일 때 어떤 키보드 입력이 있으면 잠수 시간 초기화
-        if shared_data.is_activated and any_key_pressed:
-            shared_data.afk_started_time = time.time()
+        if app_state.macro.is_running and any_key_pressed:
+            app_state.macro.afk_started_time = time.time()
 
             # 플래그 리셋
             any_key_pressed = False
 
         # 매크로 시작/중지
-        if is_key_pressed(shared_data.start_key):
-            # On -> Off
-            if shared_data.is_activated:
-                shared_data.is_activated = False
+        if is_key_pressed(app_state.macro.current_start_key):
+            app_state.macro.is_running = not app_state.macro.is_running
 
-            # Off -> On
-            else:
-                shared_data.is_activated = True
-
+            # 매크로 시작
+            if app_state.macro.is_running:
                 # 매크로 번호 증가
-                shared_data.loop_num += 1
+                app_state.macro.run_id += 1
 
                 # 매크로 쓰레드 시작
                 Thread(
                     target=running_macro_thread,
-                    args=[shared_data, shared_data.loop_num],
+                    args=[app_state.macro.run_id],
+                    daemon=True,
                 ).start()
 
             # 매크로 실행/중지 이후에는 잠시 키 입력 무시
-            time.sleep(0.5 * shared_data.SLEEP_COEFFICIENT_NORMAL)
+            time.sleep(0.5 * config.macro.SLEEP_COEFFICIENT_NORMAL)
 
             # 다음 루프로 넘어감
             continue
 
         # 연계스킬 사용
-        for link_skill in shared_data.link_skills:
+        for link_skill in app_state.skill.link_skills:
             # 단축키가 설정된 연계스킬만 검사
             if link_skill.key_type == LinkKeyType.OFF or link_skill.key is None:
                 continue
 
             # 연계스킬 키가 눌렸다면
-            link_key: KeySpec = shared_data.KEY_DICT[link_skill.key]
+            link_key: KeySpec = KeyRegistry.MAP[link_skill.key]
             if is_key_pressed(link_key):
                 # 연계스킬 쓰레드 시작
                 Thread(
                     target=use_link_skill,
-                    args=[shared_data, link_skill, shared_data.loop_num],
+                    args=[link_skill, app_state.macro.run_id],
+                    daemon=True,
                 ).start()
 
                 break
 
         # 연계스킬이 실행되지 않았으면 0.05초 슬립
         else:
-            time.sleep(0.05 * shared_data.SLEEP_COEFFICIENT_NORMAL)
+            time.sleep(0.05 * config.macro.SLEEP_COEFFICIENT_NORMAL)
             continue
 
         # 연계스킬이 실행되었으면 0.25초 슬립
-        time.sleep(0.25 * shared_data.SLEEP_COEFFICIENT_NORMAL)
+        time.sleep(0.25 * config.macro.SLEEP_COEFFICIENT_NORMAL)
 
 
-def running_macro_thread(shared_data: SharedData, loop_num: int) -> None:
+def running_macro_thread(run_id: int) -> None:
     """
     매크로 메인 쓰레드
     시뮬레이션과 약간의 오차가 있지만 무시할만 함 (나중에 개선 예정)
     """
 
     # 매크로 초기 설정
-    init_macro(shared_data=shared_data)
+    init_macro()
 
     # 매크로 클릭 쓰레드
-    if shared_data.mouse_click_type:
+    if app_state.macro.current_use_default_attack:
         Thread(
-            target=clicking_mouse_thread, args=[shared_data, loop_num], daemon=True
+            target=clicking_mouse_thread, args=[app_state.macro.run_id], daemon=True
         ).start()
 
     # 매크로 작동중일 때
-    while shared_data.is_activated and shared_data.loop_num == loop_num:
+    while app_state.macro.is_running and app_state.macro.run_id == run_id:
         # taskList에 사용 가능한 스킬 추가
-        if not shared_data.task_list:
-            build_task_list(shared_data=shared_data, show_info=DEBUG_PRINT_INFO)
+        if not app_state.macro.task_list:
+            build_task_list(show_info=DEBUG_PRINT_INFO)
 
-        # 스킬 사용하고 시간, 사용한 스킬 리턴. skill: slot
-        is_used_skill: bool = use_skill(shared_data=shared_data, loop_num=loop_num)
+        # 스킬 사용하고 사용 여부 리턴
+        is_used_skill: bool = use_skill(run_id=app_state.macro.run_id)
 
         # 잠수면 매크로 중지
         if (
-            shared_data.IS_AFK_ENABLED
-            and time.time() - shared_data.afk_started_time >= 10
+            config.macro.is_afk_enabled
+            and time.time() - app_state.macro.afk_started_time >= 10
         ):
-            shared_data.is_activated = False
+            app_state.macro.is_running = False
 
         # 스킬 사용 안했으면 슬립 (useSkill에서 슬립을 안함)
+        UNIT_TIME: float = 1
         if not is_used_skill:
-            time.sleep(shared_data.UNIT_TIME * shared_data.SLEEP_COEFFICIENT_UNIT)
+            time.sleep(UNIT_TIME * config.macro.SLEEP_COEFFICIENT_UNIT)
 
 
-def clicking_mouse_thread(shared_data: SharedData, loop_num: int) -> None:
+def clicking_mouse_thread(run_id: int) -> None:
     """마우스 클릭 쓰레드"""
 
     # pynput 마우스 컨트롤러 생성
     mouse_controller = mouse.Controller()
 
     # 매크로가 작동중일 때 클릭
-    while shared_data.is_activated and shared_data.loop_num == loop_num:
+    while app_state.macro.is_running and app_state.macro.run_id == run_id:
         mouse_controller.click(mouse.Button.left)
 
-        time.sleep(shared_data.delay * 0.001)
+        time.sleep(app_state.macro.current_delay * 0.001)
 
 
-def init_macro(shared_data: SharedData) -> None:
+def init_macro() -> None:
     """매크로 초기 설정"""
 
-    shared_data.afk_started_time = time.time()
+    app_state.macro.afk_started_time = time.time()
 
     # 사용 가능한 스킬 리스트: slot
-    set_var_to_ClassVar(
-        shared_data.prepared_skills,
-        {i for i in range(6) if shared_data.equipped_skills[i]},
-    )
+    app_state.macro.prepared_skills = {
+        i for i in range(6) if app_state.macro.current_preset.skills.equipped_skills[i]
+    }
 
     # 연계스킬 제외 스킬 사용 순서 설정: 우선순위 -> 등록 순서
-    shared_data.skill_sequence.clear()
+    app_state.macro.skill_sequence.clear()
 
     # 사용 우선순위에 등록되어있는 스킬 순서대로 등록
     for target_priority in range(1, 7):
-        for skill, priority in shared_data.skill_priority.items():
-            if priority == target_priority:
+        for skill, setting in app_state.skill.settings.items():
+            if setting.priority == target_priority:
                 # 우선순위 있는 스킬은 모두 장착되어있음
-                slot: int = shared_data.equipped_skills.index(skill)
+                slot: int = app_state.macro.current_preset.skills.equipped_skills.index(
+                    skill
+                )
 
-                shared_data.skill_sequence.append(slot)
+                app_state.macro.skill_sequence.append(slot)
 
     # 우선순위 등록 안된 스킬 모두 등록
     # todo: tuple로 변경
     for i in range(6):
-        if i not in shared_data.skill_sequence:
-            shared_data.skill_sequence.append(i)
+        if (
+            i not in app_state.macro.skill_sequence
+            and app_state.macro.current_preset.skills.equipped_skills[i]
+        ):
+            app_state.macro.skill_sequence.append(i)
 
     # 매크로 작동 중 사용하는 연계스킬 리스트 -> dict로 변환
-    shared_data.using_link_skills.clear()
+    app_state.macro.using_link_skills.clear()
 
-    for link_skill in shared_data.link_skills:
+    for link_skill in app_state.skill.link_skills:
         # 연계 유형이 자동이라면: 매크로에서 사용되는 연계스킬이라면
         if link_skill.use_type == LinkUseType.AUTO:
             # 연계스킬에서 사용되는 스킬 슬롯 번호로 변환 후 저장
-            shared_data.using_link_skills.append(
-                [shared_data.equipped_skills.index(name) for name in link_skill.skills]
+            app_state.macro.using_link_skills.append(
+                [
+                    app_state.macro.current_preset.skills.equipped_skills.index(name)
+                    for name in link_skill.skills
+                ]
             )
 
     # 연계스킬 수행에 필요한 스킬 정보 리스트
-    set_var_to_ClassVar(
-        shared_data.link_skills_requirements,
-        [[slot for slot in link_skill] for link_skill in shared_data.using_link_skills],
-    )
+    app_state.macro.link_skills_requirements = [
+        [slot for slot in link_skill]
+        for link_skill in app_state.macro.using_link_skills
+    ]
 
     # task_list 초기화
-    shared_data.task_list.clear()
+    app_state.macro.task_list.clear()
 
     # 스킬 쿨타임 타이머 초기화
     now: float = time.perf_counter()
-    set_var_to_ClassVar(
-        shared_data.skill_cooltime_timers,
-        [now] * shared_data.USABLE_SKILL_COUNT[shared_data.server_ID],
-    )
+    app_state.macro.skill_cooltime_timers = [
+        now
+    ] * app_state.macro.current_server.usable_skill_count
 
 
-def use_skill(shared_data: SharedData, loop_num: int) -> bool:
+def use_skill(run_id: int) -> bool:
     """
     스킬 사용 함수
     return: 스킬 사용 여부
@@ -242,24 +245,26 @@ def use_skill(shared_data: SharedData, loop_num: int) -> bool:
     kbd_controller = keyboard.Controller()
 
     # task_list가 비어있으면 False 리턴
-    if not shared_data.task_list:
+    if not app_state.macro.task_list:
         return False
 
-    slot: int = shared_data.task_list.pop(0)
+    slot: int = app_state.macro.task_list.pop(0)
 
-    key: KeySpec = shared_data.skill_keys[slot]
+    key: KeySpec = KeyRegistry.MAP[
+        app_state.macro.current_preset.skills.skill_keys[slot]
+    ]
 
     # 쿨타임 시작
-    shared_data.skill_cooltime_timers[slot] = time.perf_counter()
+    app_state.macro.skill_cooltime_timers[slot] = time.perf_counter()
 
     # 키보드 입력
-    if shared_data.is_activated and shared_data.loop_num == loop_num:
+    if app_state.macro.is_running and app_state.macro.run_id == run_id:
         kbd_controller.press(key.value)
         kbd_controller.release(key.value)
 
     # 스킬 사용에 걸린 시간 (pynput에는 PAUSE가 없음)
     sleeped_time: float = (
-        shared_data.delay * 0.001 * shared_data.SLEEP_COEFFICIENT_NORMAL
+        app_state.macro.current_delay * 0.001 * config.macro.SLEEP_COEFFICIENT_NORMAL
     )
 
     time.sleep(sleeped_time)
@@ -267,7 +272,7 @@ def use_skill(shared_data: SharedData, loop_num: int) -> bool:
     return True
 
 
-def use_link_skill(shared_data: SharedData, link_skill, loop_num: int) -> None:
+def use_link_skill(link_skill, run_id: int) -> None:
     """연계스킬 사용 함수"""
 
     # pynput 키보드 컨트롤러 생성
@@ -276,20 +281,26 @@ def use_link_skill(shared_data: SharedData, link_skill, loop_num: int) -> None:
     def use(slot: int) -> None:
         """스킬 사용 함수"""
 
-        key: KeySpec = shared_data.skill_keys[slot]
+        key: KeySpec = KeyRegistry.MAP[
+            app_state.macro.current_preset.skills.skill_keys[slot]
+        ]
 
-        if shared_data.loop_num == loop_num:
+        if app_state.macro.run_id == run_id:
             kbd_controller.press(key.value)
             kbd_controller.release(key.value)
 
-        time.sleep(shared_data.delay * 0.001 * shared_data.SLEEP_COEFFICIENT_NORMAL)
+        time.sleep(
+            app_state.macro.current_delay
+            * 0.001
+            * config.macro.SLEEP_COEFFICIENT_NORMAL
+        )
 
     for skill in link_skill.skills:
-        slot: int = shared_data.equipped_skills.index(skill)
+        slot: int = app_state.macro.current_preset.skills.equipped_skills.index(skill)
         use(slot)
 
 
-def build_task_list(shared_data: SharedData, show_info: bool = False) -> None:
+def build_task_list(show_info: bool = False) -> None:
     """
     task_list에 사용할 스킬 추가
     todo: task_list, prepared_skills 등을 class로 변경
@@ -300,16 +311,15 @@ def build_task_list(shared_data: SharedData, show_info: bool = False) -> None:
     # 장착된 스킬 슬롯 번호들
     equipped_slots: list[int] = [
         slot
-        for slot in range(shared_data.USABLE_SKILL_COUNT[shared_data.server_ID])
-        if shared_data.equipped_skills[slot]
+        for slot in range(app_state.macro.current_server.usable_skill_count)
+        if app_state.macro.current_preset.skills.equipped_skills[slot]
     ]
     # 장착된 스킬의 쿨타임 감소 스탯이 적용된 쿨타임
     cooltimes: dict[int, float] = {
-        slot: get_skill_details(
-            shared_data=shared_data,
-            skill_id=shared_data.equipped_skills[slot],
+        slot: app_state.macro.current_server.skill_registry.details(
+            app_state.macro.current_preset.skills.equipped_skills[slot]
         )["cooltime"]
-        * (100 - shared_data.cooltime_reduction)
+        * (100 - app_state.macro.current_cooltime_reduction)
         / 100.0
         for slot in equipped_slots
     }
@@ -322,97 +332,107 @@ def build_task_list(shared_data: SharedData, show_info: bool = False) -> None:
         # 스킬 쿨타임이 지났는지 확인
         if (
             # 스킬 사용해서 쿨타임 기다리는 중이고
-            slot not in shared_data.prepared_skills
+            slot not in app_state.macro.prepared_skills
             # 쿨타임이 지났다면
-            and (now - shared_data.skill_cooltime_timers[slot]) >= cooltimes[slot]
+            and (now - app_state.macro.skill_cooltime_timers[slot]) >= cooltimes[slot]
         ):
             # 준비된 스킬 리스트에 추가
-            shared_data.prepared_skills.add(slot)
+            app_state.macro.prepared_skills.add(slot)
 
     # 연계스킬 사용
     # 준비된 연계스킬 리스트 인덱스
     prepared_link_skill_indices: list[int] = get_prepared_link_skill_indices(
-        prepared_skills=shared_data.prepared_skills,
-        link_skills_requirements=shared_data.link_skills_requirements,
+        prepared_skills=app_state.macro.prepared_skills,
+        link_skills_requirements=app_state.macro.link_skills_requirements,
     )
 
     # 준비된 연계스킬이 있다면
     if prepared_link_skill_indices:
         # 준비된 연계스킬 중 첫 번째에 포함된 스킬들 모두 task_list에 추가
-        for skill in shared_data.using_link_skills[prepared_link_skill_indices[0]]:
+        for skill in app_state.macro.using_link_skills[prepared_link_skill_indices[0]]:
             # 준비된 스킬 리스트에서 제거
-            shared_data.prepared_skills.discard(skill)
+            app_state.macro.prepared_skills.discard(skill)
 
             # task_list에 추가
-            shared_data.task_list.append(skill)
+            app_state.macro.task_list.append(skill)
 
     # 연계스킬을 사용하지 않는다면 준비된 스킬 정렬 순서대로 사용 (스킬 하나만 사용)
     else:
         # 연계스킬 사용중인 스킬 전부 모으기
-        link_skill_reqs: list[int] = sum(shared_data.link_skills_requirements, [])
+        link_skill_reqs: list[int] = sum(app_state.macro.link_skills_requirements, [])
 
         # 스킬 정렬 순서대로 검사
-        for skill in shared_data.skill_sequence:
+        for skill in app_state.macro.skill_sequence:
             # 연계스킬 O & 단독 사용 O -> O
             # 연계스킬 O & 단독 사용 X -> X
             # 연계스킬 X & 사용 O -> O
             # 연계스킬 X & 사용 X -> X
 
-            if (
-                # 스킬이 준비되었고
-                skill in shared_data.prepared_skills
-                # 연계스킬에 포함되었고
-                and skill in link_skill_reqs
-                # 단독 사용 옵션이 켜져있다면
-                and shared_data.is_use_sole[shared_data.equipped_skills[skill]]
-            ):
+            # 조건 체크용 변수
+
+            # 스킬 준비 여부
+            is_ready: bool = skill in app_state.macro.prepared_skills
+            # 연계스킬 포함 여부
+            in_link_skill: bool = skill in link_skill_reqs
+            # 단독 사용 여부
+            use_alone: bool = app_state.skill.settings[
+                app_state.macro.current_preset.skills.equipped_skills[skill]
+            ].use_alone
+            # 사용 옵션이 켜져있는지 확인
+            use_skill_option: bool = app_state.skill.settings[
+                app_state.macro.current_preset.skills.equipped_skills[skill]
+            ].use_skill
+
+            # 조건에 따라 스킬 사용
+
+            # 연계스킬에 포함되었고 단독 사용 옵션이 켜져있다면
+            if is_ready and in_link_skill and use_alone:
                 # task_list에 추가
-                shared_data.task_list.append(skill)
+                app_state.macro.task_list.append(skill)
 
                 # 준비된 스킬 리스트에서 해당 스킬 제거
-                shared_data.prepared_skills.discard(skill)
+                app_state.macro.prepared_skills.discard(skill)
 
                 break
 
-            elif (
-                # 스킬이 준비되었고
-                skill in shared_data.prepared_skills
-                # 연계스킬에 포함되지 않았고
-                and skill not in link_skill_reqs
-                # 사용 옵션이 켜져있다면
-                and shared_data.is_use_skill[shared_data.equipped_skills[skill]]
-            ):
+            # 연계스킬에 포함되지 않았고 사용 옵션이 켜져있다면
+            elif is_ready and not in_link_skill and use_skill_option:
                 # task_list에 스킬 추가
-                shared_data.task_list.append(skill)
+                app_state.macro.task_list.append(skill)
 
                 # 준비된 스킬 리스트에서 해당 스킬 제거
-                shared_data.prepared_skills.discard(skill)
+                app_state.macro.prepared_skills.discard(skill)
 
                 break
 
     # 디버깅용 출력
     if DEBUG_PRINT_INFO and show_info:
-        print_macro_info(shared_data, brief=False)
+        print_macro_info(brief=False)
 
 
-def build_preview_task_list(shared_data: SharedData) -> tuple[int, ...]:
+def build_preview_task_list() -> tuple[int, ...]:
     """
     프리뷰를 위한 task_list에 스킬 추가
     """
 
-    prepared_skills: set[int] = shared_data.prepared_skills.copy()
-    task_list: list[int] = []
+    # 매크로 실행 중이라면 초기화 실행
+    if not app_state.macro.is_running:
+        init_macro()
+
+    prepared_skills: set[int] = app_state.macro.prepared_skills.copy()
+    task_list: list[int] = app_state.macro.task_list.copy()
 
     # 연계스킬 사용
     # 준비된 연계스킬 리스트 인덱스
     prepared_link_skill_indices: list[int] = get_prepared_link_skill_indices(
         prepared_skills=prepared_skills,
-        link_skills_requirements=shared_data.link_skills_requirements,
+        link_skills_requirements=app_state.macro.link_skills_requirements,
     )
+
     # 준비된 연계스킬이 있다면
     for prepared_link_skill_index in prepared_link_skill_indices:
         # 준비된 연계스킬에 포함된 스킬들 모두 task_list에 추가
-        for skill in shared_data.using_link_skills[prepared_link_skill_index]:
+        for skill in app_state.macro.using_link_skills[prepared_link_skill_index]:
             # 준비된 스킬 리스트에서 제거
             prepared_skills.discard(skill)
 
@@ -421,37 +441,38 @@ def build_preview_task_list(shared_data: SharedData) -> tuple[int, ...]:
 
     # 연계스킬 사용 후 준비된 스킬 정렬 순서대로 사용
     # 연계스킬에 사용중인 스킬 전부 모으기
-    link_skill_reqs: list[int] = sum(shared_data.link_skills_requirements, [])
+    link_skill_reqs: list[int] = sum(app_state.macro.link_skills_requirements, [])
 
     # 스킬 정렬 순서대로 검사
-    for skill in shared_data.skill_sequence:
+    for skill in app_state.macro.skill_sequence:
         # 연계스킬 O & 단독 사용 O -> O
         # 연계스킬 O & 단독 사용 X -> X
         # 연계스킬 X & 사용 O -> O
         # 연계스킬 X & 사용 X -> X
 
-        if (
-            # 스킬이 준비되었고
-            skill in prepared_skills
-            # 연계스킬에 포함되었고
-            and skill in link_skill_reqs
-            # 단독 사용 옵션이 켜져있다면
-            and shared_data.is_use_sole[shared_data.equipped_skills[skill]]
-        ):
+        # 조건 체크용 변수
+
+        # 스킬 준비 여부
+        is_ready: bool = skill in prepared_skills
+        # 연계스킬 포함 여부
+        in_link_skill: bool = skill in link_skill_reqs
+        # 단독 사용 여부
+        use_alone: bool = app_state.skill.settings[
+            app_state.macro.current_preset.skills.equipped_skills[skill]
+        ].use_alone
+        # 사용 옵션이 켜져있는지 확인
+        use_skill_option: bool = app_state.skill.settings[
+            app_state.macro.current_preset.skills.equipped_skills[skill]
+        ].use_skill
+
+        if is_ready and in_link_skill and use_alone:
             # task_list에 추가
             task_list.append(skill)
 
             # 준비된 스킬 리스트에서 해당 스킬 제거
             prepared_skills.discard(skill)
 
-        elif (
-            # 스킬이 준비되었고
-            skill in prepared_skills
-            # 연계스킬에 포함되지 않았고
-            and skill not in link_skill_reqs
-            # 사용 옵션이 켜져있다면
-            and shared_data.is_use_skill[shared_data.equipped_skills[skill]]
-        ):
+        elif is_ready and not in_link_skill and use_skill_option:
             # task_list에 스킬 추가
             task_list.append(skill)
 
@@ -469,19 +490,14 @@ def get_prepared_link_skill_indices(
     """
 
     prepared_indices: list[int] = []
+    _prepared_skills: set[int] = prepared_skills.copy()
 
     for idx, req in enumerate(link_skills_requirements):
-        for skill in req:
-            # 만약 연계스킬에 필요한 스킬이 준비된 스킬 리스트에 없다면
-            if skill not in prepared_skills:
-                # 다음 연계스킬로 넘어감
-                break
-
-        # 모든 스킬이 준비되었으면
-        else:
+        # 모든 필요한 스킬이 준비된 상태라면
+        if all(skill in _prepared_skills for skill in req):
             # 연계스킬에 필요한 스킬들 준비된 스킬 리스트에서 제거
             for skill in req:
-                prepared_skills.discard(skill)
+                _prepared_skills.discard(skill)
 
             # 연계스킬 준비 리스트에 추가
             prepared_indices.append(idx)
@@ -489,18 +505,21 @@ def get_prepared_link_skill_indices(
     return prepared_indices
 
 
-def print_macro_info(shared_data: SharedData, brief=False) -> None:
+def print_macro_info(brief=False) -> None:
+    print()
     if brief:
-        print("테스크 리스트:", shared_data.task_list)  # 사용여부 x, 사용여부 o
+        print("테스크 리스트:", app_state.macro.task_list)  # 사용여부 x, 사용여부 o
         print(
-            "준비된 스킬 리스트:", shared_data.prepared_skills
+            "준비된 스킬 리스트:", app_state.macro.prepared_skills
         )  # 사용여부 x, 사용여부 o
 
     else:
-        print("테스크 리스트:", shared_data.task_list)  # 사용여부 x, 사용여부 o
+        print("테스크 리스트:", app_state.macro.task_list)  # 사용여부 x, 사용여부 o
         print(
-            "준비된 스킬 리스트:", shared_data.prepared_skills
+            "준비된 스킬 리스트:", app_state.macro.prepared_skills
         )  # 사용여부 x, 사용여부 o
-        print("스킬 정렬 순서:", shared_data.skill_sequence)
-        print("연계스킬 스킬 리스트:", shared_data.using_link_skills)
-        print("연계스킬에 필요한 스킬 리스트:", shared_data.link_skills_requirements)
+        print("스킬 정렬 순서:", app_state.macro.skill_sequence)
+        print("연계스킬 스킬 리스트:", app_state.macro.using_link_skills)
+        print(
+            "연계스킬에 필요한 스킬 리스트:", app_state.macro.link_skills_requirements
+        )

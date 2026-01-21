@@ -23,9 +23,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from app.scripts.app_state import app_state
 from app.scripts.config import config
 from app.scripts.custom_classes import CustomFont, SkillImage
-from app.scripts.data_manager import apply_preset_to_shared_data
+from app.scripts.data_manager import apply_preset_to_app_state
 from app.scripts.macro_models import (
     LinkKeyType,
     LinkSkill,
@@ -33,28 +34,18 @@ from app.scripts.macro_models import (
     MacroPreset,
     SkillUsageSetting,
 )
-from app.scripts.misc import (
+from app.scripts.registry.key_registry import KeyRegistry, KeySpec
+from app.scripts.registry.resource_registry import (
     convert_resource_path,
-    get_every_skills,
-    get_skill_details,
-    get_skill_name,
-    get_skill_pixmap,
-    is_key_using,
+    resource_registry,
 )
-from app.scripts.shared_data import UI_Variable
 
 if TYPE_CHECKING:
     from typing import Literal
 
-    from app.scripts.macro_models import (
-        LinkKeyType,
-        LinkSkill,
-        LinkUseType,
-        MacroPreset,
-    )
-    from app.scripts.main_window import MainWindow
-    from app.scripts.popup import PopupManager
-    from app.scripts.shared_data import KeySpec, SharedData
+    from app.scripts.registry.server_registry import ServerSpec
+    from app.scripts.ui.main_window import MainWindow
+    from app.scripts.ui.popup import PopupManager
 
 
 class Sidebar(QFrame):
@@ -65,7 +56,6 @@ class Sidebar(QFrame):
     def __init__(
         self,
         master: MainWindow,
-        shared_data: SharedData,
         preset: "MacroPreset",
         preset_index: int,
     ) -> None:
@@ -74,32 +64,26 @@ class Sidebar(QFrame):
         self.setStyleSheet("QFrame { background-color: #FFFFFF; }")
 
         self.master: MainWindow = master
-        self.shared_data: SharedData = shared_data
 
         self.preset: MacroPreset = preset
         self.preset_index: int = preset_index
 
-        self.ui_var = UI_Variable()
         self.popup_manager: PopupManager = self.master.get_popup_manager()
 
         # 사이드바 페이지들
         self.general_settings = GeneralSettings(
-            self.shared_data,
             self.popup_manager,
             on_data_changed=self.dataChanged.emit,
         )
         self.skill_settings = SkillSettings(
-            self.shared_data,
             self.popup_manager,
             on_data_changed=self.dataChanged.emit,
         )
         self.link_skill_settings = LinkSkillSettings(
-            self.shared_data,
             self.popup_manager,
             on_data_changed=self.dataChanged.emit,
         )
         self.link_skill_editor = LinkSkillEditor(
-            self.shared_data,
             self.popup_manager,
             on_data_changed=self.dataChanged.emit,
         )
@@ -260,7 +244,6 @@ class GeneralSettings(QFrame):
 
     def __init__(
         self,
-        shared_data: SharedData,
         popup_manager: PopupManager,
         on_data_changed: Callable[[], None],
     ) -> None:
@@ -268,7 +251,6 @@ class GeneralSettings(QFrame):
 
         # self.setStyleSheet("QFrame { background-color: #FFFFFF; }")
 
-        self.shared_data: SharedData = shared_data
         self.popup_manager: PopupManager = popup_manager
         self._on_data_changed: Callable[[], None] = on_data_changed
 
@@ -295,7 +277,7 @@ class GeneralSettings(QFrame):
                 "입력 가능한 딜레이의 범위는 50~1000입니다.\n"
                 "딜레이를 계속해서 조절하며 1분간 매크로를 실행했을 때 놓치는 스킬이 없도록 설정해주세요."
             ),
-            btn0_text=f"기본: {self.shared_data.DEFAULT_DELAY}",
+            btn0_text=f"기본: {config.specs.DELAY.default}",
             btn0_enabled=True,
             btn1_text="",
             btn1_enabled=False,
@@ -310,7 +292,7 @@ class GeneralSettings(QFrame):
                 "캐릭터의 쿨타임 감소 스탯입니다.\n"
                 "입력 가능한 쿨타임 감소 스탯의 범위는 0~50입니다."
             ),
-            btn0_text=f"기본: {self.shared_data.DEFAULT_COOLTIME_REDUCTION}",
+            btn0_text=f"기본: {config.specs.COOLTIME_REDUCTION.default}",
             btn0_enabled=True,
             btn1_text="",
             btn1_enabled=False,
@@ -325,7 +307,7 @@ class GeneralSettings(QFrame):
                 "매크로를 시작하기 위한 키입니다.\n"
                 "쓰지 않는 키로 설정한 후, 로지텍 G 허브와 같은 프로그램으로 마우스의 버튼에 매핑하는 것을 추천합니다."
             ),
-            btn0_text=f"기본: {self.shared_data.DEFAULT_START_KEY.display}",
+            btn0_text=f"기본: {config.specs.DEFAULT_START_KEY.display}",
             btn0_enabled=True,
             btn1_text="",
             btn1_enabled=False,
@@ -363,22 +345,15 @@ class GeneralSettings(QFrame):
 
         self.setLayout(layout)
 
-        self.update_from_preset(self._get_preset())
+        self.update_from_preset(app_state.macro.current_preset)
 
-    def _get_preset(self) -> "MacroPreset":
-        """shared_data에서 현재 프리셋을 가져옴"""
+    def _sync_preset_to_app_state(self, preset: "MacroPreset") -> None:
+        """프리셋을 app_state에 동기화"""
 
-        return self.shared_data.presets[self.shared_data.recent_preset]
-
-    def _sync_preset_to_shared_data(self, preset: "MacroPreset") -> None:
-        """프리셋을 shared_data에 동기화
-        shared_data 구조를 바꿔서 프리셋만을 사용한다면 이 함수는 제거될 예정"""
-
-        apply_preset_to_shared_data(
-            self.shared_data,
+        apply_preset_to_app_state(
             preset,
-            preset_index=self.shared_data.recent_preset,
-            all_presets=self.shared_data.presets,
+            preset_index=app_state.macro.current_preset_index,
+            all_presets=app_state.macro.presets,
         )
 
     def update_from_preset(self, preset: "MacroPreset") -> None:
@@ -388,39 +363,47 @@ class GeneralSettings(QFrame):
         self.server_job_setting.set_left_button_text(preset.settings.server_id)
 
         # 딜레이
-        delay_type, delay_input = preset.settings.delay
-        self.delay_setting.set_right_button_text(str(delay_input))
-        self.delay_setting.set_buttons_enabled(delay_type == 0, delay_type == 1)
+        custom_delay: int = preset.settings.custom_delay
+        use_custom_delay: bool = preset.settings.use_custom_delay
+        self.delay_setting.set_right_button_text(str(custom_delay))
+        self.delay_setting.set_buttons_enabled(not use_custom_delay, use_custom_delay)
 
         # 쿨타임 감소
-        cool_type, cool_input = preset.settings.cooltime
-        self.cooltime_setting.set_right_button_text(str(cool_input))
-        self.cooltime_setting.set_buttons_enabled(cool_type == 0, cool_type == 1)
+        custom_cooltime_reduction: int = preset.settings.custom_cooltime_reduction
+        use_custom_cooltime_reduction: bool = (
+            preset.settings.use_custom_cooltime_reduction
+        )
+        self.cooltime_setting.set_right_button_text(str(custom_cooltime_reduction))
+        self.cooltime_setting.set_buttons_enabled(
+            not use_custom_cooltime_reduction, use_custom_cooltime_reduction
+        )
 
         # 시작키 설정
-        start_type, start_key_id = preset.settings.start_key
-        start_key_display: str = self.shared_data.KEY_DICT[start_key_id].display
-        self.start_key_setting.set_right_button_text(start_key_display)
-        self.start_key_setting.set_buttons_enabled(start_type == 0, start_type == 1)
+        custom_start_key: str = preset.settings.custom_start_key
+        use_custom_start_key: bool = preset.settings.use_custom_start_key
+        self.start_key_setting.set_right_button_text(custom_start_key)
+        self.start_key_setting.set_buttons_enabled(
+            not use_custom_start_key, use_custom_start_key
+        )
 
         # 마우스 클릭
         self.click_setting.set_buttons_enabled(
-            preset.settings.mouse_click_type == 0, preset.settings.mouse_click_type == 1
+            preset.settings.use_default_attack == 0,
+            preset.settings.use_default_attack == 1,
         )
 
     def on_servers_clicked(self) -> None:
         """서버 목록 클릭시 실행"""
 
-        def apply(server_name: str) -> None:
+        def apply(server: ServerSpec) -> None:
             """적용 함수"""
 
-            preset: MacroPreset = self._get_preset()
-            if server_name == preset.settings.server_id:
+            if server.id == app_state.macro.current_preset.settings.server_id:
                 return
 
-            preset.settings.server_id = server_name
-            self._sync_preset_to_shared_data(preset)
-            self.update_from_preset(preset)
+            app_state.macro.current_preset.settings.server_id = server.id
+            self._sync_preset_to_app_state(app_state.macro.current_preset)
+            self.update_from_preset(app_state.macro.current_preset)
             self._on_data_changed()
 
         self.popup_manager.close_popup()
@@ -433,21 +416,18 @@ class GeneralSettings(QFrame):
         self.popup_manager.close_popup()
 
         # 매크로 실행 중일 때는 무시
-        if self.shared_data.is_activated:
+        if app_state.macro.is_running:
             self.popup_manager.make_notice_popup("MacroIsRunning")
             return
 
-        preset: MacroPreset = self._get_preset()
-
         # 이미 기본 딜레이라면 무시
-        if preset.settings.delay[0] == 0:
+        if not app_state.macro.current_preset.settings.use_custom_delay:
             return
 
         # 기본 딜레이로 변경 (입력 값은 유지)
-        preset.settings.delay = (0, int(preset.settings.delay[1]))
-
-        self._sync_preset_to_shared_data(preset)
-        self.update_from_preset(preset)
+        app_state.macro.current_preset.settings.use_custom_delay = False
+        self._sync_preset_to_app_state(app_state.macro.current_preset)
+        self.update_from_preset(app_state.macro.current_preset)
         self._on_data_changed()
 
     def on_user_delay_clicked(self) -> None:
@@ -456,35 +436,32 @@ class GeneralSettings(QFrame):
         def apply(delay_value: int) -> None:
             """적용 함수"""
 
-            preset: MacroPreset = self._get_preset()
-
             # 변경 사항이 없으면 무시
-            if delay_value == preset.settings.delay[1]:
+            if delay_value == app_state.macro.current_preset.settings.custom_delay:
                 return
 
-            preset.settings.delay = (1, int(delay_value))
-            self._sync_preset_to_shared_data(preset)
-            self.update_from_preset(preset)
+            app_state.macro.current_preset.settings.custom_delay = int(delay_value)
+            app_state.macro.current_preset.settings.use_custom_delay = True
+            self._sync_preset_to_app_state(app_state.macro.current_preset)
+            self.update_from_preset(app_state.macro.current_preset)
             self._on_data_changed()
 
         self.popup_manager.close_popup()
 
         # 매크로 실행 중일 때는 무시
-        if self.shared_data.is_activated:
+        if app_state.macro.is_running:
             self.popup_manager.make_notice_popup("MacroIsRunning")
             return
 
-        preset: MacroPreset = self._get_preset()
-
         # 이미 유저 딜레이라면 딜레이 입력 팝업 열기
-        if preset.settings.delay[0] == 1:
+        if app_state.macro.current_preset.settings.use_custom_delay:
             self.popup_manager.make_delay_popup(self.delay_setting.right_button, apply)
             return
 
         # 유저 딜레이로 변경 (입력 값 유지)
-        preset.settings.delay = (1, int(preset.settings.delay[1]))
-        self._sync_preset_to_shared_data(preset)
-        self.update_from_preset(preset)
+        app_state.macro.current_preset.settings.use_custom_delay = True
+        self._sync_preset_to_app_state(app_state.macro.current_preset)
+        self.update_from_preset(app_state.macro.current_preset)
         self._on_data_changed()
 
     def on_default_cooltime_clicked(self) -> None:
@@ -493,21 +470,18 @@ class GeneralSettings(QFrame):
         self.popup_manager.close_popup()
 
         # 매크로 실행 중일 때는 무시
-        if self.shared_data.is_activated:
+        if app_state.macro.is_running:
             self.popup_manager.make_notice_popup("MacroIsRunning")
             return
 
-        preset: MacroPreset = self._get_preset()
-
         # 이미 기본 쿨타임 감소라면 무시
-        if preset.settings.cooltime[0] == 0:
+        if not app_state.macro.current_preset.settings.use_custom_cooltime_reduction:
             return
 
         # 기본 쿨타임 감소로 변경 (입력 값은 유지)
-        preset.settings.cooltime = (0, int(preset.settings.cooltime[1]))
-
-        self._sync_preset_to_shared_data(preset)
-        self.update_from_preset(preset)
+        app_state.macro.current_preset.settings.use_custom_cooltime_reduction = False
+        self._sync_preset_to_app_state(app_state.macro.current_preset)
+        self.update_from_preset(app_state.macro.current_preset)
         self._on_data_changed()
 
     def on_user_cooltime_clicked(self) -> None:
@@ -516,35 +490,37 @@ class GeneralSettings(QFrame):
         def apply(cooltime_value: int) -> None:
             """적용 함수"""
 
-            preset: MacroPreset = self._get_preset()
-            if cooltime_value == preset.settings.cooltime[1]:
+            if (
+                cooltime_value
+                == app_state.macro.current_preset.settings.custom_cooltime_reduction
+            ):
                 return
 
-            preset.settings.cooltime = (1, int(cooltime_value))
-            self._sync_preset_to_shared_data(preset)
-            self.update_from_preset(preset)
+            app_state.macro.current_preset.settings.custom_cooltime_reduction = int(
+                cooltime_value
+            )
+            self._sync_preset_to_app_state(app_state.macro.current_preset)
+            self.update_from_preset(app_state.macro.current_preset)
             self._on_data_changed()
 
         self.popup_manager.close_popup()
 
         # 매크로 실행 중일 때는 무시
-        if self.shared_data.is_activated:
+        if app_state.macro.is_running:
             self.popup_manager.make_notice_popup("MacroIsRunning")
             return
 
-        preset: MacroPreset = self._get_preset()
-
         # 이미 유저 쿨타임 감소라면 쿨타임 감소 입력 팝업 열기
-        if preset.settings.cooltime[0] == 1:
+        if app_state.macro.current_preset.settings.use_custom_cooltime_reduction:
             self.popup_manager.make_cooltime_popup(
                 self.cooltime_setting.right_button, apply
             )
             return
 
         # 유저 쿨타임 감소로 변경 (입력 값 유지)
-        preset.settings.cooltime = (1, int(preset.settings.cooltime[1]))
-        self._sync_preset_to_shared_data(preset)
-        self.update_from_preset(preset)
+        app_state.macro.current_preset.settings.use_custom_cooltime_reduction = True
+        self._sync_preset_to_app_state(app_state.macro.current_preset)
+        self.update_from_preset(app_state.macro.current_preset)
         self._on_data_changed()
 
     def on_default_start_key_clicked(self) -> None:
@@ -553,31 +529,30 @@ class GeneralSettings(QFrame):
         self.popup_manager.close_popup()
 
         # 매크로 실행 중일 때는 무시
-        if self.shared_data.is_activated:
+        if app_state.macro.is_running:
             self.popup_manager.make_notice_popup("MacroIsRunning")
             return
 
-        preset: MacroPreset = self._get_preset()
-
         # 이미 기본 시작키라면 무시
-        if preset.settings.start_key[0] == 0:
+        if not app_state.macro.current_preset.settings.use_custom_start_key:
             return
 
-        default_key: KeySpec = self.shared_data.DEFAULT_START_KEY
-        current_input_key_id: str = preset.settings.start_key[1]
+        default_key: KeySpec = config.specs.DEFAULT_START_KEY
 
         # 유저 입력 키가 기본키와 다르고, 기본키가 다른 용도로 사용 중이면 변경 불가
-        if current_input_key_id != default_key.key_id and is_key_using(
-            self.shared_data, default_key
+        if (
+            app_state.macro.current_preset.settings.custom_start_key
+            != default_key.key_id
+            and app_state.is_key_using(default_key)
         ):
             self.popup_manager.make_notice_popup("StartKeyChangeError")
             return
 
         # 기본 시작키로 변경 (입력 값은 유지)
-        preset.settings.start_key = (0, current_input_key_id)
+        app_state.macro.current_preset.settings.use_custom_start_key = False
 
-        self._sync_preset_to_shared_data(preset)
-        self.update_from_preset(preset)
+        self._sync_preset_to_app_state(app_state.macro.current_preset)
+        self.update_from_preset(app_state.macro.current_preset)
         self._on_data_changed()
 
     def on_user_start_key_clicked(self) -> None:
@@ -586,87 +561,85 @@ class GeneralSettings(QFrame):
         def apply(start_key: KeySpec) -> None:
             """적용 함수"""
 
-            preset: MacroPreset = self._get_preset()
-            if start_key.key_id == preset.settings.start_key[1]:
+            if (
+                start_key.key_id
+                == app_state.macro.current_preset.settings.custom_start_key
+            ):
                 return
 
-            preset.settings.start_key = (1, start_key.key_id)
-            self._sync_preset_to_shared_data(preset)
-            self.update_from_preset(preset)
+            app_state.macro.current_preset.settings.custom_start_key = start_key.key_id
+            self._sync_preset_to_app_state(app_state.macro.current_preset)
+            self.update_from_preset(app_state.macro.current_preset)
             self._on_data_changed()
 
         self.popup_manager.close_popup()
 
         # 매크로 실행 중일 때는 무시
-        if self.shared_data.is_activated:
+        if app_state.macro.is_running:
             self.popup_manager.make_notice_popup("MacroIsRunning")
             return
 
-        preset: MacroPreset = self._get_preset()
-
         # 이미 유저 시작키라면 시작키 입력 팝업 열기
-        if preset.settings.start_key[0] == 1:
+        if app_state.macro.current_preset.settings.use_custom_start_key:
             self.popup_manager.make_start_key_popup(
                 self.start_key_setting.right_button, apply
             )
             return
 
-        default_key: KeySpec = self.shared_data.DEFAULT_START_KEY
-        current_input_key_id: str = preset.settings.start_key[1]
+        default_key: KeySpec = config.specs.DEFAULT_START_KEY
+        current_input_key_id: str = (
+            app_state.macro.current_preset.settings.custom_start_key
+        )
 
         # 유저 입력 키가 기본키와 다르고, 유저키가 다른 용도로 사용 중이면 변경 불가
-        if current_input_key_id != default_key.key_id and is_key_using(
-            self.shared_data, self.shared_data.KEY_DICT[current_input_key_id]
+        if current_input_key_id != default_key.key_id and app_state.is_key_using(
+            KeyRegistry.MAP[current_input_key_id]
         ):
             self.popup_manager.make_notice_popup("StartKeyChangeError")
             return
 
         # 유저 시작키로 변경 (입력 값 유지)
-        preset.settings.start_key = (1, preset.settings.start_key[1])
-        self._sync_preset_to_shared_data(preset)
-        self.update_from_preset(preset)
+        app_state.macro.current_preset.settings.use_custom_start_key = True
+        self._sync_preset_to_app_state(app_state.macro.current_preset)
+        self.update_from_preset(app_state.macro.current_preset)
         self._on_data_changed()
 
     def on_mouse_type0_clicked(self) -> None:
-        """마우스 클릭 타입0 (스킬 사용 시) 클릭시 실행"""
+        """평타 사용 안함 클릭시 실행"""
 
         self.popup_manager.close_popup()
 
         # 매크로 실행 중일 때는 무시
-        if self.shared_data.is_activated:
+        if app_state.macro.is_running:
             self.popup_manager.make_notice_popup("MacroIsRunning")
             return
 
-        preset: MacroPreset = self._get_preset()
-
-        # 이미 타입0 이라면 무시
-        if preset.settings.mouse_click_type == 0:
+        # 이미 False 라면 무시
+        if not app_state.macro.current_preset.settings.use_default_attack:
             return
 
-        preset.settings.mouse_click_type = 0
-        self._sync_preset_to_shared_data(preset)
-        self.update_from_preset(preset)
+        app_state.macro.current_preset.settings.use_default_attack = False
+        self._sync_preset_to_app_state(app_state.macro.current_preset)
+        self.update_from_preset(app_state.macro.current_preset)
         self._on_data_changed()
 
     def on_mouse_type1_clicked(self) -> None:
-        """마우스 클릭 타입1 (평타 포함) 클릭시 실행"""
+        """평타 사용 클릭시 실행"""
 
         self.popup_manager.close_popup()
 
         # 매크로 실행 중일 때는 무시
-        if self.shared_data.is_activated:
+        if app_state.macro.is_running:
             self.popup_manager.make_notice_popup("MacroIsRunning")
             return
 
-        preset: MacroPreset = self._get_preset()
-
         # 이미 타입1 이라면 무시
-        if preset.settings.mouse_click_type == 1:
+        if app_state.macro.current_preset.settings.use_default_attack:
             return
 
-        preset.settings.mouse_click_type = 1
-        self._sync_preset_to_shared_data(preset)
-        self.update_from_preset(preset)
+        app_state.macro.current_preset.settings.use_default_attack = True
+        self._sync_preset_to_app_state(app_state.macro.current_preset)
+        self.update_from_preset(app_state.macro.current_preset)
         self._on_data_changed()
 
     class SettingItem(QFrame):
@@ -765,13 +738,11 @@ class SkillSettings(QFrame):
 
     def __init__(
         self,
-        shared_data: SharedData,
         popup_manager: PopupManager,
         on_data_changed: Callable[[], None],
     ):
         super().__init__()
 
-        self.shared_data: SharedData = shared_data
         self.popup_manager: PopupManager = popup_manager
         self._on_data_changed: Callable[[], None] = on_data_changed
 
@@ -812,14 +783,13 @@ class SkillSettings(QFrame):
         self.update_from_preset(self._get_preset())
 
     def _get_preset(self) -> "MacroPreset":
-        return self.shared_data.presets[self.shared_data.recent_preset]
+        return app_state.macro.presets[app_state.macro.current_preset_index]
 
     def _sync_preset_to_shared_data(self, preset: "MacroPreset") -> None:
-        apply_preset_to_shared_data(
-            self.shared_data,
+        apply_preset_to_app_state(
             preset,
-            preset_index=self.shared_data.recent_preset,
-            all_presets=self.shared_data.presets,
+            preset_index=app_state.macro.current_preset_index,
+            all_presets=app_state.macro.presets,
         )
 
     def _build_header(self) -> None:
@@ -887,9 +857,7 @@ class SkillSettings(QFrame):
         for idx, skill_id in enumerate(self._skill_ids):
             # 스킬 아이콘
             # todo: 스킬 이름을 표시하도록 변경
-            pixmap: QPixmap = get_skill_pixmap(
-                shared_data=self.shared_data, skill_id=skill_id
-            )
+            pixmap: QPixmap = resource_registry.get_skill_pixmap(skill_id=skill_id)
             skill_image: SkillImage = SkillImage(parent=self, pixmap=pixmap, size=30)
             self._grid_layout.addWidget(
                 skill_image, idx + 1, 0, Qt.AlignmentFlag.AlignCenter
@@ -937,9 +905,9 @@ class SkillSettings(QFrame):
     def update_from_preset(self, preset: "MacroPreset") -> None:
         """프리셋으로부터 위젯 상태를 업데이트"""
 
-        skill_ids: list[str] = self.shared_data.skill_registries[
-            preset.settings.server_id
-        ].all_skill_ids()
+        skill_ids: list[str] = (
+            app_state.macro.current_server.skill_registry.get_all_skill_ids()
+        )
         self._ensure_rows(skill_ids)
 
         for idx, skill_id in enumerate(self._skill_ids):
@@ -948,14 +916,14 @@ class SkillSettings(QFrame):
             usage_icon = QIcon(
                 QPixmap(
                     convert_resource_path(
-                        f"resources\\image\\check{bool(setting.is_use_skill)}.png"
+                        f"resources\\image\\check{bool(setting.use_skill)}.png"
                     )
                 )
             )
             sole_icon = QIcon(
                 QPixmap(
                     convert_resource_path(
-                        f"resources\\image\\check{bool(setting.is_use_sole)}.png"
+                        f"resources\\image\\check{bool(setting.use_alone)}.png"
                     )
                 )
             )
@@ -963,7 +931,7 @@ class SkillSettings(QFrame):
             self._usage_btns[idx].setIcon(usage_icon)
             self._sole_btns[idx].setIcon(sole_icon)
 
-            p = int(setting.skill_priority)
+            p = int(setting.priority)
             self._priority_btns[idx].setText("-" if p == 0 else str(p))
 
     def change_skill_usage(self, skill_idx: int) -> None:
@@ -974,7 +942,7 @@ class SkillSettings(QFrame):
 
         setting: SkillUsageSetting = preset.usage_settings[skill_id]
 
-        setting.is_use_skill = not setting.is_use_skill
+        setting.use_skill = not setting.use_skill
 
         self._sync_preset_to_shared_data(preset)
         self.update_from_preset(preset)
@@ -988,7 +956,7 @@ class SkillSettings(QFrame):
 
         setting: SkillUsageSetting = preset.usage_settings[skill_id]
 
-        setting.is_use_sole = not setting.is_use_sole
+        setting.use_alone = not setting.use_alone
 
         self._sync_preset_to_shared_data(preset)
         self.update_from_preset(preset)
@@ -1001,27 +969,27 @@ class SkillSettings(QFrame):
         skill_id: str = self._skill_ids[skill_idx]
 
         # 장착된 스킬이 아니면 무시
-        if skill_id not in preset.skills.active_skills:
+        if skill_id not in preset.skills.equipped_skills:
             return
 
         setting: SkillUsageSetting = preset.usage_settings[skill_id]
 
-        current = int(setting.skill_priority)
+        current = int(setting.priority)
 
         # 우선순위가 0이었다면: 가장 높은 우선순위(숫자 최대 + 1)
         if current == 0:
             max_priority: int = 0
             for s in preset.usage_settings.values():
-                max_priority = max(max_priority, s.skill_priority)
+                max_priority = max(max_priority, s.priority)
 
-            setting.skill_priority = max_priority + 1
+            setting.priority = max_priority + 1
 
         # 우선순위가 설정되어 있었다면: 제거 + 뒷번호 당기기
         else:
-            setting.skill_priority = 0
+            setting.priority = 0
             for s in preset.usage_settings.values():
-                if s.skill_priority > current:
-                    s.skill_priority -= 1
+                if s.priority > current:
+                    s.priority -= 1
 
         self._sync_preset_to_shared_data(preset)
         self.update_from_preset(preset)
@@ -1036,7 +1004,6 @@ class LinkSkillSettings(QFrame):
 
     def __init__(
         self,
-        shared_data: SharedData,
         popup_manager: PopupManager,
         on_data_changed: Callable[[], None],
     ) -> None:
@@ -1044,7 +1011,6 @@ class LinkSkillSettings(QFrame):
 
         # self.setStyleSheet("QFrame { background-color: #FFFFFF; }")
 
-        self.shared_data: SharedData = shared_data
         self.popup_manager: PopupManager = popup_manager
         self._on_data_changed: Callable[[], None] = on_data_changed
 
@@ -1072,14 +1038,13 @@ class LinkSkillSettings(QFrame):
         self.update_from_preset(self._get_preset())
 
     def _get_preset(self) -> "MacroPreset":
-        return self.shared_data.presets[self.shared_data.recent_preset]
+        return app_state.macro.presets[app_state.macro.current_preset_index]
 
     def _sync_preset_to_shared_data(self, preset: "MacroPreset") -> None:
-        apply_preset_to_shared_data(
-            self.shared_data,
+        apply_preset_to_app_state(
             preset,
-            preset_index=self.shared_data.recent_preset,
-            all_presets=self.shared_data.presets,
+            preset_index=app_state.macro.current_preset_index,
+            all_presets=app_state.macro.presets,
         )
 
     def update_from_preset(self, preset: "MacroPreset") -> None:
@@ -1096,9 +1061,7 @@ class LinkSkillSettings(QFrame):
                 w.deleteLater()
 
         for i, data in enumerate(preset.link_settings):
-            link_skill = self.LinkSkillWidget(
-                self.shared_data, data, i, self.edit, self.remove
-            )
+            link_skill = self.LinkSkillWidget(data, i, self.edit, self.remove)
             self._list_layout.addWidget(link_skill)
 
         QTimer.singleShot(0, self.contentResized.emit)
@@ -1156,15 +1119,12 @@ class LinkSkillSettings(QFrame):
     class LinkSkillWidget(QFrame):
         def __init__(
             self,
-            shared_data: SharedData,
             data: LinkSkill,
             idx: int,
             edit_func: Callable[[int], None],
             remove_func: Callable[[int], None],
         ) -> None:
             super().__init__()
-
-            self.shared_data: SharedData = shared_data
 
             self.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Minimum)
             self.setMaximumWidth(270)
@@ -1225,8 +1185,7 @@ class LinkSkillSettings(QFrame):
                     slot_layout = QVBoxLayout(slot_frame)
                     slot_layout.setContentsMargins(0, 0, 0, 0)
 
-                    pixmap: QPixmap = get_skill_pixmap(
-                        shared_data=self.shared_data,
+                    pixmap: QPixmap = resource_registry.get_skill_pixmap(
                         skill_id=data.skills[i],
                     )
 
@@ -1298,7 +1257,7 @@ class LinkSkillSettings(QFrame):
 
             start_key_value = QLabel()
             if data.key_type == LinkKeyType.ON and data.key is not None:
-                key_val: str = self.shared_data.KEY_DICT[data.key].display
+                key_val: str = KeyRegistry.MAP[data.key].display
                 start_key_value.setText(key_val)
                 start_key_value.setStyleSheet(
                     "QLabel { background-color: #343A40; color: white; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 12px; }"
@@ -1377,13 +1336,11 @@ class LinkSkillEditor(QFrame):
     # todo: 링크스킬 데이터를 클래스로 관리하도록 수정
     def __init__(
         self,
-        shared_data: SharedData,
         popup_manager: PopupManager,
         on_data_changed: Callable[[], None],
     ) -> None:
         super().__init__()
 
-        self.shared_data: SharedData = shared_data
         self.popup_manager: PopupManager = popup_manager
         self._on_data_changed: Callable[[], None] = on_data_changed
 
@@ -1470,14 +1427,13 @@ class LinkSkillEditor(QFrame):
         self._editing_index: int = -1
 
     def _get_preset(self) -> "MacroPreset":
-        return self.shared_data.presets[self.shared_data.recent_preset]
+        return app_state.macro.presets[app_state.macro.current_preset_index]
 
     def _sync_preset_to_shared_data(self, preset: "MacroPreset") -> None:
-        apply_preset_to_shared_data(
-            self.shared_data,
+        apply_preset_to_app_state(
             preset,
-            preset_index=self.shared_data.recent_preset,
-            all_presets=self.shared_data.presets,
+            preset_index=app_state.macro.current_preset_index,
+            all_presets=app_state.macro.presets,
         )
 
     def load(self, data: LinkSkill, index: int) -> None:
@@ -1509,9 +1465,9 @@ class LinkSkillEditor(QFrame):
         if (
             key_type == LinkKeyType.ON
             and self.data.key is not None
-            and self.data.key in self.shared_data.KEY_DICT
+            and self.data.key in KeyRegistry.MAP
         ):
-            key_text: str = self.shared_data.KEY_DICT[self.data.key].display
+            key_text: str = KeyRegistry.MAP[self.data.key].display
         else:
             key_text = ""
 
@@ -1524,9 +1480,7 @@ class LinkSkillEditor(QFrame):
         """프리셋 서버의 전체 스킬 ID 목록을 반환"""
 
         preset: MacroPreset = self._get_preset()
-        return self.shared_data.skill_registries[
-            preset.settings.server_id
-        ].all_skill_ids()
+        return app_state.macro.current_server.skill_registry.get_all_skill_ids()
 
     def _refresh_skill_items(self) -> None:
         """self.data['skills']로 스킬 구성 UI를 다시 그림"""
@@ -1543,7 +1497,6 @@ class LinkSkillEditor(QFrame):
             skill_widget = self.SkillItem(
                 index=idx,
                 name=name,
-                shared_data=self.shared_data,
             )
             skill_widget.changeRequested.connect(self._open_skill_select_popup)
             skill_widget.removeRequested.connect(self._remove_skill_and_refresh)
@@ -1589,7 +1542,7 @@ class LinkSkillEditor(QFrame):
         preset: MacroPreset = self._get_preset()
 
         # 모든 스킬이 장착되어 있는지 확인
-        if not all(i in preset.skills.active_skills for i in self.data.skills):
+        if not all(i in preset.skills.equipped_skills for i in self.data.skills):
             self.popup_manager.make_notice_popup("skillNotSelected")
             return
 
@@ -1766,7 +1719,6 @@ class LinkSkillEditor(QFrame):
             self,
             index: int,
             name: str,
-            shared_data: SharedData,
         ) -> None:
             super().__init__()
 
@@ -1776,7 +1728,7 @@ class LinkSkillEditor(QFrame):
 
             self.skill = QPushButton()
             self.skill.clicked.connect(self._emit_change)
-            self.skill.setIcon(QIcon(get_skill_pixmap(shared_data, skill_id)))
+            self.skill.setIcon(QIcon(resource_registry.get_skill_pixmap(skill_id)))
             # skill.setIconSize(QSize(50, 50))
             self.skill.setIconSize(QSize(36, 36))
             self.skill.setFixedSize(44, 44)

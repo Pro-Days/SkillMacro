@@ -4,17 +4,22 @@ import json
 import os
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, ClassVar, cast
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
+from app.scripts.config import config
 from app.scripts.custom_classes import Stats
+
+if TYPE_CHECKING:
+    from app.scripts.registry.key_registry import KeySpec
 
 
 @dataclass(slots=True)
 class MacroSkills:
     """매크로 스킬 데이터 모델"""
 
-    # 스킬 ID 목록 (빈 슬롯은 "")
-    active_skills: list[str] = field(default_factory=list)
+    # 장착된 스킬 ID 목록 (빈 슬롯은 "")
+    equipped_skills: list[str] = field(default_factory=list)
+
     # 스킬 단축키 목록
     skill_keys: list[str] = field(default_factory=list)
 
@@ -23,7 +28,7 @@ class MacroSkills:
         """딕셔너리로부터 MacroSkills 생성"""
 
         return cls(
-            active_skills=data["active_skills"].copy(),
+            equipped_skills=data["equipped_skills"].copy(),
             skill_keys=data["skill_keys"].copy(),
         )
 
@@ -31,7 +36,7 @@ class MacroSkills:
         """딕셔너리로 변환"""
 
         return {
-            "active_skills": self.active_skills.copy(),
+            "equipped_skills": self.equipped_skills.copy(),
             "skill_keys": self.skill_keys.copy(),
         }
 
@@ -42,14 +47,21 @@ class MacroSettings:
 
     # 서버 ID
     server_id: str = ""
-    # 딜레이 [type, input]
-    delay: tuple[int, int] = (0, 0)
-    # 쿨타임 감소 [type, input]
-    cooltime: tuple[int, int] = (0, 0)
-    # 시작 키 [type, key_id]
-    start_key: tuple[int, str] = (0, "")
+
+    # 딜레이
+    custom_delay: int = config.specs.DELAY.default
+    use_custom_delay: bool = False
+
+    # 쿨타임 감소
+    custom_cooltime_reduction: int = config.specs.COOLTIME_REDUCTION.default
+    use_custom_cooltime_reduction: bool = False
+
+    # 시작키
+    custom_start_key: str = config.specs.DEFAULT_START_KEY.key_id
+    use_custom_start_key: bool = False
+
     # 마우스 클릭 타입
-    mouse_click_type: int = 0
+    use_default_attack: bool = False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "MacroSettings":
@@ -57,19 +69,13 @@ class MacroSettings:
 
         return cls(
             server_id=data["server_id"],
-            delay=(
-                data["delay"][0],
-                data["delay"][1],
-            ),
-            cooltime=(
-                data["cooltime"][0],
-                data["cooltime"][1],
-            ),
-            start_key=(
-                data["start_key"][0],
-                data["start_key"][1],
-            ),
-            mouse_click_type=data["mouse_click_type"],
+            custom_delay=data["custom_delay"],
+            use_custom_delay=data["use_custom_delay"],
+            custom_cooltime_reduction=data["custom_cooltime_reduction"],
+            use_custom_cooltime_reduction=data["use_custom_cooltime_reduction"],
+            custom_start_key=data["custom_start_key"],
+            use_custom_start_key=data["use_custom_start_key"],
+            use_default_attack=data["use_default_attack"],
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -77,10 +83,13 @@ class MacroSettings:
 
         return {
             "server_id": self.server_id,
-            "delay": [self.delay[0], self.delay[1]],
-            "cooltime": [self.cooltime[0], self.cooltime[1]],
-            "start_key": [self.start_key[0], self.start_key[1]],
-            "mouse_click_type": self.mouse_click_type,
+            "custom_delay": self.custom_delay,
+            "use_custom_delay": self.use_custom_delay,
+            "custom_cooltime_reduction": self.custom_cooltime_reduction,
+            "use_custom_cooltime_reduction": self.use_custom_cooltime_reduction,
+            "custom_start_key": self.custom_start_key,
+            "use_custom_start_key": self.use_custom_start_key,
+            "use_default_attack": self.use_default_attack,
         }
 
 
@@ -88,27 +97,27 @@ class MacroSettings:
 class SkillUsageSetting:
     """스킬 사용 설정 데이터 모델"""
 
-    is_use_skill: bool = True
-    is_use_sole: bool = False
-    skill_priority: int = 0
+    use_skill: bool = True
+    use_alone: bool = False
+    priority: int = 0
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "SkillUsageSetting":
         """딕셔너리로부터 SkillUsageSetting 생성"""
 
         return cls(
-            is_use_skill=data["is_use_skill"],
-            is_use_sole=data["is_use_sole"],
-            skill_priority=data["skill_priority"],
+            use_skill=data["use_skill"],
+            use_alone=data["use_alone"],
+            priority=data["priority"],
         )
 
     def to_dict(self) -> dict[str, Any]:
         """딕셔너리로 변환"""
 
         return {
-            "is_use_skill": self.is_use_skill,
-            "is_use_sole": self.is_use_sole,
-            "skill_priority": self.skill_priority,
+            "use_skill": self.use_skill,
+            "use_alone": self.use_alone,
+            "priority": self.priority,
         }
 
 
@@ -332,21 +341,24 @@ class MacroPreset:
         return cls(
             name=cls.DEFAULT_NAME,
             skills=MacroSkills(
-                active_skills=[""] * skill_count,
+                equipped_skills=[""] * skill_count,
                 skill_keys=[str(2 + i) for i in range(skill_count)],
             ),
             settings=MacroSettings(
                 server_id=server_id,
-                delay=(0, default_delay),
-                cooltime=(0, default_cooltime_reduction),
-                start_key=(0, default_start_key_id),
-                mouse_click_type=0,
+                custom_delay=default_delay,
+                use_custom_delay=False,
+                custom_cooltime_reduction=default_cooltime_reduction,
+                use_custom_cooltime_reduction=False,
+                custom_start_key=default_start_key_id,
+                use_custom_start_key=False,
+                use_default_attack=False,
             ),
             usage_settings={
                 skill_id: SkillUsageSetting(
-                    is_use_skill=True,
-                    is_use_sole=False,
-                    skill_priority=0,
+                    use_skill=True,
+                    use_alone=False,
+                    priority=0,
                 )
                 for skill_id in skills_all.copy()
             },

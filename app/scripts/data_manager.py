@@ -3,8 +3,9 @@ from __future__ import annotations
 import datetime
 import os
 import shutil
-from typing import TYPE_CHECKING
 
+from app.scripts.app_state import SkillSetting, app_state
+from app.scripts.config import config
 from app.scripts.macro_models import (
     MacroPreset,
     MacroPresetFile,
@@ -12,11 +13,8 @@ from app.scripts.macro_models import (
     PresetInfo,
     SkillUsageSetting,
 )
-from app.scripts.misc import get_every_skills, set_var_to_ClassVar
-
-if TYPE_CHECKING:
-    from .shared_data import SharedData
-
+from app.scripts.registry.key_registry import KeyRegistry
+from app.scripts.registry.server_registry import server_registry
 
 data_version = 1
 
@@ -27,116 +25,58 @@ data_path: str = os.path.join(local_appdata, "ProDays", "SkillMacro")
 file_dir: str = os.path.join(data_path, "macros.json")
 
 
-def apply_preset_to_shared_data(
-    shared_data: SharedData,
+def apply_preset_to_app_state(
     preset: MacroPreset,
     preset_index: int,
     all_presets: list[MacroPreset],
 ) -> None:
-    """MacroPreset -> SharedData로 값을 반영"""
+    """MacroPreset -> AppState로 값을 반영"""
 
-    shared_data.presets = all_presets
-    set_var_to_ClassVar(shared_data.tab_names, [p.name for p in shared_data.presets])
+    app_state.macro.presets = all_presets
+    app_state.ui.tab_names = [p.name for p in app_state.macro.presets]
 
-    update_recent_preset(shared_data, preset_index)
-
-    # 장착된 스킬들
-    set_var_to_ClassVar(shared_data.equipped_skills, preset.skills.active_skills)
-    # 스킬 키(KeySpec)
-    set_var_to_ClassVar(
-        shared_data.skill_keys,
-        [shared_data.KEY_DICT[key_id] for key_id in preset.skills.skill_keys],
-    )
-
-    # 서버 설정
-    shared_data.server_ID = preset.settings.server_id
-
-    # 딜레이
-    shared_data.delay_type = preset.settings.delay[0]
-    shared_data.delay_input = preset.settings.delay[1]
-    shared_data.delay = (
-        shared_data.DEFAULT_DELAY
-        if shared_data.delay_type == 0
-        else shared_data.delay_input
-    )
-
-    # 쿨타임 감소
-    shared_data.cooltime_reduction_type = preset.settings.cooltime[0]
-    shared_data.cooltime_reduction_input = preset.settings.cooltime[1]
-    shared_data.cooltime_reduction = (
-        shared_data.DEFAULT_COOLTIME_REDUCTION
-        if shared_data.cooltime_reduction_type == 0
-        else shared_data.cooltime_reduction_input
-    )
-
-    # 시작 키
-    shared_data.start_key_type = preset.settings.start_key[0]
-    shared_data.start_key_input = shared_data.KEY_DICT[preset.settings.start_key[1]]
-    shared_data.start_key = (
-        shared_data.DEFAULT_START_KEY
-        if shared_data.start_key_type == 0
-        else shared_data.start_key_input
-    )
-
-    # 마우스 클릭
-    shared_data.mouse_click_type = preset.settings.mouse_click_type
+    update_recent_preset(preset_index)
 
     # 스킬 사용설정
-    set_var_to_ClassVar(
-        shared_data.is_use_skill,
-        {
-            skill: setting.is_use_skill
-            for skill, setting in preset.usage_settings.items()
-        },
-    )
-    set_var_to_ClassVar(
-        shared_data.is_use_sole,
-        {
-            skill: setting.is_use_sole
-            for skill, setting in preset.usage_settings.items()
-        },
-    )
-    set_var_to_ClassVar(
-        shared_data.skill_priority,
-        {
-            skill: setting.skill_priority
-            for skill, setting in preset.usage_settings.items()
-        },
-    )
+    for skill, setting in preset.usage_settings.items():
+        app_state.skill.settings[skill] = SkillSetting(
+            id=skill,
+            use_skill=setting.use_skill,
+            use_alone=setting.use_alone,
+            priority=setting.priority,
+            level=preset.info.skill_levels.get(skill, 1),
+        )
 
     # 링크 스킬
-    set_var_to_ClassVar(shared_data.link_skills, preset.link_settings)
+    app_state.skill.link_skills = preset.link_settings.copy()
 
     # 시뮬레이션 정보
-    shared_data.info_stats = preset.info.to_stats()
-    set_var_to_ClassVar(shared_data.info_skill_levels, preset.info.skill_levels)
-    set_var_to_ClassVar(shared_data.info_sim_details, preset.info.sim_details)
+    app_state.simulation.stats = preset.info.to_stats()
+    app_state.simulation.sim_details = preset.info.sim_details.copy()
 
 
-def select_preset(shared_data: SharedData, index: int) -> None:
-    """메모리 상의 shared_data.presets를 기준으로 프리셋을 선택한다"""
+def select_preset(index: int) -> None:
+    """메모리 상의 app_state.macro.presets를 기준으로 프리셋을 선택"""
 
-    apply_preset_to_shared_data(
-        shared_data,
-        shared_data.presets[index],
+    apply_preset_to_app_state(
+        app_state.macro.presets[index],
         preset_index=index,
-        all_presets=shared_data.presets,
+        all_presets=app_state.macro.presets,
     )
 
 
-def load_data(shared_data: SharedData, num: int = -1) -> None:
+def load_data(num: int = -1) -> None:
     """
     실행, 탭 변경 시 데이터 로드
-
     num: 탭 번호, -1이면 최근 탭
     """
 
     try:
         # 파일이 존재하지 않으면 데이터 생성
         if not os.path.isfile(file_dir):
-            create_default_data(shared_data=shared_data)
+            create_default_data()
 
-        update_data(shared_data=shared_data)
+        update_data()
 
         repo = MacroPresetRepository(file_dir)
         preset_file: MacroPresetFile = repo.load()
@@ -150,8 +90,7 @@ def load_data(shared_data: SharedData, num: int = -1) -> None:
         presets: list[MacroPreset] = preset_file.preset
         preset: MacroPreset = presets[target_index]
 
-        apply_preset_to_shared_data(
-            shared_data,
+        apply_preset_to_app_state(
             preset,
             preset_index=target_index,
             all_presets=presets,
@@ -164,13 +103,13 @@ def load_data(shared_data: SharedData, num: int = -1) -> None:
         backup_data()
 
         # 기본 데이터 생성
-        create_default_data(shared_data=shared_data)
+        create_default_data()
 
         # 데이터 다시 로드
-        load_data(shared_data=shared_data)
+        load_data()
 
 
-def create_default_data(shared_data: SharedData) -> None:
+def create_default_data() -> None:
     """
     오류 발생 또는 최초 실행 시 데이터 생성
     """
@@ -179,80 +118,73 @@ def create_default_data(shared_data: SharedData) -> None:
     preset_file = MacroPresetFile(
         version=data_version,
         recent_preset=0,
-        preset=[get_default_preset(shared_data=shared_data)],
+        preset=[get_default_preset()],
     )
     repo.save(preset_file)
 
 
-def save_data(shared_data: SharedData) -> None:
+def save_data() -> None:
     """
     데이터 저장
     """
 
     def apply_to_preset(preset: MacroPreset) -> None:
-        """shared_data 값을 preset에 반영"""
+        """app_state 값을 preset에 반영"""
 
-        preset.name = shared_data.tab_names[shared_data.recent_preset]
-
-        preset.skills.active_skills = shared_data.equipped_skills.copy()
-        preset.skills.skill_keys = [key.key_id for key in shared_data.skill_keys]
-
-        preset.settings.server_id = shared_data.server_ID
-        preset.settings.delay = (shared_data.delay_type, shared_data.delay_input)
-        preset.settings.cooltime = (
-            shared_data.cooltime_reduction_type,
-            shared_data.cooltime_reduction_input,
-        )
-        preset.settings.start_key = (
-            shared_data.start_key_type,
-            shared_data.start_key_input.key_id,
-        )
-        preset.settings.mouse_click_type = shared_data.mouse_click_type
+        # 프리셋 이름 저장
+        preset.name = app_state.ui.tab_names[app_state.macro.current_preset_index]
 
         # 스킬 사용 설정 저장
-        skills_all: list[str] = get_every_skills(shared_data=shared_data)
+        skills_all: list[str] = (
+            app_state.macro.current_server.skill_registry.get_all_skill_ids()
+        )
         preset.usage_settings = {
             skill_id: SkillUsageSetting(
-                is_use_skill=shared_data.is_use_skill[skill_id],
-                is_use_sole=shared_data.is_use_sole[skill_id],
-                skill_priority=shared_data.skill_priority[skill_id],
+                use_skill=app_state.skill.settings[skill_id].use_skill,
+                use_alone=app_state.skill.settings[skill_id].use_alone,
+                priority=app_state.skill.settings[skill_id].priority,
             )
             for skill_id in skills_all
         }
 
-        preset.link_settings = shared_data.link_skills.copy()
+        preset.link_settings = app_state.skill.link_skills.copy()
 
         preset.info = PresetInfo.from_stats(
-            shared_data.info_stats,
-            skill_levels=shared_data.info_skill_levels,
-            sim_details=shared_data.info_sim_details,
+            app_state.simulation.stats,
+            skill_levels={
+                skill_id: app_state.skill.settings[skill_id].level
+                for skill_id in skills_all
+            },
+            sim_details=app_state.simulation.sim_details,
         )
 
     repo = MacroPresetRepository(file_dir)
 
-    apply_to_preset(shared_data.presets[shared_data.recent_preset])
+    apply_to_preset(app_state.macro.presets[app_state.macro.current_preset_index])
 
     preset_file = MacroPresetFile(
         version=data_version,
-        recent_preset=shared_data.recent_preset,
-        preset=shared_data.presets.copy(),
+        recent_preset=app_state.macro.current_preset_index,
+        preset=app_state.macro.presets.copy(),
     )
     repo.save(preset_file)
 
 
-def update_recent_preset(shared_data: SharedData, recent_preset: int) -> None:
+def update_recent_preset(recent_preset: int) -> None:
     """recent_preset 인덱스 저장"""
 
-    shared_data.recent_preset = recent_preset
+    app_state.macro.current_preset_index = recent_preset
 
     repo = MacroPresetRepository(file_dir)
     preset_file: MacroPresetFile = repo.load()
 
-    preset_file.recent_preset = shared_data.recent_preset
+    preset_file.recent_preset = app_state.macro.current_preset_index
     repo.save(preset_file)
 
 
-def remove_preset(num: int, shared_data: SharedData) -> None:
+def remove_preset(
+    num: int,
+) -> None:
     """
     탭 제거시 데이터 삭제
     """
@@ -265,13 +197,13 @@ def remove_preset(num: int, shared_data: SharedData) -> None:
     repo.save(preset_file)
 
     # 메모리 상에도 반영
-    shared_data.presets.pop(num)
+    app_state.macro.presets.pop(num)
 
     # tab_names 동기화
-    set_var_to_ClassVar(shared_data.tab_names, [p.name for p in shared_data.presets])
+    app_state.ui.tab_names = [p.name for p in app_state.macro.presets]
 
 
-def add_preset(shared_data: SharedData) -> None:
+def add_preset() -> None:
     """
     탭 추가시 데이터 생성
     """
@@ -279,33 +211,35 @@ def add_preset(shared_data: SharedData) -> None:
     repo = MacroPresetRepository(file_dir)
     preset_file: MacroPresetFile = repo.load()
 
-    new_preset: MacroPreset = get_default_preset(shared_data=shared_data)
+    new_preset: MacroPreset = get_default_preset()
     preset_file.preset.append(new_preset)
     repo.save(preset_file)
 
     # 메모리에도 반영
-    shared_data.presets = preset_file.preset.copy()
-    set_var_to_ClassVar(shared_data.tab_names, [p.name for p in shared_data.presets])
+    app_state.macro.presets = preset_file.preset.copy()
+    app_state.ui.tab_names = [p.name for p in app_state.macro.presets]
 
 
-def get_default_preset(shared_data: SharedData) -> MacroPreset:
+def get_default_preset() -> MacroPreset:
     """기본 프리셋 데이터 생성"""
 
-    server_id: str = shared_data.DEFAULT_SERVER_ID
-    skill_count: int = shared_data.USABLE_SKILL_COUNT[server_id]
-    skills_all: list[str] = get_every_skills(shared_data=shared_data)
+    server_id: str = config.specs.SERVERS.default.id
+    skill_count: int = server_registry.SERVERS[server_id].usable_skill_count
+    skills_all: list[str] = server_registry.SERVERS[
+        server_id
+    ].skill_registry.get_all_skill_ids()
 
     return MacroPreset.create_default(
         server_id=server_id,
         skill_count=skill_count,
         skills_all=skills_all,
-        default_delay=shared_data.DEFAULT_DELAY,
-        default_cooltime_reduction=shared_data.DEFAULT_COOLTIME_REDUCTION,
-        default_start_key_id=shared_data.DEFAULT_START_KEY.key_id,
+        default_delay=config.specs.DELAY.default,
+        default_cooltime_reduction=config.specs.COOLTIME_REDUCTION.default,
+        default_start_key_id=config.specs.DEFAULT_START_KEY.key_id,
     )
 
 
-def update_data(shared_data: SharedData) -> None:
+def update_data() -> None:
     """
     데이터 포맷 업데이트
     """
@@ -313,7 +247,7 @@ def update_data(shared_data: SharedData) -> None:
     try:
         # 데이터가 없으면 새로 생성
         if not os.path.isfile(file_dir):
-            create_default_data(shared_data=shared_data)
+            create_default_data()
             return
 
         repo = MacroPresetRepository(file_dir)
@@ -330,7 +264,7 @@ def update_data(shared_data: SharedData) -> None:
 
         backup_data()
 
-        create_default_data(shared_data=shared_data)
+        create_default_data()
 
 
 def backup_data() -> None:

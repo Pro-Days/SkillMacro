@@ -16,7 +16,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from .config import config
+from app.scripts.config import config
+from app.scripts.registry.resource_registry import convert_resource_path
 
 
 class CustomLineEdit(QLineEdit):
@@ -159,13 +160,33 @@ class CustomComboBox(QComboBox):
     ) -> None:
         super().__init__(parent)
 
-        from .shared_data import UI_Variable
+        bg_color = "#f0f0f0"
+        border_color = "#D9D9D9"
 
-        ui_var = UI_Variable()
+        style_sheet: str = f"""
+        QComboBox {{
+            background-color: {bg_color};
+            border: 1px solid {border_color};
+            border-radius: 4px;
+        }}
+        QComboBox::drop-down {{
+            width: 20px;
+            border-left-width: 1px;
+            border-left-color: darkgray;
+            border-left-style: solid;
+        }}
+        QComboBox::down-arrow {{
+            image: url({convert_resource_path("resources\\image\\down_arrow.png").replace("\\", "/")});
+            width: 16px;
+            height: 16px;
+        }}
+        QComboBox QAbstractItemView {{
+            border: 1px solid {border_color};
+        }}"""
 
         self.setFont(CustomFont(point_size))
         self.addItems(items)
-        self.setStyleSheet(ui_var.comboboxStyle)
+        self.setStyleSheet(style_sheet)
 
         if connected_function:
             self.currentIndexChanged.connect(connected_function)

@@ -8,7 +8,7 @@ from PyQt6.QtGui import QBrush, QPainter
 from PyQt6.QtWidgets import QLabel, QWidget
 
 from app.scripts.custom_classes import CustomFont, SimAttack
-from app.scripts.skill_registry import get_builtin_skill_id, parse_skill_id
+from app.scripts.registry.skill_registry import get_builtin_skill_id, parse_skill_id
 
 # todo: 재사용 가능하도록, 실시간 렌더링되도록 변경
 # todo: 크래시 문제 해결

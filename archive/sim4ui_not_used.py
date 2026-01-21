@@ -1,5 +1,5 @@
 # class Sim4UI:
-#     def __init__(self, parent, shared_data: SharedData):
+#     def __init__(self, parent, ):
 #         self.shared_data = shared_data
 #         self.parent = parent
 
@@ -11,12 +11,12 @@
 #         self.shared_data.is_card_updated = False
 
 #         powers = detSimulate(
-#             self.shared_data,
-#             self.shared_data.info_stats,
-#             self.shared_data.info_sim_details,
+#
+#             app_state.simulation.stats,
+#             app_state.simulation.sim_details,
 #         ).powers
 #         for i, power in enumerate(powers):
-#             self.shared_data.powers[i] = power
+#             app_state.simulation.powers[i] = power
 #         # self.sim_powers = [str(int(i)) for i in self.sim_powers]
 
 #         self.name = ""
@@ -656,7 +656,7 @@
 #                     self.ui_var.sim_charCard_powerFrame_W,
 #                     self.ui_var.sim_charCard_powerFrame_H,
 #                 )
-#                 self.card_powers[i][2].setText(f"{int(self.shared_data.powers[i])}")
+#                 self.card_powers[i][2].setText(f"{int(app_state.simulation.powers[i])}")
 
 #                 self.card_powers[i][0].show()
 #                 count += 1

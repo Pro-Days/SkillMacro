@@ -33,20 +33,20 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from app.scripts.app_state import app_state
+from app.scripts.config import config
 from app.scripts.custom_classes import CustomFont, CustomLineEdit, CustomShadowEffect
-from app.scripts.misc import (
+from app.scripts.registry.key_registry import KeyRegistry
+from app.scripts.registry.resource_registry import (
     convert_resource_path,
-    get_skill_name,
-    get_skill_pixmap,
-    is_key_using,
-    key_to_KeySpec,
+    resource_registry,
 )
-from app.scripts.shared_data import KeySpec
+from app.scripts.registry.server_registry import ServerSpec, server_registry
 
 if TYPE_CHECKING:
-    from app.scripts.main_window import MainWindow
-    from app.scripts.shared_data import SharedData
+    from app.scripts.registry.key_registry import KeySpec
     from app.scripts.ui.main_ui.main_ui import MainUI
+    from app.scripts.ui.main_window import MainWindow
 
 
 class PopupPlacement(Enum):
@@ -226,7 +226,7 @@ class KeyCaptureContent(QFrame):
     """QLabel & 확인 버튼 형태의 시작키 입력 팝업"""
 
     submitted = pyqtSignal(object)  # KeySpec | None
-    _key_received = pyqtSignal(KeySpec)
+    _key_received = pyqtSignal(object)
 
     def __init__(
         self,
@@ -506,9 +506,8 @@ class PopupManager:
     팝업을 관리하는 클래스
     """
 
-    def __init__(self, master: MainWindow, shared_data: SharedData) -> None:
+    def __init__(self, master: MainWindow) -> None:
         self.master: MainWindow = master
-        self.shared_data: SharedData = shared_data
 
         self._popup_controller: PopupController = PopupController(parent=self.master)
         self._popup_controller.host.closed.connect(self._on_popup_host_closed)
@@ -532,7 +531,7 @@ class PopupManager:
         self._key_listener = None
 
         # 키 입력 중 플래그 해제
-        self.shared_data.is_setting_key = False
+        app_state.ui.is_setting_key = False
 
         # 리스너가 동작 중이면 중지
         if listener is not None:
@@ -586,11 +585,11 @@ class PopupManager:
                 icon = "warning"
 
             case "delayInputError":
-                text = f"딜레이는 {self.shared_data.MIN_DELAY}~{self.shared_data.MAX_DELAY}까지의 수를 입력해야 합니다."
+                text = f"딜레이는 {config.specs.DELAY.min}~{config.specs.DELAY.max}까지의 수를 입력해야 합니다."
                 icon = "error"
 
             case "cooltimeInputError":
-                text = f"쿨타임은 {self.shared_data.MIN_COOLTIME_REDUCTION}~{self.shared_data.MAX_COOLTIME_REDUCTION}까지의 수를 입력해야 합니다."
+                text = f"쿨타임은 {config.specs.COOLTIME_REDUCTION.min}~{config.specs.COOLTIME_REDUCTION.max}까지의 수를 입력해야 합니다."
                 icon = "error"
 
             case "StartKeyChangeError":
@@ -598,7 +597,7 @@ class PopupManager:
                 icon = "error"
 
             case "RequireUpdate":
-                text = f"프로그램이 최신버전이 아닙니다.\n현재 버전: {self.shared_data.VERSION}, 최신버전: {self.shared_data.recent_version}"
+                text = f"프로그램이 최신버전이 아닙니다.\n현재 버전: {config.version}, 최신버전: {app_state.ui.current_version}"
                 icon = "warning"
 
                 button = QPushButton("다운로드 링크", noticePopup)
@@ -615,7 +614,7 @@ class PopupManager:
                 )
                 button.setFixedSize(150, 32)
                 button.move(48, 86)
-                button.clicked.connect(lambda: open_new(self.shared_data.update_url))
+                button.clicked.connect(lambda: open_new(app_state.ui.update_url))
                 button.show()
 
                 frameHeight = 134
@@ -647,14 +646,13 @@ class PopupManager:
             case _:
                 return
 
+        count: int = len(app_state.ui.active_error_popups)
+
         noticePopup.setStyleSheet("background-color: white; border-radius: 10px;")
         noticePopup.setFixedSize(400, frameHeight)
         noticePopup.move(
             self.master.width() - 420,
-            self.master.height()
-            - frameHeight
-            - 15
-            - self.shared_data.active_error_popup_count * 10,
+            self.master.height() - frameHeight - 15 - count * 10,
         )
         noticePopup.setGraphicsEffect(CustomShadowEffect(0, 5, 30, 150))
         noticePopup.show()
@@ -698,7 +696,7 @@ class PopupManager:
         noticePopupRemove.clicked.connect(
             partial(
                 lambda x: self.close_notice_popup(x),
-                self.shared_data.active_error_popup_count,
+                count,
             )
         )
         pixmap = QPixmap(convert_resource_path("resources\\image\\x.png"))
@@ -706,36 +704,31 @@ class PopupManager:
         noticePopupRemove.setIconSize(QSize(24, 24))
         noticePopupRemove.show()
 
-        self.shared_data.active_error_popup.append(
-            [noticePopup, frameHeight, self.shared_data.active_error_popup_count]
-        )
-        self.shared_data.active_error_popup_count += 1
+        app_state.ui.active_error_popups.append((noticePopup, frameHeight, count))
 
     ## 알림 창 제거
-    def close_notice_popup(self, num=-1):
+    def close_notice_popup(self, num=-1) -> None:
         if num != -1:
-            for i, j in enumerate(self.shared_data.active_error_popup):
+            for i, j in enumerate(app_state.ui.active_error_popups):
                 if num == j[2]:
-                    j[0].deleteLater()
-                    self.shared_data.active_error_popup.pop(i)
+                    j[0].deleteLater()  # type: ignore
+                    app_state.ui.active_error_popups.pop(i)
         else:
-            self.shared_data.active_error_popup[-1][0].deleteLater()
-            self.shared_data.active_error_popup.pop()
-        # self.activeErrorPopup[num][0].deleteLater()
-        # self.activeErrorPopup.pop(0)
-        self.shared_data.active_error_popup_count -= 1
+            app_state.ui.active_error_popups[-1][0].deleteLater()  # type: ignore
+            app_state.ui.active_error_popups.pop()
+
         self.update_position()
 
-    def update_position(self):
-        for i, j in enumerate(self.shared_data.active_error_popup):
-            j[0].move(
+    def update_position(self) -> None:
+        for i, j in enumerate(app_state.ui.active_error_popups):
+            j[0].move(  # type: ignore
                 self.master.width() - 420,
                 self.master.height() - j[1] - 15 - i * 10,
             )
-            for i in self.shared_data.active_error_popup:
-                i[0].raise_()
+            for i in app_state.ui.active_error_popups:
+                i[0].raise_()  # type: ignore
 
-    def close_popup(self):
+    def close_popup(self) -> None:
         # PopupHost 기반 팝업 닫기
         # self._stop_key_listener()
         self._popup_controller.close()
@@ -751,7 +744,7 @@ class PopupManager:
         """ActionList 팝업 생성 공통 부분"""
 
         # 매크로 실행 중일 때는 무시
-        if self.shared_data.is_activated:
+        if app_state.macro.is_running:
             self.make_notice_popup("MacroIsRunning")
             return
 
@@ -776,7 +769,7 @@ class PopupManager:
         """Input 팝업 생성 공통 부분"""
 
         # 매크로 실행 중일 때는 무시
-        if self.shared_data.is_activated:
+        if app_state.macro.is_running:
             self.make_notice_popup("MacroIsRunning")
             return
 
@@ -794,21 +787,21 @@ class PopupManager:
     def make_server_popup(
         self,
         anchor: QWidget,
-        on_selected: Callable[[str], None],
+        on_selected: Callable[[ServerSpec], None],
     ) -> None:
         """서버 선택 팝업"""
 
-        current_server: str = self.shared_data.server_ID
+        current_server: ServerSpec = app_state.macro.current_server
 
         actions: list[PopupAction] = [
             PopupAction(
-                id=server_name,
-                text=server_name,
+                id=server.id,
+                text=server.id,
                 enabled=True,
-                is_selected=(server_name == current_server),
-                on_trigger=lambda s=server_name: on_selected(s),
+                is_selected=(server == current_server),
+                on_trigger=lambda s=server: on_selected(s),
             )
-            for server_name in self.shared_data.SERVERS
+            for server in server_registry.get_all_servers()
         ]
 
         self.make_action_list_popup(
@@ -825,7 +818,7 @@ class PopupManager:
     ) -> None:
         """딜레이 입력 팝업"""
 
-        default_text = str(self.shared_data.delay_input)
+        default_text = str(app_state.macro.current_delay)
         content = InputConfirmContent(default_text=default_text)
 
         def _submit(raw: str) -> None:
@@ -838,7 +831,7 @@ class PopupManager:
                 self.make_notice_popup("delayInputError")
                 return
 
-            if not (self.shared_data.MIN_DELAY <= value <= self.shared_data.MAX_DELAY):
+            if not (config.specs.DELAY.min <= value <= config.specs.DELAY.max):
                 self.make_notice_popup("delayInputError")
                 return
 
@@ -861,7 +854,7 @@ class PopupManager:
     ) -> None:
         """쿨타임 감소 입력 팝업"""
 
-        default_text = str(self.shared_data.cooltime_reduction_input)
+        default_text = str(app_state.macro.current_cooltime_reduction)
         content = InputConfirmContent(default_text=default_text)
 
         def _submit(raw: str) -> None:
@@ -875,9 +868,9 @@ class PopupManager:
                 return
 
             if not (
-                self.shared_data.MIN_COOLTIME_REDUCTION
+                config.specs.COOLTIME_REDUCTION.min
                 <= value
-                <= self.shared_data.MAX_COOLTIME_REDUCTION
+                <= config.specs.COOLTIME_REDUCTION.max
             ):
                 self.make_notice_popup("cooltimeInputError")
                 return
@@ -907,7 +900,7 @@ class PopupManager:
 
         self._stop_key_listener()
 
-        default_key: KeySpec = self.shared_data.start_key_input
+        default_key: KeySpec = app_state.macro.current_start_key
 
         content = KeyCaptureContent(default_key=default_key)
 
@@ -919,7 +912,7 @@ class PopupManager:
                 return
 
             # 키가 이미 사용중인 경우
-            if is_key_using(self.shared_data, key):
+            if app_state.is_key_using(key):
                 self.make_notice_popup("StartKeyChangeError")
                 return
 
@@ -935,7 +928,10 @@ class PopupManager:
         )
 
         def _on_press(k: pynput_keyboard.Key | pynput_keyboard.KeyCode | None) -> None:
-            key: KeySpec | None = key_to_KeySpec(self.shared_data, k)
+            if not k:
+                return
+
+            key: KeySpec | None = KeyRegistry.pynput_key_to_keyspec(k)
 
             if not key:
                 return
@@ -946,7 +942,7 @@ class PopupManager:
         listener.daemon = True
         listener.start()
         self._key_listener = listener
-        self.shared_data.is_setting_key = True
+        app_state.ui.is_setting_key = True
 
     def make_tab_name_popup(
         self,
@@ -956,7 +952,7 @@ class PopupManager:
     ) -> None:
         """탭 이름 변경 팝업"""
 
-        default_text: str = self.shared_data.tab_names[preset_index]
+        default_text: str = app_state.ui.tab_names[preset_index]
         content = InputConfirmContent(default_text=default_text, fixed_width=200)
 
         def _submit(text: str) -> None:
@@ -986,7 +982,9 @@ class PopupManager:
 
         self._stop_key_listener()
 
-        default_key: KeySpec = self.shared_data.skill_keys[index]
+        default_key: KeySpec = KeyRegistry.MAP[
+            app_state.macro.current_preset.skills.skill_keys[index]
+        ]
         content = KeyCaptureContent(default_key=default_key)
 
         def _submit(key: KeySpec) -> None:
@@ -996,8 +994,10 @@ class PopupManager:
             if key is None or key == default_key:
                 return
 
+            print(app_state.is_key_using(key))
+
             # 키가 이미 사용중인 경우
-            if is_key_using(self.shared_data, key):
+            if app_state.is_key_using(key):
                 self.make_notice_popup("StartKeyChangeError")
                 return
 
@@ -1013,7 +1013,10 @@ class PopupManager:
         )
 
         def _on_press(k: pynput_keyboard.Key | pynput_keyboard.KeyCode | None) -> None:
-            key: KeySpec | None = key_to_KeySpec(self.shared_data, k)
+            if not k:
+                return
+
+            key: KeySpec | None = KeyRegistry.pynput_key_to_keyspec(k)
 
             if not key:
                 return
@@ -1024,7 +1027,7 @@ class PopupManager:
         listener.daemon = True
         listener.start()
         self._key_listener = listener
-        self.shared_data.is_setting_key = True
+        app_state.ui.is_setting_key = True
 
     def make_link_skill_key_popup(
         self,
@@ -1049,7 +1052,7 @@ class PopupManager:
                 return
 
             # 키가 이미 사용중인 경우
-            if is_key_using(self.shared_data, key):
+            if app_state.is_key_using(key):
                 self.make_notice_popup("StartKeyChangeError")
                 return
 
@@ -1065,7 +1068,10 @@ class PopupManager:
         )
 
         def _on_press(k: pynput_keyboard.Key | pynput_keyboard.KeyCode | None) -> None:
-            key: KeySpec | None = key_to_KeySpec(self.shared_data, k)
+            if not k:
+                return
+
+            key: KeySpec | None = KeyRegistry.pynput_key_to_keyspec(k)
 
             if not key:
                 return
@@ -1076,7 +1082,7 @@ class PopupManager:
         listener.daemon = True
         listener.start()
         self._key_listener = listener
-        self.shared_data.is_setting_key = True
+        app_state.ui.is_setting_key = True
 
     def make_link_skill_select_popup(
         self,
@@ -1087,7 +1093,7 @@ class PopupManager:
         """연계스킬 편집 페이지 스킬 선택 팝업"""
 
         # 매크로 실행 중일 때는 무시
-        if self.shared_data.is_activated:
+        if app_state.macro.is_running:
             self.make_notice_popup("MacroIsRunning")
             return
 
@@ -1096,9 +1102,7 @@ class PopupManager:
 
         self._active_popup = PopupKind.LINK_SKILL_SELECT
 
-        content = SkillGridSelectContent(
-            shared_data=self.shared_data, skill_ids=skill_ids
-        )
+        content = SkillGridSelectContent(skill_ids=skill_ids)
 
         def _picked(skill_id: str) -> None:
             self.close_popup()
@@ -1123,12 +1127,10 @@ class SkillGridSelectContent(QFrame):
 
     def __init__(
         self,
-        shared_data: SharedData,
         skill_ids: list[str],
     ) -> None:
         super().__init__()
 
-        self._shared_data: SharedData = shared_data
         columns: int = 5
         margin = 8
         spacing = 6
@@ -1162,9 +1164,9 @@ class SkillGridSelectContent(QFrame):
 
             btn = QPushButton(container)
             btn.setFixedSize(button_size, button_size)
-            btn.setIcon(QIcon(get_skill_pixmap(shared_data, skill_id)))
+            btn.setIcon(QIcon(resource_registry.get_skill_pixmap(skill_id)))
             btn.setIconSize(QSize(icon_size, icon_size))
-            btn.setToolTip(get_skill_name(shared_data, skill_id))
+            btn.setToolTip(app_state.macro.current_server.skill_registry.name(skill_id))
             btn.setStyleSheet(
                 """
                 QPushButton { background-color: white; border-radius: 10px; border: 1px solid #dddddd; }

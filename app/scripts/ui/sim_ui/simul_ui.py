@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from functools import partial
 from typing import TYPE_CHECKING
 
@@ -19,6 +20,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from app.scripts.app_state import SkillSetting, app_state
 from app.scripts.config import config
 from app.scripts.custom_classes import (
     CustomComboBox,
@@ -32,13 +34,10 @@ from app.scripts.custom_classes import (
     Stats,
 )
 from app.scripts.data_manager import save_data
-from app.scripts.misc import (
+from app.scripts.registry.resource_registry import (
     convert_resource_path,
-    get_every_skills,
-    get_skill_name,
-    get_skill_pixmap,
+    resource_registry,
 )
-from app.scripts.shared_data import UI_Variable
 from app.scripts.simulate_macro import (
     get_req_stats,
     simulate_deterministic,
@@ -52,18 +51,11 @@ from app.scripts.ui.sim_ui.graph import (
 )
 
 if TYPE_CHECKING:
-    from app.scripts.main_window import MainWindow
-    from app.scripts.shared_data import SharedData
+    from app.scripts.ui.main_window import MainWindow
 
 
 class SimUI:
-    def __init__(
-        self,
-        master: MainWindow,
-        parent: QFrame,
-        shared_data: SharedData,
-    ):
-        self.shared_data: SharedData = shared_data
+    def __init__(self, master: MainWindow, parent: QFrame):
 
         # parent: page2
         self.parent: QFrame = parent
@@ -117,12 +109,12 @@ class SimUI:
         self.stacked_layout = QStackedLayout(self.main_frame)
 
         # UI{N} 이름을 각각 수행하는 기능을 대표하는 이름으로 변경
-        self.UI1 = Sim1UI(self.main_frame, self.shared_data)
-        self.UI2 = Sim2UI(self.main_frame, self.shared_data)
-        self.UI3 = Sim3UI(self.main_frame, self.shared_data)
+        self.UI1 = Sim1UI(self.main_frame)
+        self.UI2 = Sim2UI(self.main_frame)
+        self.UI3 = Sim3UI(self.main_frame)
 
         # SimUI4 완전히 제거?
-        # self.UI4 = Sim4UI(self.main_frame, self.shared_data)
+        # self.UI4 = Sim4UI(self.main_frame)
         self.stacked_layout.addWidget(self.UI1)
         self.stacked_layout.addWidget(self.UI2)
         self.stacked_layout.addWidget(self.UI3)
@@ -135,7 +127,7 @@ class SimUI:
 
     def change_layout(self, index: int) -> None:
         # 입력값 확인
-        if index in (1, 2, 3) and not all(self.shared_data.is_input_valid.values()):
+        if index in (1, 2, 3) and not all(app_state.simulation.is_input_valid.values()):
             self.master.get_popup_manager().make_notice_popup("SimInputError")
 
             return
@@ -185,25 +177,26 @@ class SimUI:
 
 
 class Sim1UI(QFrame):
-    def __init__(self, parent: QFrame, shared_data: SharedData):
+    def __init__(
+        self,
+        parent: QFrame,
+    ):
         super().__init__(parent)
-
-        self.shared_data: SharedData = shared_data
 
         if config.ui.debug_colors:
             self.setStyleSheet("QFrame { background-color: gray;}")
 
         # 스텟
         self.stats_title: Title = Title(parent=self, text="캐릭터 스탯")
-        self.stats = self.Stats(self, self.shared_data)
+        self.stats = self.Stats(self)
 
         # 스킬 입력
         self.skills_title: Title = Title(parent=self, text="스킬 레벨")
-        self.skills = self.Skills(self, self.shared_data)
+        self.skills = self.Skills(self)
 
         # 시뮬레이션 조건 입력
         self.condition_title: Title = Title(parent=self, text="시뮬레이션 조건")
-        self.condition = self.Condition(self, self.shared_data)
+        self.condition = self.Condition(self)
 
         # Tab Order 설정
         tab_orders: list[CustomLineEdit] = (
@@ -229,16 +222,16 @@ class Sim1UI(QFrame):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
     class Stats(QWidget):
-        def __init__(self, parent: QFrame, shared_data: SharedData) -> None:
+        def __init__(
+            self,
+            parent: QFrame,
+        ) -> None:
             super().__init__(parent)
-
-            self.shared_data: SharedData = shared_data
-            self.ui_var = UI_Variable()
 
             # 스탯 데이터 생성
             stats_data: dict[str, str] = {
-                name_ko: str(self.shared_data.info_stats.get_stat_from_name(name_en))
-                for name_en, name_ko in self.shared_data.STATS.items()
+                spec.label: str(app_state.simulation.stats.get_stat_from_name(name_en))
+                for name_en, spec in config.specs.STATS.items()
             }
 
             # 스탯 입력 위젯 생성
@@ -268,11 +261,12 @@ class Sim1UI(QFrame):
                 if not text.isdigit():
                     return False
 
-                a, b = self.shared_data.STAT_RANGES[
-                    list(self.shared_data.STATS.keys())[num]
-                ]
+                key: str = list(config.specs.STATS.keys())[num]
 
-                return a <= int(text) <= b
+                _min: int = config.specs.STATS[key].min
+                _max: int = config.specs.STATS[key].max
+
+                return _min <= int(text) <= _max
 
             # 모두 통과 여부 확인
             all_valid = True
@@ -288,32 +282,31 @@ class Sim1UI(QFrame):
             # 모두 통과했다면 저장 및 플래그 설정
             if all_valid:
                 for i, j in enumerate(self.inputs):
-                    self.shared_data.info_stats.set_stat_from_index(i, int(j.text()))
+                    app_state.simulation.stats.set_stat_from_index(i, int(j.text()))
 
-                save_data(self.shared_data)
+                save_data()
 
-                self.shared_data.is_input_valid["stat"] = True
+                app_state.simulation.is_input_valid["stat"] = True
 
             # 하나라도 통과하지 못했다면 플래그 설정
             else:
-                self.shared_data.is_input_valid["stat"] = False
+                app_state.simulation.is_input_valid["stat"] = False
 
     class Skills(QWidget):
-        def __init__(self, parent: QFrame, shared_data: SharedData) -> None:
+        def __init__(
+            self,
+            parent: QFrame,
+        ) -> None:
             super().__init__(parent)
 
-            self.shared_data: SharedData = shared_data
-            self.ui_var: UI_Variable = UI_Variable()
-
             skills_data: dict[str, int] = {
-                name: self.shared_data.info_skill_levels[name]
-                for name in get_every_skills(self.shared_data)
+                name: app_state.skill.settings[name].level
+                for name in app_state.macro.current_server.skill_registry.get_all_skill_ids()
             }
 
             # 스킬 입력 위젯 생성
             self.skill_inputs = SkillInputs(
                 self,
-                self.shared_data,
                 skills_data,
                 self.input_changed,
             )
@@ -337,7 +330,7 @@ class Sim1UI(QFrame):
                 if not text.isdigit():
                     return False
 
-                return 1 <= int(text) <= 30
+                return 1 <= int(text) <= app_state.macro.current_server.max_skill_level
 
             # 모두 통과 여부 확인
             all_valid = True
@@ -353,31 +346,34 @@ class Sim1UI(QFrame):
             # 모두 통과했다면 저장 및 플래그 설정
             if all_valid:
                 for _input, name in zip(
-                    self.inputs, get_every_skills(self.shared_data)
+                    self.inputs,
+                    app_state.macro.current_server.skill_registry.get_all_skill_ids(),
                 ):
-                    self.shared_data.info_skill_levels[name] = int(_input.text())
+                    app_state.skill.settings[name] = replace(
+                        app_state.skill.settings[name], level=int(_input.text())
+                    )
 
-                save_data(self.shared_data)
+                save_data()
 
-                self.shared_data.is_input_valid["skill"] = True
+                app_state.simulation.is_input_valid["skill"] = True
 
             # 하나라도 통과하지 못했다면 플래그 설정
             else:
-                self.shared_data.is_input_valid["skill"] = False
+                app_state.simulation.is_input_valid["skill"] = False
 
     class Condition(QWidget):
-        def __init__(self, parent: QFrame, shared_data: SharedData) -> None:
+        def __init__(
+            self,
+            parent: QFrame,
+        ) -> None:
             super().__init__(parent)
-
-            self.shared_data: SharedData = shared_data
-            self.ui_var = UI_Variable()
 
             # 시뮬레이션 조건 입력 위젯 생성
             self.condition_inputs = ConditionInputs(
                 self,
                 {
-                    display: str(self.shared_data.info_sim_details[name])
-                    for name, display in self.shared_data.SIM_DETAILS.items()
+                    spec.label: str(app_state.simulation.sim_details[name])
+                    for name, spec in config.specs.SIM_DETAILS.items()
                 },
                 self.input_changed,
             )
@@ -420,26 +416,24 @@ class Sim1UI(QFrame):
 
             # 모두 통과했다면 저장 및 플래그 설정
             if all_valid:
-                for _input, name in zip(
-                    self.inputs, self.shared_data.SIM_DETAILS.keys()
-                ):
-                    self.shared_data.info_sim_details[name] = int(_input.text())
+                for _input, name in zip(self.inputs, config.specs.SIM_DETAILS.keys()):
+                    app_state.simulation.sim_details[name] = int(_input.text())
 
-                save_data(self.shared_data)
+                save_data()
 
-                self.shared_data.is_input_valid["simInfo"] = True
+                app_state.simulation.is_input_valid["simInfo"] = True
 
             # 하나라도 통과하지 못했다면 플래그 설정
             else:
-                self.shared_data.is_input_valid["simInfo"] = False
+                app_state.simulation.is_input_valid["simInfo"] = False
 
 
 class Sim2UI(QFrame):
-    def __init__(self, parent: QFrame, shared_data: SharedData) -> None:
+    def __init__(
+        self,
+        parent: QFrame,
+    ) -> None:
         super().__init__(parent)
-
-        self.shared_data: SharedData = shared_data
-        self.ui_var = UI_Variable()
 
         if config.ui.debug_colors:
             self.setStyleSheet("QFrame { background-color: gray;}")
@@ -450,9 +444,8 @@ class Sim2UI(QFrame):
         # GPU를 사용하는 것도 고려.
         # 레벨을 사용하도록 변경
         sim_result: SimResult = simulate_random(
-            self.shared_data,
-            self.shared_data.info_stats,
-            self.shared_data.info_sim_details,
+            app_state.simulation.stats,
+            app_state.simulation.sim_details,
         )
         powers: list[float] = sim_result.powers
         analysis: list[SimAnalysis] = sim_result.analysis
@@ -461,21 +454,21 @@ class Sim2UI(QFrame):
         str_powers: list[str] = sim_result.str_powers
 
         for i, power in enumerate(powers):
-            self.shared_data.powers[i] = power
+            app_state.simulation.powers[i] = power
 
         # 전투력
         self.power_title: Title = Title(self, "전투력")
-        self.power = PowerLabels(self, self.shared_data, str_powers)
+        self.power = PowerLabels(self, str_powers)
 
         # 분석
         self.analysis_title: Title = Title(self, "분석")
-        self.analysis = AnalysisDetails(self, self.shared_data, analysis)
+        self.analysis = AnalysisDetails(self, analysis)
 
         # DPM 분포
         self.DPM_graph = self.DPMGraph(self, results)
 
         # 스킬 비율
-        self.ratio_graph = self.RatioGraph(self, self.shared_data, resultDet)
+        self.ratio_graph = self.RatioGraph(self, resultDet)
 
         sub_layout = QHBoxLayout()
         sub_layout.addWidget(self.DPM_graph)
@@ -487,12 +480,10 @@ class Sim2UI(QFrame):
         self.dps_graph = self.DPSGraph(self, results)
 
         # 누적 피해량
-        self.total_graph = self.TotalGraph(self, self.shared_data, results)
+        self.total_graph = self.TotalGraph(self, results)
 
         # 스킬별 누적 기여도
-        self.contribution_graph = self.ContributionGraph(
-            self, self.shared_data, resultDet
-        )
+        self.contribution_graph = self.ContributionGraph(self, resultDet)
 
         layout = QVBoxLayout(self)
 
@@ -536,19 +527,19 @@ class Sim2UI(QFrame):
         def __init__(
             self,
             parent: QFrame,
-            shared_data: SharedData,
             resultDet: list[SimAttack],
         ) -> None:
             super().__init__(parent)
-
-            self.shared_data: SharedData = shared_data
 
             self.setStyleSheet(
                 "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
             )
 
             self.graph = SkillDpsRatioCanvas(
-                self, resultDet, self.shared_data.equipped_skills, shared_data.server_ID
+                self,
+                resultDet,
+                app_state.macro.current_preset.skills.equipped_skills,
+                app_state.macro.current_server.id,
             )
             self.graph.setFixedHeight(300)
 
@@ -581,12 +572,9 @@ class Sim2UI(QFrame):
         def __init__(
             self,
             parent: QFrame,
-            shared_data: SharedData,
             results: list[list[SimAttack]],
         ) -> None:
             super().__init__(parent)
-
-            self.shared_data: SharedData = shared_data
 
             self.setStyleSheet(
                 "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
@@ -604,7 +592,6 @@ class Sim2UI(QFrame):
         def __init__(
             self,
             parent: QFrame,
-            shared_data: SharedData,
             resultDet: list[SimAttack],
         ) -> None:
             super().__init__(parent)
@@ -616,8 +603,8 @@ class Sim2UI(QFrame):
             self.graph = SkillContributionCanvas(
                 self,
                 resultDet,
-                shared_data.equipped_skills.copy(),
-                shared_data.server_ID,
+                app_state.macro.current_preset.skills.equipped_skills.copy(),
+                app_state.macro.current_server.id,
             )
             self.graph.setFixedHeight(400)
 
@@ -628,37 +615,37 @@ class Sim2UI(QFrame):
 
 
 class Sim3UI(QFrame):
-    def __init__(self, parent: QFrame, shared_data: SharedData) -> None:
+    def __init__(
+        self,
+        parent: QFrame,
+    ) -> None:
         super().__init__(parent)
-
-        self.shared_data: SharedData = shared_data
-        self.ui_var = UI_Variable()
 
         # 초기 전투력 계산
         powers: list[float] = simulate_deterministic(
-            self.shared_data,
-            self.shared_data.info_stats,
-            self.shared_data.info_sim_details,
+            stats=app_state.simulation.stats,
+            sim_details=app_state.simulation.sim_details,
+            skills_info=list(app_state.skill.settings.values()),
         ).powers
 
         for i, power in enumerate(powers):
-            self.shared_data.powers[i] = power
+            app_state.simulation.powers[i] = power
 
         # 스탯 효율 계산
         self.efficiency_title: Title = Title(self, "스탯 효율 계산")
-        self.efficiency = self.Efficiency(self, self.shared_data)
+        self.efficiency = self.Efficiency(self)
 
         # 추가 스펙업 계산기
         self.additional_title: Title = Title(self, "추가 스펙업 계산기")
-        self.additional = self.Additional(self, self.shared_data)
+        self.additional = self.Additional(self)
 
         # 잠재능력 계산기
         self.potential_title: Title = Title(self, "잠재능력 계산기")
-        self.potential = self.Potential(self, self.shared_data)
+        self.potential = self.Potential(self)
 
         # 잠재능력 옵션 순위
         self.potential_rank_title: Title = Title(self, "잠재능력 옵션 순위")
-        self.potential_ranks = PotentialRank(self, self.shared_data)
+        self.potential_ranks = PotentialRank(self)
 
         layout = QVBoxLayout(self)
 
@@ -679,11 +666,11 @@ class Sim3UI(QFrame):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
     class Efficiency(QFrame):
-        def __init__(self, parent: QFrame, shared_data: SharedData) -> None:
+        def __init__(
+            self,
+            parent: QFrame,
+        ) -> None:
             super().__init__(parent)
-
-            self.shared_data: SharedData = shared_data
-            self.ui_var = UI_Variable()
 
             if config.ui.debug_colors:
                 self.setStyleSheet(
@@ -700,7 +687,7 @@ class Sim3UI(QFrame):
             # 왼쪽 콤보박스
             self.combobox_left = CustomComboBox(
                 self,
-                list(self.shared_data.STATS.values()),
+                [spec.label for spec in config.specs.STATS.values()],
                 self.efficiency_changed,
             )
             self.combobox_left.setFixedWidth(widgets_width)
@@ -734,12 +721,12 @@ class Sim3UI(QFrame):
             # 오른쪽 콤보박스
             self.combobox_right = CustomComboBox(
                 self,
-                list(self.shared_data.STATS.values()),
+                [spec.label for spec in config.specs.STATS.values()],
                 self.efficiency_changed,
             )
             self.combobox_right.setFixedWidth(widgets_width)
 
-            self.power_labels = PowerLabels(self, self.shared_data)
+            self.power_labels = PowerLabels(self)
             self.power_labels.setSizePolicy(
                 QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
             )
@@ -769,30 +756,29 @@ class Sim3UI(QFrame):
                 return
 
             # 종류가 다르다면 적용 후 계산
-            stats: Stats = self.shared_data.info_stats.copy()
+            stats: Stats = app_state.simulation.stats.copy()
             stats.add_stat_from_index(left_index, value)
 
             # 적용 후 전투력 계산
             powers: list[float] = simulate_deterministic(
-                self.shared_data,
-                stats,
-                self.shared_data.info_sim_details,
+                stats=stats,
+                sim_details=app_state.simulation.sim_details,
+                skills_info=list(app_state.skill.settings.values()),
             ).powers
 
             # 요구량 계산
-            reqStats: list[str] = get_req_stats(
-                self.shared_data,
+            reqStats: list[float] = get_req_stats(
                 powers,
-                list(self.shared_data.STATS.keys())[right_index],
+                [spec.label for spec in config.specs.STATS.values()][right_index],
             )
 
             # 텍스트 설정
-            self.power_labels.set_texts(reqStats)
+            self.power_labels.set_texts([f"{t:.2f}" for t in reqStats])
 
         def efficiency_changed(self) -> None:
             text: str = self.input.text()
             index: int = self.combobox_left.currentIndex()
-            stat_name: str = list(self.shared_data.STATS.keys())[index]
+            stat_name: str = [spec.label for spec in config.specs.STATS.values()][index]
 
             # 입력이 숫자가 아니면 오류
             if not text.isdigit():
@@ -800,24 +786,18 @@ class Sim3UI(QFrame):
 
                 return
 
-            stat: int | float = self.shared_data.info_stats.get_stat_from_name(
+            stat: int | float = app_state.simulation.stats.get_stat_from_name(
                 stat_name
             ) + int(text)
 
             # 최소 범위보다 작으면 오류
-            if stat < self.shared_data.STAT_RANGES[stat_name][0]:
+            if stat < config.specs.STATS[stat_name].min:
                 self.power_labels.set_texts("오류")
 
                 return
 
-            # 최대 범위가 존재하지 않다면 통과
-            if self.shared_data.STAT_RANGES[stat_name][1] == None:
-                self.update_efficiency()
-
-                return
-
             # 최대 범위가 존재한다면 비교 후 통과
-            if stat <= self.shared_data.STAT_RANGES[stat_name][1]:
+            if stat <= config.specs.STATS[stat_name].max:
                 self.update_efficiency()
 
                 return
@@ -828,10 +808,11 @@ class Sim3UI(QFrame):
             return
 
     class Additional(QFrame):
-        def __init__(self, parent: QFrame, shared_data: SharedData) -> None:
+        def __init__(
+            self,
+            parent: QFrame,
+        ) -> None:
             super().__init__(parent)
-
-            self.shared_data: SharedData = shared_data
 
             if config.ui.debug_colors:
                 self.setStyleSheet(
@@ -843,19 +824,17 @@ class Sim3UI(QFrame):
                 )
 
             stat_data: dict[str, str] = {
-                name_ko: "0" for name_ko in self.shared_data.STATS.keys()
+                name_ko: "0" for name_ko in config.specs.STATS.keys()
             }
             self.stats = StatInputs(self, stat_data, self.on_stat_changed)
 
             skills_data: dict[str, int] = {
-                name: self.shared_data.info_skill_levels[name]
-                for name in get_every_skills(self.shared_data)
+                name: app_state.skill.settings[name].level
+                for name in app_state.macro.current_server.skill_registry.get_all_skill_ids()
             }
-            self.skills = SkillInputs(
-                self, self.shared_data, skills_data, self.on_skill_changed
-            )
+            self.skills = SkillInputs(self, skills_data, self.on_skill_changed)
 
-            self.power_labels = PowerLabels(self, self.shared_data)
+            self.power_labels = PowerLabels(self)
 
             layout = QVBoxLayout(self)
             layout.addWidget(self.stats)
@@ -878,15 +857,13 @@ class Sim3UI(QFrame):
                 except ValueError:
                     return False
 
-                name: str = list(self.shared_data.STATS.keys())[num]
+                name: str = [spec.label for spec in config.specs.STATS.values()][num]
                 stat: float = (
-                    self.shared_data.info_stats.get_stat_from_name(name) + value
+                    app_state.simulation.stats.get_stat_from_name(name) + value
                 )
 
                 return (
-                    self.shared_data.STAT_RANGES[name][0]
-                    <= stat
-                    <= self.shared_data.STAT_RANGES[name][1]
+                    config.specs.STATS[name].min <= stat <= config.specs.STATS[name].max
                 )
 
             # 모두 통과 여부 확인
@@ -903,23 +880,19 @@ class Sim3UI(QFrame):
             # 모두 통과했다면 저장 및 플래그 설정
             if all_valid:
                 self.update_powers()
-                self.shared_data.is_input_valid["stat"] = True
+                app_state.simulation.is_input_valid["stat"] = True
 
             # 하나라도 통과하지 못했다면 플래그 설정
             else:
-                self.shared_data.is_input_valid["stat"] = False
+                app_state.simulation.is_input_valid["stat"] = False
 
-        def on_skill_changed(self):
+        def on_skill_changed(self) -> None:
             # 스킬이 정상적으로 입력되었는지 확인
             def checkInput(text: str) -> bool:
                 if not text.isdigit():
                     return False
 
-                return (
-                    1
-                    <= int(text)
-                    <= self.shared_data.MAX_SKILL_LEVEL[self.shared_data.server_ID]
-                )
+                return 1 <= int(text) <= app_state.macro.current_server.max_skill_level
 
             # 모두 통과 여부 확인
             all_valid = True
@@ -935,58 +908,59 @@ class Sim3UI(QFrame):
             # 모두 통과했다면 저장 및 플래그 설정
             if all_valid:
                 self.update_powers()
-                self.shared_data.is_input_valid["skill"] = False
+                app_state.simulation.is_input_valid["skill"] = False
 
             # 하나라도 통과하지 못했다면 플래그 설정
             else:
-                self.shared_data.is_input_valid["skill"] = False
+                app_state.simulation.is_input_valid["skill"] = False
 
         def update_powers(self) -> None:
             # 입력이 모두 정상인지 확인
-            if not all(self.shared_data.is_input_valid.values()):
+            if not all(app_state.simulation.is_input_valid.values()):
                 self.power_labels.set_texts("오류")
 
                 return
 
             # 모든 입력이 정상이라면 계산 시작
             # 스탯 적용
-            stats: Stats = self.shared_data.info_stats.copy()
+            stats: Stats = app_state.simulation.stats.copy()
             for i in self.stats.inputs:
                 stats.add_stat_from_index(self.stats.inputs.index(i), int(i.text()))
 
             # 스킬 적용
-            skills: dict[str, int] = {
-                skill: int(j.text())
+            skills: list[SkillSetting] = [
+                replace(app_state.skill.settings[skill], level=int(j.text()))
                 for j, skill in zip(
-                    self.skills.inputs, get_every_skills(self.shared_data)
+                    self.skills.inputs,
+                    app_state.macro.current_server.skill_registry.get_all_skill_ids(),
                 )
-            }
+            ]
 
             # 전투력 계산
             powers: list[float] = simulate_deterministic(
-                self.shared_data,
                 stats,
-                self.shared_data.info_sim_details,
+                app_state.simulation.sim_details,
                 skills,
             ).powers
 
             # 차이 계산
             diff_powers: list[float] = [
-                powers[i] - self.shared_data.powers[i] for i in range(4)
+                powers[i] - app_state.simulation.powers[i] for i in range(4)
             ]
 
             # 텍스트 설정
             texts: list[str] = [
-                f"{int(powers[i]):}\n({diff_powers[i]:+.0f}, {diff_powers[i] / self.shared_data.powers[i]:+.1%})"
+                f"{int(powers[i]):}\n({diff_powers[i]:+.0f}, {diff_powers[i] / app_state.simulation.powers[i]:+.1%})"
                 for i in range(4)
             ]
             self.power_labels.set_texts(texts)
 
     class Potential(QFrame):
-        def __init__(self, parent: QFrame, shared_data: SharedData) -> None:
+        def __init__(
+            self,
+            parent: QFrame,
+        ) -> None:
             super().__init__(parent)
-
-            self.shared_data: SharedData = shared_data
 
             if config.ui.debug_colors:
                 self.setStyleSheet(
@@ -997,10 +971,17 @@ class Sim3UI(QFrame):
                     "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
                 )
 
+            potential_options: list[str] = [
+                f"{stat} +{value}"
+                for stat, spec in config.specs.STATS.items()
+                if spec.potential
+                for value in spec.potential.values
+            ]
+
             self.option_comboboxes: list[CustomComboBox] = [
                 CustomComboBox(
                     self,
-                    list(self.shared_data.POTENTIAL_STATS.keys()),
+                    potential_options,
                     self.update_values,
                 )
                 for _ in range(3)
@@ -1012,7 +993,7 @@ class Sim3UI(QFrame):
             combobox_layout.setSpacing(5)
             combobox_layout.setContentsMargins(0, 0, 0, 0)
 
-            self.power_labels = PowerLabels(self, self.shared_data)
+            self.power_labels = PowerLabels(self)
 
             layout = QHBoxLayout(self)
             layout.addLayout(combobox_layout)
@@ -1030,19 +1011,21 @@ class Sim3UI(QFrame):
                 self.option_comboboxes[i].currentText() for i in range(3)
             ]
 
-            stats: Stats = self.shared_data.info_stats.copy()
+            stats: Stats = app_state.simulation.stats.copy()
             for opt in options:
-                stat, value = self.shared_data.POTENTIAL_STATS[opt]
-                stats.add_stat_from_name(stat, value)
+                stat, value = opt.split(" +")
+                value_int: int = int(value)
+
+                stats.add_stat_from_name(stat, value_int)
 
             powers: list[float] = simulate_deterministic(
-                self.shared_data,
                 stats,
-                self.shared_data.info_sim_details,
+                app_state.simulation.sim_details,
+                list(app_state.skill.settings.values()),
             ).powers
 
             diff_powers: list[str] = [
-                f"{powers[i] - self.shared_data.powers[i]:+.0f}" for i in range(4)
+                f"{powers[i] - app_state.simulation.powers[i]:+.0f}" for i in range(4)
             ]
 
             self.power_labels.set_texts(diff_powers)
@@ -1096,7 +1079,6 @@ class SkillInputs(QFrame):
     def __init__(
         self,
         mainframe: QWidget,
-        shared_data: SharedData,
         skills_data: dict[str, int],
         connected_function,
     ):
@@ -1114,9 +1096,7 @@ class SkillInputs(QFrame):
         # column 수 설정
         COLS = 7
         for i, (skill_id, value) in enumerate(skills_data.items()):
-            item_widget = self.SkillInput(
-                self, shared_data, skill_id, value, connected_function
-            )
+            item_widget = self.SkillInput(self, skill_id, value, connected_function)
 
             # 위치 계산
             row: int = i // COLS
@@ -1142,7 +1122,6 @@ class SkillInputs(QFrame):
         def __init__(
             self,
             parent,
-            shared_data: SharedData,
             skill_id: str,
             value: int,
             connected_function=None,
@@ -1159,7 +1138,9 @@ class SkillInputs(QFrame):
             grid.setContentsMargins(0, 0, 0, 0)
 
             # 레이블
-            label = QLabel(get_skill_name(shared_data, skill_id), self)
+            label = QLabel(
+                app_state.macro.current_server.skill_registry.name(skill_id), self
+            )
             label.setStyleSheet(f"QLabel {{ border: 0px solid; border-radius: 4px; }}")
             label.setFont(CustomFont(14))
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1178,8 +1159,7 @@ class SkillInputs(QFrame):
             icon_size: int = level_input.sizeHint().height()
             image = SkillImage(
                 self,
-                get_skill_pixmap(
-                    shared_data,
+                resource_registry.get_skill_pixmap(
                     skill_id,
                 ),
                 icon_size,
@@ -1248,7 +1228,6 @@ class PowerLabels(QFrame):
     def __init__(
         self,
         mainframe,
-        shared_data: SharedData,
         texts: list[str] | str = "0",
         font_size=18,
     ):
@@ -1260,8 +1239,6 @@ class PowerLabels(QFrame):
             )
         else:
             self.setStyleSheet("QFrame { background-color: white; border: 0px solid; }")
-
-        ui_var = UI_Variable()
 
         # 레이아웃 설정
         layout = QHBoxLayout(self)
@@ -1276,9 +1253,9 @@ class PowerLabels(QFrame):
         for i in range(4):
             power = self.Power(
                 self,
-                shared_data.POWER_TITLES[i],
+                config.simulation.power_titles[i],
                 texts[i],
-                ui_var.sim_colors4[i],
+                config.ui.sim_colors4[i],
                 font_size,
             )
 
@@ -1331,10 +1308,8 @@ class PowerLabels(QFrame):
 
 
 class AnalysisDetails(QFrame):
-    def __init__(self, mainframe, shared_data: SharedData, analysis: list[SimAnalysis]):
+    def __init__(self, mainframe, analysis: list[SimAnalysis]):
         super().__init__(mainframe)
-
-        ui_var = UI_Variable()
 
         if config.ui.debug_colors:
             self.setStyleSheet(
@@ -1349,8 +1324,8 @@ class AnalysisDetails(QFrame):
             self.Analysis(
                 self,
                 analysis[i],
-                shared_data.POWER_DETAILS,
-                ui_var.sim_colors4[i],
+                config.simulation.power_details,
+                config.ui.sim_colors4[i],
             )
             for i in range(4)
         ]
@@ -1370,7 +1345,7 @@ class AnalysisDetails(QFrame):
             self,
             parent: QFrame,
             analysis: SimAnalysis,
-            statistics: list[str],
+            statistics: tuple[str, ...],
             color: str,
         ) -> None:
             super().__init__(parent)
@@ -1473,13 +1448,14 @@ class AnalysisDetails(QFrame):
 
 
 class PotentialRank(QFrame):
-    def __init__(self, mainframe: QWidget, shared_data: SharedData) -> None:
+    def __init__(
+        self,
+        mainframe: QWidget,
+    ) -> None:
         super().__init__(mainframe)
 
-        texts: list[list[list[str]]] = self.get_potential_rank(shared_data)
+        texts: list[list[list[str]]] = self.get_potential_rank()
         colors: list[str] = ["#8CFFA386", "#59FF9800", "#4D2196F3", "#B3A5D6A7"]
-
-        ui_var = UI_Variable()
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -1489,32 +1465,49 @@ class PotentialRank(QFrame):
         for i in range(4):
             rank = self.Rank(
                 self,
-                shared_data.POWER_TITLES[i],
+                config.simulation.power_titles[i],
                 texts[i],
-                ui_var.sim_colors4[i],
+                config.ui.sim_colors4[i],
                 colors[i],
             )
 
             layout.addWidget(rank)
 
-    def get_potential_rank(self, shared_data: SharedData) -> list[list[list[str]]]:
+    def get_potential_rank(
+        self,
+    ) -> list[list[list[str]]]:
         options: list[list[tuple[str, float]]] = [[], [], [], []]
 
         # 각 옵션에 대해 차이 계산
-        for key, (stat, value) in shared_data.POTENTIAL_STATS.items():
-            stats: Stats = shared_data.info_stats.copy()
-            stats.add_stat_from_name(stat, value)
+        potential_options: list[str] = [
+            f"{stat} +{value}"
+            for stat, spec in config.specs.STATS.items()
+            if spec.potential
+            for value in spec.potential.values
+        ]
+        for stat, spec in config.specs.STATS.items():
+            if not spec.potential:
+                continue
 
-            powers: list[float] = simulate_deterministic(
-                shared_data, stats, shared_data.info_sim_details
-            ).powers
+            for value in spec.potential.values:
+                key: str = f"{stat} +{value}"
 
-            diff_powers: list[float] = [
-                round(powers[i] - shared_data.powers[i], 5) for i in range(4)
-            ]
+                stats: Stats = app_state.simulation.stats.copy()
+                stats.add_stat_from_name(stat, value)
 
-            for i in range(4):
-                options[i].append((key, diff_powers[i]))
+                powers: list[float] = simulate_deterministic(
+                    stats,
+                    app_state.simulation.sim_details,
+                    list(app_state.skill.settings.values()),
+                ).powers
+
+                diff_powers: list[float] = [
+                    round(powers[i] - app_state.simulation.powers[i], 5)
+                    for i in range(4)
+                ]
+
+                for i in range(4):
+                    options[i].append((key, diff_powers[i]))
 
         # 전투력 차이로 정렬
         [options[i].sort(key=lambda x: x[1], reverse=True) for i in range(4)]

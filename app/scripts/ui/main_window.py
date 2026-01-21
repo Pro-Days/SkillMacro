@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 from threading import Thread
-from typing import Any, Literal
+from typing import Any
 from webbrowser import open_new
 
 import requests
@@ -18,15 +18,15 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from app.scripts.app_state import app_state
 from app.scripts.config import config
 from app.scripts.custom_classes import CustomFont
-from app.scripts.data_manager import load_data, update_data
-from app.scripts.misc import convert_resource_path, set_default_fonts
-from app.scripts.popup import PopupManager
+from app.scripts.data_manager import load_data
+from app.scripts.registry.resource_registry import convert_resource_path
 from app.scripts.run_macro import checking_kb_thread
-from app.scripts.shared_data import SharedData, UI_Variable
 from app.scripts.ui.main_ui.main_ui import MainUI
 from app.scripts.ui.main_ui.sidebar import Sidebar
+from app.scripts.ui.popup import PopupManager
 from app.scripts.ui.sim_ui.simul_ui import SimUI
 
 
@@ -38,19 +38,13 @@ class MainWindow(QWidget):
 
         super().__init__()
 
-        # 기본 폰트 설정
-        set_default_fonts()
-
-        self.shared_data: SharedData = SharedData()
-        self.ui_var: UI_Variable = UI_Variable()
-
         # 프로그램 아이콘 설정
         self.setWindowIcon(
             QIcon(QPixmap(convert_resource_path("resources\\image\\icon.ico")))
         )
 
         # 매크로 데이터 불러오기
-        load_data(self.shared_data)
+        load_data()
 
         # 프로그램 화면 설정
         self.init_UI()
@@ -63,11 +57,11 @@ class MainWindow(QWidget):
         서브 쓰레드 활성화
         """
 
-        # 키보드 입력 감지
-        Thread(target=checking_kb_thread, args=[self.shared_data], daemon=True).start()
+        # 키보드 입력 감지 쓰레드
+        Thread(target=checking_kb_thread, daemon=True).start()
 
         # 버전 확인 쓰레드
-        if self.shared_data.IS_VERSION_CHECK_ENABLED:
+        if config.macro.is_version_check_enabled:
             self.version_timer: QTimer = QTimer(self)
             self.version_timer.singleShot(100, self.version_check_thread)
 
@@ -89,48 +83,15 @@ class MainWindow(QWidget):
 
         # ESC
         if e.key() == Qt.Key.Key_Escape:
-            # 매크로 탭 제거 중
-            if self.shared_data.is_tab_remove_popup_activated:
-                self.main_ui.on_remove_tab_popup_clicked(0, False)
-
             # 에러 팝업창이 있을 때
-            elif self.shared_data.active_error_popup_count >= 1:
+            if app_state.ui.active_error_popups:
                 self.popup_manager.close_notice_popup()
-
-            # 일반 팝업창이 있을 때
-            elif self.shared_data.active_popup != "":
-                self.popup_manager.close_popup()
 
         # Ctrl
         elif e.modifiers() & Qt.KeyboardModifier.ControlModifier:
             # Ctrl + W -> 탭 제거
-            if (
-                e.key() == Qt.Key.Key_W
-                and not self.shared_data.is_tab_remove_popup_activated
-            ):
-                self.main_ui.on_remove_tab_clicked(self.shared_data.recent_preset)
-
-        # Enter
-        elif e.key() == Qt.Key.Key_Return:
-            # 탭 제거 팝업창이 활성화되어 있을 때 -> 탭 제거 실행
-            if self.shared_data.is_tab_remove_popup_activated:
-                self.main_ui.on_remove_tab_popup_clicked(
-                    self.shared_data.recent_preset, True
-                )
-
-            # 일반 팝업창이 활성화되어 있을 때 -> 팝업창 클릭
-            elif self.shared_data.active_popup == "settingDelay":
-                self.popup_manager.on_input_popup_clicked("delay")
-
-            # 일반 팝업창이 활성화되어 있을 때 -> 팝업창 클릭
-            elif self.shared_data.active_popup == "settingCooltime":
-                self.popup_manager.on_input_popup_clicked("cooltime")
-
-            # 매크로 탭 이름 변경 팝업창이 활성화되어 있을 때 -> 탭 이름 변경 실행
-            elif self.shared_data.active_popup == "changeTabName":
-                self.popup_manager.on_input_popup_clicked(
-                    "tabName", self.shared_data.recent_preset
-                )
+            if e.key() == Qt.Key.Key_W:
+                self.main_ui.on_remove_tab_clicked(app_state.macro.current_preset_index)
 
         # 테스트 용 키입력
         # elif e.key() == Qt.Key.Key_L:
@@ -149,25 +110,25 @@ class MainWindow(QWidget):
 
             # 응답이 성공적이면 최신 버전 정보 저장
             if response.status_code == 200:
-                self.shared_data.recent_version = response.json()["name"]
-                self.shared_data.update_url = response.json()["html_url"]
+                app_state.ui.current_version = response.json()["name"]
+                app_state.ui.update_url = response.json()["html_url"]
 
             # 응답이 실패하면 버전 확인 실패로 처리
             else:
-                self.shared_data.recent_version = "FailedUpdateCheck"
-                self.shared_data.update_url = ""
+                app_state.ui.current_version = "FailedUpdateCheck"
+                app_state.ui.update_url = ""
 
         # 예외 발생 시 버전 확인 실패로 처리
         except Exception:
-            self.shared_data.recent_version = "FailedUpdateCheck"
-            self.shared_data.update_url = ""
+            app_state.ui.current_version = "FailedUpdateCheck"
+            app_state.ui.update_url = ""
 
         # 버전 확인 결과에 따라 팝업 표시
-        if self.shared_data.recent_version == "FailedUpdateCheck":
+        if app_state.ui.current_version == "FailedUpdateCheck":
             self.popup_manager.make_notice_popup("FailedUpdateCheck")
 
         # 현재 버전과 최신 버전이 일치하지 않는 경우
-        elif self.shared_data.recent_version != self.shared_data.VERSION:
+        elif app_state.ui.current_version != config.version:
             self.popup_manager.make_notice_popup("RequireUpdate")
 
     def init_UI(self) -> None:
@@ -175,10 +136,10 @@ class MainWindow(QWidget):
         프로그램 처음 UI 설정
         """
 
-        self.setWindowTitle("데이즈 스킬매크로 " + self.shared_data.VERSION)
+        self.setWindowTitle("데이즈 스킬매크로 " + config.version)
         self.setMinimumSize(
-            self.ui_var.DEFAULT_WINDOW_WIDTH,
-            self.ui_var.DEFAULT_WINDOW_HEIGHT,
+            config.ui.DEFAULT_WINDOW_WIDTH,
+            config.ui.DEFAULT_WINDOW_HEIGHT,
         )
         # self.setGeometry(0, 0, 960, 540)
 
@@ -201,17 +162,16 @@ class MainWindow(QWidget):
             self.page2.setStyleSheet("QFrame { background-color: yellow;}")
 
         # 팝업 매니저 초기화
-        self.popup_manager: PopupManager = PopupManager(self, self.shared_data)
+        self.popup_manager: PopupManager = PopupManager(self)
 
         # 메인 프레임
-        self.main_ui: MainUI = MainUI(self, self.shared_data)
+        self.main_ui: MainUI = MainUI(self)
 
         # 사이드바
         self.sidebar: Sidebar = Sidebar(
             self,
-            self.shared_data,
-            self.shared_data.presets[self.shared_data.recent_preset],
-            self.shared_data.recent_preset,
+            app_state.macro.presets[app_state.macro.current_preset_index],
+            app_state.macro.current_preset_index,
         )
 
         # 탭(프리셋) 변경 시 사이드바를 시그널로 동기화
@@ -221,14 +181,14 @@ class MainWindow(QWidget):
         # 메인 UI에서 스킬이 해제되면
         # 사이드바의 스킬 사용설정/연계설정 페이지 새로고침
         self.main_ui.tab_widget.skillUnequipped.connect(
-            lambda _skill: self.sidebar.refresh_skill_related_pages()
+            lambda _: self.sidebar.refresh_skill_related_pages()
         )
 
         # 사이드바에서 데이터 변경 시 저장은 MainUI 파이프라인(=tab_widget.dataChanged)로 위임
         self.sidebar.dataChanged.connect(self.main_ui.tab_widget.dataChanged.emit)
 
         # 시뮬레이션 UI
-        self.sim_ui: SimUI = SimUI(self, self.page2, self.shared_data)
+        self.sim_ui: SimUI = SimUI(self, self.page2)
 
         # 하단 제작자 라벨 설정
         self.creator_label: QPushButton = CreatorLabel(self)

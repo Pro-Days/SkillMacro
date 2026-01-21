@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, Iterable, Mapping, Optional, Tuple
+from typing import Any
 
 BUILTIN_SKILL_PREFIX = "builtin"
 
@@ -56,15 +56,14 @@ class SkillDef:
         )
 
 
+@dataclass
 class SkillRegistry:
     """스킬 레지스트리"""
-
-    # todo: dict -> class
 
     def __init__(self, skills: dict[str, SkillDef]) -> None:
         self._skills: dict[str, SkillDef] = skills.copy()
 
-    def all_skill_ids(self) -> list[str]:
+    def get_all_skill_ids(self) -> list[str]:
         return list(self._skills.keys())
 
     def get(self, skill_id: str) -> SkillDef:

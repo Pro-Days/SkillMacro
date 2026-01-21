@@ -1,37 +1,33 @@
 from __future__ import annotations
 
-from .run_macro import init_macro, add_task_list
-from .misc import get_skill_details
-from .custom_classes import (
-    SimBuff,
-    SimAttack,
-    Stats,
-    SimSkillApplyDelay,
-    SimSkill,
-    SimResult,
-    SimAnalysis,
-)
-
 import random
 from functools import lru_cache
-
 from typing import TYPE_CHECKING
 
+from .custom_classes import (
+    SimAnalysis,
+    SimAttack,
+    SimBuff,
+    SimResult,
+    SimSkill,
+    SimSkillApplyDelay,
+    Stats,
+)
+from .misc import get_skill_details
+from .run_macro import add_task_list, init_macro
 
 if TYPE_CHECKING:
     from .shared_data import SharedData
 
 
-def get_req_stats(
-    shared_data: SharedData, powers: list[float], stat_type: str
-) -> list[str]:
+def get_req_stats(powers: list[float], stat_type: str) -> list[str]:
     """
     목표 전투력까지 필요한 스탯 반환
     """
 
     req_stats: list[str] = [
         calculate_req_stat(
-            shared_data=shared_data, power=powers[i], stat_type=stat_type, power_num=i
+            shared_data=power=powers[i], stat_type=stat_type, power_num=i
         )
         for i in range(4)
     ]
@@ -39,9 +35,7 @@ def get_req_stats(
     return req_stats
 
 
-def calculate_req_stat(
-    shared_data: SharedData, power: float, stat_type: str, power_num: int
-) -> str:
+def calculate_req_stat(power: float, stat_type: str, power_num: int) -> str:
     """
     목표 전투력까지 필요한 스탯 계산
     """
@@ -57,14 +51,14 @@ def calculate_req_stat(
             <= shared_data.STAT_RANGES[stat_type][1]
         )
 
-    stats: Stats = shared_data.info_stats.copy()
-    base_stat: int | float = shared_data.info_stats.get_stat_from_name(stat=stat_type)
+    stats: Stats = app_state.simulation.stats.copy()
+    base_stat: int | float = app_state.simulation.stats.get_stat_from_name(stat=stat_type)
 
     # 현재 전투력 계산
     current_power: float = detSimulate(
-        shared_data=shared_data,
+        
         stats=stats,
-        sim_details=shared_data.info_sim_details,
+        sim_details=app_state.simulation.sim_details,
     ).powers[power_num]
 
     # 스탯을 증가시키며 최대 범위 알아내기
@@ -88,9 +82,9 @@ def calculate_req_stat(
 
         # 전투력 계산
         current_power = detSimulate(
-            shared_data=shared_data,
+            
             stats=stats,
-            sim_details=shared_data.info_sim_details,
+            sim_details=app_state.simulation.sim_details,
         ).powers[power_num]
 
         # 최대값을 알아내면 break
@@ -120,13 +114,13 @@ def calculate_req_stat(
         mid: float = (low + high) * 0.5
         stats.set_stat_from_name(stat=stat_type, value=base_stat + mid)
 
-        # print(tuple(stats), tuple(shared_data.info_skills), tuple(shared_data.info_sim_details))
+        # print(tuple(stats), tuple(shared_data.info_skills), tuple(app_state.simulation.sim_details))
 
         # 전투력 계산
         current_power = detSimulate(
-            shared_data=shared_data,
+            
             stats=stats,
-            sim_details=shared_data.info_sim_details,
+            sim_details=app_state.simulation.sim_details,
         ).powers[power_num]
 
         # print(f"{low=}, {high=}, {mid=}")
@@ -143,7 +137,6 @@ def calculate_req_stat(
 
 
 def execute_simulation(
-    shared_data: SharedData,
     attack_details: list[SimAttack],
     buff_details: list[SimBuff],
     stats: Stats,
@@ -286,7 +279,6 @@ def run_simulation_batch(batch_args) -> list[list[SimAttack]]:
 
 # 최소, 최대, 평균, 표준편차 등을 계산하는 확률론적 시뮬레이션
 def randSimulate(
-    shared_data: SharedData,
     stats: Stats,
     sim_details: dict[str, int],
 ) -> SimResult:
@@ -296,7 +288,7 @@ def randSimulate(
     skill_levels_tuple: tuple = tuple(sorted(shared_data.info_skill_levels.items()))
 
     return simulateMacro(
-        shared_data=shared_data,
+        
         stats=stats,
         sim_details_tuple=sim_details_tuple,
         skill_levels_tuple=skill_levels_tuple,
@@ -307,7 +299,6 @@ def randSimulate(
 # 전투력 계산을 위한 결정론적 시뮬레이션
 # 캐시를 사용하여 성능 향상
 def detSimulate(
-    shared_data: SharedData,
     stats: Stats,
     sim_details: dict[str, int],
     skill_levels: dict[str, int] | None = None,
@@ -319,7 +310,7 @@ def detSimulate(
         skill_levels_tuple: tuple[tuple[str, int]],
     ) -> SimResult:
         return simulateMacro(
-            shared_data=shared_data,
+            
             stats=stats,
             sim_details_tuple=sim_details_tuple,
             skill_levels_tuple=skill_levels_tuple,
@@ -339,7 +330,6 @@ def detSimulate(
 
 # 61초 -> 60초로 변경, 처음 0일 때 총 데미지를 0으로 설정
 def simulateMacro(
-    shared_data: SharedData,
     stats: Stats,
     sim_details_tuple: tuple[tuple[str, int]],
     skill_levels_tuple: tuple[tuple[str, int]],
@@ -393,7 +383,7 @@ def simulateMacro(
 
     # 사용한 스킬 목록
     attack_details, buff_details = getSimulatedSKillList(
-        shared_data=shared_data,
+        
         cooltimeReduce=stats.ATK_SPD,
         skill_levels_tuple=skill_levels_tuple,
     )
@@ -403,7 +393,7 @@ def simulateMacro(
 
     # 공격 시뮬레이션 실행
     boss_attacks: list[SimAttack] = execute_simulation(
-        shared_data=shared_data,
+        
         attack_details=attack_details,
         buff_details=buff_details,
         stats=stats,
@@ -412,7 +402,7 @@ def simulateMacro(
         deterministic=True,
     )
     normal_attacks: list[SimAttack] = execute_simulation(
-        shared_data=shared_data,
+        
         attack_details=attack_details,
         buff_details=buff_details,
         stats=stats,
@@ -468,7 +458,7 @@ def simulateMacro(
     for _ in range(1000):
         random_boss_attacks.append(
             execute_simulation(
-                shared_data=shared_data,
+                
                 attack_details=attack_details,
                 buff_details=buff_details,
                 stats=stats,
@@ -478,7 +468,7 @@ def simulateMacro(
         )
         random_normal_attacks.append(
             execute_simulation(
-                shared_data=shared_data,
+                
                 attack_details=attack_details,
                 buff_details=buff_details,
                 stats=stats,
@@ -593,7 +583,6 @@ def simulateMacro(
 
 
 def getSimulatedSKillList(
-    shared_data: SharedData,
     cooltimeReduce: int | float,
     skill_levels_tuple: tuple[tuple[str, int]],
 ) -> tuple[list[SimAttack], list[SimBuff]]:
@@ -619,7 +608,7 @@ def getSimulatedSKillList(
         # print(f"{(elapsedTime + additionalTime) * 0.001:.3f} - {skill}")
 
     # 시뮬레이션 초기 설정
-    init_macro(shared_data=shared_data)
+    init_macro()
 
     # 시뮬레이션 변수 초기화
 
@@ -638,19 +627,19 @@ def getSimulatedSKillList(
     # ms 단위
     # isUsed이면 shared_data.unitTime(x1000)씩 증가, 쿨타임이 지나면 0으로 초기화
     skill_cooltime_timers: list[int] = [0] * shared_data.USABLE_SKILL_COUNT[
-        shared_data.server_ID
+        app_state.macro.server.id
     ]
 
     # 스킬 사용 가능 횟수 : [3, 2, 2, 1, 3, 3]
     available_skill_counts: list[int] = [
         (
             get_skill_details(
-                shared_data=shared_data, skill_name=shared_data.equipped_skills[i]
+                shared_data=skill_name=app_state.macro.equipped_skills[i]
             )["max_combo_count"]
-            if shared_data.equipped_skills[i]
+            if app_state.macro.equipped_skills[i]
             else 0
         )
-        for i in range(shared_data.USABLE_SKILL_COUNT[shared_data.server_ID])
+        for i in range(shared_data.USABLE_SKILL_COUNT[app_state.macro.server.id])
     ]
 
     # 스킬 레벨
@@ -668,7 +657,7 @@ def getSimulatedSKillList(
 
             # 스킬 사용 시 클릭 여부
             is_click: bool = get_skill_details(
-                shared_data=shared_data, skill_name=shared_data.equipped_skills[slot]
+                shared_data=skill_name=app_state.macro.equipped_skills[slot]
             )["is_casting"]
 
             # 스킬 슬롯에 따라 다르게 사용
@@ -697,17 +686,17 @@ def getSimulatedSKillList(
                     delay_to_next_task = shared_data.delay
 
         # 스킬 쿨타임
-        for slot in range(shared_data.USABLE_SKILL_COUNT[shared_data.server_ID]):  # 0~6
+        for slot in range(shared_data.USABLE_SKILL_COUNT[app_state.macro.server.id]):  # 0~6
             # 스킬이 장착되어있지 않으면 continue
-            if not shared_data.equipped_skills[slot]:
+            if not app_state.macro.equipped_skills[slot]:
                 continue
 
             # 스킬 사용해서 쿨타임 기다리는 중이면
             if (
                 available_skill_counts[slot]
                 < get_skill_details(
-                    shared_data=shared_data,
-                    skill_name=shared_data.equipped_skills[slot],
+                    
+                    skill_name=app_state.macro.equipped_skills[slot],
                 )["max_combo_count"]
             ):
                 # 쿨타임 타이머 UNIT_TIME(1tick) 100배 만큼 증가
@@ -716,8 +705,8 @@ def getSimulatedSKillList(
                 # 쿨타임이 지나면
                 if skill_cooltime_timers[slot] >= int(
                     get_skill_details(
-                        shared_data=shared_data,
-                        skill_name=shared_data.equipped_skills[slot],
+                        
+                        skill_name=app_state.macro.equipped_skills[slot],
                     )["cooltime"]
                     * (100 - cooltimeReduce)
                 ):
@@ -761,8 +750,8 @@ def getSimulatedSKillList(
 
         # 최대 콤보 수 미리 저장
         max_combo_count: int = get_skill_details(
-            shared_data=shared_data,
-            skill_name=shared_data.equipped_skills[skill.skill],
+            
+            skill_name=app_state.macro.equipped_skills[skill.skill],
         )["max_combo_count"]
 
         for used_skill in reversed(used_skills[:num]):
@@ -815,9 +804,9 @@ def getSimulatedSKillList(
 
         # 스킬 효과: 공격 / 버프
         skill_effects: dict = get_skill_details(
-            shared_data=shared_data,
-            skill_name=shared_data.equipped_skills[skill.skill],
-        )["levels"][str(skill_levels[shared_data.equipped_skills[skill.skill]])][
+            
+            skill_name=app_state.macro.equipped_skills[skill.skill],
+        )["levels"][str(skill_levels[app_state.macro.equipped_skills[skill.skill]])][
             "combos"
         ][
             skill.combo
@@ -831,7 +820,7 @@ def getSimulatedSKillList(
             # 공격
             if effect["type"] == "attack":
                 attack: SimAttack = SimAttack(
-                    skill_name=shared_data.equipped_skills[skill.skill],
+                    skill_name=app_state.macro.equipped_skills[skill.skill],
                     time=round(skill.time + effect["time"], 2),
                     damage=effect["value"],
                 )
@@ -845,7 +834,7 @@ def getSimulatedSKillList(
                     end_time=round(skill.time + effect["time"] + effect["duration"], 2),
                     stat=effect["stat"],
                     value=effect["value"],
-                    skill_name=shared_data.equipped_skills[skill.skill],
+                    skill_name=app_state.macro.equipped_skills[skill.skill],
                 )
 
                 buff_details.append(buff)
