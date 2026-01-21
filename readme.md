@@ -1,5 +1,5 @@
 # <img src = "app/resources/image/icon.ico" width=24 height=24> 데이즈 스킬매크로 <img src = "app/resources/image/icon.ico" width=24 height=24>
-<img src = "readme/main.png">
+<img src = "docs/main.png">
 투다이스 서버에서의 사냥을 편리하게 만들기 위한 스킬매크로입니다.
 
 ## 목차
@@ -46,7 +46,7 @@
 
 * Installer
 
-    <img src = "readme/WindowDefender.png" width="50%" height="50%">
+    <img src = "docs/WindowDefender.png" width="50%" height="50%">
 
     - Installer 파일 실행 시, 윈도우 디펜더 창이 나타나면 "추가 정보" -> "실행"을 선택하여 설치를 진행합니다.
 
@@ -121,7 +121,7 @@
 
 * 스킬
 
-    <img src = "readme/LinkSkill.png" width="50%" height="50%">
+    <img src = "docs/LinkSkill.png" width="50%" height="50%">
     
     * 연계스킬을 구성하는 스킬의 목록과 사용 횟수를 설정할 수 있습니다.
     * 하나의 스킬이 너무 많이 사용되면 연계가 정상적으로 작동하지 않을 수 있습니다.
@@ -132,27 +132,27 @@
 
 * 스킬 탭
 
-    <img src = "readme/SkillTab.png" width="75%" height="75%">
+    <img src = "docs/SkillTab.png" width="75%" height="75%">
 
     * 스킬 탭을 추가해서 여러가지 프리셋을 설정할 수 있습니다.
 
 * 스킬 프리뷰
 
-    <img src = "readme/SkillPreview.png" width="75%" height="75%">
+    <img src = "docs/SkillPreview.png" width="75%" height="75%">
 
     * 스킬 프리뷰에서 매크로를 실행했을 때 스킬이 어떤 순서로 실행되는지 확인할 수 있습니다.
     * 매크로가 실행중이지 않으면 스킬 아이콘이 흑백이고, 실행중이라면 아이콘이 컬러로 바뀝니다.
 
 * 스킬 장착
 
-    <img src = "readme/SkillSelect.png" width="75%" height="75%">
+    <img src = "docs/SkillSelect.png" width="75%" height="75%">
 
     * 캐릭터가 사용하는 스킬들을 장착하고 스킬을 사용하는 단축키를 설정합니다.
 
 <br>
 
 ### 버전 확인
-<img src = "readme/VersionCheck.png" width="50%" height="50%">
+<img src = "docs/VersionCheck.png" width="50%" height="50%">
 
 * 프로그램을 실행했을 때, 프로그램이 최신버전인지 확인합니다.
 
@@ -164,13 +164,13 @@
 
 * 정보 입력
 
-    <img src = "readme/Calc0.png" width="50%" height="50%">
+    <img src = "docs/Calc0.png" width="50%" height="50%">
 
     * 시뮬레이션을 작동시킬 정보를 입력합니다.
 
 * 시뮬레이터
 
-    <img src = "readme/Calc1.png" width="50%" height="50%">
+    <img src = "docs/Calc1.png" width="50%" height="50%">
 
     * 메인 화면의 스킬 정보와 시뮬레이션 계산기에서 입력된 정보를 기반으로 스킬 사용 시뮬레이션을 1000회 작동시킵니다.
 
@@ -196,7 +196,7 @@
 
 * 스탯 계산기
 
-    <img src = "readme/Calc2.png" width="50%" height="50%">
+    <img src = "docs/Calc2.png" width="50%" height="50%">
 
     * 스펙업 효율 계산기
         * 두 스탯의 효율을 비교합니다.
@@ -212,7 +212,7 @@
 
 * 캐릭터 카드
 
-    <img src = "readme/Calc3.png" width="50%" height="50%">
+    <img src = "docs/Calc3.png" width="50%" height="50%">
 
     * 캐릭터와 표시할 전투력 종류를 선택하여 캐릭터 카드를 생성하고 저장할 수 있습니다.
 
