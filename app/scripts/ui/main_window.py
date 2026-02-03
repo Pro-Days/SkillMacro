@@ -26,7 +26,7 @@ from app.scripts.registry.resource_registry import convert_resource_path
 from app.scripts.run_macro import checking_kb_thread
 from app.scripts.ui.main_ui.main_ui import MainUI
 from app.scripts.ui.main_ui.sidebar import Sidebar
-from app.scripts.ui.popup import PopupManager
+from app.scripts.ui.popup import NoticeKind, PopupManager
 from app.scripts.ui.sim_ui.simul_ui import SimUI
 
 
@@ -83,9 +83,10 @@ class MainWindow(QWidget):
 
         # ESC
         if e.key() == Qt.Key.Key_Escape:
-            # 에러 팝업창이 있을 때
-            if app_state.ui.active_error_popups:
-                self.popup_manager.close_notice_popup()
+            # 팝업 닫기
+            self.popup_manager.close_popup()
+            # 알림 팝업 닫기
+            self.popup_manager.close_one_notice()
 
         # Ctrl
         elif e.modifiers() & Qt.KeyboardModifier.ControlModifier:
@@ -113,23 +114,21 @@ class MainWindow(QWidget):
                 app_state.ui.current_version = response.json()["name"]
                 app_state.ui.update_url = response.json()["html_url"]
 
+                # 현재 버전과 최신 버전이 일치하지 않는 경우
+                if app_state.ui.current_version != config.version:
+                    self.popup_manager.show_notice(NoticeKind.REQUIRE_UPDATE)
+
             # 응답이 실패하면 버전 확인 실패로 처리
             else:
-                app_state.ui.current_version = "FailedUpdateCheck"
-                app_state.ui.update_url = ""
+                raise Exception("최신 버전 확인 실패")
 
         # 예외 발생 시 버전 확인 실패로 처리
         except Exception:
-            app_state.ui.current_version = "FailedUpdateCheck"
+            app_state.ui.current_version = ""
             app_state.ui.update_url = ""
 
-        # 버전 확인 결과에 따라 팝업 표시
-        if app_state.ui.current_version == "FailedUpdateCheck":
-            self.popup_manager.make_notice_popup("FailedUpdateCheck")
-
-        # 현재 버전과 최신 버전이 일치하지 않는 경우
-        elif app_state.ui.current_version != config.version:
-            self.popup_manager.make_notice_popup("RequireUpdate")
+            # 팝업 표시
+            self.popup_manager.show_notice(NoticeKind.FAILED_UPDATE_CHECK)
 
     def init_UI(self) -> None:
         """
@@ -224,6 +223,12 @@ class MainWindow(QWidget):
 
         if self.page_navigator.currentIndex() == 0:
             self.main_ui.cancel_skill_selection()
+
+    def resizeEvent(self, a0) -> None:
+        """윈도우 크기 변경 시 실행"""
+
+        self.popup_manager.update_notice_positions()
+        return super().resizeEvent(a0)
 
     def get_main_ui(self) -> MainUI:
         """메인 UI 객체 반환"""

@@ -68,7 +68,7 @@ class MacroConfig:
     is_afk_enabled: ClassVar[bool] = False
 
     # 버전 확인 모드 활성화 여부: 정식 버전에서는 True로 변경
-    is_version_check_enabled: ClassVar[bool] = False
+    is_version_check_enabled: ClassVar[bool] = True
 
     # 이 계수를 조정하여 time.sleep과 실제 시간 간의 괴리를 조정
     # todo: 다른 방식으로 조정하도록 변경

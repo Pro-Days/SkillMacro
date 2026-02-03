@@ -32,11 +32,11 @@ from app.scripts.registry.resource_registry import (
     resource_registry,
 )
 from app.scripts.run_macro import build_preview_task_list, init_macro
+from app.scripts.ui.popup import NoticeKind, PopupKind, PopupManager
 
 if TYPE_CHECKING:
     from app.scripts.macro_models import MacroPreset, SkillUsageSetting
     from app.scripts.ui.main_window import MainWindow
-    from app.scripts.ui.popup import PopupManager
 
 
 class MainUI(QFrame):
@@ -60,7 +60,7 @@ class MainUI(QFrame):
 
         # Tab 내부 이벤트를 MainUI에서 처리
         # 매크로 작동 중 팝업 요청
-        self.tab_widget.noticeRequested.connect(self.popup_manager.make_notice_popup)
+        self.tab_widget.noticeRequested.connect(self.popup_manager.show_notice)
         # 키 설정 팝업 요청
         self.tab_widget.skillKeyRequested.connect(self.on_skill_key_clicked)
         # 데이터 변경 신호
@@ -139,12 +139,17 @@ class MainUI(QFrame):
 
             save_data()
 
+        # close_popup() 을 먼저 호출하면 코드가 실행되지 않음
+        if self.popup_manager.is_popup_active(PopupKind.TAB_NAME):
+            self.popup_manager.close_popup()
+            return
+
         # 활성화 상태인 팝업 닫기
         self.popup_manager.close_popup()
 
         # 매크로 실행중일 때는 탭 변경 불가
         if app_state.macro.is_running:
-            self.popup_manager.make_notice_popup("MacroIsRunning")
+            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
             return
 
         # 같은 탭 클릭시 탭 이름 변경 팝업
@@ -153,7 +158,7 @@ class MainUI(QFrame):
             anchor: QWidget = self._get_tab_header_anchor(
                 tab_bar=tab_bar, tab_index=index
             )
-            self.popup_manager.make_tab_name_popup(anchor, index, apply_tab_name)
+            self.popup_manager.make_tab_name_popup(anchor, apply_tab_name)
 
             return
 
@@ -165,7 +170,7 @@ class MainUI(QFrame):
 
         # 매크로 실행중일 때는 탭 추가 불가
         if app_state.macro.is_running:
-            self.popup_manager.make_notice_popup("MacroIsRunning")
+            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
 
             return
 
@@ -192,7 +197,7 @@ class MainUI(QFrame):
 
         # 매크로 실행중일 때는 탭 제거 불가
         if app_state.macro.is_running:
-            self.popup_manager.make_notice_popup("MacroIsRunning")
+            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
 
             return
 
@@ -232,11 +237,16 @@ class MainUI(QFrame):
             if current_tab.apply_key(index, key):
                 save_data()
 
+        # close_popup() 을 먼저 호출하면 코드가 실행되지 않음
+        if self.popup_manager.is_popup_active(PopupKind.SKILL_KEY):
+            self.popup_manager.close_popup()
+            return
+
         self.popup_manager.close_popup()
 
         # 매크로 실행 중일 때는 무시
         if app_state.macro.is_running:
-            self.popup_manager.make_notice_popup("MacroIsRunning")
+            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
             return
 
         self.popup_manager.make_skill_key_popup(
@@ -715,7 +725,7 @@ class Tab(QFrame):
         self.equipped_skills.update_from_preset(self.preset)
         self.update_preview()
 
-    def apply_key(self, index: int, key: "KeySpec") -> bool:
+    def apply_key(self, index: int, key: KeySpec) -> bool:
         """키 설정 변경을 preset에 적용. 변경되었으면 True"""
 
         if self.preset.skills.skill_keys[index] == key.key_id:

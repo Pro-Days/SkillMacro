@@ -43,6 +43,7 @@ from app.scripts.simulate_macro import (
     simulate_deterministic,
     simulate_random,
 )
+from app.scripts.ui.popup import NoticeKind
 from app.scripts.ui.sim_ui.graph import (
     DMGCanvas,
     DpmDistributionCanvas,
@@ -131,7 +132,7 @@ class SimUI:
             app_state.simulation.is_input_valid[k]
             for k in ("stat", "skill", "simDetails")
         ):
-            self.master.get_popup_manager().make_notice_popup("SimInputError")
+            self.master.get_popup_manager().show_notice(NoticeKind.SIM_INPUT_ERROR)
 
             return
 

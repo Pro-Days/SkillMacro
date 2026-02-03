@@ -91,10 +91,6 @@ class UiState:
     # 현재 활성화된 사이드바 페이지 인덱스
     current_sidebar_page: int = 0
 
-    # 활성화된 팝업 리스트
-    # todo: popup manager로 이동
-    active_error_popups: list[tuple[object, int, int]] = field(default_factory=list)
-
     # 시작키 설정 중인지
     # todo: SessionState로 이동 고려
     is_setting_key: bool = False
@@ -150,11 +146,17 @@ class AppState:
         preset: MacroPreset = self.macro.presets[self.macro.current_preset_index]
 
         # 기본 시작 키
-        if key.key_id == config.specs.DEFAULT_START_KEY.key_id:
+        if (
+            not preset.settings.use_custom_start_key
+            and key.key_id == config.specs.DEFAULT_START_KEY.key_id
+        ):
             return True
 
         # 유저 시작 키
-        if key.key_id == preset.settings.custom_start_key:
+        if (
+            preset.settings.use_custom_start_key
+            and key.key_id == preset.settings.custom_start_key
+        ):
             return True
 
         # 스킬 사용 키

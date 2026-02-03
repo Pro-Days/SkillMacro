@@ -38,13 +38,13 @@ from app.scripts.registry.resource_registry import (
     convert_resource_path,
     resource_registry,
 )
+from app.scripts.ui.popup import NoticeKind, PopupKind, PopupManager
 
 if TYPE_CHECKING:
     from typing import Literal
 
     from app.scripts.registry.server_registry import ServerSpec
     from app.scripts.ui.main_window import MainWindow
-    from app.scripts.ui.popup import PopupManager
 
 
 class Sidebar(QFrame):
@@ -371,7 +371,9 @@ class GeneralSettings(QFrame):
         # 시작키 설정
         custom_start_key: str = preset.settings.custom_start_key
         use_custom_start_key: bool = preset.settings.use_custom_start_key
-        self.start_key_setting.set_right_button_text(custom_start_key)
+        self.start_key_setting.set_right_button_text(
+            KeyRegistry.get(custom_start_key).display
+        )
         self.start_key_setting.set_buttons_enabled(
             not use_custom_start_key, use_custom_start_key
         )
@@ -395,6 +397,11 @@ class GeneralSettings(QFrame):
             self.update_from_preset(app_state.macro.current_preset)
             self._on_data_changed()
 
+        # close_popup() 을 먼저 호출하면 코드가 실행되지 않음
+        if self.popup_manager.is_popup_active(PopupKind.SERVER):
+            self.popup_manager.close_popup()
+            return
+
         self.popup_manager.close_popup()
 
         self.popup_manager.make_server_popup(self.server_job_setting.left_button, apply)
@@ -406,7 +413,7 @@ class GeneralSettings(QFrame):
 
         # 매크로 실행 중일 때는 무시
         if app_state.macro.is_running:
-            self.popup_manager.make_notice_popup("MacroIsRunning")
+            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
             return
 
         # 이미 기본 딜레이라면 무시
@@ -433,11 +440,16 @@ class GeneralSettings(QFrame):
             self.update_from_preset(app_state.macro.current_preset)
             self._on_data_changed()
 
+        # close_popup() 을 먼저 호출하면 코드가 실행되지 않음
+        if self.popup_manager.is_popup_active(PopupKind.DELAY):
+            self.popup_manager.close_popup()
+            return
+
         self.popup_manager.close_popup()
 
         # 매크로 실행 중일 때는 무시
         if app_state.macro.is_running:
-            self.popup_manager.make_notice_popup("MacroIsRunning")
+            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
             return
 
         # 이미 유저 딜레이라면 딜레이 입력 팝업 열기
@@ -457,7 +469,7 @@ class GeneralSettings(QFrame):
 
         # 매크로 실행 중일 때는 무시
         if app_state.macro.is_running:
-            self.popup_manager.make_notice_popup("MacroIsRunning")
+            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
             return
 
         # 이미 기본 쿨타임 감소라면 무시
@@ -487,11 +499,16 @@ class GeneralSettings(QFrame):
             self.update_from_preset(app_state.macro.current_preset)
             self._on_data_changed()
 
+        # close_popup() 을 먼저 호출하면 코드가 실행되지 않음
+        if self.popup_manager.is_popup_active(PopupKind.COOLTIME):
+            self.popup_manager.close_popup()
+            return
+
         self.popup_manager.close_popup()
 
         # 매크로 실행 중일 때는 무시
         if app_state.macro.is_running:
-            self.popup_manager.make_notice_popup("MacroIsRunning")
+            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
             return
 
         # 이미 유저 쿨타임 감소라면 쿨타임 감소 입력 팝업 열기
@@ -513,7 +530,7 @@ class GeneralSettings(QFrame):
 
         # 매크로 실행 중일 때는 무시
         if app_state.macro.is_running:
-            self.popup_manager.make_notice_popup("MacroIsRunning")
+            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
             return
 
         # 이미 기본 시작키라면 무시
@@ -528,7 +545,7 @@ class GeneralSettings(QFrame):
             != default_key.key_id
             and app_state.is_key_using(default_key)
         ):
-            self.popup_manager.make_notice_popup("StartKeyChangeError")
+            self.popup_manager.show_notice(NoticeKind.START_KEY_CHANGE_ERROR)
             return
 
         # 기본 시작키로 변경 (입력 값은 유지)
@@ -553,11 +570,16 @@ class GeneralSettings(QFrame):
             self.update_from_preset(app_state.macro.current_preset)
             self._on_data_changed()
 
+        # close_popup() 을 먼저 호출하면 코드가 실행되지 않음
+        if self.popup_manager.is_popup_active(PopupKind.START_KEY):
+            self.popup_manager.close_popup()
+            return
+
         self.popup_manager.close_popup()
 
         # 매크로 실행 중일 때는 무시
         if app_state.macro.is_running:
-            self.popup_manager.make_notice_popup("MacroIsRunning")
+            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
             return
 
         # 이미 유저 시작키라면 시작키 입력 팝업 열기
@@ -576,7 +598,7 @@ class GeneralSettings(QFrame):
         if current_input_key_id != default_key.key_id and app_state.is_key_using(
             KeyRegistry.get(current_input_key_id)
         ):
-            self.popup_manager.make_notice_popup("StartKeyChangeError")
+            self.popup_manager.show_notice(NoticeKind.START_KEY_CHANGE_ERROR)
             return
 
         # 유저 시작키로 변경 (입력 값 유지)
@@ -591,7 +613,7 @@ class GeneralSettings(QFrame):
 
         # 매크로 실행 중일 때는 무시
         if app_state.macro.is_running:
-            self.popup_manager.make_notice_popup("MacroIsRunning")
+            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
             return
 
         # 이미 False 라면 무시
@@ -609,7 +631,7 @@ class GeneralSettings(QFrame):
 
         # 매크로 실행 중일 때는 무시
         if app_state.macro.is_running:
-            self.popup_manager.make_notice_popup("MacroIsRunning")
+            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
             return
 
         # 이미 타입1 이라면 무시
@@ -1463,13 +1485,18 @@ class LinkSkillEditor(QFrame):
     def _open_skill_select_popup(self, i: int) -> None:
         """i번째 스킬 변경용 스킬 선택 팝업 열기"""
 
+        def apply(skill_id: str) -> None:
+            self.change_skill(i, skill_id)
+
+        # close_popup() 을 먼저 호출하면 코드가 실행되지 않음
+        if self.popup_manager.is_popup_active(PopupKind.LINK_SKILL_SELECT):
+            self.popup_manager.close_popup()
+            return
+
         self.popup_manager.close_popup()
 
         # anchor: i번째 SkillItem의 스킬 버튼
         anchor_btn: QPushButton = self._skill_item_widgets[i].skill
-
-        def apply(skill_id: str) -> None:
-            self.change_skill(i, skill_id)
 
         self.popup_manager.make_link_skill_select_popup(
             anchor=anchor_btn,
@@ -1490,7 +1517,7 @@ class LinkSkillEditor(QFrame):
 
         # 모든 스킬이 장착되어 있는지 확인
         if not all(i in preset.skills.equipped_skills for i in self.data.skills):
-            self.popup_manager.make_notice_popup("skillNotSelected")
+            self.popup_manager.show_notice(NoticeKind.SKILL_NOT_SELECTED)
             return
 
         # 지금 수정 중인 연계스킬의 인덱스
@@ -1511,7 +1538,7 @@ class LinkSkillEditor(QFrame):
         # 중복되는 스킬이 있으면 알림 팝업 생성 후 종료
         for i in self.data.skills:
             if i in auto_skills:
-                self.popup_manager.make_notice_popup("autoAlreadyExist")
+                self.popup_manager.show_notice(NoticeKind.AUTO_ALREADY_EXIST)
                 return
 
         # 중복되는 스킬이 없으면 자동으로 변경
@@ -1548,6 +1575,11 @@ class LinkSkillEditor(QFrame):
             self.data.set_key(key.key_id)
             self._after_data_changed(update_skills=False)
 
+        # close_popup() 을 먼저 호출하면 코드가 실행되지 않음
+        if self.popup_manager.is_popup_active(PopupKind.LINK_SKILL_KEY):
+            self.popup_manager.close_popup()
+            return
+
         self.popup_manager.close_popup()
         self.popup_manager.make_link_skill_key_popup(
             self.key_setting.right_button,
@@ -1570,7 +1602,7 @@ class LinkSkillEditor(QFrame):
         self.data.set_manual()
 
         if self.is_skill_exceeded(skill_id):
-            self.popup_manager.make_notice_popup("exceedMaxLinkSkill")
+            self.popup_manager.show_notice(NoticeKind.EXCEED_MAX_LINK_SKILL)
 
         self._after_data_changed(update_skills=True)
 
@@ -1609,7 +1641,7 @@ class LinkSkillEditor(QFrame):
 
         # 최대 사용 횟수 초과 시 알림 팝업 생성
         if self.is_skill_exceeded(skill_id):
-            self.popup_manager.make_notice_popup("exceedMaxLinkSkill")
+            self.popup_manager.show_notice(NoticeKind.EXCEED_MAX_LINK_SKILL)
 
         self._after_data_changed(update_skills=True)
 
