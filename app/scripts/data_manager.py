@@ -146,10 +146,10 @@ def get_default_preset() -> MacroPreset:
     """기본 프리셋 데이터 생성"""
 
     server_id: str = config.specs.DEFAULT_SERVER_ID
-    skill_count: int = server_registry.SERVERS[server_id].usable_skill_count
-    skills_all: list[str] = server_registry.SERVERS[
+    skill_count: int = server_registry.get(server_id).usable_skill_count
+    skills_all: list[str] = server_registry.get(
         server_id
-    ].skill_registry.get_all_skill_ids()
+    ).skill_registry.get_all_skill_ids()
 
     return MacroPreset.create_default(
         server_id=server_id,

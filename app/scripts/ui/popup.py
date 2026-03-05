@@ -62,7 +62,6 @@ class PopupKind(str, Enum):
     """PopupHost 기반 팝업의 종류"""
 
     SERVER = "settingServer"
-    JOB = "settingJob"
     DELAY = "settingDelay"
     COOLTIME = "settingCooltime"
     START_KEY = "settingStartKey"

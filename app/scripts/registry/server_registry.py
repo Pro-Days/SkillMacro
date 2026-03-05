@@ -29,7 +29,7 @@ class ServerRegistry:
     # 초기화 여부
     _initialized: bool = False
 
-    SERVERS: dict[str, ServerSpec] = field(default_factory=dict)
+    _SERVERS: dict[str, ServerSpec] = field(default_factory=dict)
 
     def __new__(cls) -> ServerRegistry:
         if cls._instance is None:
@@ -50,22 +50,22 @@ class ServerRegistry:
         with open(path, "r", encoding="utf-8") as f:
             skill_data: dict[str, Any] = json.load(f)
 
-        self.SERVERS["한월 RPG"] = ServerSpec(
+        self._SERVERS["한월 RPG"] = ServerSpec(
             id="한월 RPG",
-            usable_skill_count=6,
-            max_skill_level=30,
+            usable_skill_count=7,
+            max_skill_level=15,
             skill_registry=SkillRegistry.from_skill_data(skill_data, "한월 RPG"),
         )
 
     def get(self, name: str) -> ServerSpec:
         self._ensure_initialized()
 
-        return self.SERVERS.get(name, self.SERVERS["한월 RPG"])
+        return self._SERVERS[name]
 
     def get_all_servers(self) -> list[ServerSpec]:
         self._ensure_initialized()
 
-        return list(self.SERVERS.values())
+        return list(self._SERVERS.values())
 
 
 server_registry = ServerRegistry()

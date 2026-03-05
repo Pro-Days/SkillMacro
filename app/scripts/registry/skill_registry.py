@@ -139,6 +139,9 @@ class SkillRegistry:
     def get_all_skill_ids(self) -> list[str]:
         return list(self._skills.keys())
 
+    def get_all_skill_defs(self) -> list[SkillDef]:
+        return list(self._skills.values())
+
     def get(self, skill_id: str) -> SkillDef:
         return self._skills[skill_id]
 

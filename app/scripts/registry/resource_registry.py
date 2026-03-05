@@ -61,8 +61,11 @@ class ResourceRegistry:
         # 폰트 등록
         QFontDatabase.addApplicationFont(self.font_path)
 
-    def get_skill_pixmap(self, skill_id: str = "") -> QPixmap:
+    def get_skill_pixmap(self, skill_id: str | None = None) -> QPixmap:
         """스킬 이미지 반환"""
+
+        if skill_id is None:
+            return QPixmap(convert_resource_path("resources\\image\\emptySkill.png"))
 
         self._ensure_initialized()
 

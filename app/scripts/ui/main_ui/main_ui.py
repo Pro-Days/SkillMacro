@@ -31,11 +31,13 @@ from app.scripts.registry.resource_registry import (
     convert_resource_path,
     resource_registry,
 )
+from app.scripts.registry.skill_registry import SkillDef
 from app.scripts.run_macro import build_preview_task_list, init_macro
 from app.scripts.ui.popup import NoticeKind, PopupKind, PopupManager
 
 if TYPE_CHECKING:
     from app.scripts.macro_models import MacroPreset, SkillUsageSetting
+    from app.scripts.registry.skill_registry import SkillDef
     from app.scripts.ui.main_window import MainWindow
 
 
@@ -811,7 +813,11 @@ class SkillPreview(QFrame):
 
 
 class EquippableSkill(QFrame):
-    """장착 가능한 스킬 프레임 (상단)"""
+    """
+    장착 가능한 스킬 프레임 (상단)
+    COL: 7
+    3줄: 1 -> 장착, 23 -> 조건에 따라 선택 가능
+    """
 
     skillClicked = pyqtSignal(int)
 
@@ -826,32 +832,32 @@ class EquippableSkill(QFrame):
 
         # 스킬 모음
         self.skills: list[EquippableSkill.Skill] = []
-        COLS = 4
-        for i in range(8):
-            skill = self.Skill(index=i)
+
+        for col in range(app_state.macro.current_server.usable_skill_count):
+            skill: EquippableSkill.Skill = EquippableSkill.Skill(col, None)
             self.skills.append(skill)
 
             skill.clicked.connect(self.skillClicked.emit)
 
-            row: int = i // COLS
-            col: int = i % COLS
-            layout.addWidget(skill, row, col)
+            layout.addWidget(skill, 0, col)
+
+            #
 
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(10)
         self.setLayout(layout)
 
-    def display_available_skills(self):
+    def display_available_skills(self) -> None:
         """
         장착 가능한 스킬 목록 표시
         장착되지 않은 스킬에 빨간 테두리 표시
         """
-        skill_ids: list[str] = (
-            app_state.macro.current_server.skill_registry.get_all_skill_ids()
+        skill_defs: list[SkillDef] = (
+            app_state.macro.current_server.skill_registry.get_all_skill_defs()
         )
 
         for index, skill_widget in enumerate(self.skills):
-            skill_id: str = skill_ids[index]
+            skill_id: str | None = skill_defs[index].id if skill_defs[index] else None
             skill_widget.set_equipped_style(
                 skill_id in app_state.macro.current_preset.skills.equipped_skills
             )
@@ -859,16 +865,15 @@ class EquippableSkill(QFrame):
     class Skill(QFrame):
         clicked = pyqtSignal(int)
 
-        def __init__(self, index: int) -> None:
+        def __init__(self, index: int, skill_def: SkillDef | None) -> None:
             super().__init__()
 
+            self.skill_def: SkillDef | None = skill_def
             self.index: int = index
 
             self.setStyleSheet("QFrame { background-color: transparent; }")
 
-            skill_id: str = (
-                app_state.macro.current_server.skill_registry.get_all_skill_ids()[index]
-            )
+            skill_id: str | None = self.skill_def.id if self.skill_def else None
 
             self.button: QPushButton = QPushButton(self)
             self.button.setStyleSheet("QPushButton { border-radius :10px; }")
@@ -880,9 +885,7 @@ class EquippableSkill(QFrame):
             self.button.clicked.connect(lambda: self.clicked.emit(self.index))
             self.button.setCursor(Qt.CursorShape.PointingHandCursor)
 
-            display_name: str = app_state.macro.current_server.skill_registry.get(
-                skill_id
-            ).name
+            display_name: str = self.skill_def.name if self.skill_def else "장착안함"
             self.name: QLabel = QLabel(display_name, self)
             self.name.setStyleSheet(
                 "QLabel { background-color: transparent; border-radius :0px; }"
@@ -901,6 +904,8 @@ class EquippableSkill(QFrame):
 
         def set_equipped_style(self, is_equipped: bool) -> None:
             """장착 여부에 따른 버튼 테두리 표시"""
+
+            # TODO: 스타일 시트를 Attribute로 관리하는 방식으로 리팩토링 필요.
 
             border: str = "border: none;" if is_equipped else "border: 1px solid red;"
 
