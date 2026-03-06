@@ -176,7 +176,7 @@ class MacroSpecs:
 
 @dataclass(frozen=True)
 class AppConfig:
-    version: ClassVar[str] = "3.1.0-beta.2"
+    version: ClassVar[str] = "v3.1.0-beta.2"
     app_name: ClassVar[str] = "PD SkillMacro"
 
     ui: ClassVar[UiConfig] = UiConfig()
