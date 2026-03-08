@@ -859,7 +859,7 @@ class AvailableSkillPanel(QFrame):
                 else "스크롤 선택"
             )
             self.scroll_button.setStyleSheet(
-                "QPushButton { border-radius: 10px; border: 1px solid #D1D5DB; background-color: #ffffff; }"
+                "QPushButton { border: 0px; background-color: transparent; }"
             )
 
             for line_index, button in enumerate(self.skill_buttons):
@@ -881,26 +881,16 @@ class AvailableSkillPanel(QFrame):
                     else "사용 가능 스킬 없음"
                 )
 
-                border_color: str = "#D1D5DB"
-                border_width: int = 1
-                if skill_id and skill_id == selected_skill_id:
-                    border_color = "#3B82F6"
-                    border_width = 2
-
-                elif skill_id and skill_id in equipped_skill_ids:
-                    border_color = "#EF4444"
-                    border_width = 2
-
                 button.setStyleSheet(
-                    "QPushButton { "
-                    f"border-radius: 10px; border: {border_width}px solid {border_color}; "
-                    "background-color: #ffffff; }"
+                    "QPushButton { border: 0px; background-color: transparent; }"
                 )
 
 
 class EquippedSkillPanel(QFrame):
     """하단 실제 장착 스킬 패널"""
 
+    SLOT_BUTTON_SIZE: int = 48
+    SLOT_SELECTED_BUTTON_SIZE: int = 56
     slotClicked = pyqtSignal(object)
     keyClicked = pyqtSignal(int)
 
@@ -961,6 +951,7 @@ class EquippedSkillPanel(QFrame):
 
             self.scroll_index: int = scroll_index
             self.buttons: list[QPushButton] = []
+            self.button_containers: list[QWidget] = []
 
             self.setStyleSheet("QFrame { background-color: transparent; }")
 
@@ -969,8 +960,22 @@ class EquippedSkillPanel(QFrame):
             layout.setSpacing(6)
 
             for line_index in range(app_state.macro.current_server.skill_line_count):
+                # 선택 강조 최대 크기만큼 슬롯 영역 선점
+                button_container: QWidget = QWidget(self)
+                button_container.setFixedSize(
+                    EquippedSkillPanel.SLOT_SELECTED_BUTTON_SIZE,
+                    EquippedSkillPanel.SLOT_SELECTED_BUTTON_SIZE,
+                )
+
+                # 기본 상태에서는 기존과 동일한 48px 버튼 유지
+                container_layout: QVBoxLayout = QVBoxLayout(button_container)
+                container_layout.setContentsMargins(0, 0, 0, 0)
+                container_layout.setSpacing(0)
                 button: QPushButton = QPushButton(self)
-                button.setFixedSize(48, 48)
+                button.setFixedSize(
+                    EquippedSkillPanel.SLOT_BUTTON_SIZE,
+                    EquippedSkillPanel.SLOT_BUTTON_SIZE,
+                )
                 button.setCursor(Qt.CursorShape.PointingHandCursor)
                 skill_ref: EquippedSkillRef = EquippedSkillRef(
                     scroll_index=self.scroll_index,
@@ -979,8 +984,17 @@ class EquippedSkillPanel(QFrame):
                 button.clicked.connect(
                     lambda _, ref=skill_ref: self.slotClicked.emit(ref)
                 )
+
                 self.buttons.append(button)
-                layout.addWidget(button, alignment=Qt.AlignmentFlag.AlignCenter)
+                self.button_containers.append(button_container)
+                container_layout.addWidget(
+                    button,
+                    alignment=Qt.AlignmentFlag.AlignCenter,
+                )
+                layout.addWidget(
+                    button_container,
+                    alignment=Qt.AlignmentFlag.AlignCenter,
+                )
 
             self.key_button: QPushButton = QPushButton("", self)
             self.key_button.setFont(CustomFont(10))
@@ -1013,7 +1027,7 @@ class EquippedSkillPanel(QFrame):
                     else "장착 안함"
                 )
                 button.setStyleSheet(
-                    "QPushButton { border-radius: 10px; border: 1px solid #D1D5DB; background-color: #ffffff; }"
+                    "QPushButton { border: 0px; background-color: transparent; }"
                 )
 
             self.set_key(
@@ -1031,17 +1045,39 @@ class EquippedSkillPanel(QFrame):
                 is_selected: bool = (
                     selected_ref is not None and selected_ref == skill_ref
                 )
+
                 if is_selected:
-                    button.setFixedSize(56, 56)
-                    button.setIconSize(QSize(56, 56))
+                    # 고정 슬롯 내부에서만 선택 강조 크기 확대
+                    button.setFixedSize(
+                        EquippedSkillPanel.SLOT_SELECTED_BUTTON_SIZE,
+                        EquippedSkillPanel.SLOT_SELECTED_BUTTON_SIZE,
+                    )
+                    button.setIconSize(
+                        QSize(
+                            EquippedSkillPanel.SLOT_SELECTED_BUTTON_SIZE,
+                            EquippedSkillPanel.SLOT_SELECTED_BUTTON_SIZE,
+                        )
+                    )
+
                     shadow = QGraphicsDropShadowEffect(button)
                     shadow.setBlurRadius(8)
-                    shadow.setOffset(0, 2)
+                    shadow.setOffset(2, 2)
                     shadow.setColor(QColor(0, 0, 0, 160))
                     button.setGraphicsEffect(shadow)
+
                 else:
-                    button.setFixedSize(48, 48)
-                    button.setIconSize(QSize(48, 48))
+                    # 비선택 상태 기본 크기 복원
+                    button.setFixedSize(
+                        EquippedSkillPanel.SLOT_BUTTON_SIZE,
+                        EquippedSkillPanel.SLOT_BUTTON_SIZE,
+                    )
+                    button.setIconSize(
+                        QSize(
+                            EquippedSkillPanel.SLOT_BUTTON_SIZE,
+                            EquippedSkillPanel.SLOT_BUTTON_SIZE,
+                        )
+                    )
+
                     button.setGraphicsEffect(None)
 
         def set_key(self, key: str) -> None:
