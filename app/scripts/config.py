@@ -170,6 +170,7 @@ class MacroSpecs:
     )
 
     DEFAULT_START_KEY: ClassVar[KeySpec] = KeyRegistry.get("f9")
+    DEFAULT_SWAP_KEY: ClassVar[KeySpec] = KeyRegistry.get("`")
 
     DEFAULT_SERVER_ID: ClassVar[str] = "한월 RPG"
 

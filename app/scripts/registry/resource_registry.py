@@ -34,6 +34,8 @@ class ResourceRegistry:
 
     # 스킬 아이콘 캐시
     _SKILL_PIXMAP_CACHE: dict[str, QPixmap] = field(default_factory=dict)
+    # 스크롤 아이콘 캐시
+    _SCROLL_PIXMAP_CACHE: dict[str, QPixmap] = field(default_factory=dict)
 
     # 폰트 디렉토리 등록
     font_path: str = convert_resource_path("resources\\font\\NotoSansKR-Regular.ttf")
@@ -87,6 +89,26 @@ class ResourceRegistry:
 
         # 캐시에 저장
         self._SKILL_PIXMAP_CACHE[skill_id] = colored
+
+        return colored
+
+    def get_scroll_pixmap(self, scroll_id: str | None = None) -> QPixmap:
+        """스크롤 이미지 반환"""
+
+        if scroll_id is None:
+            return QPixmap(convert_resource_path("resources\\image\\emptySkill.png"))
+
+        self._ensure_initialized()
+
+        if scroll_id in self._SCROLL_PIXMAP_CACHE:
+            return self._SCROLL_PIXMAP_CACHE[scroll_id]
+
+        image_path: str = convert_resource_path("resources\\image\\skill_buff.png")
+        base_pixmap: QPixmap = QPixmap(image_path)
+        color: QColor = self._get_unique_skill_color(scroll_id)
+        colored: QPixmap = self._fill_transparent_pixels(base_pixmap, color)
+
+        self._SCROLL_PIXMAP_CACHE[scroll_id] = colored
 
         return colored
 

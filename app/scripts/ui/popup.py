@@ -42,6 +42,7 @@ from app.scripts.registry.resource_registry import (
     resource_registry,
 )
 from app.scripts.registry.server_registry import ServerSpec, server_registry
+from app.scripts.registry.skill_registry import ScrollDef
 
 if TYPE_CHECKING:
     from app.scripts.registry.key_registry import KeySpec
@@ -67,6 +68,7 @@ class PopupKind(str, Enum):
     START_KEY = "settingStartKey"
     TAB_NAME = "tabName"
     SKILL_KEY = "skillKey"
+    SCROLL_SELECT = "scrollSelect"
     LINK_SKILL_KEY = "linkSkillKey"
     LINK_SKILL_SELECT = "linkSkillSelect"
 
@@ -86,7 +88,8 @@ class NoticeKind(Enum):
     # 입력 검증
     DELAY_INPUT_ERROR = auto()  # 딜레이 입력 오류
     COOLTIME_INPUT_ERROR = auto()  # 쿨타임 입력 오류
-    START_KEY_CHANGE_ERROR = auto()  # 시작키 변경 오류
+    START_KEY_CHANGE_ERROR = auto()  # 매크로 시작키 변경 오류
+    SWAP_KEY_CHANGE_ERROR = auto()  # 스왑키 변경 오류
 
     # 업데이트/설정
     REQUIRE_UPDATE = auto()  # 업데이트 필요
@@ -650,6 +653,9 @@ class NoticeController:
             case NoticeKind.START_KEY_CHANGE_ERROR:
                 return NoticeData("해당 키는 이미 사용중입니다.")
 
+            case NoticeKind.SWAP_KEY_CHANGE_ERROR:
+                return NoticeData("해당 키는 이미 사용중입니다.")
+
             case NoticeKind.FAILED_UPDATE_CHECK:
                 return NoticeData("프로그램 업데이트 확인에 실패하였습니다.", "warning")
 
@@ -1051,10 +1057,10 @@ class PopupManager:
     def make_skill_key_popup(
         self,
         anchor: QWidget,
-        index: int,
+        default_key_id: str,
         on_selected: Callable[[KeySpec], None],
     ) -> None:
-        """시작키 입력 팝업"""
+        """스킬키 입력 팝업"""
 
         # 매크로 실행 중일 때는 무시
         if app_state.macro.is_running:
@@ -1063,12 +1069,10 @@ class PopupManager:
 
         self._stop_key_listener()
 
-        default_key: KeySpec = KeyRegistry.get(
-            app_state.macro.current_preset.skills.skill_keys[index]
-        )
-        content = KeyCaptureContent(default_key=default_key)
+        default_key: KeySpec = KeyRegistry.get(default_key_id)
+        content: KeyCaptureContent = KeyCaptureContent(default_key=default_key)
 
-        def _submit(key: KeySpec) -> None:
+        def _submit(key: KeySpec | None) -> None:
             self.close_popup()
 
             # 변경 없음
@@ -1102,11 +1106,50 @@ class PopupManager:
 
             content.set_key(key)
 
-        listener = pynput_keyboard.Listener(on_press=_on_press)
+        listener: pynput_keyboard.Listener = pynput_keyboard.Listener(
+            on_press=_on_press
+        )
         listener.daemon = True
         listener.start()
         self._key_listener = listener
         app_state.ui.is_setting_key = True
+
+    def make_scroll_select_popup(
+        self,
+        anchor: QWidget,
+        scroll_defs: list[ScrollDef],
+        equipped_scroll_ids: list[str],
+        current_scroll_id: str,
+        on_selected: Callable[[str], None],
+    ) -> None:
+        """스크롤 선택 팝업"""
+
+        if app_state.macro.is_running:
+            self.show_notice(NoticeKind.MACRO_IS_RUNNING)
+            return
+
+        if self._popup_controller.is_visible():
+            self._popup_controller.close()
+
+        self._active_popup = PopupKind.SCROLL_SELECT
+
+        content: ScrollGridSelectContent = ScrollGridSelectContent(
+            scroll_defs=scroll_defs,
+            equipped_scroll_ids=equipped_scroll_ids,
+            current_scroll_id=current_scroll_id,
+        )
+
+        def _picked(scroll_id: str) -> None:
+            self.close_popup()
+            on_selected(scroll_id)
+
+        content.selected.connect(_picked)
+
+        self._popup_controller.show_content(
+            anchor=anchor,
+            content=content,
+            options=PopupOptions(placement=PopupPlacement.BELOW),
+        )
 
     def make_link_skill_key_popup(
         self,
@@ -1275,80 +1318,101 @@ class SkillGridSelectContent(QFrame):
         scroll.setFixedHeight(estimated_h)
 
 
-class ConfirmRemovePopup(QFrame):
-    """탭 삭제 확인 팝업 (사용되지 않음)"""
+class ScrollGridSelectContent(QFrame):
+    """스크롤 선택용 그리드 컨텐츠"""
 
-    def __init__(self, master: MainUI, tab_name: str, tab_index: int) -> None:
-        # QFrame의 부모를 master(MainUI)의 master(MainWindow)로 설정
-        super().__init__(master.master)
+    selected = pyqtSignal(str)
 
-        self.setStyleSheet("QFrame { background-color: rgba(0, 0, 0, 100); }")
+    def __init__(
+        self,
+        scroll_defs: list[ScrollDef],
+        equipped_scroll_ids: list[str],
+        current_scroll_id: str,
+    ) -> None:
+        super().__init__()
 
-        self.master: MainUI = master
-        self.tab_index: int = tab_index
+        columns: int = 5
+        margin: int = 8
+        spacing: int = 6
+        icon_size: int = 40
+        button_size: int = 44
+        max_visible_rows: int = 6
+        occupied_scroll_ids: set[str] = {
+            scroll_id
+            for scroll_id in equipped_scroll_ids
+            if scroll_id and scroll_id != current_scroll_id
+        }
 
-        popup_frame = QFrame(self)
-        popup_frame.setStyleSheet(
-            "QFrame { background-color: white; border-radius: 20px; }"
+        root: QVBoxLayout = QVBoxLayout(self)
+        root.setContentsMargins(margin, margin, margin, margin)
+        root.setSpacing(spacing)
+
+        scroll_area: QScrollArea = QScrollArea(self)
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+
+        container: QWidget = QWidget(scroll_area)
+        grid: QGridLayout = QGridLayout(container)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(spacing)
+        grid.setVerticalSpacing(spacing)
+
+        for idx, scroll_def in enumerate(scroll_defs):
+            row: int = idx // columns
+            column: int = idx % columns
+
+            is_selected: bool = scroll_def.id == current_scroll_id
+            is_disabled: bool = scroll_def.id in occupied_scroll_ids
+
+            tooltip_lines: list[str] = [scroll_def.name]
+
+            if is_disabled:
+                tooltip_lines.append("이미 다른 칸에 장착됨")
+
+            btn: QPushButton = QPushButton(container)
+            btn.setFixedSize(button_size, button_size)
+            btn.setIcon(QIcon(resource_registry.get_scroll_pixmap(scroll_def.id)))
+            btn.setIconSize(QSize(icon_size, icon_size))
+            btn.setToolTip("\n".join(tooltip_lines))
+            btn.setEnabled(not is_disabled)
+
+            border_color: str = "#2563EB" if is_selected else "#DDDDDD"
+            border_width: int = 2 if is_selected else 1
+            btn.setStyleSheet(
+                f"""
+                QPushButton {{
+                    background-color: white;
+                    border-radius: 10px;
+                    border: {border_width}px solid {border_color};
+                }}
+                QPushButton:hover:enabled {{
+                    background-color: #EEEEEE;
+                }}
+                QPushButton:disabled {{
+                    background-color: #F2F2F2;
+                }}
+                """
+            )
+            btn.clicked.connect(
+                lambda _, scroll_id=scroll_def.id: self.selected.emit(scroll_id)
+            )
+
+            grid.addWidget(btn, row, column)
+
+        grid.setColumnStretch(columns, 1)
+
+        container.setLayout(grid)
+        scroll_area.setWidget(container)
+        root.addWidget(scroll_area)
+        self.setLayout(root)
+
+        visible_rows: int = min(
+            max_visible_rows,
+            (len(scroll_defs) + columns - 1) // columns,
         )
-        popup_frame.setGraphicsEffect(CustomShadowEffect(2, 2, 20))
-
-        name = QLabel("", popup_frame)
-        name.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        name.setFont(CustomFont(12))
-        name.setText(f'정말 "{tab_name}"\n 탭을 삭제하시겠습니까?')
-
-        yes_button = QPushButton("예", popup_frame)
-        yes_button.setFont(CustomFont(12))
-        yes_button.clicked.connect(self.on_yes_clicked)
-        yes_button.setStyleSheet(
-            """
-                QPushButton {
-                    background-color: #86A7FC; border-radius: 10px;
-                }
-                QPushButton:hover {
-                    background-color: #6498f0;
-                }
-            """
+        estimated_height: int = (
+            margin * 2 + visible_rows * (button_size + spacing) - spacing
         )
-        yes_button.setGraphicsEffect(CustomShadowEffect(2, 2, 20))
-
-        no_button = QPushButton("아니오", popup_frame)
-        no_button.setFont(CustomFont(12))
-        no_button.clicked.connect(self.on_no_clicked)
-        no_button.setStyleSheet(
-            """
-                QPushButton {
-                    background-color: #ffffff; border-radius: 10px;
-                }
-                QPushButton:hover {
-                    background-color: #eeeeee;
-                }
-            """
-        )
-        no_button.setGraphicsEffect(CustomShadowEffect(2, 2, 20))
-
-        layout = QGridLayout(popup_frame)
-        layout.addWidget(name, 0, 0, 1, 2)
-        layout.addWidget(yes_button, 1, 0)
-        layout.addWidget(no_button, 1, 1)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(20)
-        popup_frame.setLayout(layout)
-
-        main_layout = QVBoxLayout(self)
-        main_layout.addWidget(popup_frame, alignment=Qt.AlignmentFlag.AlignCenter)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        self.setLayout(main_layout)
-
-    def on_yes_clicked(self) -> None:
-        self.master.on_remove_tab_popup_clicked(
-            index=self.tab_index,
-            confirmed=True,
-        )
-
-    def on_no_clicked(self) -> None:
-        self.master.on_remove_tab_popup_clicked(
-            index=self.tab_index,
-            confirmed=False,
-        )
+        scroll_area.setFixedHeight(estimated_height)

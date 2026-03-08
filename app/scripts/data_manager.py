@@ -6,15 +6,8 @@ import shutil
 
 from app.scripts.app_state import app_state
 from app.scripts.config import config
-from app.scripts.macro_models import (
-    MacroPreset,
-    MacroPresetFile,
-    MacroPresetRepository,
-    PresetInfo,
-    SkillUsageSetting,
-)
-from app.scripts.registry.key_registry import KeyRegistry
-from app.scripts.registry.server_registry import server_registry
+from app.scripts.macro_models import MacroPreset, MacroPresetFile, MacroPresetRepository
+from app.scripts.registry.server_registry import ServerSpec, server_registry
 
 data_version = 1
 
@@ -32,10 +25,6 @@ def load_data(num: int = -1) -> None:
     """
 
     try:
-        # 파일이 존재하지 않으면 데이터 생성
-        if not os.path.isfile(file_dir):
-            create_default_data()
-
         update_data()
 
         repo = MacroPresetRepository(file_dir)
@@ -146,18 +135,17 @@ def get_default_preset() -> MacroPreset:
     """기본 프리셋 데이터 생성"""
 
     server_id: str = config.specs.DEFAULT_SERVER_ID
-    skill_count: int = server_registry.get(server_id).usable_skill_count
-    skills_all: list[str] = server_registry.get(
-        server_id
-    ).skill_registry.get_all_skill_ids()
+    server: ServerSpec = server_registry.get(server_id)
+    skills_all: list[str] = server.skill_registry.get_all_skill_ids()
 
     return MacroPreset.create_default(
         server_id=server_id,
-        skill_count=skill_count,
+        scroll_slot_count=server.scroll_slot_count,
         skills_all=skills_all,
         default_delay=config.specs.DELAY.default,
         default_cooltime_reduction=config.specs.COOLTIME_REDUCTION.default,
         default_start_key_id=config.specs.DEFAULT_START_KEY.key_id,
+        default_swap_key_id=config.specs.DEFAULT_SWAP_KEY.key_id,
     )
 
 
@@ -172,12 +160,9 @@ def update_data() -> None:
             create_default_data()
             return
 
-        repo = MacroPresetRepository(file_dir)
-        preset_file: MacroPresetFile = repo.load()
-
-        # 데이터 버전이 다르면 (구버전/타버전) 호환하지 않음
-        if preset_file.version != data_version:
-            pass
+        # 스크롤 구조 전환 초기화
+        backup_data()
+        create_default_data()
 
         return
 

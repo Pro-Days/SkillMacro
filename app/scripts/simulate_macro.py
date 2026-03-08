@@ -13,7 +13,7 @@ from app.scripts.custom_classes import (
     SimSkill,
     Stats,
 )
-from app.scripts.macro_models import LinkUseType, SkillUsageSetting
+from app.scripts.macro_models import EquippedSkillRef, LinkUseType, SkillUsageSetting
 from app.scripts.registry.skill_registry import (
     BuffEffect,
     DamageEffect,
@@ -527,106 +527,89 @@ def simulate(
     )
 
 
-def _get_skill_sequence() -> tuple[int, ...]:
+def _get_skill_sequence() -> tuple[EquippedSkillRef, ...]:
     """
     스킬 사용 순서 반환
     """
 
-    skill_sequence: list[int] = []
+    skill_ref_map: dict[str, EquippedSkillRef] = (
+        app_state.macro.current_preset.skills.get_skill_ref_map(
+            app_state.macro.current_server
+        )
+    )
+    equipped_refs: list[EquippedSkillRef] = (
+        app_state.macro.current_preset.skills.get_equipped_skill_refs(
+            app_state.macro.current_server
+        )
+    )
+    skill_sequence: list[EquippedSkillRef] = []
 
-    # 사용 우선순위에 등록되어있는 스킬 순서대로 등록
-    for target_priority in range(1, 7):
-        for skill, setting in app_state.macro.current_preset.usage_settings.items():
+    for target_priority in range(1, len(equipped_refs) + 1):
+        for skill_id, setting in app_state.macro.current_preset.usage_settings.items():
             if setting.priority == target_priority:
-                # 우선순위 있는 스킬은 모두 장착되어있음
-                slot: int = app_state.macro.current_preset.skills.equipped_skills.index(
-                    skill
-                )
+                skill_ref: EquippedSkillRef | None = skill_ref_map.get(skill_id)
+                if skill_ref is not None:
+                    skill_sequence.append(skill_ref)
 
-                skill_sequence.append(slot)
-
-    # 우선순위 등록 안된 스킬 모두 등록
-    for i in range(6):
-        if i not in skill_sequence:
-            skill_sequence.append(i)
+    for skill_ref in equipped_refs:
+        if skill_ref not in skill_sequence:
+            skill_sequence.append(skill_ref)
 
     return tuple(skill_sequence)
 
 
 def _get_task_list(
-    prepared_skills: set[int],
-    link_skills_requirements: list[list[int]],
-    using_link_skills: list[list[int]],
-    equipped_skills: list[str],
-) -> list[int]:
+    prepared_skills: set[EquippedSkillRef],
+    link_skills_requirements: list[list[EquippedSkillRef]],
+    using_link_skills: list[list[EquippedSkillRef]],
+) -> list[EquippedSkillRef]:
 
-    task_list: list[int] = []
+    task_list: list[EquippedSkillRef] = []
 
-    # 연계스킬 사용
-    # 준비된 연계스킬 리스트 인덱스
     prepared_link_skill_indices: list[int] = get_prepared_link_skill_indices(
         prepared_skills=prepared_skills,
         link_skills_requirements=link_skills_requirements,
     )
 
-    skill_sequence: tuple[int, ...] = _get_skill_sequence()
+    skill_sequence: tuple[EquippedSkillRef, ...] = _get_skill_sequence()
 
-    # 준비된 연계스킬이 있다면
     if prepared_link_skill_indices:
-        # 준비된 연계스킬 중 첫 번째에 포함된 스킬들 모두 task_list에 추가
-        for skill in using_link_skills[prepared_link_skill_indices[0]]:
-            # 준비된 스킬 리스트에서 제거
-            prepared_skills.discard(skill)
-
-            # task_list에 추가
-            task_list.append(skill)
+        for skill_ref in using_link_skills[prepared_link_skill_indices[0]]:
+            prepared_skills.discard(skill_ref)
+            task_list.append(skill_ref)
 
         return task_list
 
-    # 연계스킬을 사용하지 않는다면 준비된 스킬 정렬 순서대로 사용 (스킬 하나만 사용)
-    # 연계스킬 사용중인 스킬 전부 모으기
-    link_skill_reqs: list[int] = sum(link_skills_requirements, [])
+    link_skill_reqs: list[EquippedSkillRef] = [
+        skill_ref
+        for requirements in link_skills_requirements
+        for skill_ref in requirements
+    ]
 
-    # 스킬 정렬 순서대로 검사
-    for skill in skill_sequence:
-        # 연계스킬 O & 단독 사용 O -> O
-        # 연계스킬 O & 단독 사용 X -> X
-        # 연계스킬 X & 사용 O -> O
-        # 연계스킬 X & 사용 X -> X
+    for skill_ref in skill_sequence:
+        skill_id: str = app_state.macro.current_preset.skills.get_skill_id(
+            skill_ref,
+        )
+        if not skill_id:
+            continue
 
         if (
-            # 스킬이 준비되었고
-            skill in prepared_skills
-            # 연계스킬에 포함되었고
-            and skill in link_skill_reqs
-            # 단독 사용 옵션이 켜져있다면
-            and app_state.macro.current_preset.usage_settings[
-                equipped_skills[skill]
-            ].use_alone
+            skill_ref in prepared_skills
+            and skill_ref in link_skill_reqs
+            and app_state.macro.current_preset.usage_settings[skill_id].use_alone
         ):
-            # task_list에 추가
-            task_list.append(skill)
-
-            # 준비된 스킬 리스트에서 해당 스킬 제거
-            prepared_skills.discard(skill)
+            task_list.append(skill_ref)
+            prepared_skills.discard(skill_ref)
 
             return task_list
 
         elif (
-            # 스킬이 준비되었고
-            skill in prepared_skills
-            # 연계스킬에 포함되지 않았고
-            and skill not in link_skill_reqs
-            # 사용 옵션이 켜져있다면
-            and app_state.macro.current_preset.usage_settings[
-                equipped_skills[skill]
-            ].use_skill
+            skill_ref in prepared_skills
+            and skill_ref not in link_skill_reqs
+            and app_state.macro.current_preset.usage_settings[skill_id].use_skill
         ):
-            # task_list에 스킬 추가
-            task_list.append(skill)
-
-            # 준비된 스킬 리스트에서 해당 스킬 제거
-            prepared_skills.discard(skill)
+            task_list.append(skill_ref)
+            prepared_skills.discard(skill_ref)
 
             return task_list
 
@@ -635,28 +618,23 @@ def _get_task_list(
 
 # 쿨타임 지난 스킬들 업데이트
 def _update_skill_cooltimes(
-    equipped_slots: list[int],
-    skill_cooltime_timers_ms: list[int],
-    skill_cooltimes_ms: dict[int, int],
+    equipped_refs: list[EquippedSkillRef],
+    skill_cooltime_timers_ms: dict[EquippedSkillRef, int],
+    skill_cooltimes_ms: dict[EquippedSkillRef, int],
     elapsed_time_ms: int,
-    prepared_skills: set[int],
+    prepared_skills: set[EquippedSkillRef],
 ) -> None:
     """
     쿨타임이 지난 스킬들을 준비된 스킬 리스트에 추가
     """
 
-    # 각 장착된 스킬에 대해
-    for slot in equipped_slots:
-        # 스킬 쿨타임이 지났는지 확인
+    for skill_ref in equipped_refs:
         if (
-            # 스킬 사용해서 쿨타임 기다리는 중이고
-            slot not in prepared_skills
-            # 쿨타임이 지났다면
-            and (elapsed_time_ms - skill_cooltime_timers_ms[slot])
-            >= skill_cooltimes_ms[slot]
+            skill_ref not in prepared_skills
+            and (elapsed_time_ms - skill_cooltime_timers_ms[skill_ref])
+            >= skill_cooltimes_ms[skill_ref]
         ):
-            # 준비된 스킬 리스트에 추가
-            prepared_skills.add(slot)
+            prepared_skills.add(skill_ref)
 
 
 def get_simulated_skills(
@@ -690,54 +668,42 @@ def get_simulated_skills(
             )
         )
 
-    # 시뮬레이션 초기 설정
-
-    # 장착한 스킬 리스트
-    equipped_skills: list[str] = (
-        app_state.macro.current_preset.skills.equipped_skills.copy()
+    equipped_refs: list[EquippedSkillRef] = (
+        app_state.macro.current_preset.skills.get_equipped_skill_refs(
+            app_state.macro.current_server
+        )
     )
 
-    # 장착된 스킬이 없다면 바로 반환
-    if not any(equipped_skills):
+    if not equipped_refs:
         return attack_details, buff_details
 
-    # 장착된 스킬 슬롯 번호들
-    equipped_slots: list[int] = [
-        slot
-        for slot in range(app_state.macro.current_server.usable_skill_count)
-        if equipped_skills[slot]
-    ]
-
-    # 사용 가능한 스킬 리스트: slot
-    prepared_skills: set[int] = set(equipped_slots)
-
-    # 매크로 작동 중 사용하는 연계스킬 리스트 -> dict로 변환
-    using_link_skills: list[list[int]] = [
-        [equipped_skills.index(name) for name in link_skill.skills]
+    prepared_skills: set[EquippedSkillRef] = set(equipped_refs)
+    skill_ref_map: dict[str, EquippedSkillRef] = (
+        app_state.macro.current_preset.skills.get_skill_ref_map(
+            app_state.macro.current_server
+        )
+    )
+    using_link_skills: list[list[EquippedSkillRef]] = [
+        [skill_ref_map[name] for name in link_skill.skills]
         for link_skill in app_state.macro.current_preset.link_skills
         if link_skill.use_type == LinkUseType.AUTO
+        and all(name in skill_ref_map for name in link_skill.skills)
     ]
-
-    # 연계스킬 수행에 필요한 스킬 정보 리스트
-    link_skills_requirements: list[list[int]] = [
-        [slot for slot in link_skill] for link_skill in using_link_skills
+    link_skills_requirements: list[list[EquippedSkillRef]] = [
+        [skill_ref for skill_ref in link_skill] for link_skill in using_link_skills
     ]
-
-    # 스킬 남은 쿨타임 (ms 단위)
-    skill_cooltime_timers_ms: list[int] = [
-        0
-    ] * app_state.macro.current_server.usable_skill_count
-
-    # 장착된 스킬의 쿨타임 감소 스탯이 적용된 쿨타임
-    skill_cooltimes_ms: dict[int, int] = {
-        slot: int(
+    skill_cooltime_timers_ms: dict[EquippedSkillRef, int] = {
+        skill_ref: 0 for skill_ref in equipped_refs
+    }
+    skill_cooltimes_ms: dict[EquippedSkillRef, int] = {
+        skill_ref: int(
             app_state.macro.current_server.skill_registry.get(
-                equipped_skills[slot]
+                app_state.macro.current_preset.skills.get_skill_id(skill_ref)
             ).cooltime
             * (100 - app_state.macro.current_cooltime_reduction)
             * 10
         )
-        for slot in equipped_slots
+        for skill_ref in equipped_refs
     }
 
     # 스킬 레벨
@@ -745,22 +711,14 @@ def get_simulated_skills(
     #     skill_id: setting. for skill_id, setting in skills_info_tuple
     # }
 
-    # 수행할 스킬 리스트
-    task_list: list[int] = []
-
-    # 사용한 스킬 기록
+    task_list: list[EquippedSkillRef] = []
     used_skills: list[SimSkill] = []
-
-    # 지난 시간 (ms)
     elapsed_time_ms: int = 0
 
-    # 60초 미만 시뮬레이션
-    # 0초를 포함하기 때문
     while elapsed_time_ms < 60000:
         if not task_list:
-            # 쿨타임이 지난 스킬들 업데이트
             _update_skill_cooltimes(
-                equipped_slots=equipped_slots,
+                equipped_refs=equipped_refs,
                 skill_cooltime_timers_ms=skill_cooltime_timers_ms,
                 skill_cooltimes_ms=skill_cooltimes_ms,
                 elapsed_time_ms=elapsed_time_ms,
@@ -771,60 +729,48 @@ def get_simulated_skills(
                 prepared_skills=prepared_skills,
                 link_skills_requirements=link_skills_requirements,
                 using_link_skills=using_link_skills,
-                equipped_skills=equipped_skills,
             )
 
-        # 스킬 사용
         if task_list:
-            # 사용할 스킬 슬롯
-            slot: int = task_list.pop(0)
-
-            used_skills.append(
-                SimSkill(skill_id=equipped_skills[slot], time=elapsed_time_ms)
+            skill_ref: EquippedSkillRef = task_list.pop(0)
+            skill_id: str = app_state.macro.current_preset.skills.get_skill_id(
+                skill_ref,
             )
 
-            # 스킬 쿨타임 타이머 설정
-            skill_cooltime_timers_ms[slot] = elapsed_time_ms
+            used_skills.append(SimSkill(skill_id=skill_id, time=elapsed_time_ms))
 
-            # 현재 시간 증가
+            skill_cooltime_timers_ms[skill_ref] = elapsed_time_ms
             elapsed_time_ms += int(app_state.macro.current_delay)
 
-        # task_list가 비어있다면 가장 가까운 쿨타임이 지난 스킬까지 시간 점프
         else:
-            # 쿨타임이 가장 짧게 남은 스킬까지 시간 점프
+            waiting_refs: list[EquippedSkillRef] = [
+                skill_ref
+                for skill_ref in equipped_refs
+                if skill_ref not in prepared_skills
+            ]
+            if not waiting_refs:
+                break
+
             next_cooltime_ms: int = min(
-                skill_cooltimes_ms[slot]
-                - (elapsed_time_ms - skill_cooltime_timers_ms[slot])
-                for slot in equipped_slots
-                if slot not in prepared_skills
+                skill_cooltimes_ms[skill_ref]
+                - (elapsed_time_ms - skill_cooltime_timers_ms[skill_ref])
+                for skill_ref in waiting_refs
             )
 
             elapsed_time_ms += next_cooltime_ms
 
-    # 시간 단위를 초로 변경
-    # 반올림은 0.01초 단위로
     for used_skill in used_skills:
         used_skill.time = round(used_skill.time * 0.001, 2)
 
-    # 각 스킬 효과 리스트
     skills_effects: dict[str, list[LevelEffect]] = {
-        skill_id: app_state.macro.current_server.skill_registry.get(skill_id).levels[
-            1
-            # skill_levels[skill_id]
-        ]
-        for skill_id in equipped_skills
-        if skill_id
+        skill_id: app_state.macro.current_server.skill_registry.get(skill_id).levels[1]
+        for skill_id in app_state.macro.current_preset.skills.compact_equipped_skill_ids()
     }
 
-    # 사용한 스킬들에 대해 세부사항 저장
     for skill in used_skills:
-        # 스킬 효과: 공격 / 버프
         effects: list[LevelEffect] = skills_effects[skill.skill_id]
 
-        # 각 effect에 대해
-        # 공격 효과와 버프 효과를 구분하여 처리
         for effect in effects:
-            # 공격
             if isinstance(effect, DamageEffect):
                 attack: SimAttack = SimAttack(
                     skill_id=skill.skill_id,
@@ -834,7 +780,6 @@ def get_simulated_skills(
 
                 attack_details.append(attack)
 
-            # 버프
             elif isinstance(effect, BuffEffect):
                 buff: SimBuff = SimBuff(
                     start_time=round(skill.time + effect.time, 2),
@@ -846,9 +791,6 @@ def get_simulated_skills(
 
                 buff_details.append(buff)
 
-            # 회복 (무시)
-
-    # 시간순으로 정렬
     attack_details.sort(key=lambda x: x.time)
     buff_details.sort(key=lambda x: x.start_time)
 

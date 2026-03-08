@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import enum
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import Any
 
 BUILTIN_SKILL_PREFIX = "builtin"
@@ -130,11 +130,37 @@ class SkillDef:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class ScrollDef:
+    """스크롤 데이터"""
+
+    id: str
+    server_id: str
+    name: str
+    skills: tuple[str, str]
+
+    @classmethod
+    def from_dict(cls, server_id: str, detail: dict[str, Any]) -> "ScrollDef":
+        """detail dict에서 ScrollDef 생성"""
+
+        skills: list[str] = list(detail["skills"])
+        if len(skills) != 2:
+            raise ValueError("scroll skills must contain exactly 2 skill ids")
+
+        return cls(
+            id=detail["scroll_id"],
+            server_id=server_id,
+            name=detail["name"],
+            skills=(skills[0], skills[1]),
+        )
+
+
 @dataclass(frozen=True)
 class SkillRegistry:
     """스킬 레지스트리"""
 
     _skills: dict[str, SkillDef]
+    _scrolls: dict[str, ScrollDef]
 
     def get_all_skill_ids(self) -> list[str]:
         return list(self._skills.keys())
@@ -144,6 +170,15 @@ class SkillRegistry:
 
     def get(self, skill_id: str) -> SkillDef:
         return self._skills[skill_id]
+
+    def get_all_scroll_ids(self) -> list[str]:
+        return list(self._scrolls.keys())
+
+    def get_all_scroll_defs(self) -> list[ScrollDef]:
+        return list(self._scrolls.values())
+
+    def get_scroll(self, scroll_id: str) -> ScrollDef:
+        return self._scrolls[scroll_id]
 
     @classmethod
     def from_skill_data(
@@ -155,6 +190,7 @@ class SkillRegistry:
 
         skill_ids: list[str] = server_data["skills"]
         details: dict[str, dict[str, Any]] = server_data["skill_details"]
+        scroll_details: list[dict[str, Any]] = server_data["scrolls"]
 
         skills: dict[str, SkillDef] = {}
         for skill_id in skill_ids:
@@ -165,4 +201,12 @@ class SkillRegistry:
             )
             skills[skill_id] = skill_def
 
-        return cls(_skills=skills)
+        scrolls: dict[str, ScrollDef] = {}
+        for detail in scroll_details:
+            scroll_def: ScrollDef = ScrollDef.from_dict(
+                server_id=server_id,
+                detail=detail,
+            )
+            scrolls[scroll_def.id] = scroll_def
+
+        return cls(_skills=skills, _scrolls=scrolls)

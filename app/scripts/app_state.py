@@ -5,7 +5,12 @@ from typing import TYPE_CHECKING, ClassVar
 
 from app.scripts.config import config
 from app.scripts.custom_classes import Stats
-from app.scripts.macro_models import LinkKeyType, LinkSkill, MacroPreset
+from app.scripts.macro_models import (
+    EquippedSkillRef,
+    LinkKeyType,
+    LinkSkill,
+    MacroPreset,
+)
 from app.scripts.registry.key_registry import KeyRegistry, KeySpec
 from app.scripts.registry.server_registry import ServerSpec, server_registry
 
@@ -55,29 +60,41 @@ class MacroState:
         return config.specs.DEFAULT_START_KEY
 
     @property
+    def current_swap_key(self) -> KeySpec:
+        """실제로 사용되는 스왑 키 값을 반환"""
+
+        if self.current_preset.settings.use_custom_swap_key:
+            return KeyRegistry.get(self.current_preset.settings.custom_swap_key)
+
+        return config.specs.DEFAULT_SWAP_KEY
+
+    @property
     def current_use_default_attack(self) -> bool:
         """기본 마우스 클릭 사용 여부 반환"""
         return self.current_preset.settings.use_default_attack
 
     # 매크로 실행 중 바뀌는 변수들
     # 여러 곳에서 참조되므로 여기에 보관
-    task_list: list[int] = field(default_factory=list)
-    prepared_skills: set[int] = field(default_factory=set)
+    task_list: list[EquippedSkillRef] = field(default_factory=list)
+    prepared_skills: set[EquippedSkillRef] = field(default_factory=set)
 
     # 연계스킬 수행에 필요한 스킬 정보 리스트
-    link_skills_requirements: list[list[int]] = field(default_factory=list)
+    link_skills_requirements: list[list[EquippedSkillRef]] = field(default_factory=list)
 
     # 매크로 작동 중 사용하는 연계스킬 리스트
-    using_link_skills: list[list[int]] = field(default_factory=list)
+    using_link_skills: list[list[EquippedSkillRef]] = field(default_factory=list)
 
     # 연계가 아닌 스킬의 사용 순서
-    skill_sequence: list[int] = field(default_factory=list)
+    skill_sequence: list[EquippedSkillRef] = field(default_factory=list)
+
+    # 현재 활성화된 스킬 줄
+    current_line_index: int = 0
 
     # AFK 모드 시작 시간
     afk_started_time: float = 0.0
 
     # 스킬 쿨타임 타이머
-    skill_cooltime_timers: list[float] = field(default_factory=list)
+    skill_cooltime_timers: dict[EquippedSkillRef, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -161,6 +178,20 @@ class AppState:
 
         # 스킬 사용 키
         if key.key_id in preset.skills.skill_keys:
+            return True
+
+        # 기본 스왑 키
+        if (
+            not preset.settings.use_custom_swap_key
+            and key.key_id == config.specs.DEFAULT_SWAP_KEY.key_id
+        ):
+            return True
+
+        # 유저 스왑 키
+        if (
+            preset.settings.use_custom_swap_key
+            and key.key_id == preset.settings.custom_swap_key
+        ):
             return True
 
         # 연계 스킬 키

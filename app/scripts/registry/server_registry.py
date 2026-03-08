@@ -13,9 +13,17 @@ class ServerSpec:
     """서버 정보 클래스"""
 
     id: str
-    usable_skill_count: int
+    scroll_slot_count: int
+    skill_line_count: int
+    skills_per_scroll: int
     max_skill_level: int
     skill_registry: SkillRegistry
+
+    @property
+    def total_equipped_skill_count(self) -> int:
+        """장착 가능한 전체 스킬 수"""
+
+        return self.scroll_slot_count * self.skill_line_count
 
 
 @dataclass
@@ -52,7 +60,9 @@ class ServerRegistry:
 
         self._SERVERS["한월 RPG"] = ServerSpec(
             id="한월 RPG",
-            usable_skill_count=7,
+            scroll_slot_count=7,
+            skill_line_count=2,
+            skills_per_scroll=2,
             max_skill_level=15,
             skill_registry=SkillRegistry.from_skill_data(skill_data, "한월 RPG"),
         )

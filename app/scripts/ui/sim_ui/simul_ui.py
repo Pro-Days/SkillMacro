@@ -540,7 +540,7 @@ class Sim2UI(QFrame):
             self.graph = SkillDpsRatioCanvas(
                 self,
                 resultDet,
-                app_state.macro.current_preset.skills.equipped_skills,
+                app_state.macro.current_preset.skills.compact_equipped_skill_ids(),
                 app_state.macro.current_server.id,
             )
             self.graph.setFixedHeight(300)
@@ -605,7 +605,7 @@ class Sim2UI(QFrame):
             self.graph = SkillContributionCanvas(
                 self,
                 resultDet,
-                app_state.macro.current_preset.skills.equipped_skills.copy(),
+                app_state.macro.current_preset.skills.compact_equipped_skill_ids(),
                 app_state.macro.current_server.id,
             )
             self.graph.setFixedHeight(400)

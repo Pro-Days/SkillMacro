@@ -11,13 +11,32 @@ from app.scripts.custom_classes import Stats
 
 if TYPE_CHECKING:
     from app.scripts.registry.key_registry import KeySpec
+    from app.scripts.registry.server_registry import ServerSpec
+    from app.scripts.registry.skill_registry import ScrollDef
+
+
+@dataclass(frozen=True, slots=True)
+class EquippedSkillRef:
+    """장착 스킬 인덱스 참조 모델"""
+
+    scroll_index: int
+    line_index: int
+
+    @property
+    def flat_index(self) -> int:
+        """14칸 평탄 인덱스"""
+
+        return (self.scroll_index * 2) + self.line_index
 
 
 @dataclass(slots=True)
 class MacroSkills:
     """매크로 스킬 데이터 모델"""
 
-    # 장착된 스킬 ID 목록 (빈 슬롯은 "")
+    # 장착된 스크롤 ID 목록 (빈 슬롯은 "")
+    equipped_scrolls: list[str] = field(default_factory=list)
+
+    # 실제 장착된 스킬 ID 목록 (빈 슬롯은 "")
     equipped_skills: list[str] = field(default_factory=list)
 
     # 스킬 단축키 목록
@@ -28,6 +47,7 @@ class MacroSkills:
         """딕셔너리로부터 MacroSkills 생성"""
 
         return cls(
+            equipped_scrolls=data["equipped_scrolls"].copy(),
             equipped_skills=data["equipped_skills"].copy(),
             skill_keys=data["skill_keys"].copy(),
         )
@@ -36,9 +56,77 @@ class MacroSkills:
         """딕셔너리로 변환"""
 
         return {
+            "equipped_scrolls": self.equipped_scrolls.copy(),
             "equipped_skills": self.equipped_skills.copy(),
             "skill_keys": self.skill_keys.copy(),
         }
+
+    def get_skill_id(
+        self,
+        skill_ref: EquippedSkillRef,
+    ) -> str:
+        """(하단) 해당 위치에 장착된 스킬 ID 반환"""
+
+        skill_id: str = self.equipped_skills[skill_ref.flat_index]
+        return skill_id
+
+    def get_available_skill_id(
+        self,
+        server_spec: "ServerSpec",
+        skill_ref: EquippedSkillRef,
+    ) -> str:
+        """(상단) 해당 위치의 스크롤로부터 스킬 ID 반환"""
+
+        scroll_id: str = self.equipped_scrolls[skill_ref.scroll_index]
+
+        # 위치에 스크롤이 장착되지 않은 경우
+        if not scroll_id:
+            return ""
+
+        scroll_def: "ScrollDef" = server_spec.skill_registry.get_scroll(scroll_id)
+        return scroll_def.skills[skill_ref.line_index]
+
+    def compact_equipped_skill_ids(self) -> list[str]:
+        """장착된 스킬 목록에서 빈 슬롯을 제외한 스킬 ID 반환"""
+
+        return [skill_id for skill_id in self.equipped_skills if skill_id]
+
+    def get_equipped_skill_refs(
+        self,
+        server_spec: "ServerSpec",
+    ) -> list[EquippedSkillRef]:
+        """장착된 스킬 참조 목록 반환"""
+
+        refs: list[EquippedSkillRef] = []
+
+        for scroll_index in range(server_spec.scroll_slot_count):
+            for line_index in range(server_spec.skill_line_count):
+
+                skill_ref: EquippedSkillRef = EquippedSkillRef(
+                    scroll_index=scroll_index,
+                    line_index=line_index,
+                )
+
+                if self.get_skill_id(skill_ref):
+                    refs.append(skill_ref)
+
+        return refs
+
+    def get_skill_ref_map(
+        self,
+        server_spec: "ServerSpec",
+    ) -> dict[str, EquippedSkillRef]:
+        """장착된 스킬 ID -> 참조 매핑 반환"""
+
+        skill_ref_map: dict[str, EquippedSkillRef] = {}
+
+        for skill_ref in self.get_equipped_skill_refs(server_spec):
+            skill_id: str = self.get_skill_id(skill_ref)
+
+            if skill_id:
+                skill_ref_map[skill_id] = skill_ref
+
+        return skill_ref_map
 
 
 @dataclass(slots=True)
@@ -60,6 +148,10 @@ class MacroSettings:
     custom_start_key: str = config.specs.DEFAULT_START_KEY.key_id
     use_custom_start_key: bool = False
 
+    # 스왑키
+    custom_swap_key: str = config.specs.DEFAULT_SWAP_KEY.key_id
+    use_custom_swap_key: bool = False
+
     # 마우스 클릭 타입
     use_default_attack: bool = False
 
@@ -75,6 +167,8 @@ class MacroSettings:
             use_custom_cooltime_reduction=data["use_custom_cooltime_reduction"],
             custom_start_key=data["custom_start_key"],
             use_custom_start_key=data["use_custom_start_key"],
+            custom_swap_key=data["custom_swap_key"],
+            use_custom_swap_key=data["use_custom_swap_key"],
             use_default_attack=data["use_default_attack"],
         )
 
@@ -89,6 +183,8 @@ class MacroSettings:
             "use_custom_cooltime_reduction": self.use_custom_cooltime_reduction,
             "custom_start_key": self.custom_start_key,
             "use_custom_start_key": self.use_custom_start_key,
+            "custom_swap_key": self.custom_swap_key,
+            "use_custom_swap_key": self.use_custom_swap_key,
             "use_default_attack": self.use_default_attack,
         }
 
@@ -325,19 +421,21 @@ class MacroPreset:
     def create_default(
         cls,
         server_id: str,
-        skill_count: int,
+        scroll_slot_count: int,
         skills_all: list[str],
         default_delay: int,
         default_cooltime_reduction: int,
         default_start_key_id: str,
+        default_swap_key_id: str,
     ) -> "MacroPreset":
         """기본값으로 MacroPreset 생성"""
 
         return cls(
             name=cls.DEFAULT_NAME,
             skills=MacroSkills(
-                equipped_skills=[""] * skill_count,
-                skill_keys=[str(2 + i) for i in range(skill_count)],
+                equipped_scrolls=[""] * scroll_slot_count,
+                equipped_skills=[""] * (scroll_slot_count * 2),
+                skill_keys=[str(2 + i) for i in range(scroll_slot_count)],
             ),
             settings=MacroSettings(
                 server_id=server_id,
@@ -347,6 +445,8 @@ class MacroPreset:
                 use_custom_cooltime_reduction=False,
                 custom_start_key=default_start_key_id,
                 use_custom_start_key=False,
+                custom_swap_key=default_swap_key_id,
+                use_custom_swap_key=False,
                 use_default_attack=False,
             ),
             usage_settings={

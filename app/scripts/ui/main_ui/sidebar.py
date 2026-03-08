@@ -314,6 +314,20 @@ class GeneralSettings(QFrame):
             func1=self.on_user_start_key_clicked,
         )
 
+        self.swap_key_setting = self.SettingItem(
+            title="스왑키 설정",
+            tooltip=(
+                "2줄 스킬을 사용하기 전에 입력하는 스킬 줄 전환 키입니다.\n"
+                "스킬키, 시작키, 연계키와 겹치지 않는 키로 설정해야 합니다."
+            ),
+            btn0_text=f"기본: {config.specs.DEFAULT_SWAP_KEY.display}",
+            btn0_enabled=True,
+            btn1_text="",
+            btn1_enabled=False,
+            func0=self.on_default_swap_key_clicked,
+            func1=self.on_user_swap_key_clicked,
+        )
+
         # 마우스 클릭
         self.click_setting = self.SettingItem(
             title="마우스 클릭",
@@ -336,6 +350,7 @@ class GeneralSettings(QFrame):
         layout.addWidget(self.delay_setting)
         layout.addWidget(self.cooltime_setting)
         layout.addWidget(self.start_key_setting)
+        layout.addWidget(self.swap_key_setting)
         layout.addWidget(self.click_setting)
 
         layout.setContentsMargins(10, 20, 10, 10)
@@ -376,6 +391,16 @@ class GeneralSettings(QFrame):
         )
         self.start_key_setting.set_buttons_enabled(
             not use_custom_start_key, use_custom_start_key
+        )
+
+        # 스왑키 설정
+        custom_swap_key: str = preset.settings.custom_swap_key
+        use_custom_swap_key: bool = preset.settings.use_custom_swap_key
+        self.swap_key_setting.set_right_button_text(
+            KeyRegistry.get(custom_swap_key).display
+        )
+        self.swap_key_setting.set_buttons_enabled(
+            not use_custom_swap_key, use_custom_swap_key
         )
 
         # 마우스 클릭
@@ -621,6 +646,78 @@ class GeneralSettings(QFrame):
             return
 
         app_state.macro.current_preset.settings.use_default_attack = False
+        self.update_from_preset(app_state.macro.current_preset)
+        self._on_data_changed()
+
+    def on_default_swap_key_clicked(self) -> None:
+        """기본 스왑키 클릭시 실행"""
+
+        self.popup_manager.close_popup()
+
+        if app_state.macro.is_running:
+            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+            return
+
+        if not app_state.macro.current_preset.settings.use_custom_swap_key:
+            return
+
+        default_key: KeySpec = config.specs.DEFAULT_SWAP_KEY
+        current_input_key_id: str = (
+            app_state.macro.current_preset.settings.custom_swap_key
+        )
+
+        if current_input_key_id != default_key.key_id and app_state.is_key_using(
+            default_key
+        ):
+            self.popup_manager.show_notice(NoticeKind.SWAP_KEY_CHANGE_ERROR)
+            return
+
+        app_state.macro.current_preset.settings.use_custom_swap_key = False
+        self.update_from_preset(app_state.macro.current_preset)
+        self._on_data_changed()
+
+    def on_user_swap_key_clicked(self) -> None:
+        """유저 스왑키 클릭시 실행"""
+
+        def apply(key: KeySpec) -> None:
+            """적용 함수"""
+
+            if key.key_id == app_state.macro.current_preset.settings.custom_swap_key:
+                return
+
+            app_state.macro.current_preset.settings.custom_swap_key = key.key_id
+            self.update_from_preset(app_state.macro.current_preset)
+            self._on_data_changed()
+
+        if self.popup_manager.is_popup_active(PopupKind.SKILL_KEY):
+            self.popup_manager.close_popup()
+            return
+
+        self.popup_manager.close_popup()
+
+        if app_state.macro.is_running:
+            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+            return
+
+        if app_state.macro.current_preset.settings.use_custom_swap_key:
+            self.popup_manager.make_skill_key_popup(
+                self.swap_key_setting.right_button,
+                app_state.macro.current_preset.settings.custom_swap_key,
+                apply,
+            )
+            return
+
+        current_input_key_id: str = (
+            app_state.macro.current_preset.settings.custom_swap_key
+        )
+        if (
+            current_input_key_id != config.specs.DEFAULT_SWAP_KEY.key_id
+            and app_state.is_key_using(KeyRegistry.get(current_input_key_id))
+        ):
+            self.popup_manager.show_notice(NoticeKind.SWAP_KEY_CHANGE_ERROR)
+            return
+
+        app_state.macro.current_preset.settings.use_custom_swap_key = True
         self.update_from_preset(app_state.macro.current_preset)
         self._on_data_changed()
 
@@ -956,9 +1053,9 @@ class SkillSettings(QFrame):
 
         preset: MacroPreset = self._get_preset()
         skill_id: str = self._skill_ids[skill_idx]
+        equipped_skill_ids: list[str] = preset.skills.compact_equipped_skill_ids()
 
-        # 장착된 스킬이 아니면 무시
-        if skill_id not in preset.skills.equipped_skills:
+        if skill_id not in equipped_skill_ids:
             return
 
         setting: SkillUsageSetting = preset.usage_settings[skill_id]
@@ -968,8 +1065,11 @@ class SkillSettings(QFrame):
         # 우선순위가 0이었다면: 가장 높은 우선순위(숫자 최대 + 1)
         if current == 0:
             max_priority: int = 0
-            for s in preset.usage_settings.values():
-                max_priority = max(max_priority, s.priority)
+            for equipped_skill_id in equipped_skill_ids:
+                max_priority = max(
+                    max_priority,
+                    preset.usage_settings[equipped_skill_id].priority,
+                )
 
             setting.priority = max_priority + 1
 
@@ -1516,7 +1616,9 @@ class LinkSkillEditor(QFrame):
         preset: MacroPreset = self._get_preset()
 
         # 모든 스킬이 장착되어 있는지 확인
-        if not all(i in preset.skills.equipped_skills for i in self.data.skills):
+        equipped_skill_ids: list[str] = preset.skills.compact_equipped_skill_ids()
+
+        if not all(skill_id in equipped_skill_ids for skill_id in self.data.skills):
             self.popup_manager.show_notice(NoticeKind.SKILL_NOT_SELECTED)
             return
 
