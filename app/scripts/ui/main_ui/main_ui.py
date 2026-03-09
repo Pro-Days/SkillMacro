@@ -36,6 +36,7 @@ from app.scripts.ui.popup import NoticeKind, PopupKind, PopupManager
 if TYPE_CHECKING:
     from app.scripts.macro_models import MacroPreset, SkillUsageSetting
     from app.scripts.ui.main_window import MainWindow
+    from app.scripts.ui.popup import HoverCardData
 
 
 class MainUI(QFrame):
@@ -51,7 +52,7 @@ class MainUI(QFrame):
         self._preview_timer.timeout.connect(self._tick_preview_update)
         self._preview_timer.start(10)
 
-        self.tab_widget: TabWidget = TabWidget(self)
+        self.tab_widget: TabWidget = TabWidget(self, self.popup_manager)
         self.tab_widget.noticeRequested.connect(self.popup_manager.show_notice)
         self.tab_widget.skillKeyRequested.connect(self.on_skill_key_clicked)
         self.tab_widget.scrollSelectRequested.connect(self.on_scroll_select_requested)
@@ -250,9 +251,10 @@ class TabWidget(QTabWidget):
     dataChanged = pyqtSignal()
     skillUnequipped = pyqtSignal(str)
 
-    def __init__(self, master: QWidget) -> None:
+    def __init__(self, master: QWidget, popup_manager: PopupManager) -> None:
         super().__init__(master)
 
+        self.popup_manager: PopupManager = popup_manager
         self.setTabsClosable(True)
         self._setup_add_tab_button()
         self._apply_tab_style()
@@ -284,7 +286,11 @@ class TabWidget(QTabWidget):
     def _create_tab(self, preset: MacroPreset, preset_index: int) -> Tab:
         """탭 위젯 생성"""
 
-        return Tab(preset=preset, preset_index=preset_index)
+        return Tab(
+            preset=preset,
+            preset_index=preset_index,
+            popup_manager=self.popup_manager,
+        )
 
     def add_tab(self, preset: MacroPreset) -> None:
         """탭 추가"""
@@ -432,15 +438,25 @@ class Tab(QFrame):
     dataChanged = pyqtSignal()
     skillUnequipped = pyqtSignal(str)
 
-    def __init__(self, preset: MacroPreset, preset_index: int) -> None:
+    def __init__(
+        self,
+        preset: MacroPreset,
+        preset_index: int,
+        popup_manager: PopupManager,
+    ) -> None:
         super().__init__()
 
         self.preset: MacroPreset = preset
         self.preset_index: int = preset_index
+        self.popup_manager: PopupManager = popup_manager
 
         self.preview: SkillPreview = SkillPreview()
-        self.available_skills: AvailableSkillPanel = AvailableSkillPanel()
-        self.equipped_skills: EquippedSkillPanel = EquippedSkillPanel()
+        self.available_skills: AvailableSkillPanel = AvailableSkillPanel(
+            self.popup_manager
+        )
+        self.equipped_skills: EquippedSkillPanel = EquippedSkillPanel(
+            self.popup_manager
+        )
 
         divider: QFrame = QFrame(self)
         divider.setStyleSheet("QFrame { background-color: #b4b4b4; }")
@@ -750,9 +766,10 @@ class AvailableSkillPanel(QFrame):
     scrollClicked = pyqtSignal(int)
     skillClicked = pyqtSignal(object)
 
-    def __init__(self) -> None:
+    def __init__(self, popup_manager: PopupManager) -> None:
         super().__init__()
 
+        self.popup_manager: PopupManager = popup_manager
         self.columns: list[AvailableSkillPanel.Column] = []
         self.setStyleSheet("QFrame { background-color: transparent; }")
 
@@ -762,7 +779,8 @@ class AvailableSkillPanel(QFrame):
 
         for scroll_index in range(app_state.macro.current_server.scroll_slot_count):
             column: AvailableSkillPanel.Column = AvailableSkillPanel.Column(
-                scroll_index
+                scroll_index=scroll_index,
+                popup_manager=self.popup_manager,
             )
             column.scrollClicked.connect(self.scrollClicked.emit)
             column.skillClicked.connect(self.skillClicked.emit)
@@ -805,10 +823,15 @@ class AvailableSkillPanel(QFrame):
         scrollClicked = pyqtSignal(int)
         skillClicked = pyqtSignal(object)
 
-        def __init__(self, scroll_index: int) -> None:
+        def __init__(
+            self,
+            scroll_index: int,
+            popup_manager: PopupManager,
+        ) -> None:
             super().__init__()
 
             self.scroll_index: int = scroll_index
+            self.popup_manager: PopupManager = popup_manager
             self.setStyleSheet("QFrame { background-color: transparent; }")
 
             self.scroll_button: QPushButton = QPushButton(self)
@@ -816,6 +839,10 @@ class AvailableSkillPanel(QFrame):
             self.scroll_button.setCursor(Qt.CursorShape.PointingHandCursor)
             self.scroll_button.clicked.connect(
                 lambda: self.scrollClicked.emit(self.scroll_index)
+            )
+            self.popup_manager.bind_hover_card(
+                self.scroll_button,
+                self._build_scroll_hover_card,
             )
 
             self.skill_buttons: list[QPushButton] = []
@@ -829,6 +856,10 @@ class AvailableSkillPanel(QFrame):
                 )
                 button.clicked.connect(
                     lambda _, ref=skill_ref: self.skillClicked.emit(ref)
+                )
+                self.popup_manager.bind_hover_card(
+                    button,
+                    lambda ref=skill_ref: self._build_available_skill_hover_card(ref),
                 )
                 self.skill_buttons.append(button)
 
@@ -853,11 +884,6 @@ class AvailableSkillPanel(QFrame):
                 QIcon(resource_registry.get_scroll_pixmap(scroll_id or None))
             )
             self.scroll_button.setIconSize(QSize(48, 48))
-            self.scroll_button.setToolTip(
-                app_state.macro.current_server.skill_registry.get_scroll(scroll_id).name
-                if scroll_id
-                else "스크롤 선택"
-            )
             self.scroll_button.setStyleSheet(
                 "QPushButton { border: 0px; background-color: transparent; }"
             )
@@ -875,15 +901,44 @@ class AvailableSkillPanel(QFrame):
                     QIcon(resource_registry.get_skill_pixmap(skill_id or None))
                 )
                 button.setIconSize(QSize(48, 48))
-                button.setToolTip(
-                    app_state.macro.current_server.skill_registry.get(skill_id).name
-                    if skill_id
-                    else "사용 가능 스킬 없음"
-                )
-
                 button.setStyleSheet(
                     "QPushButton { border: 0px; background-color: transparent; }"
                 )
+
+        def _build_scroll_hover_card(self) -> HoverCardData | None:
+            """현재 컬럼 스크롤 기준 호버 카드 구성"""
+
+            # 스크롤 미장착 상태에서는 카드 대신 기본 안내 숨김 처리
+            preset: MacroPreset = app_state.macro.current_preset
+            scroll_id: str = preset.skills.equipped_scrolls[self.scroll_index]
+
+            if not scroll_id:
+                return None
+
+            scroll_def: ScrollDef = app_state.macro.current_server.skill_registry.get_scroll(
+                scroll_id
+            )
+            level: int = preset.info.skill_levels[scroll_def.skills[0]]
+            return self.popup_manager.build_scroll_hover_card(scroll_def, level)
+
+        def _build_available_skill_hover_card(
+            self,
+            skill_ref: EquippedSkillRef,
+        ) -> HoverCardData | None:
+            """상단 제공 스킬 기준 호버 카드 구성"""
+
+            # 현재 프리셋에 실제로 노출되는 스킬만 카드 표시
+            preset: MacroPreset = app_state.macro.current_preset
+            skill_id: str = preset.skills.get_available_skill_id(
+                app_state.macro.current_server,
+                skill_ref,
+            )
+
+            if not skill_id:
+                return None
+
+            level: int = preset.info.skill_levels[skill_id]
+            return self.popup_manager.build_skill_hover_card(skill_id, level)
 
 
 class EquippedSkillPanel(QFrame):
@@ -894,9 +949,10 @@ class EquippedSkillPanel(QFrame):
     slotClicked = pyqtSignal(object)
     keyClicked = pyqtSignal(int)
 
-    def __init__(self) -> None:
+    def __init__(self, popup_manager: PopupManager) -> None:
         super().__init__()
 
+        self.popup_manager: PopupManager = popup_manager
         self.selected_ref: EquippedSkillRef | None = None
         self.columns: list[EquippedSkillPanel.Column] = []
         self.setStyleSheet("QFrame { background-color: transparent; }")
@@ -906,7 +962,10 @@ class EquippedSkillPanel(QFrame):
         layout.setSpacing(18)
 
         for scroll_index in range(app_state.macro.current_server.scroll_slot_count):
-            column: EquippedSkillPanel.Column = EquippedSkillPanel.Column(scroll_index)
+            column: EquippedSkillPanel.Column = EquippedSkillPanel.Column(
+                scroll_index=scroll_index,
+                popup_manager=self.popup_manager,
+            )
             column.slotClicked.connect(self.slotClicked.emit)
             column.keyClicked.connect(self.keyClicked.emit)
             self.columns.append(column)
@@ -946,10 +1005,15 @@ class EquippedSkillPanel(QFrame):
         slotClicked = pyqtSignal(object)
         keyClicked = pyqtSignal(int)
 
-        def __init__(self, scroll_index: int) -> None:
+        def __init__(
+            self,
+            scroll_index: int,
+            popup_manager: PopupManager,
+        ) -> None:
             super().__init__()
 
             self.scroll_index: int = scroll_index
+            self.popup_manager: PopupManager = popup_manager
             self.buttons: list[QPushButton] = []
             self.button_containers: list[QWidget] = []
 
@@ -983,6 +1047,10 @@ class EquippedSkillPanel(QFrame):
                 )
                 button.clicked.connect(
                     lambda _, ref=skill_ref: self.slotClicked.emit(ref)
+                )
+                self.popup_manager.bind_hover_card(
+                    button,
+                    lambda ref=skill_ref: self._build_equipped_skill_hover_card(ref),
                 )
 
                 self.buttons.append(button)
@@ -1021,11 +1089,6 @@ class EquippedSkillPanel(QFrame):
                     QIcon(resource_registry.get_skill_pixmap(skill_id or None))
                 )
                 button.setIconSize(QSize(48, 48))
-                button.setToolTip(
-                    app_state.macro.current_server.skill_registry.get(skill_id).name
-                    if skill_id
-                    else "장착 안함"
-                )
                 button.setStyleSheet(
                     "QPushButton { border: 0px; background-color: transparent; }"
                 )
@@ -1033,6 +1096,22 @@ class EquippedSkillPanel(QFrame):
             self.set_key(
                 KeyRegistry.get(preset.skills.skill_keys[scroll_index]).display
             )
+
+        def _build_equipped_skill_hover_card(
+            self,
+            skill_ref: EquippedSkillRef,
+        ) -> HoverCardData | None:
+            """하단 장착 슬롯 기준 호버 카드 구성"""
+
+            # 실제 장착된 스킬이 있는 슬롯에서만 카드 표시
+            preset: MacroPreset = app_state.macro.current_preset
+            skill_id: str = preset.skills.get_skill_id(skill_ref)
+
+            if not skill_id:
+                return None
+
+            level: int = preset.info.skill_levels[skill_id]
+            return self.popup_manager.build_skill_hover_card(skill_id, level)
 
         def set_selected(self, selected_ref: EquippedSkillRef | None) -> None:
             """선택 강조 반영"""

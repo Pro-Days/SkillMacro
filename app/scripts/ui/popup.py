@@ -11,6 +11,7 @@ from pynput import keyboard as pynput_keyboard
 from PyQt6.QtCore import (
     QCoreApplication,
     QEvent,
+    QObject,
     QPoint,
     QRect,
     QSize,
@@ -18,7 +19,7 @@ from PyQt6.QtCore import (
     QTimer,
     pyqtSignal,
 )
-from PyQt6.QtGui import QGuiApplication, QIcon, QPixmap, QScreen
+from PyQt6.QtGui import QCursor, QGuiApplication, QIcon, QPixmap, QScreen
 from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
@@ -26,6 +27,7 @@ from PyQt6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLayoutItem,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -42,7 +44,14 @@ from app.scripts.registry.resource_registry import (
     resource_registry,
 )
 from app.scripts.registry.server_registry import ServerSpec, server_registry
-from app.scripts.registry.skill_registry import ScrollDef
+from app.scripts.registry.skill_registry import (
+    BuffEffect,
+    DamageEffect,
+    HealEffect,
+    LevelEffect,
+    ScrollDef,
+    SkillDef,
+)
 
 if TYPE_CHECKING:
     from app.scripts.registry.key_registry import KeySpec
@@ -120,6 +129,26 @@ class PopupOptions:
 
 
 @dataclass(frozen=True)
+class HoverCardLine:
+    """호버 카드 본문 한 줄 데이터"""
+
+    text: str
+    color: str = "#D9D5E3"
+    point_size: int = 10
+
+
+@dataclass(frozen=True)
+class HoverCardData:
+    """호버 카드 전체 데이터"""
+
+    title: str
+    lines: tuple[HoverCardLine, ...]
+
+
+HoverCardSupplier = Callable[[], HoverCardData | None]
+
+
+@dataclass(frozen=True)
 class PopupAction:
     """
     팝업 내의 선택지 하나
@@ -142,6 +171,204 @@ class PopupContent(QFrame):
         self.setFixedWidth(fixed_width)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.setStyleSheet("QFrame { background-color: transparent; }")
+
+
+class HoverCardContent(QFrame):
+    """호버 카드 내용"""
+
+    def __init__(self) -> None:
+        super().__init__()
+
+        # 호버 카드 기본 레이아웃 구성
+        self.setStyleSheet("QFrame { background-color: transparent; }")
+        self._layout: QVBoxLayout = QVBoxLayout(self)
+        self._layout.setContentsMargins(14, 12, 14, 12)
+        self._layout.setSpacing(2)
+
+    def set_data(self, data: HoverCardData) -> None:
+        """호버 카드 데이터 반영"""
+
+        # 기존 라벨 정리
+        while self._layout.count():
+            item: QLayoutItem = self._layout.takeAt(0)  # type: ignore
+            widget: QWidget | None = item.widget()
+
+            if widget is None:
+                continue
+
+            widget.deleteLater()
+
+        # 제목 라벨 구성
+        title_label: QLabel = QLabel(data.title, self)
+        title_label.setFont(CustomFont(11))
+        title_label.setStyleSheet(
+            "QLabel { color: #F7F1A1; background-color: transparent; border: 0px; }"
+        )
+        title_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self._layout.addWidget(title_label)
+
+        # 본문 라벨 순차 추가
+        for line in data.lines:
+            body_label: QLabel = QLabel(line.text, self)
+            body_label.setFont(CustomFont(line.point_size))
+            body_label.setStyleSheet(
+                f"QLabel {{ color: {line.color}; background-color: transparent; border: 0px; }}"
+            )
+            body_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+            self._layout.addWidget(body_label)
+
+
+class HoverCardHost(QFrame):
+    """호버 카드 호스트"""
+
+    _CURSOR_OFFSET: QPoint = QPoint(18, 18)
+    _VIEWPORT_PADDING: int = 8
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+
+        self.master: QWidget = parent
+
+        # 마우스 입력을 가로채지 않는 투명 오버레이 구성
+        self.setStyleSheet("background: transparent;")
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self.hide()
+
+        # 그림자 여백을 포함한 외부 레이아웃 구성
+        root: QVBoxLayout = QVBoxLayout(self)
+        root.setContentsMargins(6, 6, 6, 6)
+
+        # 실제 카드 외형 컨테이너 구성
+        self._container: QFrame = QFrame(self)
+        self._container.setStyleSheet(
+            """
+            QFrame {
+                background-color: #110F17;
+                border: 1px solid #5A5862;
+                border-radius: 10px;
+            }
+            """
+        )
+        self._container.setGraphicsEffect(CustomShadowEffect(0, 4, 18, 160))
+        root.addWidget(self._container)
+
+        # 카드 내용 위젯 결합
+        container_layout: QVBoxLayout = QVBoxLayout(self._container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        self._content: HoverCardContent = HoverCardContent()
+        container_layout.addWidget(self._content)
+
+        # 전역 입력 감지용 이벤트 필터 설치
+        app: QCoreApplication | None = QGuiApplication.instance()
+
+        if app is not None:
+            app.installEventFilter(self)
+
+    def show_at_cursor(self, data: HoverCardData, global_pos: QPoint) -> None:
+        """지정된 마우스 위치 근처에 호버 카드 표시"""
+
+        # 최신 카드 내용 반영 및 크기 계산
+        self._content.set_data(data)
+        self._container.adjustSize()
+        self.adjustSize()
+
+        # 전역 좌표를 부모 기준 좌표로 변환
+        cursor_pos: QPoint = self.master.mapFromGlobal(global_pos)
+        target_pos: QPoint = cursor_pos + self._CURSOR_OFFSET
+        viewport: QRect = self.master.rect().adjusted(
+            self._VIEWPORT_PADDING,
+            self._VIEWPORT_PADDING,
+            -self._VIEWPORT_PADDING,
+            -self._VIEWPORT_PADDING,
+        )
+
+        # 카드가 화면 밖으로 나가지 않도록 위치 보정
+        max_x: int = max(viewport.left(), viewport.right() - self.width())
+        max_y: int = max(viewport.top(), viewport.bottom() - self.height())
+        x: int = min(max(target_pos.x(), viewport.left()), max_x)
+        y: int = min(max(target_pos.y(), viewport.top()), max_y)
+
+        self.move(x, y)
+        self.raise_()
+        self.show()
+
+    def hide_card(self) -> None:
+        """호버 카드 숨김"""
+
+        self.hide()
+
+    def eventFilter(self, obj: QObject | None, event: QEvent | None) -> bool:  # type: ignore
+        """전역 입력 발생 시 호버 카드 자동 숨김"""
+
+        if event is None:
+            return super().eventFilter(obj, event)
+
+        if not self.isVisible():
+            return super().eventFilter(obj, event)
+
+        # 클릭, 휠, 비활성화 시 카드 숨김
+        if event.type() in {
+            QEvent.Type.MouseButtonPress,
+            QEvent.Type.MouseButtonDblClick,
+            QEvent.Type.Wheel,
+            QEvent.Type.WindowDeactivate,
+        }:
+            self.hide_card()
+
+        return super().eventFilter(obj, event)
+
+
+class HoverCardTrigger(QObject):
+    """특정 위젯에 호버 카드 동작을 연결하는 이벤트 필터"""
+
+    def __init__(
+        self,
+        widget: QWidget,
+        popup_manager: PopupManager,
+        supplier: HoverCardSupplier,
+    ) -> None:
+        super().__init__(widget)
+
+        self._widget: QWidget = widget
+        self._popup_manager: PopupManager = popup_manager
+        self._supplier: HoverCardSupplier = supplier
+
+        # 마우스 이동 추적 활성화 및 이벤트 필터 설치
+        self._widget.setMouseTracking(True)
+        self._widget.installEventFilter(self)
+
+    def eventFilter(self, obj: QObject | None, event: QEvent | None) -> bool:  # type: ignore
+        """호버 진입/이동/이탈에 맞춰 카드 표시 제어"""
+
+        if event is None or obj is not self._widget:
+            return super().eventFilter(obj, event)
+
+        # 진입 및 이동 시 최신 데이터로 카드 갱신
+        if event.type() in {
+            QEvent.Type.Enter,
+            QEvent.Type.MouseMove,
+            QEvent.Type.HoverMove,
+        }:
+            data: HoverCardData | None = self._supplier()
+
+            if data is None:
+                self._popup_manager.hide_hover_card()
+                return super().eventFilter(obj, event)
+
+            self._popup_manager.show_hover_card(data, QCursor.pos())
+
+            return super().eventFilter(obj, event)
+
+        # 이탈 및 숨김 시 카드 제거
+        if event.type() in {
+            QEvent.Type.Leave,
+            QEvent.Type.HoverLeave,
+            QEvent.Type.Hide,
+            QEvent.Type.Close,
+        }:
+            self._popup_manager.hide_hover_card()
+
+        return super().eventFilter(obj, event)
 
 
 class NoticeContent(PopupContent):
@@ -772,6 +999,10 @@ class PopupManager:
         self._popup_controller.host.closed.connect(self._on_popup_host_closed)
         self._active_popup: PopupKind | None = None
 
+        # 마우스 호버 카드 호스트 및 바인딩 목록 초기화
+        self._hover_card_host: HoverCardHost = HoverCardHost(master)
+        self._hover_bindings: list[HoverCardTrigger] = []
+
         # 알림 컨트롤러
         self._notice_controller: NoticeController = NoticeController(master)
 
@@ -794,6 +1025,7 @@ class PopupManager:
         """팝업 호스트가 닫혔을 때 호출"""
 
         self._active_popup = None
+        self.hide_hover_card()
         self._stop_key_listener()
 
     def _stop_key_listener(self) -> None:
@@ -818,7 +1050,196 @@ class PopupManager:
     def close_popup(self) -> None:
         """PopupHost 기반 팝업 닫기"""
 
+        # 팝업 닫힘 시 함께 떠있는 호버 카드 정리
+        self.hide_hover_card()
         self._popup_controller.close()
+
+    def bind_hover_card(
+        self,
+        widget: QWidget,
+        supplier: HoverCardSupplier,
+    ) -> None:
+        """위젯에 동적 호버 카드 동작 연결"""
+
+        # 네이티브 툴팁과 중복되지 않도록 기존 텍스트 제거
+        widget.setToolTip("")
+
+        # 이벤트 필터 인스턴스를 보관하여 가비지 컬렉션 방지
+        trigger: HoverCardTrigger = HoverCardTrigger(widget, self, supplier)
+        self._hover_bindings.append(trigger)
+
+    def show_hover_card(self, data: HoverCardData, global_pos: QPoint) -> None:
+        """호버 카드 표시"""
+
+        self._hover_card_host.show_at_cursor(data, global_pos)
+
+    def hide_hover_card(self) -> None:
+        """호버 카드 숨김"""
+
+        self._hover_card_host.hide_card()
+
+    def build_skill_hover_card(self, skill_id: str, level: int) -> HoverCardData:
+        """스킬 정보 호버 카드 데이터 구성"""
+
+        # 현재 서버 레지스트리에서 스킬 정의 조회
+        skill_def: SkillDef = app_state.macro.current_server.skill_registry.get(
+            skill_id
+        )
+        resolved_level: int = self._resolve_skill_level(skill_def, level)
+
+        effect_lines: list[HoverCardLine] = self._build_effect_hover_lines(
+            skill_def.levels[resolved_level]
+        )
+
+        lines: list[HoverCardLine] = [
+            HoverCardLine(f"레벨 {resolved_level}", color="#F0EAD6"),
+            HoverCardLine(
+                f"쿨타임 {self._format_number(skill_def.cooltime)}초",
+                color="#B8B4C7",
+            ),
+        ]
+        lines.extend(effect_lines)
+
+        return HoverCardData(title=skill_def.name, lines=tuple(lines))
+
+    def build_scroll_hover_card(
+        self,
+        scroll_def: ScrollDef,
+        level: int,
+    ) -> HoverCardData:
+        """스크롤 정보 호버 카드 데이터 구성"""
+
+        # 스크롤 공용 레벨 표시 라인 먼저 구성
+        lines: list[HoverCardLine] = [
+            HoverCardLine(f"레벨 {level}", color="#F0EAD6"),
+        ]
+
+        # 포함된 두 스킬의 핵심 요약 순차 추가
+        for skill_id in scroll_def.skills:
+            skill_def: SkillDef = app_state.macro.current_server.skill_registry.get(
+                skill_id
+            )
+
+            resolved_level: int = self._resolve_skill_level(skill_def, level)
+
+            summary: str = self._build_effect_summary(skill_def.levels[resolved_level])
+
+            lines.append(
+                HoverCardLine(
+                    f"{skill_def.name} | 쿨타임 {self._format_number(skill_def.cooltime)}초",
+                    color="#EAE7F2",
+                )
+            )
+
+            if summary:
+                lines.append(HoverCardLine(summary, color="#B8B4C7"))
+
+        return HoverCardData(title=scroll_def.name, lines=tuple(lines))
+
+    def _resolve_skill_level(self, skill_def: SkillDef, level: int) -> int:
+        """요청 레벨을 실제 보유 레벨 범위에 맞춰 보정"""
+
+        # 원하는 스킬 레벨 데이터가 없으면, 보유한 레벨 중 가장 높은 레벨로 보정
+        available_levels: list[int] = sorted(skill_def.levels.keys())
+
+        if level in skill_def.levels:
+            return level
+
+        lower_levels: list[int] = [
+            candidate_level
+            for candidate_level in available_levels
+            if candidate_level <= level
+        ]
+
+        if lower_levels:
+            return lower_levels[-1]
+
+        return available_levels[0]
+
+    def _build_effect_hover_lines(
+        self,
+        effects: list[LevelEffect],
+    ) -> list[HoverCardLine]:
+        """효과 목록을 카드 본문 라인으로 변환"""
+
+        # 현재 레벨의 각 효과를 한 줄씩 가독성 있게 구성
+        lines: list[HoverCardLine] = []
+
+        for effect in effects:
+            text: str
+            color: str
+
+            if isinstance(effect, DamageEffect):
+                text = (
+                    f"{self._format_number(effect.time)}초: "
+                    f"데미지 {self._format_number(effect.damage)}"
+                )
+                color = "#FFB36A"
+
+            elif isinstance(effect, HealEffect):
+                text = (
+                    f"{self._format_number(effect.time)}초: "
+                    f"회복 {self._format_number(effect.heal)}"
+                )
+                color = "#8FE9FF"
+
+            elif isinstance(effect, BuffEffect):
+                buff_effect: BuffEffect = effect
+                stat_label: str = config.specs.STATS[buff_effect.stat].label
+
+                text = (
+                    f"{self._format_number(buff_effect.time)}초: "
+                    f"{stat_label} {self._format_number(buff_effect.value)} "
+                    f"({self._format_number(buff_effect.duration)}초)"
+                )
+                color = "#9DDF8B"
+
+            else:
+                continue
+
+            lines.append(HoverCardLine(text=text, color=color))
+
+        return lines
+
+    def _build_effect_summary(self, effects: list[LevelEffect]) -> str:
+        """스크롤 카드용 짧은 효과 요약 구성"""
+
+        # 여러 효과를 한 줄 요약으로 합쳐 스크롤 카드 높이 최소화
+        summaries: list[str] = []
+
+        for effect in effects:
+            if isinstance(effect, DamageEffect):
+                summaries.append(
+                    f"{self._format_number(effect.time)}초 데미지 {self._format_number(effect.damage)}"
+                )
+
+            elif isinstance(effect, HealEffect):
+                summaries.append(
+                    f"{self._format_number(effect.time)}초 회복 {self._format_number(effect.heal)}"
+                )
+
+            elif isinstance(effect, BuffEffect):
+                buff_effect: BuffEffect = effect
+                stat_label: str = config.specs.STATS[buff_effect.stat].label
+                summaries.append(
+                    f"{self._format_number(buff_effect.time)}초 {stat_label} {self._format_number(buff_effect.value)}"
+                )
+
+            else:
+                continue
+
+        return " / ".join(summaries)
+
+    def _format_number(self, value: int | float) -> str:
+        """정수형 표기는 간결하게, 실수형 표기는 필요한 자리만 유지"""
+
+        # 불필요한 소수점 0 제거
+        number: float = float(value)
+
+        if number.is_integer():
+            return str(int(number))
+
+        return f"{number:.2f}".rstrip("0").rstrip(".")
 
     def make_action_list_popup(
         self,
@@ -1134,6 +1555,7 @@ class PopupManager:
         self._active_popup = PopupKind.SCROLL_SELECT
 
         content: ScrollGridSelectContent = ScrollGridSelectContent(
+            popup_manager=self,
             scroll_defs=scroll_defs,
             equipped_scroll_ids=equipped_scroll_ids,
             current_scroll_id=current_scroll_id,
@@ -1224,7 +1646,10 @@ class PopupManager:
 
         self._active_popup = PopupKind.LINK_SKILL_SELECT
 
-        content = SkillGridSelectContent(skill_ids=skill_ids)
+        content: SkillGridSelectContent = SkillGridSelectContent(
+            popup_manager=self,
+            skill_ids=skill_ids,
+        )
 
         def _picked(skill_id: str) -> None:
             self.close_popup()
@@ -1249,13 +1674,15 @@ class SkillGridSelectContent(QFrame):
 
     def __init__(
         self,
+        popup_manager: PopupManager,
         skill_ids: list[str],
     ) -> None:
         super().__init__()
 
+        self.popup_manager: PopupManager = popup_manager
         columns: int = 5
-        margin = 8
-        spacing = 6
+        margin: int = 8
+        spacing: int = 6
         icon_size: int = 40
         button_size: int = 44
         max_visible_rows: int = 6
@@ -1284,13 +1711,10 @@ class SkillGridSelectContent(QFrame):
             r: int = idx // columns
             c: int = idx % columns
 
-            btn = QPushButton(container)
+            btn: QPushButton = QPushButton(container)
             btn.setFixedSize(button_size, button_size)
             btn.setIcon(QIcon(resource_registry.get_skill_pixmap(skill_id)))
             btn.setIconSize(QSize(icon_size, icon_size))
-            btn.setToolTip(
-                app_state.macro.current_server.skill_registry.get(skill_id).name
-            )
             btn.setStyleSheet(
                 """
                 QPushButton { background-color: white; border-radius: 10px; border: 1px solid #dddddd; }
@@ -1298,6 +1722,10 @@ class SkillGridSelectContent(QFrame):
                 """
             )
             btn.clicked.connect(lambda _, sid=skill_id: self.selected.emit(sid))
+            self.popup_manager.bind_hover_card(
+                btn,
+                lambda sid=skill_id: self._build_skill_hover_card(sid),
+            )
 
             grid.addWidget(btn, r, c)
 
@@ -1317,6 +1745,13 @@ class SkillGridSelectContent(QFrame):
         estimated_h: int = margin * 2 + visible_rows * (button_size + spacing) - spacing
         scroll.setFixedHeight(estimated_h)
 
+    def _build_skill_hover_card(self, skill_id: str) -> HoverCardData | None:
+        """선택 가능한 스킬 버튼 기준 호버 카드 구성"""
+
+        # 현재 프리셋 저장 레벨 기준으로 카드 내용 구성
+        level: int = app_state.macro.current_preset.info.skill_levels[skill_id]
+        return self.popup_manager.build_skill_hover_card(skill_id, level)
+
 
 class ScrollGridSelectContent(QFrame):
     """스크롤 선택용 그리드 컨텐츠"""
@@ -1325,12 +1760,14 @@ class ScrollGridSelectContent(QFrame):
 
     def __init__(
         self,
+        popup_manager: PopupManager,
         scroll_defs: list[ScrollDef],
         equipped_scroll_ids: list[str],
         current_scroll_id: str,
     ) -> None:
         super().__init__()
 
+        self.popup_manager: PopupManager = popup_manager
         columns: int = 5
         margin: int = 8
         spacing: int = 6
@@ -1364,39 +1801,45 @@ class ScrollGridSelectContent(QFrame):
             column: int = idx % columns
 
             is_selected: bool = scroll_def.id == current_scroll_id
-            is_disabled: bool = scroll_def.id in occupied_scroll_ids
-
-            tooltip_lines: list[str] = [scroll_def.name]
-
-            if is_disabled:
-                tooltip_lines.append("이미 다른 칸에 장착됨")
+            is_occupied: bool = scroll_def.id in occupied_scroll_ids
 
             btn: QPushButton = QPushButton(container)
             btn.setFixedSize(button_size, button_size)
             btn.setIcon(QIcon(resource_registry.get_scroll_pixmap(scroll_def.id)))
             btn.setIconSize(QSize(icon_size, icon_size))
-            btn.setToolTip("\n".join(tooltip_lines))
-            btn.setEnabled(not is_disabled)
+            btn.setCursor(
+                Qt.CursorShape.ArrowCursor
+                if is_occupied
+                else Qt.CursorShape.PointingHandCursor
+            )
 
             border_color: str = "#2563EB" if is_selected else "#DDDDDD"
             border_width: int = 2 if is_selected else 1
+            background_color: str = "#F2F2F2" if is_occupied else "#FFFFFF"
+            hover_background_color: str = "#F2F2F2" if is_occupied else "#EEEEEE"
             btn.setStyleSheet(
                 f"""
                 QPushButton {{
-                    background-color: white;
+                    background-color: {background_color};
                     border-radius: 10px;
                     border: {border_width}px solid {border_color};
                 }}
-                QPushButton:hover:enabled {{
-                    background-color: #EEEEEE;
-                }}
-                QPushButton:disabled {{
-                    background-color: #F2F2F2;
+                QPushButton:hover {{
+                    background-color: {hover_background_color};
                 }}
                 """
             )
             btn.clicked.connect(
-                lambda _, scroll_id=scroll_def.id: self.selected.emit(scroll_id)
+                lambda _, scroll_id=scroll_def.id, occupied=is_occupied: self._emit_scroll_selected(
+                    scroll_id,
+                    occupied,
+                )
+            )
+            self.popup_manager.bind_hover_card(
+                btn,
+                lambda scroll_definition=scroll_def: self._build_scroll_hover_card(
+                    scroll_definition
+                ),
             )
 
             grid.addWidget(btn, row, column)
@@ -1416,3 +1859,25 @@ class ScrollGridSelectContent(QFrame):
             margin * 2 + visible_rows * (button_size + spacing) - spacing
         )
         scroll_area.setFixedHeight(estimated_height)
+
+    def _emit_scroll_selected(self, scroll_id: str, is_occupied: bool) -> None:
+        """점유 여부를 확인한 뒤 스크롤 선택 이벤트 전달"""
+
+        # 다른 칸에서 사용 중인 스크롤은 선택만 차단
+        if is_occupied:
+            return
+
+        self.selected.emit(scroll_id)
+
+    def _build_scroll_hover_card(
+        self,
+        scroll_def: ScrollDef,
+    ) -> HoverCardData | None:
+        """스크롤 버튼 기준 호버 카드 구성"""
+
+        # 스크롤 공용 레벨은 첫 번째 스킬 저장값을 기준으로 조회
+        # TODO: 스킬 레벨을 스크롤 레벨로 통일
+        level: int = app_state.macro.current_preset.info.skill_levels[
+            scroll_def.skills[0]
+        ]
+        return self.popup_manager.build_scroll_hover_card(scroll_def, level)
