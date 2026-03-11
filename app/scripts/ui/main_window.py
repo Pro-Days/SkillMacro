@@ -6,9 +6,9 @@ from typing import Any
 from webbrowser import open_new
 
 import requests
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QColor, QIcon, QKeyEvent, QPalette, QPixmap
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QColor, QIcon, QKeyEvent, QPalette, QPixmap
+from PySide6.QtWidgets import (
     QApplication,
     QFrame,
     QHBoxLayout,

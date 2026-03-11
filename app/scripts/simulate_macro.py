@@ -114,6 +114,7 @@ def calculate_req_stat(power: float, stat_type: str, power_num: int) -> float:
             return 0.0
 
         mid: float = (low + high) * 0.5
+        # TODO: dataclass로 변경
         stats.set_stat_from_name(stat=stat_type, value=base_stat + mid)
 
         # 전투력 계산
@@ -130,6 +131,8 @@ def calculate_req_stat(power: float, stat_type: str, power_num: int) -> float:
 
         num += 1
 
+    # ???
+    # mid -> low로 변경 고려: 필요한 최소 값
     return (low + high) * 0.5
 
 

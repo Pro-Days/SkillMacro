@@ -3,9 +3,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QFont, QPixmap
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QFont, QPixmap
+from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
     QGraphicsDropShadowEffect,

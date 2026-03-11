@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import QRect, QSize, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QColor, QIcon, QPixmap
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import QRect, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QIcon, QPixmap
+from PySide6.QtWidgets import (
     QFrame,
     QGraphicsDropShadowEffect,
     QHBoxLayout,
@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 
 
 class MainUI(QFrame):
-    presetChanged = pyqtSignal(object, int)
+    presetChanged = Signal(object, int)
 
     def __init__(self, master: MainWindow) -> None:
         super().__init__()
@@ -245,11 +245,11 @@ class MainUI(QFrame):
 
 
 class TabWidget(QTabWidget):
-    noticeRequested = pyqtSignal(object)
-    skillKeyRequested = pyqtSignal(int)
-    scrollSelectRequested = pyqtSignal(int)
-    dataChanged = pyqtSignal()
-    skillUnequipped = pyqtSignal(str)
+    noticeRequested = Signal(object)
+    skillKeyRequested = Signal(int)
+    scrollSelectRequested = Signal(int)
+    dataChanged = Signal()
+    skillUnequipped = Signal(str)
 
     def __init__(self, master: QWidget, popup_manager: PopupManager) -> None:
         super().__init__(master)
@@ -432,11 +432,11 @@ class TabWidget(QTabWidget):
 
 
 class Tab(QFrame):
-    noticeRequested = pyqtSignal(object)
-    skillKeyRequested = pyqtSignal(int)
-    scrollSelectRequested = pyqtSignal(int)
-    dataChanged = pyqtSignal()
-    skillUnequipped = pyqtSignal(str)
+    noticeRequested = Signal(object)
+    skillKeyRequested = Signal(int)
+    scrollSelectRequested = Signal(int)
+    dataChanged = Signal()
+    skillUnequipped = Signal(str)
 
     def __init__(
         self,
@@ -763,8 +763,8 @@ class SkillPreview(QFrame):
 class AvailableSkillPanel(QFrame):
     """상단 장착 스크롤과 사용 가능 스킬 패널"""
 
-    scrollClicked = pyqtSignal(int)
-    skillClicked = pyqtSignal(object)
+    scrollClicked = Signal(int)
+    skillClicked = Signal(object)
 
     def __init__(self, popup_manager: PopupManager) -> None:
         super().__init__()
@@ -820,8 +820,8 @@ class AvailableSkillPanel(QFrame):
         return self.columns[index].scroll_button
 
     class Column(QFrame):
-        scrollClicked = pyqtSignal(int)
-        skillClicked = pyqtSignal(object)
+        scrollClicked = Signal(int)
+        skillClicked = Signal(object)
 
         def __init__(
             self,
@@ -946,8 +946,8 @@ class EquippedSkillPanel(QFrame):
 
     SLOT_BUTTON_SIZE: int = 48
     SLOT_SELECTED_BUTTON_SIZE: int = 56
-    slotClicked = pyqtSignal(object)
-    keyClicked = pyqtSignal(int)
+    slotClicked = Signal(object)
+    keyClicked = Signal(int)
 
     def __init__(self, popup_manager: PopupManager) -> None:
         super().__init__()
@@ -1002,8 +1002,8 @@ class EquippedSkillPanel(QFrame):
             column.update_from_preset(preset, scroll_index)
 
     class Column(QFrame):
-        slotClicked = pyqtSignal(object)
-        keyClicked = pyqtSignal(int)
+        slotClicked = Signal(object)
+        keyClicked = Signal(int)
 
         def __init__(
             self,

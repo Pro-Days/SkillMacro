@@ -4,7 +4,7 @@ import hashlib
 import os
 from dataclasses import dataclass, field
 
-from PyQt6.QtGui import QColor, QFontDatabase, QPainter, QPixmap
+from PySide6.QtGui import QColor, QFontDatabase, QPainter, QPixmap
 
 
 def convert_resource_path(relative_path: str) -> str:

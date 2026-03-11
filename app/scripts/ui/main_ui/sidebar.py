@@ -5,9 +5,9 @@ from collections.abc import Callable
 from functools import partial
 from typing import TYPE_CHECKING, Literal
 
-from PyQt6.QtCore import QSize, Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QColor, QIcon, QPixmap
-from PyQt6.QtWidgets import (
+from PySide6.QtCore import QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QIcon, QPixmap
+from PySide6.QtWidgets import (
     QFrame,
     QGraphicsDropShadowEffect,
     QGridLayout,
@@ -50,7 +50,7 @@ if TYPE_CHECKING:
 class Sidebar(QFrame):
     """좌측 사이드바 클래스"""
 
-    dataChanged = pyqtSignal()
+    dataChanged = Signal()
 
     def __init__(
         self,
@@ -1087,8 +1087,8 @@ class SkillSettings(QFrame):
 class LinkSkillSettings(QFrame):
     """사이드바 타입 3 - 연계설정 스킬 목록"""
 
-    editRequested = pyqtSignal(int, object)
-    contentResized = pyqtSignal()
+    editRequested = Signal(int, object)
+    contentResized = Signal()
 
     def __init__(
         self,
@@ -1409,9 +1409,9 @@ class LinkSkillEditor(QFrame):
     """사이드바 타입 4 - 연계설정 편집"""
 
     # 편집 종료(취소/저장) 후 목록으로 돌아가기 위한 시그널
-    closed = pyqtSignal()
-    saved = pyqtSignal()
-    contentResized = pyqtSignal()
+    closed = Signal()
+    saved = Signal()
+    contentResized = Signal()
 
     # todo: 링크스킬 데이터를 클래스로 관리하도록 수정
     def __init__(
@@ -1792,8 +1792,8 @@ class LinkSkillEditor(QFrame):
         return count > 1
 
     class SkillItem(QFrame):
-        changeRequested = pyqtSignal(int)
-        removeRequested = pyqtSignal(int)
+        changeRequested = Signal(int)
+        removeRequested = Signal(int)
 
         def __init__(
             self,

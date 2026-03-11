@@ -3,9 +3,9 @@ from __future__ import annotations
 import math
 
 import pyqtgraph as pg
-from PyQt6.QtCore import QPoint, QPointF, Qt
-from PyQt6.QtGui import QBrush, QPainter
-from PyQt6.QtWidgets import QLabel, QWidget
+from PySide6.QtCore import QPoint, QPointF, Qt
+from PySide6.QtGui import QBrush, QPainter
+from PySide6.QtWidgets import QLabel, QWidget
 
 from app.scripts.custom_classes import CustomFont, SimAttack
 from app.scripts.registry.skill_registry import get_builtin_skill_id, parse_skill_id

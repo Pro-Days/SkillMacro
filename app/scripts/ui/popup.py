@@ -3,26 +3,23 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum, auto
-from functools import partial
 from typing import TYPE_CHECKING, Literal
 from webbrowser import open_new
 
 from pynput import keyboard as pynput_keyboard
-from PyQt6.QtCore import (
+from PySide6.QtCore import (
     QCoreApplication,
     QEvent,
     QObject,
     QPoint,
     QRect,
     QSize,
+    Signal,
     Qt,
-    QTimer,
-    pyqtSignal,
 )
-from PyQt6.QtGui import QCursor, QGuiApplication, QIcon, QPixmap, QScreen
-from PyQt6.QtWidgets import (
+from PySide6.QtGui import QCursor, QGuiApplication, QIcon, QPixmap
+from PySide6.QtWidgets import (
     QApplication,
-    QDialog,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -55,7 +52,6 @@ from app.scripts.registry.skill_registry import (
 
 if TYPE_CHECKING:
     from app.scripts.registry.key_registry import KeySpec
-    from app.scripts.ui.main_ui.main_ui import MainUI
     from app.scripts.ui.main_window import MainWindow
 
 
@@ -115,7 +111,7 @@ class NoticeKind(Enum):
 @dataclass
 class NoticeData:
     text: str
-    icon: str = "error"  # 기본값
+    icon: str = "error"
     extra_action: tuple[str, Callable] | None = None
     height: int = 70
 
@@ -373,7 +369,7 @@ class HoverCardTrigger(QObject):
 
 class NoticeContent(PopupContent):
 
-    closed = pyqtSignal()
+    closed = Signal()
 
     def __init__(self, data: NoticeData) -> None:
         super().__init__(350)
@@ -463,7 +459,7 @@ class ActionListContent(PopupContent):
     PopupAction 리스트를 받아 버튼 목록을 생성
     """
 
-    triggered = pyqtSignal(str)
+    triggered = Signal(str)
 
     def __init__(
         self,
@@ -513,7 +509,7 @@ class ActionListContent(PopupContent):
 class InputConfirmContent(PopupContent):
     """라인에딧 & 확인 버튼 형태의 팝업"""
 
-    submitted = pyqtSignal(str)
+    submitted = Signal(str)
 
     def __init__(
         self,
@@ -559,8 +555,8 @@ class InputConfirmContent(PopupContent):
 class KeyCaptureContent(PopupContent):
     """QLabel & 확인 버튼 형태의 시작키 입력 팝업"""
 
-    submitted = pyqtSignal(object)  # KeySpec | None
-    _key_received = pyqtSignal(object)
+    submitted = Signal(object)  # KeySpec | None
+    _key_received = Signal(object)
 
     def __init__(self, default_key: KeySpec | None = None) -> None:
         super().__init__(200)
@@ -621,7 +617,7 @@ class PopupHost(QWidget):
     팝업 내용을 설정하고, 앵커 위젯 기준으로 위치를 계산하여 표시
     """
 
-    closed = pyqtSignal()
+    closed = Signal()
 
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
@@ -1670,7 +1666,7 @@ class SkillGridSelectContent(QFrame):
     # todo: 스킬 이름을 확인할 수 있도록 개선
     # todo: 스킬을 선택하는 모든 팝업에 재사용 가능하도록 수정
 
-    selected = pyqtSignal(str)
+    selected = Signal(str)
 
     def __init__(
         self,
@@ -1756,7 +1752,7 @@ class SkillGridSelectContent(QFrame):
 class ScrollGridSelectContent(QFrame):
     """스크롤 선택용 그리드 컨텐츠"""
 
-    selected = pyqtSignal(str)
+    selected = Signal(str)
 
     def __init__(
         self,
