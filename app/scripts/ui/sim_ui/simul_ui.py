@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from functools import partial
 from typing import TYPE_CHECKING
 
@@ -52,7 +52,59 @@ from app.scripts.ui.sim_ui.graph import (
 )
 
 if TYPE_CHECKING:
+    from app.scripts.macro_models import MacroPreset
+    from app.scripts.registry.server_registry import ServerSpec
     from app.scripts.ui.main_window import MainWindow
+
+
+@dataclass(frozen=True)
+class SkillLevelInputSpec:
+    """스킬 레벨 입력 UI 한 칸의 표시/저장 정보"""
+
+    title: str
+    skill_ids: tuple[str, ...]
+    value: int
+    scroll_id: str | None = None
+    skill_id: str | None = None
+
+
+def build_skill_level_input_specs() -> list[SkillLevelInputSpec]:
+    """현재 서버/프리셋 기준 스킬 레벨 입력 목록 구성"""
+
+    # 스크롤 소속 스킬과 단독 스킬을 분리하기 위한 기준 준비
+    server: ServerSpec = app_state.macro.current_server
+    preset: MacroPreset = app_state.macro.current_preset
+    specs: list[SkillLevelInputSpec] = []
+    scroll_skill_ids: set[str] = set()
+
+    # 스크롤 공용 레벨 입력 칸 우선 구성
+    for scroll_def in server.skill_registry.get_all_scroll_defs():
+        shared_level: int = preset.info.skill_levels[scroll_def.skills[0]]
+        specs.append(
+            SkillLevelInputSpec(
+                title=scroll_def.name,
+                skill_ids=scroll_def.skills,
+                value=shared_level,
+                scroll_id=scroll_def.id,
+            )
+        )
+        scroll_skill_ids.update(scroll_def.skills)
+
+    # 스크롤에 속하지 않는 개별 스킬 입력 칸 후순위 구성
+    for skill_id in server.skill_registry.get_all_skill_ids():
+        if skill_id in scroll_skill_ids:
+            continue
+
+        specs.append(
+            SkillLevelInputSpec(
+                title=server.skill_registry.get(skill_id).name,
+                skill_ids=(skill_id,),
+                value=preset.info.skill_levels[skill_id],
+                skill_id=skill_id,
+            )
+        )
+
+    return specs
 
 
 class SimUI:
@@ -305,14 +357,18 @@ class Sim1UI(QFrame):
         ) -> None:
             super().__init__(parent)
 
-            skills_data: dict[str, int] = {
-                name: app_state.macro.current_preset.info.skill_levels[name]
-                for name in app_state.macro.current_server.skill_registry.get_all_skill_ids()
-            }
+            skill_input_specs: list[SkillLevelInputSpec] = (
+                build_skill_level_input_specs()
+            )
 
-            # 스킬 입력 위젯 생성
-            self.skill_inputs = SkillInputs(self, skills_data, self.input_changed)
+            # 스크롤 공용 레벨 기준 입력 위젯 생성
+            self.skill_inputs: SkillInputs = SkillInputs(
+                self,
+                skill_input_specs,
+                self.input_changed,
+            )
             self.inputs: list[CustomLineEdit] = self.skill_inputs.inputs
+            self.entries: list[SkillLevelInputSpec] = self.skill_inputs.entries
 
             # 레이아웃 설정
             layout = QVBoxLayout(self)
@@ -335,7 +391,7 @@ class Sim1UI(QFrame):
                 return 1 <= int(text) <= app_state.macro.current_server.max_skill_level
 
             # 모두 통과 여부 확인
-            all_valid = True
+            all_valid: bool = True
             for j in self.inputs:
                 is_valid: bool = checkInput(j.text())
 
@@ -347,13 +403,14 @@ class Sim1UI(QFrame):
 
             # 모두 통과했다면 저장 및 플래그 설정
             if all_valid:
-                for _input, name in zip(
-                    self.inputs,
-                    app_state.macro.current_server.skill_registry.get_all_skill_ids(),
-                ):
-                    app_state.macro.current_preset.info.skill_levels[name] = int(
-                        _input.text()
-                    )
+                # 공용 레벨 입력값을 스크롤 소속 모든 스킬 ID에 동시 반영
+                for _input, entry in zip(self.inputs, self.entries):
+                    input_level: int = int(_input.text())
+
+                    for skill_id in entry.skill_ids:
+                        app_state.macro.current_preset.info.skill_levels[skill_id] = (
+                            input_level
+                        )
 
                 save_data()
 
@@ -540,7 +597,7 @@ class Sim2UI(QFrame):
             self.graph = SkillDpsRatioCanvas(
                 self,
                 resultDet,
-                app_state.macro.current_preset.skills.compact_equipped_skill_ids(),
+                app_state.macro.current_preset.skills.get_placed_skill_ids(),
                 app_state.macro.current_server.id,
             )
             self.graph.setFixedHeight(300)
@@ -605,7 +662,7 @@ class Sim2UI(QFrame):
             self.graph = SkillContributionCanvas(
                 self,
                 resultDet,
-                app_state.macro.current_preset.skills.compact_equipped_skill_ids(),
+                app_state.macro.current_preset.skills.get_placed_skill_ids(),
                 app_state.macro.current_server.id,
             )
             self.graph.setFixedHeight(400)
@@ -827,11 +884,14 @@ class Sim3UI(QFrame):
             }
             self.stats = StatInputs(self, stat_data, self.on_stat_changed)
 
-            skills_data: dict[str, int] = {
-                name: app_state.macro.current_preset.info.skill_levels[name]
-                for name in app_state.macro.current_server.skill_registry.get_all_skill_ids()
-            }
-            self.skills = SkillInputs(self, skills_data, self.on_skill_changed)
+            skill_input_specs: list[SkillLevelInputSpec] = (
+                build_skill_level_input_specs()
+            )
+            self.skills: SkillInputs = SkillInputs(
+                self,
+                skill_input_specs,
+                self.on_skill_changed,
+            )
 
             self.power_labels = PowerLabels(self)
             self.update_powers()
@@ -1102,28 +1162,33 @@ class SkillInputs(QFrame):
     def __init__(
         self,
         mainframe: QWidget,
-        skills_data: dict[str, int],
+        entries: list[SkillLevelInputSpec],
         connected_function: Callable[[], None],
-    ):
+    ) -> None:
         super().__init__(mainframe)
 
         if config.ui.debug_colors:
             self.setStyleSheet("QFrame { background-color: green; border: 0px solid; }")
 
         # 그리드 레이아웃 위젯 생성
-        grid_layout = QGridLayout(self)
+        grid_layout: QGridLayout = QGridLayout(self)
 
         # 아이템을 저장할 리스트
+        self.entries: list[SkillLevelInputSpec] = entries
         self.inputs: list[CustomLineEdit] = []
 
         # column 수 설정
-        COLS = 7
-        for i, (skill_id, value) in enumerate(skills_data.items()):
-            item_widget = self.SkillInput(self, skill_id, value, connected_function)
+        cols: int = 7
+        for i, entry in enumerate(self.entries):
+            item_widget: SkillInputs.SkillInput = self.SkillInput(
+                self,
+                entry,
+                connected_function,
+            )
 
             # 위치 계산
-            row: int = i // COLS
-            column: int = i % COLS
+            row: int = i // cols
+            column: int = i % cols
 
             # 그리드에 추가
             grid_layout.addWidget(item_widget, row, column)
@@ -1144,11 +1209,10 @@ class SkillInputs(QFrame):
     class SkillInput(QFrame):
         def __init__(
             self,
-            parent,
-            skill_id: str,
-            value: int,
+            parent: QWidget,
+            entry: SkillLevelInputSpec,
             connected_function: Callable[[], None],
-        ):
+        ) -> None:
             super().__init__(parent)
 
             if config.ui.debug_colors:
@@ -1157,33 +1221,39 @@ class SkillInputs(QFrame):
                 )
 
             # 전체 layout 설정
-            grid = QGridLayout()
+            grid: QGridLayout = QGridLayout()
             grid.setContentsMargins(0, 0, 0, 0)
 
             # 레이블
-            label = QLabel(
-                app_state.macro.current_server.skill_registry.get(skill_id).name, self
-            )
+            label: QLabel = QLabel(entry.title, self)
             label.setStyleSheet(f"QLabel {{ border: 0px solid; border-radius: 4px; }}")
             label.setFont(CustomFont(14))
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
             # 레벨 입력
-            level_input = KVInput(
+            level_input: KVInput = KVInput(
                 self,
                 "레벨",
-                str(value),
+                str(entry.value),
                 connected_function,
                 max_width=40,
             )
 
-            # 스킬 이미지
+            # 스크롤 아이콘 우선, 없으면 개별 스킬 아이콘 사용
             icon_size: int = level_input.sizeHint().height()
-            image = SkillImage(
+            icon_pixmap: QPixmap
+            if entry.scroll_id is not None:
+                icon_pixmap = resource_registry.get_scroll_pixmap(entry.scroll_id)
+
+            elif entry.skill_id is not None:
+                icon_pixmap = resource_registry.get_skill_pixmap(entry.skill_id)
+
+            else:
+                raise ValueError("SkillLevelInputSpec must include scroll_id or skill_id")
+
+            image: SkillImage = SkillImage(
                 self,
-                resource_registry.get_skill_pixmap(
-                    skill_id,
-                ),
+                icon_pixmap,
                 icon_size,
             )
 

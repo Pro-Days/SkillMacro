@@ -206,18 +206,18 @@ def _collect_priority_skill_sequence() -> list[EquippedSkillRef]:
     """우선순위 기준 스킬 순서 반환"""
 
     skill_ref_map: dict[str, EquippedSkillRef] = (
-        app_state.macro.current_preset.skills.get_skill_ref_map(
+        app_state.macro.current_preset.skills.get_placed_skill_ref_map(
             app_state.macro.current_server
         )
     )
-    equipped_refs: list[EquippedSkillRef] = (
-        app_state.macro.current_preset.skills.get_equipped_skill_refs(
+    placed_refs: list[EquippedSkillRef] = (
+        app_state.macro.current_preset.skills.get_placed_skill_refs(
             app_state.macro.current_server
         )
     )
     skill_sequence: list[EquippedSkillRef] = []
 
-    for target_priority in range(1, len(equipped_refs) + 1):
+    for target_priority in range(1, len(placed_refs) + 1):
         for skill_id, setting in app_state.macro.current_preset.usage_settings.items():
             if setting.priority != target_priority:
                 continue
@@ -225,7 +225,7 @@ def _collect_priority_skill_sequence() -> list[EquippedSkillRef]:
             skill_ref: EquippedSkillRef = skill_ref_map[skill_id]
             skill_sequence.append(skill_ref)
 
-    for skill_ref in equipped_refs:
+    for skill_ref in placed_refs:
         if skill_ref not in skill_sequence:
             skill_sequence.append(skill_ref)
 
@@ -235,20 +235,20 @@ def _collect_priority_skill_sequence() -> list[EquippedSkillRef]:
 def init_macro() -> None:
     """매크로 초기 설정"""
 
-    equipped_refs: list[EquippedSkillRef] = (
-        app_state.macro.current_preset.skills.get_equipped_skill_refs(
+    placed_refs: list[EquippedSkillRef] = (
+        app_state.macro.current_preset.skills.get_placed_skill_refs(
             app_state.macro.current_server
         )
     )
 
     app_state.macro.afk_started_time = time.time()
     app_state.macro.current_line_index = 0
-    app_state.macro.prepared_skills = set(equipped_refs)
+    app_state.macro.prepared_skills = set(placed_refs)
     app_state.macro.skill_sequence = _collect_priority_skill_sequence()
     app_state.macro.using_link_skills.clear()
 
     skill_ref_map: dict[str, EquippedSkillRef] = (
-        app_state.macro.current_preset.skills.get_skill_ref_map(
+        app_state.macro.current_preset.skills.get_placed_skill_ref_map(
             app_state.macro.current_server
         )
     )
@@ -273,7 +273,7 @@ def init_macro() -> None:
 
     now: float = time.perf_counter()
     app_state.macro.skill_cooltime_timers = {
-        skill_ref: now for skill_ref in equipped_refs
+        skill_ref: now for skill_ref in placed_refs
     }
 
 
@@ -300,7 +300,7 @@ def use_link_skill(link_skill: LinkSkill, run_id: int) -> None:
     """연계스킬 사용 함수"""
 
     skill_ref_map: dict[str, EquippedSkillRef] = (
-        app_state.macro.current_preset.skills.get_skill_ref_map(
+        app_state.macro.current_preset.skills.get_placed_skill_ref_map(
             app_state.macro.current_server
         )
     )
@@ -336,7 +336,9 @@ def _append_regular_task(
     ]
 
     for skill_ref in app_state.macro.skill_sequence:
-        skill_id: str = app_state.macro.current_preset.skills.get_skill_id(skill_ref)
+        skill_id: str = app_state.macro.current_preset.skills.get_placed_skill_id(
+            skill_ref
+        )
         if not skill_id:
             continue
 
@@ -364,23 +366,23 @@ def _append_regular_task(
 def build_task_list(show_info: bool = False) -> None:
     """task_list에 사용할 스킬 추가"""
 
-    equipped_refs: list[EquippedSkillRef] = (
-        app_state.macro.current_preset.skills.get_equipped_skill_refs(
+    placed_refs: list[EquippedSkillRef] = (
+        app_state.macro.current_preset.skills.get_placed_skill_refs(
             app_state.macro.current_server
         )
     )
     cooltimes: dict[EquippedSkillRef, float] = {
         skill_ref: app_state.macro.current_server.skill_registry.get(
-            app_state.macro.current_preset.skills.get_skill_id(skill_ref)
+            app_state.macro.current_preset.skills.get_placed_skill_id(skill_ref)
         ).cooltime
         * (100 - app_state.macro.current_cooltime_reduction)
         / 100.0
-        for skill_ref in equipped_refs
+        for skill_ref in placed_refs
     }
     now: float = time.perf_counter()
 
     # 쿨타임 완료 스킬 재준비
-    for skill_ref in equipped_refs:
+    for skill_ref in placed_refs:
         if skill_ref in app_state.macro.prepared_skills:
             continue
 

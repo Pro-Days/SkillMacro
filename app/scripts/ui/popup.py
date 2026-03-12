@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum, auto
+from functools import partial
+from html import escape
 from typing import TYPE_CHECKING, Literal
 from webbrowser import open_new
 
@@ -24,7 +26,6 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
-    QLayoutItem,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -181,37 +182,51 @@ class HoverCardContent(QFrame):
         self._layout.setContentsMargins(14, 12, 14, 12)
         self._layout.setSpacing(2)
 
+        # 제목 라벨 고정 배치
+        self._title_label: QLabel = QLabel("", self)
+        self._title_label.setFont(CustomFont(11))
+        self._title_label.setStyleSheet(
+            "QLabel { color: #F7F1A1; background-color: transparent; border: 0px; }"
+        )
+        self._title_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self._layout.addWidget(self._title_label)
+
+        # 본문 라벨 고정 배치
+        self._body_label: QLabel = QLabel("", self)
+        self._body_label.setFont(CustomFont(10))
+        self._body_label.setStyleSheet(
+            "QLabel { color: #D9D5E3; background-color: transparent; border: 0px; }"
+        )
+        self._body_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self._body_label.setTextFormat(Qt.TextFormat.RichText)
+        self._body_label.setWordWrap(True)
+        self._layout.addWidget(self._body_label)
+
     def set_data(self, data: HoverCardData) -> None:
         """호버 카드 데이터 반영"""
 
-        # 기존 라벨 정리
-        while self._layout.count():
-            item: QLayoutItem = self._layout.takeAt(0)  # type: ignore
-            widget: QWidget | None = item.widget()
+        # 제목 텍스트 즉시 갱신
+        self._title_label.setText(data.title)
 
-            if widget is None:
-                continue
-
-            widget.deleteLater()
-
-        # 제목 라벨 구성
-        title_label: QLabel = QLabel(data.title, self)
-        title_label.setFont(CustomFont(11))
-        title_label.setStyleSheet(
-            "QLabel { color: #F7F1A1; background-color: transparent; border: 0px; }"
-        )
-        title_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        self._layout.addWidget(title_label)
-
-        # 본문 라벨 순차 추가
+        # 색상별 줄바꿈 표현을 유지하기 위해 HTML 본문 조합
+        body_lines: list[str] = []
         for line in data.lines:
-            body_label: QLabel = QLabel(line.text, self)
-            body_label.setFont(CustomFont(line.point_size))
-            body_label.setStyleSheet(
-                f"QLabel {{ color: {line.color}; background-color: transparent; border: 0px; }}"
+            body_lines.append(
+                (
+                    f'<span style="color:{line.color}; font-size:{line.point_size}pt;">'
+                    f"{escape(line.text)}"
+                    "</span>"
+                )
             )
-            body_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
-            self._layout.addWidget(body_label)
+
+        body_html: str = "<br/>".join(body_lines)
+        self._body_label.setText(body_html)
+        self._body_label.setVisible(bool(body_lines))
+
+        # 텍스트 반영 직후 레이아웃 재계산 강제
+        self._layout.activate()
+        self.updateGeometry()
+        self.adjustSize()
 
 
 class HoverCardHost(QFrame):
@@ -265,7 +280,12 @@ class HoverCardHost(QFrame):
 
         # 최신 카드 내용 반영 및 크기 계산
         self._content.set_data(data)
+        self._content.updateGeometry()
+        self._content.adjustSize()
+        self._container.layout().activate()  # type: ignore
         self._container.adjustSize()
+        self.layout().activate()  # type: ignore
+        self.updateGeometry()
         self.adjustSize()
 
         # 전역 좌표를 부모 기준 좌표로 변환

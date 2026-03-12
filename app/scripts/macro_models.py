@@ -36,8 +36,8 @@ class MacroSkills:
     # 장착된 스크롤 ID 목록 (빈 슬롯은 "")
     equipped_scrolls: list[str] = field(default_factory=list)
 
-    # 실제 장착된 스킬 ID 목록 (빈 슬롯은 "")
-    equipped_skills: list[str] = field(default_factory=list)
+    # 하단 슬롯 배치 스킬 ID 목록 (빈 슬롯은 "")
+    placed_skills: list[str] = field(default_factory=list)
 
     # 스킬 단축키 목록
     skill_keys: list[str] = field(default_factory=list)
@@ -48,7 +48,7 @@ class MacroSkills:
 
         return cls(
             equipped_scrolls=data["equipped_scrolls"].copy(),
-            equipped_skills=data["equipped_skills"].copy(),
+            placed_skills=data["placed_skills"].copy(),
             skill_keys=data["skill_keys"].copy(),
         )
 
@@ -57,18 +57,84 @@ class MacroSkills:
 
         return {
             "equipped_scrolls": self.equipped_scrolls.copy(),
-            "equipped_skills": self.equipped_skills.copy(),
+            "placed_skills": self.placed_skills.copy(),
             "skill_keys": self.skill_keys.copy(),
         }
 
-    def get_skill_id(
+    def get_available_skill_ids(
+        self,
+        server_spec: "ServerSpec",
+    ) -> list[str]:
+        """현재 장착 스크롤 기준 제공 스킬 ID 목록 반환"""
+
+        # 장착된 스크롤 순서를 유지한 채 2개 스킬씩 평탄화 구성
+        available_skill_ids: list[str] = []
+
+        for scroll_id in self.equipped_scrolls:
+            # 빈 스크롤 슬롯은 제공 스킬이 없으므로 건너뛰기
+            if not scroll_id:
+                continue
+
+            scroll_def: "ScrollDef" = server_spec.skill_registry.get_scroll(scroll_id)
+            available_skill_ids.extend(scroll_def.skills)
+
+        return available_skill_ids
+
+    def get_placed_skill_id(
         self,
         skill_ref: EquippedSkillRef,
     ) -> str:
-        """(하단) 해당 위치에 장착된 스킬 ID 반환"""
+        """(하단) 해당 위치에 배치된 스킬 ID 반환"""
 
-        skill_id: str = self.equipped_skills[skill_ref.flat_index]
+        # 하단 14칸 수동 배치 상태 직접 조회
+        skill_id: str = self.placed_skills[skill_ref.flat_index]
         return skill_id
+
+    def get_placed_skill_ids(self) -> list[str]:
+        """하단 슬롯에 배치된 스킬 ID 목록 반환"""
+
+        # 빈 슬롯 제외 후 실제 배치된 스킬만 압축 반환
+        return [skill_id for skill_id in self.placed_skills if skill_id]
+
+    def get_placed_skill_refs(
+        self,
+        server_spec: "ServerSpec",
+    ) -> list[EquippedSkillRef]:
+        """하단 슬롯에 배치된 스킬 참조 목록 반환"""
+
+        refs: list[EquippedSkillRef] = []
+
+        # 서버가 허용하는 전체 슬롯 범위를 순회하며 배치 위치 수집
+        for scroll_index in range(server_spec.scroll_slot_count):
+            for line_index in range(server_spec.skill_line_count):
+
+                skill_ref: EquippedSkillRef = EquippedSkillRef(
+                    scroll_index=scroll_index,
+                    line_index=line_index,
+                )
+
+                # 빈 슬롯이 아닌 경우만 실제 배치 슬롯으로 취급
+                if self.get_placed_skill_id(skill_ref):
+                    refs.append(skill_ref)
+
+        return refs
+
+    def get_placed_skill_ref_map(
+        self,
+        server_spec: "ServerSpec",
+    ) -> dict[str, EquippedSkillRef]:
+        """배치된 스킬 ID -> 참조 매핑 반환"""
+
+        skill_ref_map: dict[str, EquippedSkillRef] = {}
+
+        # 현재 배치 상태를 기준으로 역참조 맵 구성
+        for skill_ref in self.get_placed_skill_refs(server_spec):
+            skill_id: str = self.get_placed_skill_id(skill_ref)
+
+            if skill_id:
+                skill_ref_map[skill_id] = skill_ref
+
+        return skill_ref_map
 
     def get_available_skill_id(
         self,
@@ -86,47 +152,6 @@ class MacroSkills:
         scroll_def: "ScrollDef" = server_spec.skill_registry.get_scroll(scroll_id)
         return scroll_def.skills[skill_ref.line_index]
 
-    def compact_equipped_skill_ids(self) -> list[str]:
-        """장착된 스킬 목록에서 빈 슬롯을 제외한 스킬 ID 반환"""
-
-        return [skill_id for skill_id in self.equipped_skills if skill_id]
-
-    def get_equipped_skill_refs(
-        self,
-        server_spec: "ServerSpec",
-    ) -> list[EquippedSkillRef]:
-        """장착된 스킬 참조 목록 반환"""
-
-        refs: list[EquippedSkillRef] = []
-
-        for scroll_index in range(server_spec.scroll_slot_count):
-            for line_index in range(server_spec.skill_line_count):
-
-                skill_ref: EquippedSkillRef = EquippedSkillRef(
-                    scroll_index=scroll_index,
-                    line_index=line_index,
-                )
-
-                if self.get_skill_id(skill_ref):
-                    refs.append(skill_ref)
-
-        return refs
-
-    def get_skill_ref_map(
-        self,
-        server_spec: "ServerSpec",
-    ) -> dict[str, EquippedSkillRef]:
-        """장착된 스킬 ID -> 참조 매핑 반환"""
-
-        skill_ref_map: dict[str, EquippedSkillRef] = {}
-
-        for skill_ref in self.get_equipped_skill_refs(server_spec):
-            skill_id: str = self.get_skill_id(skill_ref)
-
-            if skill_id:
-                skill_ref_map[skill_id] = skill_ref
-
-        return skill_ref_map
 
 
 @dataclass(slots=True)
@@ -434,7 +459,7 @@ class MacroPreset:
             name=cls.DEFAULT_NAME,
             skills=MacroSkills(
                 equipped_scrolls=[""] * scroll_slot_count,
-                equipped_skills=[""] * (scroll_slot_count * 2),
+                placed_skills=[""] * (scroll_slot_count * 2),
                 skill_keys=[str(2 + i) for i in range(scroll_slot_count)],
             ),
             settings=MacroSettings(

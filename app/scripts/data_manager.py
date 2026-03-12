@@ -27,20 +27,23 @@ def load_data(num: int = -1) -> None:
     try:
         update_data()
 
-        repo = MacroPresetRepository(file_dir)
+        repo: MacroPresetRepository = MacroPresetRepository(file_dir)
         preset_file: MacroPresetFile = repo.load()
 
         # num이 -1이면 최근 탭, 아니면 해당 탭 번호
         if num == -1:
             target_index: int = preset_file.recent_preset
         else:
-            target_index = num
-
-        presets: list[MacroPreset] = preset_file.preset
+            target_index: int = num
 
         # 프리셋 업데이트
-        app_state.macro.presets = presets
-        update_recent_preset(target_index)
+        app_state.macro.presets = preset_file.preset
+        app_state.macro.current_preset_index = target_index
+
+        # 현재 선택 프리셋 인덱스만 즉시 반영
+        if preset_file.recent_preset != target_index:
+            preset_file.recent_preset = target_index
+            repo.save(preset_file)
 
     except Exception:
         print("데이터 로드 중 오류 발생")
@@ -74,9 +77,9 @@ def save_data() -> None:
     데이터 저장
     """
 
-    repo = MacroPresetRepository(file_dir)
+    repo: MacroPresetRepository = MacroPresetRepository(file_dir)
 
-    preset_file = MacroPresetFile(
+    preset_file: MacroPresetFile = MacroPresetFile(
         version=data_version,
         recent_preset=app_state.macro.current_preset_index,
         preset=app_state.macro.presets.copy(),

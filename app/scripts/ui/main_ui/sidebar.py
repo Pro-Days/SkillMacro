@@ -47,6 +47,12 @@ if TYPE_CHECKING:
     from app.scripts.ui.main_window import MainWindow
 
 
+def get_current_scroll_skill_ids(preset: MacroPreset) -> list[str]:
+    """현재 장착 스크롤 기준 제공 스킬 ID 목록 반환"""
+
+    return preset.skills.get_available_skill_ids(app_state.macro.current_server)
+
+
 class Sidebar(QFrame):
     """좌측 사이드바 클래스"""
 
@@ -995,9 +1001,7 @@ class SkillSettings(QFrame):
     def update_from_preset(self, preset: "MacroPreset") -> None:
         """프리셋으로부터 위젯 상태를 업데이트"""
 
-        skill_ids: list[str] = (
-            app_state.macro.current_server.skill_registry.get_all_skill_ids()
-        )
+        skill_ids: list[str] = get_current_scroll_skill_ids(preset)
         self._ensure_rows(skill_ids)
 
         for idx, skill_id in enumerate(self._skill_ids):
@@ -1053,9 +1057,9 @@ class SkillSettings(QFrame):
 
         preset: MacroPreset = self._get_preset()
         skill_id: str = self._skill_ids[skill_idx]
-        equipped_skill_ids: list[str] = preset.skills.compact_equipped_skill_ids()
+        placed_skill_ids: list[str] = preset.skills.get_placed_skill_ids()
 
-        if skill_id not in equipped_skill_ids:
+        if skill_id not in placed_skill_ids:
             return
 
         setting: SkillUsageSetting = preset.usage_settings[skill_id]
@@ -1065,10 +1069,10 @@ class SkillSettings(QFrame):
         # 우선순위가 0이었다면: 가장 높은 우선순위(숫자 최대 + 1)
         if current == 0:
             max_priority: int = 0
-            for equipped_skill_id in equipped_skill_ids:
+            for placed_skill_id in placed_skill_ids:
                 max_priority = max(
                     max_priority,
-                    preset.usage_settings[equipped_skill_id].priority,
+                    preset.usage_settings[placed_skill_id].priority,
                 )
 
             setting.priority = max_priority + 1
@@ -1131,6 +1135,30 @@ class LinkSkillSettings(QFrame):
     def update_from_preset(self, preset: "MacroPreset") -> None:
         """프리셋으로부터 위젯 상태를 업데이트"""
 
+        available_skill_ids: set[str] = set(get_current_scroll_skill_ids(preset))
+        filtered_link_skills: list[LinkSkill] = []
+        was_changed: bool = False
+
+        for link_skill in preset.link_skills:
+            filtered_skill_ids: list[str] = [
+                skill_id for skill_id in link_skill.skills if skill_id in available_skill_ids
+            ]
+
+            if not filtered_skill_ids:
+                was_changed = True
+                continue
+
+            if filtered_skill_ids != link_skill.skills:
+                link_skill.skills = filtered_skill_ids
+                link_skill.set_manual()
+                link_skill.clear_key()
+                was_changed = True
+
+            filtered_link_skills.append(link_skill)
+
+        if was_changed:
+            preset.link_skills = filtered_link_skills
+
         # 기존 목록 제거
         while self._list_layout.count():
             item: QLayoutItem | None = self._list_layout.takeAt(0)
@@ -1141,9 +1169,12 @@ class LinkSkillSettings(QFrame):
             if w is not None:
                 w.deleteLater()
 
-        for i, data in enumerate(preset.link_skills):
+        for i, data in enumerate(filtered_link_skills if was_changed else preset.link_skills):
             link_skill = self.LinkSkillWidget(data, i, self.edit, self.remove)
             self._list_layout.addWidget(link_skill)
+
+        if was_changed:
+            self._on_data_changed()
 
         QTimer.singleShot(0, self.contentResized.emit)
 
@@ -1546,10 +1577,10 @@ class LinkSkillEditor(QFrame):
         )
 
     def _get_all_skill_ids(self) -> list[str]:
-        """프리셋 서버의 전체 스킬 ID 목록을 반환"""
+        """현재 장착 스크롤 기준 제공 스킬 ID 목록을 반환"""
 
         preset: MacroPreset = self._get_preset()
-        return app_state.macro.current_server.skill_registry.get_all_skill_ids()
+        return get_current_scroll_skill_ids(preset)
 
     def _refresh_skill_items(self) -> None:
         """self.data['skills']로 스킬 구성 UI를 다시 그림"""
@@ -1616,9 +1647,9 @@ class LinkSkillEditor(QFrame):
         preset: MacroPreset = self._get_preset()
 
         # 모든 스킬이 장착되어 있는지 확인
-        equipped_skill_ids: list[str] = preset.skills.compact_equipped_skill_ids()
+        placed_skill_ids: list[str] = preset.skills.get_placed_skill_ids()
 
-        if not all(skill_id in equipped_skill_ids for skill_id in self.data.skills):
+        if not all(skill_id in placed_skill_ids for skill_id in self.data.skills):
             self.popup_manager.show_notice(NoticeKind.SKILL_NOT_SELECTED)
             return
 
@@ -1697,6 +1728,9 @@ class LinkSkillEditor(QFrame):
         if self.data.skills[i] == skill_id:
             return
 
+        if skill_id not in self._get_all_skill_ids():
+            return
+
         # 스킬명 설정 초기화
         self.data.skills[i] = skill_id
 
@@ -1727,6 +1761,9 @@ class LinkSkillEditor(QFrame):
         self.popup_manager.close_popup()
 
         all_skills: list[str] = self._get_all_skill_ids()
+        if not all_skills:
+            return
+
         for i in all_skills:
             # 아직 추가되지 않은 스킬이면 추가
             if i not in self.data.skills:
@@ -1757,6 +1794,11 @@ class LinkSkillEditor(QFrame):
         """편집 저장"""
 
         self.popup_manager.close_popup()
+
+        allowed_skill_ids: set[str] = set(self._get_all_skill_ids())
+        self.data.skills = [
+            skill_id for skill_id in self.data.skills if skill_id in allowed_skill_ids
+        ]
 
         # 스킬을 하나도 추가하지 않은 경우 취소
         if not self.data.skills:

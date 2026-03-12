@@ -536,25 +536,25 @@ def _get_skill_sequence() -> tuple[EquippedSkillRef, ...]:
     """
 
     skill_ref_map: dict[str, EquippedSkillRef] = (
-        app_state.macro.current_preset.skills.get_skill_ref_map(
+        app_state.macro.current_preset.skills.get_placed_skill_ref_map(
             app_state.macro.current_server
         )
     )
-    equipped_refs: list[EquippedSkillRef] = (
-        app_state.macro.current_preset.skills.get_equipped_skill_refs(
+    placed_refs: list[EquippedSkillRef] = (
+        app_state.macro.current_preset.skills.get_placed_skill_refs(
             app_state.macro.current_server
         )
     )
     skill_sequence: list[EquippedSkillRef] = []
 
-    for target_priority in range(1, len(equipped_refs) + 1):
+    for target_priority in range(1, len(placed_refs) + 1):
         for skill_id, setting in app_state.macro.current_preset.usage_settings.items():
             if setting.priority == target_priority:
                 skill_ref: EquippedSkillRef | None = skill_ref_map.get(skill_id)
                 if skill_ref is not None:
                     skill_sequence.append(skill_ref)
 
-    for skill_ref in equipped_refs:
+    for skill_ref in placed_refs:
         if skill_ref not in skill_sequence:
             skill_sequence.append(skill_ref)
 
@@ -590,7 +590,7 @@ def _get_task_list(
     ]
 
     for skill_ref in skill_sequence:
-        skill_id: str = app_state.macro.current_preset.skills.get_skill_id(
+        skill_id: str = app_state.macro.current_preset.skills.get_placed_skill_id(
             skill_ref,
         )
         if not skill_id:
@@ -621,7 +621,7 @@ def _get_task_list(
 
 # 쿨타임 지난 스킬들 업데이트
 def _update_skill_cooltimes(
-    equipped_refs: list[EquippedSkillRef],
+    placed_refs: list[EquippedSkillRef],
     skill_cooltime_timers_ms: dict[EquippedSkillRef, int],
     skill_cooltimes_ms: dict[EquippedSkillRef, int],
     elapsed_time_ms: int,
@@ -631,7 +631,7 @@ def _update_skill_cooltimes(
     쿨타임이 지난 스킬들을 준비된 스킬 리스트에 추가
     """
 
-    for skill_ref in equipped_refs:
+    for skill_ref in placed_refs:
         if (
             skill_ref not in prepared_skills
             and (elapsed_time_ms - skill_cooltime_timers_ms[skill_ref])
@@ -671,18 +671,18 @@ def get_simulated_skills(
             )
         )
 
-    equipped_refs: list[EquippedSkillRef] = (
-        app_state.macro.current_preset.skills.get_equipped_skill_refs(
+    placed_refs: list[EquippedSkillRef] = (
+        app_state.macro.current_preset.skills.get_placed_skill_refs(
             app_state.macro.current_server
         )
     )
 
-    if not equipped_refs:
+    if not placed_refs:
         return attack_details, buff_details
 
-    prepared_skills: set[EquippedSkillRef] = set(equipped_refs)
+    prepared_skills: set[EquippedSkillRef] = set(placed_refs)
     skill_ref_map: dict[str, EquippedSkillRef] = (
-        app_state.macro.current_preset.skills.get_skill_ref_map(
+        app_state.macro.current_preset.skills.get_placed_skill_ref_map(
             app_state.macro.current_server
         )
     )
@@ -696,17 +696,17 @@ def get_simulated_skills(
         [skill_ref for skill_ref in link_skill] for link_skill in using_link_skills
     ]
     skill_cooltime_timers_ms: dict[EquippedSkillRef, int] = {
-        skill_ref: 0 for skill_ref in equipped_refs
+        skill_ref: 0 for skill_ref in placed_refs
     }
     skill_cooltimes_ms: dict[EquippedSkillRef, int] = {
         skill_ref: int(
             app_state.macro.current_server.skill_registry.get(
-                app_state.macro.current_preset.skills.get_skill_id(skill_ref)
+                app_state.macro.current_preset.skills.get_placed_skill_id(skill_ref)
             ).cooltime
             * (100 - app_state.macro.current_cooltime_reduction)
             * 10
         )
-        for skill_ref in equipped_refs
+        for skill_ref in placed_refs
     }
 
     # 스킬 레벨
@@ -721,7 +721,7 @@ def get_simulated_skills(
     while elapsed_time_ms < 60000:
         if not task_list:
             _update_skill_cooltimes(
-                equipped_refs=equipped_refs,
+                placed_refs=placed_refs,
                 skill_cooltime_timers_ms=skill_cooltime_timers_ms,
                 skill_cooltimes_ms=skill_cooltimes_ms,
                 elapsed_time_ms=elapsed_time_ms,
@@ -736,7 +736,7 @@ def get_simulated_skills(
 
         if task_list:
             skill_ref: EquippedSkillRef = task_list.pop(0)
-            skill_id: str = app_state.macro.current_preset.skills.get_skill_id(
+            skill_id: str = app_state.macro.current_preset.skills.get_placed_skill_id(
                 skill_ref,
             )
 
@@ -748,7 +748,7 @@ def get_simulated_skills(
         else:
             waiting_refs: list[EquippedSkillRef] = [
                 skill_ref
-                for skill_ref in equipped_refs
+                for skill_ref in placed_refs
                 if skill_ref not in prepared_skills
             ]
             if not waiting_refs:
@@ -767,7 +767,7 @@ def get_simulated_skills(
 
     skills_effects: dict[str, list[LevelEffect]] = {
         skill_id: app_state.macro.current_server.skill_registry.get(skill_id).levels[1]
-        for skill_id in app_state.macro.current_preset.skills.compact_equipped_skill_ids()
+        for skill_id in app_state.macro.current_preset.skills.get_placed_skill_ids()
     }
 
     for skill in used_skills:

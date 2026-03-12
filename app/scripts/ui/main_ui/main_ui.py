@@ -454,7 +454,7 @@ class Tab(QFrame):
         self.available_skills: AvailableSkillPanel = AvailableSkillPanel(
             self.popup_manager
         )
-        self.equipped_skills: EquippedSkillPanel = EquippedSkillPanel(
+        self.placed_skills: PlacedSkillPanel = PlacedSkillPanel(
             self.popup_manager
         )
 
@@ -464,14 +464,14 @@ class Tab(QFrame):
 
         self.available_skills.scrollClicked.connect(self.on_scroll_clicked)
         self.available_skills.skillClicked.connect(self.on_available_skill_clicked)
-        self.equipped_skills.slotClicked.connect(self.on_equipped_skill_clicked)
-        self.equipped_skills.keyClicked.connect(self.on_skill_key_clicked)
+        self.placed_skills.slotClicked.connect(self.on_placed_skill_clicked)
+        self.placed_skills.keyClicked.connect(self.on_skill_key_clicked)
 
         layout: QVBoxLayout = QVBoxLayout(self)
         layout.addWidget(self.preview, alignment=Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.available_skills)
         layout.addWidget(divider)
-        layout.addWidget(self.equipped_skills)
+        layout.addWidget(self.placed_skills)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(20)
         self.setLayout(layout)
@@ -479,9 +479,9 @@ class Tab(QFrame):
         self.update_from_preset()
 
     def cancel_skill_selection(self) -> None:
-        """하단 장착 선택 취소"""
+        """하단 배치 선택 취소"""
 
-        self.select_equipped_skill(None)
+        self.select_placed_skill(None)
 
     def on_skill_key_clicked(self, index: int) -> None:
         """공용키 버튼 클릭"""
@@ -505,7 +505,7 @@ class Tab(QFrame):
 
         self.scrollSelectRequested.emit(scroll_index)
 
-    def on_equipped_skill_clicked(self, skill_ref: EquippedSkillRef) -> None:
+    def on_placed_skill_clicked(self, skill_ref: EquippedSkillRef) -> None:
         """하단 스킬 슬롯 클릭"""
 
         if app_state.ui.current_sidebar_page == 4:
@@ -518,25 +518,26 @@ class Tab(QFrame):
             self.noticeRequested.emit(NoticeKind.MACRO_IS_RUNNING)
             return
 
-        equipped_skill_id: str = self.preset.skills.get_skill_id(
+        placed_skill_id: str = self.preset.skills.get_placed_skill_id(
             skill_ref,
         )
         selected_ref: EquippedSkillRef | None = self.get_selected_skill_ref()
 
         if selected_ref is None:
-            self.select_equipped_skill(skill_ref)
+            self.select_placed_skill(skill_ref)
             return
 
         if selected_ref != skill_ref:
-            self.select_equipped_skill(skill_ref)
+            self.select_placed_skill(skill_ref)
             return
 
-        if not equipped_skill_id:
+        if not placed_skill_id:
             self.cancel_skill_selection()
             return
 
-        self.clear_equipped_skill(equipped_skill_id)
-        self.set_equipped_skill(skill_ref, "")
+        # 현재 하단 슬롯에서 제거되는 스킬의 파생 설정 정리
+        self.clear_placed_skill(placed_skill_id)
+        self.set_placed_skill(skill_ref, "")
         self.cancel_skill_selection()
         self.dataChanged.emit()
 
@@ -564,17 +565,27 @@ class Tab(QFrame):
         if not selected_skill_id:
             return
 
-        if selected_skill_id in self.preset.skills.equipped_skills:
+        # 현재 장착된 스크롤이 제공하는 스킬만 배치 대상으로 허용
+        available_skill_ids: list[str] = self.preset.skills.get_available_skill_ids(
+            app_state.macro.current_server
+        )
+        if selected_skill_id not in available_skill_ids:
             self.cancel_skill_selection()
             return
 
-        current_skill_id: str = self.preset.skills.get_skill_id(
+        # 이미 다른 하단 슬롯에 배치된 스킬은 중복 배치 금지
+        if selected_skill_id in self.preset.skills.get_placed_skill_ids():
+            self.cancel_skill_selection()
+            return
+
+        current_skill_id: str = self.preset.skills.get_placed_skill_id(
             selected_ref,
         )
         if current_skill_id:
-            self.clear_equipped_skill(current_skill_id)
+            # 같은 슬롯 재배치 전 기존 스킬의 파생 설정 우선 정리
+            self.clear_placed_skill(current_skill_id)
 
-        self.set_equipped_skill(selected_ref, selected_skill_id)
+        self.set_placed_skill(selected_ref, selected_skill_id)
         self.cancel_skill_selection()
         self.dataChanged.emit()
 
@@ -589,35 +600,37 @@ class Tab(QFrame):
             return False
 
         if current_scroll_id:
+            # 교체 전 스크롤이 제공하던 두 스킬만 하단 배치에서 제거
             current_scroll_def: ScrollDef = (
                 app_state.macro.current_server.skill_registry.get_scroll(
                     current_scroll_id
                 )
             )
             for skill_id in current_scroll_def.skills:
-                self.clear_skill_if_equipped(skill_id)
+                self.clear_skill_if_placed(skill_id)
 
         self.preset.skills.equipped_scrolls[scroll_index] = scroll_id
         self._sync_to_shared_data()
         self.update_from_preset()
         return True
 
-    def clear_skill_if_equipped(self, skill_id: str) -> None:
-        """기존 장착 스킬 제거"""
+    def clear_skill_if_placed(self, skill_id: str) -> None:
+        """기존 배치 스킬 제거"""
 
-        if skill_id not in self.preset.skills.equipped_skills:
+        placed_skill_ids: list[str] = self.preset.skills.get_placed_skill_ids()
+        if skill_id not in placed_skill_ids:
             return
 
-        target_index: int = self.preset.skills.equipped_skills.index(skill_id)
-        target_ref: EquippedSkillRef = EquippedSkillRef(
-            scroll_index=target_index // 2,
-            line_index=target_index % 2,
+        # 스킬 ID 기준 배치 위치를 찾아 실제 슬롯과 파생 설정을 함께 정리
+        skill_ref_map: dict[str, EquippedSkillRef] = self.preset.skills.get_placed_skill_ref_map(
+            app_state.macro.current_server
         )
-        self.clear_equipped_skill(skill_id)
-        self.set_equipped_skill(target_ref, "")
+        target_ref: EquippedSkillRef = skill_ref_map[skill_id]
+        self.clear_placed_skill(skill_id)
+        self.set_placed_skill(target_ref, "")
 
-    def clear_equipped_skill(self, skill_id: str) -> None:
-        """장착 해제 파생 설정 정리"""
+    def clear_placed_skill(self, skill_id: str) -> None:
+        """배치 해제 파생 설정 정리"""
 
         for link in self.preset.link_skills:
             if skill_id in link.skills:
@@ -636,28 +649,29 @@ class Tab(QFrame):
 
         self.skillUnequipped.emit(skill_id)
 
-    def select_equipped_skill(self, skill_ref: EquippedSkillRef | None) -> None:
+    def select_placed_skill(self, skill_ref: EquippedSkillRef | None) -> None:
         """하단 슬롯 선택"""
 
-        self.equipped_skills.select(skill_ref)
+        self.placed_skills.select(skill_ref)
         self.available_skills.set_selected_skill(skill_ref)
 
-    def set_equipped_skill(self, skill_ref: EquippedSkillRef, skill_id: str) -> None:
+    def set_placed_skill(self, skill_ref: EquippedSkillRef, skill_id: str) -> None:
         """하단 슬롯 스킬 적용"""
 
-        self.preset.skills.equipped_skills[skill_ref.flat_index] = skill_id
+        # 하단 14칸 수동 배치 상태만 실제 저장 필드에 반영
+        self.preset.skills.placed_skills[skill_ref.flat_index] = skill_id
         self._sync_to_shared_data()
         self.update_from_preset()
 
     def get_selected_skill_ref(self) -> EquippedSkillRef | None:
         """선택된 하단 슬롯 반환"""
 
-        return self.equipped_skills.get_selected_skill_ref()
+        return self.placed_skills.get_selected_skill_ref()
 
     def get_key_button(self, index: int) -> QPushButton:
         """공용키 버튼 반환"""
 
-        return self.equipped_skills.get_key_button(index)
+        return self.placed_skills.get_key_button(index)
 
     def get_scroll_button(self, index: int) -> QPushButton:
         """스크롤 버튼 반환"""
@@ -673,13 +687,9 @@ class Tab(QFrame):
         """프리셋 기준 UI 동기화"""
 
         selected_ref: EquippedSkillRef | None = self.get_selected_skill_ref()
-        selected_skill_id: str | None = None
-        if selected_ref is not None:
-            selected_skill_id = self.preset.skills.get_skill_id(selected_ref)
-
-        self.available_skills.update_from_preset(self.preset, selected_skill_id)
-        self.equipped_skills.update_from_preset(self.preset)
-        self.equipped_skills.select(selected_ref)
+        self.available_skills.update_from_preset(self.preset)
+        self.placed_skills.update_from_preset(self.preset)
+        self.placed_skills.select(selected_ref)
         self.update_preview()
 
     def apply_key(self, index: int, key: KeySpec) -> bool:
@@ -690,7 +700,7 @@ class Tab(QFrame):
 
         self.preset.skills.skill_keys[index] = key.key_id
         self._sync_to_shared_data()
-        self.equipped_skills.set_key(index, key.display)
+        self.placed_skills.set_key(index, key.display)
         return True
 
     def _sync_to_shared_data(self) -> None:
@@ -745,7 +755,7 @@ class SkillPreview(QFrame):
         self.skills.clear()
 
         for skill_ref in task_list[:6]:
-            skill_id: str = app_state.macro.current_preset.skills.get_skill_id(
+            skill_id: str = app_state.macro.current_preset.skills.get_placed_skill_id(
                 skill_ref
             )
             if not skill_id:
@@ -792,27 +802,18 @@ class AvailableSkillPanel(QFrame):
     def update_from_preset(
         self,
         preset: MacroPreset,
-        selected_skill_id: str | None,
     ) -> None:
         """프리셋 기준 표시 갱신"""
 
-        equipped_skill_ids: list[str] = preset.skills.compact_equipped_skill_ids()
         for column in self.columns:
-            column.update_from_preset(preset, equipped_skill_ids, selected_skill_id)
+            column.update_from_preset(preset)
 
     def set_selected_skill(self, selected_ref: EquippedSkillRef | None) -> None:
         """선택 상태만 갱신"""
 
-        selected_skill_id: str | None = None
-        if selected_ref is not None:
-            selected_skill_id = app_state.macro.current_preset.skills.get_skill_id(
-                selected_ref
-            )
-
-        self.update_from_preset(
-            app_state.macro.current_preset,
-            selected_skill_id,
-        )
+        # 상단 패널은 제공 스킬 노출만 담당하므로 선택별 별도 스타일 미사용
+        _ = selected_ref
+        self.update_from_preset(app_state.macro.current_preset)
 
     def get_scroll_button(self, index: int) -> QPushButton:
         """스크롤 버튼 반환"""
@@ -874,8 +875,6 @@ class AvailableSkillPanel(QFrame):
         def update_from_preset(
             self,
             preset: MacroPreset,
-            equipped_skill_ids: list[str],
-            selected_skill_id: str | None,
         ) -> None:
             """컬럼 표시 갱신"""
 
@@ -941,8 +940,8 @@ class AvailableSkillPanel(QFrame):
             return self.popup_manager.build_skill_hover_card(skill_id, level)
 
 
-class EquippedSkillPanel(QFrame):
-    """하단 실제 장착 스킬 패널"""
+class PlacedSkillPanel(QFrame):
+    """하단 실제 배치 스킬 패널"""
 
     SLOT_BUTTON_SIZE: int = 48
     SLOT_SELECTED_BUTTON_SIZE: int = 56
@@ -954,7 +953,7 @@ class EquippedSkillPanel(QFrame):
 
         self.popup_manager: PopupManager = popup_manager
         self.selected_ref: EquippedSkillRef | None = None
-        self.columns: list[EquippedSkillPanel.Column] = []
+        self.columns: list[PlacedSkillPanel.Column] = []
         self.setStyleSheet("QFrame { background-color: transparent; }")
 
         layout: QHBoxLayout = QHBoxLayout()
@@ -962,7 +961,7 @@ class EquippedSkillPanel(QFrame):
         layout.setSpacing(18)
 
         for scroll_index in range(app_state.macro.current_server.scroll_slot_count):
-            column: EquippedSkillPanel.Column = EquippedSkillPanel.Column(
+            column: PlacedSkillPanel.Column = PlacedSkillPanel.Column(
                 scroll_index=scroll_index,
                 popup_manager=self.popup_manager,
             )
@@ -1027,8 +1026,8 @@ class EquippedSkillPanel(QFrame):
                 # 선택 강조 최대 크기만큼 슬롯 영역 선점
                 button_container: QWidget = QWidget(self)
                 button_container.setFixedSize(
-                    EquippedSkillPanel.SLOT_SELECTED_BUTTON_SIZE,
-                    EquippedSkillPanel.SLOT_SELECTED_BUTTON_SIZE,
+                    PlacedSkillPanel.SLOT_SELECTED_BUTTON_SIZE,
+                    PlacedSkillPanel.SLOT_SELECTED_BUTTON_SIZE,
                 )
 
                 # 기본 상태에서는 기존과 동일한 48px 버튼 유지
@@ -1037,8 +1036,8 @@ class EquippedSkillPanel(QFrame):
                 container_layout.setSpacing(0)
                 button: QPushButton = QPushButton(self)
                 button.setFixedSize(
-                    EquippedSkillPanel.SLOT_BUTTON_SIZE,
-                    EquippedSkillPanel.SLOT_BUTTON_SIZE,
+                    PlacedSkillPanel.SLOT_BUTTON_SIZE,
+                    PlacedSkillPanel.SLOT_BUTTON_SIZE,
                 )
                 button.setCursor(Qt.CursorShape.PointingHandCursor)
                 skill_ref: EquippedSkillRef = EquippedSkillRef(
@@ -1050,7 +1049,7 @@ class EquippedSkillPanel(QFrame):
                 )
                 self.popup_manager.bind_hover_card(
                     button,
-                    lambda ref=skill_ref: self._build_equipped_skill_hover_card(ref),
+                    lambda ref=skill_ref: self._build_placed_skill_hover_card(ref),
                 )
 
                 self.buttons.append(button)
@@ -1082,7 +1081,7 @@ class EquippedSkillPanel(QFrame):
                     scroll_index=scroll_index,
                     line_index=line_index,
                 )
-                skill_id: str = preset.skills.get_skill_id(
+                skill_id: str = preset.skills.get_placed_skill_id(
                     skill_ref,
                 )
                 button.setIcon(
@@ -1097,15 +1096,15 @@ class EquippedSkillPanel(QFrame):
                 KeyRegistry.get(preset.skills.skill_keys[scroll_index]).display
             )
 
-        def _build_equipped_skill_hover_card(
+        def _build_placed_skill_hover_card(
             self,
             skill_ref: EquippedSkillRef,
         ) -> HoverCardData | None:
-            """하단 장착 슬롯 기준 호버 카드 구성"""
+            """하단 배치 슬롯 기준 호버 카드 구성"""
 
-            # 실제 장착된 스킬이 있는 슬롯에서만 카드 표시
+            # 실제 배치된 스킬이 있는 슬롯에서만 카드 표시
             preset: MacroPreset = app_state.macro.current_preset
-            skill_id: str = preset.skills.get_skill_id(skill_ref)
+            skill_id: str = preset.skills.get_placed_skill_id(skill_ref)
 
             if not skill_id:
                 return None
@@ -1128,13 +1127,13 @@ class EquippedSkillPanel(QFrame):
                 if is_selected:
                     # 고정 슬롯 내부에서만 선택 강조 크기 확대
                     button.setFixedSize(
-                        EquippedSkillPanel.SLOT_SELECTED_BUTTON_SIZE,
-                        EquippedSkillPanel.SLOT_SELECTED_BUTTON_SIZE,
+                        PlacedSkillPanel.SLOT_SELECTED_BUTTON_SIZE,
+                        PlacedSkillPanel.SLOT_SELECTED_BUTTON_SIZE,
                     )
                     button.setIconSize(
                         QSize(
-                            EquippedSkillPanel.SLOT_SELECTED_BUTTON_SIZE,
-                            EquippedSkillPanel.SLOT_SELECTED_BUTTON_SIZE,
+                            PlacedSkillPanel.SLOT_SELECTED_BUTTON_SIZE,
+                            PlacedSkillPanel.SLOT_SELECTED_BUTTON_SIZE,
                         )
                     )
 
@@ -1147,13 +1146,13 @@ class EquippedSkillPanel(QFrame):
                 else:
                     # 비선택 상태 기본 크기 복원
                     button.setFixedSize(
-                        EquippedSkillPanel.SLOT_BUTTON_SIZE,
-                        EquippedSkillPanel.SLOT_BUTTON_SIZE,
+                        PlacedSkillPanel.SLOT_BUTTON_SIZE,
+                        PlacedSkillPanel.SLOT_BUTTON_SIZE,
                     )
                     button.setIconSize(
                         QSize(
-                            EquippedSkillPanel.SLOT_BUTTON_SIZE,
-                            EquippedSkillPanel.SLOT_BUTTON_SIZE,
+                            PlacedSkillPanel.SLOT_BUTTON_SIZE,
+                            PlacedSkillPanel.SLOT_BUTTON_SIZE,
                         )
                     )
 
