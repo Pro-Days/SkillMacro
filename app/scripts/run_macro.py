@@ -205,11 +205,6 @@ def _press_skill_keys(
 def _collect_priority_skill_sequence() -> list[EquippedSkillRef]:
     """우선순위 기준 스킬 순서 반환"""
 
-    skill_ref_map: dict[str, EquippedSkillRef] = (
-        app_state.macro.current_preset.skills.get_placed_skill_ref_map(
-            app_state.macro.current_server
-        )
-    )
     placed_refs: list[EquippedSkillRef] = (
         app_state.macro.current_preset.skills.get_placed_skill_refs(
             app_state.macro.current_server
@@ -217,12 +212,20 @@ def _collect_priority_skill_sequence() -> list[EquippedSkillRef]:
     )
     skill_sequence: list[EquippedSkillRef] = []
 
+    # 현재 하단 슬롯에 실제 배치된 스킬만 우선순위 후보로 제한
     for target_priority in range(1, len(placed_refs) + 1):
-        for skill_id, setting in app_state.macro.current_preset.usage_settings.items():
+        for skill_ref in placed_refs:
+            skill_id: str = app_state.macro.current_preset.skills.get_placed_skill_id(
+                skill_ref
+            )
+            setting: SkillUsageSetting = app_state.macro.current_preset.usage_settings[
+                skill_id
+            ]
+
             if setting.priority != target_priority:
                 continue
 
-            skill_ref: EquippedSkillRef = skill_ref_map[skill_id]
+            # 배치되지 않은 숨은 설정값은 무시하고 실제 슬롯 순서만 반영
             skill_sequence.append(skill_ref)
 
     for skill_ref in placed_refs:

@@ -1080,7 +1080,8 @@ class SkillSettings(QFrame):
         # 우선순위가 설정되어 있었다면: 제거 + 뒷번호 당기기
         else:
             setting.priority = 0
-            for s in preset.usage_settings.values():
+            for placed_skill_id in placed_skill_ids:
+                s: SkillUsageSetting = preset.usage_settings[placed_skill_id]
                 if s.priority > current:
                     s.priority -= 1
 
@@ -1141,7 +1142,9 @@ class LinkSkillSettings(QFrame):
 
         for link_skill in preset.link_skills:
             filtered_skill_ids: list[str] = [
-                skill_id for skill_id in link_skill.skills if skill_id in available_skill_ids
+                skill_id
+                for skill_id in link_skill.skills
+                if skill_id in available_skill_ids
             ]
 
             if not filtered_skill_ids:
@@ -1169,7 +1172,9 @@ class LinkSkillSettings(QFrame):
             if w is not None:
                 w.deleteLater()
 
-        for i, data in enumerate(filtered_link_skills if was_changed else preset.link_skills):
+        for i, data in enumerate(
+            filtered_link_skills if was_changed else preset.link_skills
+        ):
             link_skill = self.LinkSkillWidget(data, i, self.edit, self.remove)
             self._list_layout.addWidget(link_skill)
 

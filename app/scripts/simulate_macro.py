@@ -24,6 +24,21 @@ from app.scripts.registry.skill_registry import (
 from app.scripts.run_macro import get_prepared_link_skill_indices
 
 
+def get_placed_skill_usage_settings() -> dict[str, SkillUsageSetting]:
+    """현재 하단 슬롯에 배치된 스킬만의 사용 설정 반환"""
+
+    placed_skill_ids: list[str] = (
+        app_state.macro.current_preset.skills.get_placed_skill_ids()
+    )
+
+    # 전역 사용 설정 중 현재 배치된 스킬 엔트리만 활성 계산 대상으로 추출
+    placed_usage_settings: dict[str, SkillUsageSetting] = {
+        skill_id: app_state.macro.current_preset.usage_settings[skill_id]
+        for skill_id in placed_skill_ids
+    }
+    return placed_usage_settings
+
+
 def get_req_stats(powers: list[float], stat_type: str) -> list[float]:
     """
     목표 전투력까지 필요한 스탯 반환
@@ -60,7 +75,7 @@ def calculate_req_stat(power: float, stat_type: str, power_num: int) -> float:
     current_power: float = simulate_deterministic(
         stats=stats,
         sim_details=app_state.simulation.sim_details,
-        skills_info=app_state.macro.current_preset.usage_settings,
+        skills_info=get_placed_skill_usage_settings(),
     ).powers[power_num]
 
     # 스탯을 증가시키며 최대 범위 알아내기
@@ -266,13 +281,13 @@ def simulate_random(
 
     # 시뮬레이션 세부정보를 해시 가능하게 만듦
     sim_details_tuple: tuple = tuple(sorted(sim_details.items()))
-    # 스킬 레벨 정보를 추가
-    # todo: 꼭 필요한 정보만 키로 사용하도록 수정
+    placed_usage_settings: dict[str, SkillUsageSetting] = (
+        get_placed_skill_usage_settings()
+    )
+
+    # 현재 배치된 스킬의 사용 설정만 확률 시뮬레이션 입력으로 고정
     skills_info_tuple: tuple[tuple[str, tuple[bool, bool, int]], ...] = tuple(
-        sorted(
-            (k, v.to_tuple())
-            for k, v in app_state.macro.current_preset.usage_settings.items()
-        )
+        sorted((k, v.to_tuple()) for k, v in placed_usage_settings.items())
     )
 
     return simulate(
@@ -292,7 +307,14 @@ def simulate_deterministic(
     전투력 계산을 위한 결정론적 시뮬레이션
     캐시를 사용하여 성능 향상
     """
-    # todo: 스킬 레벨도 포함시키도록 수정
+    placed_skill_ids: set[str] = set(
+        app_state.macro.current_preset.skills.get_placed_skill_ids()
+    )
+    filtered_skills_info: dict[str, SkillUsageSetting] = {
+        skill_id: setting
+        for skill_id, setting in skills_info.items()
+        if skill_id in placed_skill_ids
+    }
 
     @lru_cache(maxsize=1024)
     def _run(
@@ -308,9 +330,10 @@ def simulate_deterministic(
 
     # 시뮬레이션 세부정보를 튜플로 변환해서 해시 가능하게 만듦
     sim_details_tuple: tuple[tuple[str, int], ...] = tuple(sorted(sim_details.items()))
-    # 스킬 정보를 추가
+
+    # 현재 배치된 스킬만 캐시 키와 계산 입력에 반영
     skills_info_tuple: tuple[tuple[str, tuple[bool, bool, int]], ...] = tuple(
-        sorted((k, v.to_tuple()) for k, v in skills_info.items())
+        sorted((k, v.to_tuple()) for k, v in filtered_skills_info.items())
     )
 
     return _run(sim_details_tuple, skills_info_tuple)
@@ -535,11 +558,6 @@ def _get_skill_sequence() -> tuple[EquippedSkillRef, ...]:
     스킬 사용 순서 반환
     """
 
-    skill_ref_map: dict[str, EquippedSkillRef] = (
-        app_state.macro.current_preset.skills.get_placed_skill_ref_map(
-            app_state.macro.current_server
-        )
-    )
     placed_refs: list[EquippedSkillRef] = (
         app_state.macro.current_preset.skills.get_placed_skill_refs(
             app_state.macro.current_server
@@ -547,12 +565,18 @@ def _get_skill_sequence() -> tuple[EquippedSkillRef, ...]:
     )
     skill_sequence: list[EquippedSkillRef] = []
 
+    # 현재 하단 슬롯에 배치된 스킬만 우선순위 후보로 제한
     for target_priority in range(1, len(placed_refs) + 1):
-        for skill_id, setting in app_state.macro.current_preset.usage_settings.items():
+        for skill_ref in placed_refs:
+            skill_id: str = app_state.macro.current_preset.skills.get_placed_skill_id(
+                skill_ref
+            )
+            setting: SkillUsageSetting = app_state.macro.current_preset.usage_settings[
+                skill_id
+            ]
+
             if setting.priority == target_priority:
-                skill_ref: EquippedSkillRef | None = skill_ref_map.get(skill_id)
-                if skill_ref is not None:
-                    skill_sequence.append(skill_ref)
+                skill_sequence.append(skill_ref)
 
     for skill_ref in placed_refs:
         if skill_ref not in skill_sequence:

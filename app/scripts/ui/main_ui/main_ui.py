@@ -641,7 +641,12 @@ class Tab(QFrame):
         if previous_priority:
             self.preset.usage_settings[skill_id].priority = 0
 
-            for usage_setting in self.preset.usage_settings.values():
+            placed_skill_ids: list[str] = self.preset.skills.get_placed_skill_ids()
+
+            for placed_skill_id in placed_skill_ids:
+                usage_setting: SkillUsageSetting = self.preset.usage_settings[
+                    placed_skill_id
+                ]
                 if usage_setting.priority > previous_priority:
                     usage_setting.priority -= 1
 
