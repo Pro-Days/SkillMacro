@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, ClassVar, cast
 
+from app.scripts.calculator_models import CalculatorPresetInput
 from app.scripts.config import config
 from app.scripts.custom_classes import Stats
 
@@ -329,6 +330,10 @@ class PresetInfo:
     scroll_levels: dict[str, int] = field(default_factory=dict)
     # 시뮬레이션 세부 정보
     sim_details: dict[str, int] = field(default_factory=dict)
+    # 새 계산기 입력 상태
+    calculator: CalculatorPresetInput = field(
+        default_factory=CalculatorPresetInput.create_default
+    )
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> PresetInfo:
@@ -338,6 +343,7 @@ class PresetInfo:
             stats=data["stats"].copy(),
             scroll_levels=data["scroll_levels"].copy(),
             sim_details=data["sim_details"].copy(),
+            calculator=CalculatorPresetInput.from_dict(data["calculator"]),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -347,6 +353,7 @@ class PresetInfo:
             "stats": self.stats.copy(),
             "scroll_levels": self.scroll_levels.copy(),
             "sim_details": self.sim_details.copy(),
+            "calculator": self.calculator.to_dict(),
         }
 
     @classmethod
@@ -364,6 +371,7 @@ class PresetInfo:
             stats=stats.to_dict(),
             scroll_levels=scroll_levels.copy(),
             sim_details=sim_details.copy(),
+            calculator=CalculatorPresetInput.create_default(),
         )
 
     def get_scroll_level(self, scroll_id: str) -> int:
@@ -512,6 +520,7 @@ class MacroPreset:
                 # 현재 서버의 모든 스크롤 레벨 기본값 구성
                 scroll_levels={scroll_id: 1 for scroll_id in scroll_ids.copy()},
                 sim_details=cls.DEFAULT_SIM_DETAILS.copy(),
+                calculator=CalculatorPresetInput.create_default(),
             ),
         )
 
