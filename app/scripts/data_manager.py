@@ -139,11 +139,13 @@ def get_default_preset() -> MacroPreset:
 
     server_id: str = config.specs.DEFAULT_SERVER_ID
     server: ServerSpec = server_registry.get(server_id)
+    scroll_ids: list[str] = server.skill_registry.get_all_scroll_ids()
     skills_all: list[str] = server.skill_registry.get_all_skill_ids()
 
     return MacroPreset.create_default(
         server_id=server_id,
         scroll_slot_count=server.scroll_slot_count,
+        scroll_ids=scroll_ids,
         skills_all=skills_all,
         default_delay=config.specs.DELAY.default,
         default_cooltime_reduction=config.specs.COOLTIME_REDUCTION.default,

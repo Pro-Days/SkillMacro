@@ -325,8 +325,8 @@ class PresetInfo:
 
     # 스탯
     stats: dict[str, int | float] = field(default_factory=dict)
-    # 스킬 레벨 (key: skill_id, value: level)
-    skill_levels: dict[str, int] = field(default_factory=dict)
+    # 스크롤 레벨 (key: scroll_id, value: level)
+    scroll_levels: dict[str, int] = field(default_factory=dict)
     # 시뮬레이션 세부 정보
     sim_details: dict[str, int] = field(default_factory=dict)
 
@@ -336,7 +336,7 @@ class PresetInfo:
 
         return cls(
             stats=data["stats"].copy(),
-            skill_levels=data["skill_levels"].copy(),
+            scroll_levels=data["scroll_levels"].copy(),
             sim_details=data["sim_details"].copy(),
         )
 
@@ -345,7 +345,7 @@ class PresetInfo:
 
         return {
             "stats": self.stats.copy(),
-            "skill_levels": self.skill_levels.copy(),
+            "scroll_levels": self.scroll_levels.copy(),
             "sim_details": self.sim_details.copy(),
         }
 
@@ -353,7 +353,7 @@ class PresetInfo:
     def from_stats(
         cls,
         stats: "Stats",
-        skill_levels: dict[str, int],
+        scroll_levels: dict[str, int],
         sim_details: dict[str, int],
     ) -> "PresetInfo":
         """스탯 Stats로부터 PresetInfo 생성"""
@@ -362,9 +362,40 @@ class PresetInfo:
             # Stats를 dict로 변환
             # todo: Stats에 to_dict() 메서드 추가
             stats=stats.to_dict(),
-            skill_levels=skill_levels.copy(),
+            scroll_levels=scroll_levels.copy(),
             sim_details=sim_details.copy(),
         )
+
+    def get_scroll_level(self, scroll_id: str) -> int:
+        """스크롤 ID 기준 레벨 반환"""
+
+        # 스크롤이 레벨 저장의 단일 기준이므로 ID로 직접 조회
+        level: int = self.scroll_levels[scroll_id]
+        return level
+
+    def set_scroll_level(self, scroll_id: str, level: int) -> None:
+        """스크롤 ID 기준 레벨 저장"""
+
+        self.scroll_levels[scroll_id] = level
+
+    def get_skill_level(
+        self,
+        server_spec: "ServerSpec",
+        skill_id: str,
+    ) -> int:
+        """스킬 ID 기준 소속 스크롤 레벨 반환"""
+
+        # 스킬이 속한 스크롤을 현재 서버 정의에서 역탐색
+        scroll_def: ScrollDef
+        for scroll_def in server_spec.skill_registry.get_all_scroll_defs():
+            if skill_id not in scroll_def.skills:
+                continue
+
+            # 스킬별 저장 대신 소속 스크롤 레벨을 단일 기준으로 사용
+            return self.get_scroll_level(scroll_def.id)
+
+        # 스크롤에 속하지 않는 스킬은 현 구조에서 레벨 저장 대상이 아님
+        raise KeyError(f"skill_id does not belong to any scroll: {skill_id}")
 
 
 @dataclass(slots=True)
@@ -447,6 +478,7 @@ class MacroPreset:
         cls,
         server_id: str,
         scroll_slot_count: int,
+        scroll_ids: list[str],
         skills_all: list[str],
         default_delay: int,
         default_cooltime_reduction: int,
@@ -485,8 +517,8 @@ class MacroPreset:
             link_skills=[],
             info=PresetInfo(
                 stats=cls.DEFAULT_STATS.copy(),
-                # todo: 설정을 변경 한 스킬만 저장하도록 수정
-                skill_levels={skill_id: 1 for skill_id in skills_all.copy()},
+                # 현재 서버의 모든 스크롤 레벨 기본값 구성
+                scroll_levels={scroll_id: 1 for scroll_id in scroll_ids.copy()},
                 sim_details=cls.DEFAULT_SIM_DETAILS.copy(),
             ),
         )

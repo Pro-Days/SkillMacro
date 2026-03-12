@@ -62,45 +62,26 @@ class SkillLevelInputSpec:
     """스킬 레벨 입력 UI 한 칸의 표시/저장 정보"""
 
     title: str
-    skill_ids: tuple[str, ...]
     value: int
-    scroll_id: str | None = None
-    skill_id: str | None = None
+    scroll_id: str
 
 
 def build_skill_level_input_specs() -> list[SkillLevelInputSpec]:
     """현재 서버/프리셋 기준 스킬 레벨 입력 목록 구성"""
 
-    # 스크롤 소속 스킬과 단독 스킬을 분리하기 위한 기준 준비
+    # 스크롤 레벨만 입력 대상으로 노출하는 현재 구조 기준 준비
     server: ServerSpec = app_state.macro.current_server
     preset: MacroPreset = app_state.macro.current_preset
     specs: list[SkillLevelInputSpec] = []
-    scroll_skill_ids: set[str] = set()
 
     # 스크롤 공용 레벨 입력 칸 우선 구성
     for scroll_def in server.skill_registry.get_all_scroll_defs():
-        shared_level: int = preset.info.skill_levels[scroll_def.skills[0]]
+        shared_level: int = preset.info.get_scroll_level(scroll_def.id)
         specs.append(
             SkillLevelInputSpec(
                 title=scroll_def.name,
-                skill_ids=scroll_def.skills,
                 value=shared_level,
                 scroll_id=scroll_def.id,
-            )
-        )
-        scroll_skill_ids.update(scroll_def.skills)
-
-    # 스크롤에 속하지 않는 개별 스킬 입력 칸 후순위 구성
-    for skill_id in server.skill_registry.get_all_skill_ids():
-        if skill_id in scroll_skill_ids:
-            continue
-
-        specs.append(
-            SkillLevelInputSpec(
-                title=server.skill_registry.get(skill_id).name,
-                skill_ids=(skill_id,),
-                value=preset.info.skill_levels[skill_id],
-                skill_id=skill_id,
             )
         )
 
@@ -403,14 +384,14 @@ class Sim1UI(QFrame):
 
             # 모두 통과했다면 저장 및 플래그 설정
             if all_valid:
-                # 공용 레벨 입력값을 스크롤 소속 모든 스킬 ID에 동시 반영
+                # 스크롤 공용 레벨 입력값을 스크롤 ID 기준 저장소에 직접 반영
                 for _input, entry in zip(self.inputs, self.entries):
                     input_level: int = int(_input.text())
 
-                    for skill_id in entry.skill_ids:
-                        app_state.macro.current_preset.info.skill_levels[skill_id] = (
-                            input_level
-                        )
+                    app_state.macro.current_preset.info.set_scroll_level(
+                        entry.scroll_id,
+                        input_level,
+                    )
 
                 save_data()
 
@@ -1241,16 +1222,7 @@ class SkillInputs(QFrame):
 
             # 스크롤 아이콘 우선, 없으면 개별 스킬 아이콘 사용
             icon_size: int = level_input.sizeHint().height()
-            icon_pixmap: QPixmap
-            if entry.scroll_id is not None:
-                icon_pixmap = resource_registry.get_scroll_pixmap(entry.scroll_id)
-
-            elif entry.skill_id is not None:
-                icon_pixmap = resource_registry.get_skill_pixmap(entry.skill_id)
-
-            else:
-                raise ValueError("SkillLevelInputSpec must include scroll_id or skill_id")
-
+            icon_pixmap: QPixmap = resource_registry.get_scroll_pixmap(entry.scroll_id)
             image: SkillImage = SkillImage(
                 self,
                 icon_pixmap,

@@ -907,7 +907,7 @@ class AvailableSkillPanel(QFrame):
             scroll_def: ScrollDef = (
                 app_state.macro.current_server.skill_registry.get_scroll(scroll_id)
             )
-            level: int = preset.info.skill_levels[scroll_def.skills[0]]
+            level: int = preset.info.get_scroll_level(scroll_def.id)
             return self.popup_manager.build_scroll_hover_card(scroll_def, level)
 
         def _build_available_skill_hover_card(
@@ -926,7 +926,10 @@ class AvailableSkillPanel(QFrame):
             if not skill_id:
                 return None
 
-            level: int = preset.info.skill_levels[skill_id]
+            level: int = preset.info.get_skill_level(
+                app_state.macro.current_server,
+                skill_id,
+            )
             return self.popup_manager.build_skill_hover_card(skill_id, level)
 
 
@@ -1099,7 +1102,10 @@ class PlacedSkillPanel(QFrame):
             if not skill_id:
                 return None
 
-            level: int = preset.info.skill_levels[skill_id]
+            level: int = preset.info.get_skill_level(
+                app_state.macro.current_server,
+                skill_id,
+            )
             return self.popup_manager.build_skill_hover_card(skill_id, level)
 
         def set_selected(self, selected_ref: EquippedSkillRef | None) -> None:

@@ -1765,7 +1765,10 @@ class SkillGridSelectContent(QFrame):
         """선택 가능한 스킬 버튼 기준 호버 카드 구성"""
 
         # 현재 프리셋 저장 레벨 기준으로 카드 내용 구성
-        level: int = app_state.macro.current_preset.info.skill_levels[skill_id]
+        level: int = app_state.macro.current_preset.info.get_skill_level(
+            app_state.macro.current_server,
+            skill_id,
+        )
         return self.popup_manager.build_skill_hover_card(skill_id, level)
 
 
@@ -1891,9 +1894,8 @@ class ScrollGridSelectContent(QFrame):
     ) -> HoverCardData | None:
         """스크롤 버튼 기준 호버 카드 구성"""
 
-        # 스크롤 공용 레벨은 첫 번째 스킬 저장값을 기준으로 조회
-        # TODO: 스킬 레벨을 스크롤 레벨로 통일
-        level: int = app_state.macro.current_preset.info.skill_levels[
-            scroll_def.skills[0]
-        ]
+        # 스크롤 ID 자체를 공용 레벨 저장 키로 직접 사용
+        level: int = app_state.macro.current_preset.info.get_scroll_level(
+            scroll_def.id
+        )
         return self.popup_manager.build_scroll_hover_card(scroll_def, level)

@@ -709,9 +709,9 @@ def get_simulated_skills(
         for skill_ref in placed_refs
     }
 
-    # 스킬 레벨
-    # skill_levels: dict[str, int] = {
-    #     skill_id: setting. for skill_id, setting in skills_info_tuple
+    # 스크롤 레벨
+    # scroll_levels: dict[str, int] = {
+    #     scroll_id: level for current preset
     # }
 
     task_list: list[EquippedSkillRef] = []
