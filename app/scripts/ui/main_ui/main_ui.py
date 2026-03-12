@@ -454,9 +454,7 @@ class Tab(QFrame):
         self.available_skills: AvailableSkillPanel = AvailableSkillPanel(
             self.popup_manager
         )
-        self.placed_skills: PlacedSkillPanel = PlacedSkillPanel(
-            self.popup_manager
-        )
+        self.placed_skills: PlacedSkillPanel = PlacedSkillPanel(self.popup_manager)
 
         divider: QFrame = QFrame(self)
         divider.setStyleSheet("QFrame { background-color: #b4b4b4; }")
@@ -622,8 +620,8 @@ class Tab(QFrame):
             return
 
         # 스킬 ID 기준 배치 위치를 찾아 실제 슬롯과 파생 설정을 함께 정리
-        skill_ref_map: dict[str, EquippedSkillRef] = self.preset.skills.get_placed_skill_ref_map(
-            app_state.macro.current_server
+        skill_ref_map: dict[str, EquippedSkillRef] = (
+            self.preset.skills.get_placed_skill_ref_map(app_state.macro.current_server)
         )
         target_ref: EquippedSkillRef = skill_ref_map[skill_id]
         self.clear_placed_skill(skill_id)
@@ -653,7 +651,6 @@ class Tab(QFrame):
         """하단 슬롯 선택"""
 
         self.placed_skills.select(skill_ref)
-        self.available_skills.set_selected_skill(skill_ref)
 
     def set_placed_skill(self, skill_ref: EquippedSkillRef, skill_id: str) -> None:
         """하단 슬롯 스킬 적용"""
@@ -807,13 +804,6 @@ class AvailableSkillPanel(QFrame):
 
         for column in self.columns:
             column.update_from_preset(preset)
-
-    def set_selected_skill(self, selected_ref: EquippedSkillRef | None) -> None:
-        """선택 상태만 갱신"""
-
-        # 상단 패널은 제공 스킬 노출만 담당하므로 선택별 별도 스타일 미사용
-        _ = selected_ref
-        self.update_from_preset(app_state.macro.current_preset)
 
     def get_scroll_button(self, index: int) -> QPushButton:
         """스크롤 버튼 반환"""
