@@ -915,8 +915,8 @@ class AvailableSkillPanel(QFrame):
             if not scroll_id:
                 return None
 
-            scroll_def: ScrollDef = app_state.macro.current_server.skill_registry.get_scroll(
-                scroll_id
+            scroll_def: ScrollDef = (
+                app_state.macro.current_server.skill_registry.get_scroll(scroll_id)
             )
             level: int = preset.info.skill_levels[scroll_def.skills[0]]
             return self.popup_manager.build_scroll_hover_card(scroll_def, level)
@@ -1157,7 +1157,7 @@ class EquippedSkillPanel(QFrame):
                         )
                     )
 
-                    button.setGraphicsEffect(None)
+                    button.setGraphicsEffect(None)  # type: ignore
 
         def set_key(self, key: str) -> None:
             """공용키 텍스트 반영"""

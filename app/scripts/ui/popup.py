@@ -14,8 +14,8 @@ from PySide6.QtCore import (
     QPoint,
     QRect,
     QSize,
-    Signal,
     Qt,
+    Signal,
 )
 from PySide6.QtGui import QCursor, QGuiApplication, QIcon, QPixmap
 from PySide6.QtWidgets import (
@@ -293,14 +293,14 @@ class HoverCardHost(QFrame):
 
         self.hide()
 
-    def eventFilter(self, obj: QObject | None, event: QEvent | None) -> bool:  # type: ignore
+    def eventFilter(self, watched, event) -> bool:  # type: ignore
         """전역 입력 발생 시 호버 카드 자동 숨김"""
 
         if event is None:
-            return super().eventFilter(obj, event)
+            return super().eventFilter(watched, event)
 
         if not self.isVisible():
-            return super().eventFilter(obj, event)
+            return super().eventFilter(watched, event)
 
         # 클릭, 휠, 비활성화 시 카드 숨김
         if event.type() in {
@@ -311,7 +311,7 @@ class HoverCardHost(QFrame):
         }:
             self.hide_card()
 
-        return super().eventFilter(obj, event)
+        return super().eventFilter(watched, event)
 
 
 class HoverCardTrigger(QObject):
@@ -333,11 +333,11 @@ class HoverCardTrigger(QObject):
         self._widget.setMouseTracking(True)
         self._widget.installEventFilter(self)
 
-    def eventFilter(self, obj: QObject | None, event: QEvent | None) -> bool:  # type: ignore
+    def eventFilter(self, watched, event) -> bool:  # type: ignore
         """호버 진입/이동/이탈에 맞춰 카드 표시 제어"""
 
-        if event is None or obj is not self._widget:
-            return super().eventFilter(obj, event)
+        if event is None or watched is not self._widget:
+            return super().eventFilter(watched, event)
 
         # 진입 및 이동 시 최신 데이터로 카드 갱신
         if event.type() in {
@@ -349,11 +349,11 @@ class HoverCardTrigger(QObject):
 
             if data is None:
                 self._popup_manager.hide_hover_card()
-                return super().eventFilter(obj, event)
+                return super().eventFilter(watched, event)
 
             self._popup_manager.show_hover_card(data, QCursor.pos())
 
-            return super().eventFilter(obj, event)
+            return super().eventFilter(watched, event)
 
         # 이탈 및 숨김 시 카드 제거
         if event.type() in {
@@ -364,7 +364,7 @@ class HoverCardTrigger(QObject):
         }:
             self._popup_manager.hide_hover_card()
 
-        return super().eventFilter(obj, event)
+        return super().eventFilter(watched, event)
 
 
 class NoticeContent(PopupContent):
@@ -725,7 +725,7 @@ class PopupHost(QWidget):
 
         return super().eventFilter(obj, event)
 
-    def focusOutEvent(self, a0) -> None:
+    def focusOutEvent(self, event) -> None:
         """
         포커스를 잃었을 때 팝업 내부 클릭인지 확인 후 팝업 닫기
         """
@@ -740,12 +740,12 @@ class PopupHost(QWidget):
         ):
             self.close()
 
-        super().focusOutEvent(a0)
+        super().focusOutEvent(event)
 
-    def closeEvent(self, a0) -> None:
+    def closeEvent(self, event) -> None:
         """팝업이 닫힐 때 호출"""
         self.closed.emit()
-        super().closeEvent(a0)
+        super().closeEvent(event)
 
 
 class PopupController:
@@ -817,18 +817,18 @@ class NoticeHost(PopupHost):
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
 
-    def focusOutEvent(self, a0) -> None:
+    def focusOutEvent(self, event) -> None:
         """포커스를 잃어도 닫히지 않도록"""
         pass
 
-    def eventFilter(self, obj, event: QEvent) -> bool:  # type: ignore
+    def eventFilter(self, watched, event: QEvent) -> bool:  # type: ignore
         """부모 위젯의 스크롤 이벤트를 감지"""
 
         # 스크롤 이벤트 감지
         if event.type() == QEvent.Type.Wheel:
             return False
 
-        return super().eventFilter(obj, event)
+        return super().eventFilter(watched, event)
 
 
 class NoticeController:

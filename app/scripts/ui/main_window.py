@@ -218,17 +218,17 @@ class MainWindow(QWidget):
         # self.change_layout(1)
 
     ## 마우스 클릭하면 실행
-    def mousePressEvent(self, a0: Any) -> None:
+    def mousePressEvent(self, event) -> None:
         self.popup_manager.close_popup()
 
         if self.page_navigator.currentIndex() == 0:
             self.main_ui.cancel_skill_selection()
 
-    def resizeEvent(self, a0) -> None:
+    def resizeEvent(self, event) -> None:
         """윈도우 크기 변경 시 실행"""
 
         self.popup_manager.update_notice_positions()
-        return super().resizeEvent(a0)
+        return super().resizeEvent(event)
 
     def get_main_ui(self) -> MainUI:
         """메인 UI 객체 반환"""
