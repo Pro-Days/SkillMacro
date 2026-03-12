@@ -161,6 +161,7 @@ class SkillRegistry:
 
     _skills: dict[str, SkillDef]
     _scrolls: dict[str, ScrollDef]
+    _skill_to_scroll: dict[str, str]
 
     def get_all_skill_ids(self) -> list[str]:
         return list(self._skills.keys())
@@ -179,6 +180,9 @@ class SkillRegistry:
 
     def get_scroll(self, scroll_id: str) -> ScrollDef:
         return self._scrolls[scroll_id]
+
+    def get_scroll_id_by_skill_id(self, skill_id: str) -> str:
+        return self._skill_to_scroll[skill_id]
 
     @classmethod
     def from_skill_data(
@@ -202,6 +206,7 @@ class SkillRegistry:
             skills[skill_id] = skill_def
 
         scrolls: dict[str, ScrollDef] = {}
+        skill_to_scroll: dict[str, str] = {}
         for detail in scroll_details:
             scroll_def: ScrollDef = ScrollDef.from_dict(
                 server_id=server_id,
@@ -209,4 +214,11 @@ class SkillRegistry:
             )
             scrolls[scroll_def.id] = scroll_def
 
-        return cls(_skills=skills, _scrolls=scrolls)
+            for skill_id in scroll_def.skills:
+                skill_to_scroll[skill_id] = scroll_def.id
+
+        return cls(
+            _skills=skills,
+            _scrolls=scrolls,
+            _skill_to_scroll=skill_to_scroll,
+        )

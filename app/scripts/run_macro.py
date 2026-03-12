@@ -342,8 +342,6 @@ def _append_regular_task(
         skill_id: str = app_state.macro.current_preset.skills.get_placed_skill_id(
             skill_ref
         )
-        if not skill_id:
-            continue
 
         setting: SkillUsageSetting = app_state.macro.current_preset.usage_settings[
             skill_id

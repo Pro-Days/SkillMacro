@@ -385,17 +385,9 @@ class PresetInfo:
     ) -> int:
         """스킬 ID 기준 소속 스크롤 레벨 반환"""
 
-        # 스킬이 속한 스크롤을 현재 서버 정의에서 역탐색
-        scroll_def: ScrollDef
-        for scroll_def in server_spec.skill_registry.get_all_scroll_defs():
-            if skill_id not in scroll_def.skills:
-                continue
-
-            # 스킬별 저장 대신 소속 스크롤 레벨을 단일 기준으로 사용
-            return self.get_scroll_level(scroll_def.id)
-
-        # 스크롤에 속하지 않는 스킬은 현 구조에서 레벨 저장 대상이 아님
-        raise KeyError(f"skill_id does not belong to any scroll: {skill_id}")
+        # 레지스트리의 직접 소속 매핑으로 스캔 없이 스크롤 레벨 조회
+        scroll_id: str = server_spec.skill_registry.get_scroll_id_by_skill_id(skill_id)
+        return self.get_scroll_level(scroll_id)
 
 
 @dataclass(slots=True)

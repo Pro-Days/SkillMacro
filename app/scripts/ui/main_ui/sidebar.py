@@ -1136,32 +1136,6 @@ class LinkSkillSettings(QFrame):
     def update_from_preset(self, preset: "MacroPreset") -> None:
         """프리셋으로부터 위젯 상태를 업데이트"""
 
-        available_skill_ids: set[str] = set(get_current_scroll_skill_ids(preset))
-        filtered_link_skills: list[LinkSkill] = []
-        was_changed: bool = False
-
-        for link_skill in preset.link_skills:
-            filtered_skill_ids: list[str] = [
-                skill_id
-                for skill_id in link_skill.skills
-                if skill_id in available_skill_ids
-            ]
-
-            if not filtered_skill_ids:
-                was_changed = True
-                continue
-
-            if filtered_skill_ids != link_skill.skills:
-                link_skill.skills = filtered_skill_ids
-                link_skill.set_manual()
-                link_skill.clear_key()
-                was_changed = True
-
-            filtered_link_skills.append(link_skill)
-
-        if was_changed:
-            preset.link_skills = filtered_link_skills
-
         # 기존 목록 제거
         while self._list_layout.count():
             item: QLayoutItem | None = self._list_layout.takeAt(0)
@@ -1172,14 +1146,9 @@ class LinkSkillSettings(QFrame):
             if w is not None:
                 w.deleteLater()
 
-        for i, data in enumerate(
-            filtered_link_skills if was_changed else preset.link_skills
-        ):
+        for i, data in enumerate(preset.link_skills):
             link_skill = self.LinkSkillWidget(data, i, self.edit, self.remove)
             self._list_layout.addWidget(link_skill)
-
-        if was_changed:
-            self._on_data_changed()
 
         QTimer.singleShot(0, self.contentResized.emit)
 

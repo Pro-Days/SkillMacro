@@ -34,7 +34,7 @@ from app.scripts.run_macro import build_preview_task_list, init_macro
 from app.scripts.ui.popup import NoticeKind, PopupKind, PopupManager
 
 if TYPE_CHECKING:
-    from app.scripts.macro_models import MacroPreset, SkillUsageSetting
+    from app.scripts.macro_models import LinkSkill, MacroPreset, SkillUsageSetting
     from app.scripts.ui.main_window import MainWindow
     from app.scripts.ui.popup import HoverCardData
 
@@ -608,9 +608,37 @@ class Tab(QFrame):
                 self.clear_skill_if_placed(skill_id)
 
         self.preset.skills.equipped_scrolls[scroll_index] = scroll_id
+        self._sync_link_skills_to_available_skills()
         self._sync_to_shared_data()
         self.update_from_preset()
         return True
+
+    def _sync_link_skills_to_available_skills(self) -> None:
+        """현재 스크롤 기준으로 연계스킬 목록 정리"""
+
+        available_skill_ids: set[str] = set(
+            self.preset.skills.get_available_skill_ids(app_state.macro.current_server)
+        )
+        filtered_link_skills: list[LinkSkill] = []
+
+        # 현재 스크롤이 더 이상 제공하지 않는 스킬은 연계 목록에서 제거
+        for link_skill in self.preset.link_skills:
+            filtered_skill_ids: list[str] = [
+                skill_id for skill_id in link_skill.skills if skill_id in available_skill_ids
+            ]
+
+            if not filtered_skill_ids:
+                continue
+
+            if filtered_skill_ids != link_skill.skills:
+                # 스킬 구성 변경 시 자동 연계와 단축키 설정 초기화
+                link_skill.skills = filtered_skill_ids
+                link_skill.set_manual()
+                link_skill.clear_key()
+
+            filtered_link_skills.append(link_skill)
+
+        self.preset.link_skills = filtered_link_skills
 
     def clear_skill_if_placed(self, skill_id: str) -> None:
         """기존 배치 스킬 제거"""
@@ -760,8 +788,6 @@ class SkillPreview(QFrame):
             skill_id: str = app_state.macro.current_preset.skills.get_placed_skill_id(
                 skill_ref
             )
-            if not skill_id:
-                continue
 
             skill: SkillImage = SkillImage(
                 parent=self,

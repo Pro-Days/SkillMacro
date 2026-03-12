@@ -617,8 +617,6 @@ def _get_task_list(
         skill_id: str = app_state.macro.current_preset.skills.get_placed_skill_id(
             skill_ref,
         )
-        if not skill_id:
-            continue
 
         if (
             skill_ref in prepared_skills

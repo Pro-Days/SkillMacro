@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import datetime
 import os
-import shutil
 
 from app.scripts.app_state import app_state
 from app.scripts.config import config
@@ -24,38 +22,25 @@ def load_data(num: int = -1) -> None:
     num: 탭 번호, -1이면 최근 탭
     """
 
-    try:
-        update_data()
+    update_data()
 
-        repo: MacroPresetRepository = MacroPresetRepository(file_dir)
-        preset_file: MacroPresetFile = repo.load()
+    repo: MacroPresetRepository = MacroPresetRepository(file_dir)
+    preset_file: MacroPresetFile = repo.load()
 
-        # num이 -1이면 최근 탭, 아니면 해당 탭 번호
-        if num == -1:
-            target_index: int = preset_file.recent_preset
-        else:
-            target_index: int = num
+    # num이 -1이면 최근 탭, 아니면 해당 탭 번호
+    if num == -1:
+        target_index: int = preset_file.recent_preset
+    else:
+        target_index: int = num
 
-        # 프리셋 업데이트
-        app_state.macro.presets = preset_file.preset
-        app_state.macro.current_preset_index = target_index
+    # 프리셋 업데이트
+    app_state.macro.presets = preset_file.preset
+    app_state.macro.current_preset_index = target_index
 
-        # 현재 선택 프리셋 인덱스만 즉시 반영
-        if preset_file.recent_preset != target_index:
-            preset_file.recent_preset = target_index
-            repo.save(preset_file)
-
-    except Exception:
-        print("데이터 로드 중 오류 발생")
-
-        # 오류 발생 시 백업 데이터 생성
-        backup_data()
-
-        # 기본 데이터 생성
-        create_default_data()
-
-        # 데이터 다시 로드
-        load_data()
+    # 현재 선택 프리셋 인덱스만 즉시 반영
+    if preset_file.recent_preset != target_index:
+        preset_file.recent_preset = target_index
+        repo.save(preset_file)
 
 
 def create_default_data() -> None:
@@ -159,42 +144,10 @@ def update_data() -> None:
     데이터 포맷 업데이트
     """
 
-    try:
-        # 데이터가 없으면 새로 생성
-        if not os.path.isfile(file_dir):
-            create_default_data()
-            return
-
-        # 스크롤 구조 전환 초기화
-        backup_data()
+    # 데이터가 없을 때만 현재 스키마 기본 파일 생성
+    if not os.path.isfile(file_dir):
         create_default_data()
-
         return
-
-    except Exception as e:
-        print(f"데이터 업데이트 중 오류 발생: {e}")
-
-        backup_data()
-
-        create_default_data()
-
-
-def backup_data() -> None:
-    """데이터 백업"""
-
-    # 백업 폴더가 없으면 생성
-    backup_path: str = os.path.join(data_path, "backup")
-    os.makedirs(backup_path, exist_ok=True)
-
-    # 백업 파일 경로 설정
-    backup_file: str = os.path.join(
-        backup_path,
-        f"macros_backup_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-    )
-
-    # 파일이 존재하면 복사
-    if os.path.isfile(file_dir):
-        shutil.copy2(file_dir, backup_file)
 
 
 """
