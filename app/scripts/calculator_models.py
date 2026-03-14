@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from enum import Enum
+
+from app.scripts.registry.resource_registry import convert_resource_path
 
 
 class StatKey(str, Enum):
@@ -43,7 +46,7 @@ class StatKey(str, Enum):
     EXP_PERCENT = "exp_percent"
     # 보스 공격력%
     BOSS_ATTACK_PERCENT = "boss_attack_percent"
-    # 드롭율
+    # 드랍률
     DROP_RATE_PERCENT = "drop_rate_percent"
     # 회피
     DODGE_PERCENT = "dodge_percent"
@@ -556,53 +559,33 @@ REALM_TIER_SPECS: dict[RealmTier, RealmTierSpec] = {
 }
 
 
-# 부적 번호별 대상 스탯 순환 규칙 고정
-# 부적 데이터 생성을 위한 임시 상수
-TALISMAN_STAT_CYCLE: tuple[StatKey, ...] = (
-    StatKey.STR,
-    StatKey.DEXTERITY,
-    StatKey.VITALITY,
-    StatKey.LUCK,
-)
+def _load_builtin_talisman_templates() -> tuple[TalismanTemplate, ...]:
+    """내장 부적 목록 로드"""
 
+    # 명시적으로 작성된 JSON 부적 정의 로드
+    resource_path: str = convert_resource_path("resources\\data\\talisman_data.json")
+    with open(resource_path, "r", encoding="utf-8") as file:
+        payload: dict[str, object] = json.load(file)
 
-def _build_talisman_templates() -> tuple[TalismanTemplate, ...]:
-    """내장 부적 목록 생성"""
-    # TODO: 실제 부적 데이터를 적용
+    raw_talismans: object = payload["talismans"]
+    if not isinstance(raw_talismans, list):
+        raise TypeError("talismans must be a list")
 
-    # 등급/번호 조합 전체를 앱 시작 시 한 번만 생성
     templates: list[TalismanTemplate] = []
-    for grade in (
-        TalismanGrade.ADVANCED,
-        TalismanGrade.RARE,
-        TalismanGrade.HERO,
-        TalismanGrade.LEGEND,
-    ):
-        for index in range(1, 13):
-            stat_key: StatKey = TALISMAN_STAT_CYCLE[
-                (index - 1) % len(TALISMAN_STAT_CYCLE)
-            ]
-            template_id: str = f"{grade.value}:{index}"
-            name: str = f"{TALISMAN_GRADE_LABELS[grade]}부적{index}"
-            templates.append(
-                TalismanTemplate(
-                    template_id=template_id,
-                    name=name,
-                    grade=grade,
-                    stat_key=stat_key,
-                )
+    for raw_talisman in raw_talismans:
+        if not isinstance(raw_talisman, dict):
+            raise TypeError("talisman item must be a dict")
+
+        templates.append(
+            TalismanTemplate(
+                template_id=str(raw_talisman["template_id"]),
+                name=str(raw_talisman["name"]),
+                grade=TalismanGrade(str(raw_talisman["grade"])),
+                stat_key=StatKey(str(raw_talisman["stat_key"])),
             )
+        )
 
     return tuple(templates)
-
-
-# 부적 등급 한글 표시 고정
-TALISMAN_GRADE_LABELS: dict[TalismanGrade, str] = {
-    TalismanGrade.ADVANCED: "고급",
-    TalismanGrade.RARE: "희귀",
-    TalismanGrade.HERO: "영웅",
-    TalismanGrade.LEGEND: "전설",
-}
 
 
 # 부적 등급 보정값 고정
@@ -615,4 +598,6 @@ TALISMAN_GRADE_OFFSETS: dict[TalismanGrade, int] = {
 
 
 # 프로그램 내장 부적 정의 전체
-BUILTIN_TALISMAN_TEMPLATES: tuple[TalismanTemplate, ...] = _build_talisman_templates()
+BUILTIN_TALISMAN_TEMPLATES: tuple[TalismanTemplate, ...] = (
+    _load_builtin_talisman_templates()
+)

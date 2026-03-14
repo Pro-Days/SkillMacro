@@ -4,6 +4,7 @@ import random
 from functools import lru_cache
 
 from app.scripts.app_state import app_state
+from app.scripts.calculator_engine import build_skill_effect_maps
 from app.scripts.config import config
 from app.scripts.custom_classes import (
     SimAnalysis,
@@ -17,8 +18,6 @@ from app.scripts.macro_models import EquippedSkillRef, LinkUseType, SkillUsageSe
 from app.scripts.registry.skill_registry import (
     BuffEffect,
     DamageEffect,
-    HealEffect,
-    LevelEffect,
     get_builtin_skill_id,
 )
 from app.scripts.run_macro import get_prepared_link_skill_indices
@@ -787,34 +786,38 @@ def get_simulated_skills(
     for used_skill in used_skills:
         used_skill.time = round(used_skill.time * 0.001, 2)
 
-    skills_effects: dict[str, list[LevelEffect]] = {
-        skill_id: app_state.macro.current_server.skill_registry.get(skill_id).levels[1]
-        for skill_id in app_state.macro.current_preset.skills.get_placed_skill_ids()
-    }
+    # 현재 스크롤 레벨 기준 효과 테이블 계산
+    damage_effects_map: dict[str, list[DamageEffect]]
+    buff_effects_map: dict[str, list[BuffEffect]]
+    damage_effects_map, buff_effects_map = build_skill_effect_maps(
+        server_spec=app_state.macro.current_server,
+        preset=app_state.macro.current_preset,
+        placed_skill_ids=app_state.macro.current_preset.skills.get_placed_skill_ids(),
+    )
 
     for skill in used_skills:
-        effects: list[LevelEffect] = skills_effects[skill.skill_id]
+        damage_effects: list[DamageEffect] = damage_effects_map[skill.skill_id]
+        buff_effects: list[BuffEffect] = buff_effects_map[skill.skill_id]
 
-        for effect in effects:
-            if isinstance(effect, DamageEffect):
-                attack: SimAttack = SimAttack(
-                    skill_id=skill.skill_id,
-                    time=round(skill.time + effect.time, 2),
-                    damage=effect.damage,
-                )
+        for effect in damage_effects:
+            attack: SimAttack = SimAttack(
+                skill_id=skill.skill_id,
+                time=round(skill.time + effect.time, 2),
+                damage=effect.damage,
+            )
 
-                attack_details.append(attack)
+            attack_details.append(attack)
 
-            elif isinstance(effect, BuffEffect):
-                buff: SimBuff = SimBuff(
-                    start_time=round(skill.time + effect.time, 2),
-                    end_time=round(skill.time + effect.time + effect.duration, 2),
-                    stat=effect.stat,
-                    value=effect.value,
-                    skill_id=skill.skill_id,
-                )
+        for effect in buff_effects:
+            buff: SimBuff = SimBuff(
+                start_time=round(skill.time + effect.time, 2),
+                end_time=round(skill.time + effect.time + effect.duration, 2),
+                stat=effect.stat,
+                value=effect.value,
+                skill_id=skill.skill_id,
+            )
 
-                buff_details.append(buff)
+            buff_details.append(buff)
 
     attack_details.sort(key=lambda x: x.time)
     buff_details.sort(key=lambda x: x.start_time)

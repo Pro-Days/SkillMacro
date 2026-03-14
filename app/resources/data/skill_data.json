@@ -1,294 +1,273 @@
 {
-    "한월 RPG": {
-        "skills": [
-            "builtin:한월 RPG:스킬1",
-            "builtin:한월 RPG:스킬2",
-            "builtin:한월 RPG:스킬3",
-            "builtin:한월 RPG:스킬4",
-            "builtin:한월 RPG:스킬5",
-            "builtin:한월 RPG:스킬6",
-            "builtin:한월 RPG:스킬7",
-            "builtin:한월 RPG:스킬8",
-            "builtin:한월 RPG:스킬9",
-            "builtin:한월 RPG:스킬10",
-            "builtin:한월 RPG:스킬11",
-            "builtin:한월 RPG:스킬12",
-            "builtin:한월 RPG:스킬13",
-            "builtin:한월 RPG:스킬14",
-            "builtin:한월 RPG:평타"
-        ],
-        "scrolls": [
+  "한월 RPG": {
+    "skills": [
+      "builtin:한월 RPG:스킬1",
+      "builtin:한월 RPG:스킬2",
+      "builtin:한월 RPG:스킬3",
+      "builtin:한월 RPG:스킬4",
+      "builtin:한월 RPG:스킬5",
+      "builtin:한월 RPG:스킬6",
+      "builtin:한월 RPG:스킬7",
+      "builtin:한월 RPG:스킬8",
+      "builtin:한월 RPG:스킬9",
+      "builtin:한월 RPG:스킬10",
+      "builtin:한월 RPG:스킬11",
+      "builtin:한월 RPG:스킬12",
+      "builtin:한월 RPG:스킬13",
+      "builtin:한월 RPG:스킬14",
+      "builtin:한월 RPG:평타"
+    ],
+    "scrolls": [
+      {
+        "scroll_id": "builtin:한월 RPG:스크롤1",
+        "name": "스크롤1",
+        "skills": ["builtin:한월 RPG:스킬1", "builtin:한월 RPG:스킬2"]
+      },
+      {
+        "scroll_id": "builtin:한월 RPG:스크롤2",
+        "name": "스크롤2",
+        "skills": ["builtin:한월 RPG:스킬3", "builtin:한월 RPG:스킬4"]
+      },
+      {
+        "scroll_id": "builtin:한월 RPG:스크롤3",
+        "name": "스크롤3",
+        "skills": ["builtin:한월 RPG:스킬5", "builtin:한월 RPG:스킬6"]
+      },
+      {
+        "scroll_id": "builtin:한월 RPG:스크롤4",
+        "name": "스크롤4",
+        "skills": ["builtin:한월 RPG:스킬7", "builtin:한월 RPG:스킬8"]
+      },
+      {
+        "scroll_id": "builtin:한월 RPG:스크롤5",
+        "name": "스크롤5",
+        "skills": ["builtin:한월 RPG:스킬9", "builtin:한월 RPG:스킬10"]
+      },
+      {
+        "scroll_id": "builtin:한월 RPG:스크롤6",
+        "name": "스크롤6",
+        "skills": ["builtin:한월 RPG:스킬11", "builtin:한월 RPG:스킬12"]
+      },
+      {
+        "scroll_id": "builtin:한월 RPG:스크롤7",
+        "name": "스크롤7",
+        "skills": ["builtin:한월 RPG:스킬13", "builtin:한월 RPG:스킬14"]
+      }
+    ],
+    "skill_details": {
+      "builtin:한월 RPG:스킬1": {
+        "name": "스킬1",
+        "cooltime": 4.0,
+        "levels": {
+          "1": [
             {
-                "scroll_id": "builtin:한월 RPG:스크롤1",
-                "name": "스크롤1",
-                "skills": [
-                    "builtin:한월 RPG:스킬1",
-                    "builtin:한월 RPG:스킬2"
-                ]
-            },
-            {
-                "scroll_id": "builtin:한월 RPG:스크롤2",
-                "name": "스크롤2",
-                "skills": [
-                    "builtin:한월 RPG:스킬3",
-                    "builtin:한월 RPG:스킬4"
-                ]
-            },
-            {
-                "scroll_id": "builtin:한월 RPG:스크롤3",
-                "name": "스크롤3",
-                "skills": [
-                    "builtin:한월 RPG:스킬5",
-                    "builtin:한월 RPG:스킬6"
-                ]
-            },
-            {
-                "scroll_id": "builtin:한월 RPG:스크롤4",
-                "name": "스크롤4",
-                "skills": [
-                    "builtin:한월 RPG:스킬7",
-                    "builtin:한월 RPG:스킬8"
-                ]
-            },
-            {
-                "scroll_id": "builtin:한월 RPG:스크롤5",
-                "name": "스크롤5",
-                "skills": [
-                    "builtin:한월 RPG:스킬9",
-                    "builtin:한월 RPG:스킬10"
-                ]
-            },
-            {
-                "scroll_id": "builtin:한월 RPG:스크롤6",
-                "name": "스크롤6",
-                "skills": [
-                    "builtin:한월 RPG:스킬11",
-                    "builtin:한월 RPG:스킬12"
-                ]
-            },
-            {
-                "scroll_id": "builtin:한월 RPG:스크롤7",
-                "name": "스크롤7",
-                "skills": [
-                    "builtin:한월 RPG:스킬13",
-                    "builtin:한월 RPG:스킬14"
-                ]
+              "time": 0.0,
+              "type": "damage",
+              "damage": 2.5
             }
-        ],
-        "skill_details": {
-            "builtin:한월 RPG:스킬1": {
-                "name": "스킬1",
-                "cooltime": 4.0,
-                "levels": {
-                    "1": [
-                        {
-                            "time": 0.0,
-                            "type": "damage",
-                            "damage": 2.5
-                        }
-                    ]
-                }
-            },
-            "builtin:한월 RPG:스킬2": {
-                "name": "스킬2",
-                "cooltime": 5.0,
-                "levels": {
-                    "1": [
-                        {
-                            "time": 0.0,
-                            "type": "damage",
-                            "damage": 3.0
-                        }
-                    ]
-                }
-            },
-            "builtin:한월 RPG:스킬3": {
-                "name": "스킬3",
-                "cooltime": 10.0,
-                "levels": {
-                    "1": [
-                        {
-                            "time": 0.0,
-                            "type": "damage",
-                            "damage": 7.5
-                        }
-                    ]
-                }
-            },
-            "builtin:한월 RPG:스킬4": {
-                "name": "스킬4",
-                "cooltime": 20.0,
-                "levels": {
-                    "1": [
-                        {
-                            "time": 0.0,
-                            "type": "buff",
-                            "stat": "ATK",
-                            "value": 1500.0,
-                            "duration": 10.0
-                        }
-                    ]
-                }
-            },
-            "builtin:한월 RPG:스킬5": {
-                "name": "스킬5",
-                "cooltime": 2.0,
-                "levels": {
-                    "1": [
-                        {
-                            "time": 0.0,
-                            "type": "damage",
-                            "damage": 1.5
-                        }
-                    ]
-                }
-            },
-            "builtin:한월 RPG:스킬6": {
-                "name": "스킬6",
-                "cooltime": 30.0,
-                "levels": {
-                    "1": [
-                        {
-                            "time": 0.0,
-                            "type": "buff",
-                            "stat": "CRIT_RATE",
-                            "value": 10.0,
-                            "duration": 15.0
-                        }
-                    ]
-                }
-            },
-            "builtin:한월 RPG:스킬7": {
-                "name": "스킬7",
-                "cooltime": 5.0,
-                "levels": {
-                    "1": [
-                        {
-                            "time": 0.0,
-                            "type": "damage",
-                            "damage": 1.0
-                        },
-                        {
-                            "time": 1.0,
-                            "type": "damage",
-                            "damage": 1.0
-                        },
-                        {
-                            "time": 2.0,
-                            "type": "damage",
-                            "damage": 1.0
-                        }
-                    ]
-                }
-            },
-            "builtin:한월 RPG:스킬8": {
-                "name": "스킬8",
-                "cooltime": 4.0,
-                "levels": {
-                    "1": [
-                        {
-                            "time": 0.0,
-                            "type": "damage",
-                            "damage": 2.5
-                        }
-                    ]
-                }
-            },
-            "builtin:한월 RPG:스킬9": {
-                "name": "스킬9",
-                "cooltime": 4.0,
-                "levels": {
-                    "1": [
-                        {
-                            "time": 0.0,
-                            "type": "damage",
-                            "damage": 2.7
-                        }
-                    ]
-                }
-            },
-            "builtin:한월 RPG:스킬10": {
-                "name": "스킬10",
-                "cooltime": 4.0,
-                "levels": {
-                    "1": [
-                        {
-                            "time": 0.0,
-                            "type": "damage",
-                            "damage": 2.9
-                        }
-                    ]
-                }
-            },
-            "builtin:한월 RPG:스킬11": {
-                "name": "스킬11",
-                "cooltime": 6.0,
-                "levels": {
-                    "1": [
-                        {
-                            "time": 0.0,
-                            "type": "damage",
-                            "damage": 3.4
-                        }
-                    ]
-                }
-            },
-            "builtin:한월 RPG:스킬12": {
-                "name": "스킬12",
-                "cooltime": 12.0,
-                "levels": {
-                    "1": [
-                        {
-                            "time": 0.0,
-                            "type": "buff",
-                            "stat": "BOSS_DMG",
-                            "value": 12.0,
-                            "duration": 8.0
-                        }
-                    ]
-                }
-            },
-            "builtin:한월 RPG:스킬13": {
-                "name": "스킬13",
-                "cooltime": 8.0,
-                "levels": {
-                    "1": [
-                        {
-                            "time": 0.0,
-                            "type": "damage",
-                            "damage": 4.1
-                        }
-                    ]
-                }
-            },
-            "builtin:한월 RPG:스킬14": {
-                "name": "스킬14",
-                "cooltime": 18.0,
-                "levels": {
-                    "1": [
-                        {
-                            "time": 0.0,
-                            "type": "buff",
-                            "stat": "ATK_SPD",
-                            "value": 6.0,
-                            "duration": 12.0
-                        }
-                    ]
-                }
-            },
-            "builtin:한월 RPG:평타": {
-                "name": "평타",
-                "cooltime": 1.0,
-                "levels": {
-                    "1": [
-                        {
-                            "time": 0.0,
-                            "type": "damage",
-                            "damage": 1.0
-                        }
-                    ]
-                }
-            }
+          ]
         }
+      },
+      "builtin:한월 RPG:스킬2": {
+        "name": "스킬2",
+        "cooltime": 5.0,
+        "levels": {
+          "1": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.0
+            }
+          ]
+        }
+      },
+      "builtin:한월 RPG:스킬3": {
+        "name": "스킬3",
+        "cooltime": 10.0,
+        "levels": {
+          "1": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 7.5
+            }
+          ]
+        }
+      },
+      "builtin:한월 RPG:스킬4": {
+        "name": "스킬4",
+        "cooltime": 20.0,
+        "levels": {
+          "1": [
+            {
+              "time": 0.0,
+              "type": "buff",
+              "stat": "attack",
+              "value": 1500.0,
+              "duration": 10.0
+            }
+          ]
+        }
+      },
+      "builtin:한월 RPG:스킬5": {
+        "name": "스킬5",
+        "cooltime": 2.0,
+        "levels": {
+          "1": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 1.5
+            }
+          ]
+        }
+      },
+      "builtin:한월 RPG:스킬6": {
+        "name": "스킬6",
+        "cooltime": 30.0,
+        "levels": {
+          "1": [
+            {
+              "time": 0.0,
+              "type": "buff",
+              "stat": "crit_rate_percent",
+              "value": 10.0,
+              "duration": 15.0
+            }
+          ]
+        }
+      },
+      "builtin:한월 RPG:스킬7": {
+        "name": "스킬7",
+        "cooltime": 5.0,
+        "levels": {
+          "1": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 1.0
+            },
+            {
+              "time": 1.0,
+              "type": "damage",
+              "damage": 1.0
+            },
+            {
+              "time": 2.0,
+              "type": "damage",
+              "damage": 1.0
+            }
+          ]
+        }
+      },
+      "builtin:한월 RPG:스킬8": {
+        "name": "스킬8",
+        "cooltime": 4.0,
+        "levels": {
+          "1": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 2.5
+            }
+          ]
+        }
+      },
+      "builtin:한월 RPG:스킬9": {
+        "name": "스킬9",
+        "cooltime": 4.0,
+        "levels": {
+          "1": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 2.7
+            }
+          ]
+        }
+      },
+      "builtin:한월 RPG:스킬10": {
+        "name": "스킬10",
+        "cooltime": 4.0,
+        "levels": {
+          "1": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 2.9
+            }
+          ]
+        }
+      },
+      "builtin:한월 RPG:스킬11": {
+        "name": "스킬11",
+        "cooltime": 6.0,
+        "levels": {
+          "1": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.4
+            }
+          ]
+        }
+      },
+      "builtin:한월 RPG:스킬12": {
+        "name": "스킬12",
+        "cooltime": 12.0,
+        "levels": {
+          "1": [
+            {
+              "time": 0.0,
+              "type": "buff",
+              "stat": "boss_attack_percent",
+              "value": 12.0,
+              "duration": 8.0
+            }
+          ]
+        }
+      },
+      "builtin:한월 RPG:스킬13": {
+        "name": "스킬13",
+        "cooltime": 8.0,
+        "levels": {
+          "1": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 4.1
+            }
+          ]
+        }
+      },
+      "builtin:한월 RPG:스킬14": {
+        "name": "스킬14",
+        "cooltime": 18.0,
+        "levels": {
+          "1": [
+            {
+              "time": 0.0,
+              "type": "buff",
+              "stat": "skill_speed_percent",
+              "value": 6.0,
+              "duration": 12.0
+            }
+          ]
+        }
+      },
+      "builtin:한월 RPG:평타": {
+        "name": "평타",
+        "cooltime": 1.0,
+        "levels": {
+          "1": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 1.0
+            }
+          ]
+        }
+      }
     }
+  }
 }
