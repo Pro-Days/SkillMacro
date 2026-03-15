@@ -1007,9 +1007,6 @@ def build_calculator_timeline(
             (skill_id, setting.to_tuple()) for skill_id, setting in skills_info.items()
         )
     )
-    _ = server_spec
-    _ = preset
-    _ = delay_ms
     attack_details: list[SimAttack]
     buff_details: list[SimBuff]
     attack_details, buff_details = get_simulated_skills(

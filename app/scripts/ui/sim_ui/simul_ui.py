@@ -26,13 +26,6 @@ from app.scripts.app_state import app_state
 from app.scripts.calculator_engine import (
     DISPLAY_POWER_METRICS,
     POWER_METRIC_LABELS,
-    CalculatorBaseState,
-    CalculatorBaseValidation,
-    CalculatorEvaluationContext,
-    LevelUpEvaluation,
-    OptimizationResult,
-    RealmAdvanceEvaluation,
-    ScrollUpgradeEvaluation,
     build_base_state,
     build_calculator_context,
     evaluate_arbitrary_stat_delta,
@@ -48,17 +41,12 @@ from app.scripts.calculator_models import (
     CALCULATOR_STAT_SPECS,
     OVERALL_STAT_GRID_ROWS,
     REALM_TIER_SPECS,
-    CalculatorPresetInput,
-    CalculatorStatSpec,
     DanjeonState,
     DistributionState,
     EquippedOptimizationState,
     OwnedTalisman,
     OwnedTitle,
-    PowerMetric,
-    RealmTier,
     StatKey,
-    TalismanTemplate,
 )
 from app.scripts.config import config
 from app.scripts.custom_classes import (
@@ -66,9 +54,6 @@ from app.scripts.custom_classes import (
     CustomFont,
     CustomLineEdit,
     KVInput,
-    SimAnalysis,
-    SimAttack,
-    SimResult,
     SkillImage,
 )
 from app.scripts.data_manager import save_data
@@ -86,6 +71,23 @@ from app.scripts.ui.sim_ui.graph import (
 )
 
 if TYPE_CHECKING:
+    from app.scripts.calculator_engine import (
+        CalculatorBaseState,
+        CalculatorBaseValidation,
+        CalculatorEvaluationContext,
+        LevelUpEvaluation,
+        OptimizationResult,
+        RealmAdvanceEvaluation,
+        ScrollUpgradeEvaluation,
+    )
+    from app.scripts.calculator_models import (
+        CalculatorPresetInput,
+        CalculatorStatSpec,
+        PowerMetric,
+        RealmTier,
+        TalismanTemplate,
+    )
+    from app.scripts.custom_classes import SimAnalysis, SimAttack, SimResult
     from app.scripts.macro_models import MacroPreset
     from app.scripts.registry.server_registry import ServerSpec
     from app.scripts.ui.main_window import MainWindow
@@ -778,18 +780,26 @@ class Sim3UI(QFrame):
             # 최적화 기준 입력 UI 구성
             self.optimization_title: QLabel = QLabel("현재 선택 입력", self)
             self.optimization_title.setFont(CustomFont(12))
+            self.distribution_title: QLabel = QLabel("스탯 분배", self)
+            self.distribution_title.setFont(CustomFont(11))
             self.distribution_inputs = self.DistributionInputs(
                 self,
                 self.on_optimization_input_changed,
             )
+            self.danjeon_title: QLabel = QLabel("단전", self)
+            self.danjeon_title.setFont(CustomFont(11))
             self.danjeon_inputs = self.DanjeonInputs(
                 self,
                 self.on_optimization_input_changed,
             )
+            self.title_list_title: QLabel = QLabel("칭호 목록", self)
+            self.title_list_title.setFont(CustomFont(11))
             self.title_inputs = self.TitleInputs(
                 self,
                 self.on_optimization_input_changed,
             )
+            self.talisman_title: QLabel = QLabel("부적 목록", self)
+            self.talisman_title.setFont(CustomFont(11))
             self.talisman_inputs = self.TalismanInputs(
                 self,
                 self.on_optimization_input_changed,
@@ -830,6 +840,8 @@ class Sim3UI(QFrame):
                 self.on_custom_delta_changed,
                 self._build_empty_stat_map(),
             )
+            self.custom_delta_result_title: QLabel = QLabel("사용자 지정 변화량 결과", self)
+            self.custom_delta_result_title.setFont(CustomFont(12))
             self.custom_delta_result_list = self.ResultList(self)
 
             # 상단 기준 입력 행 구성
@@ -843,34 +855,55 @@ class Sim3UI(QFrame):
             metric_layout.addWidget(self.realm_combobox)
             metric_layout.addStretch(1)
 
+            # 기준 계산 섹션 구성
+            base_section: QWidget = QWidget(self)
+            base_section_layout: QVBoxLayout = QVBoxLayout(base_section)
+            base_section_layout.setContentsMargins(0, 0, 0, 0)
+            base_section_layout.setSpacing(10)
+            base_section_layout.addWidget(self.current_power_title)
+            base_section_layout.addWidget(self.current_power_list)
+            base_section_layout.addWidget(self.stat_efficiency_title)
+            base_section_layout.addWidget(self.stat_efficiency_list)
+            base_section_layout.addWidget(self.level_up_title)
+            base_section_layout.addWidget(self.level_up_list)
+            base_section_layout.addWidget(self.realm_up_title)
+            base_section_layout.addWidget(self.realm_up_list)
+            base_section_layout.addWidget(self.scroll_efficiency_title)
+            base_section_layout.addWidget(self.scroll_efficiency_list)
+            base_section_layout.addWidget(self.custom_delta_title)
+            base_section_layout.addWidget(self.custom_delta_inputs)
+            base_section_layout.addWidget(self.custom_delta_result_title)
+            base_section_layout.addWidget(self.custom_delta_result_list)
+
+            # 최적화 섹션 구성
+            optimization_section: QWidget = QWidget(self)
+            optimization_section_layout: QVBoxLayout = QVBoxLayout(
+                optimization_section
+            )
+            optimization_section_layout.setContentsMargins(0, 0, 0, 0)
+            optimization_section_layout.setSpacing(10)
+            optimization_section_layout.addWidget(self.optimization_title)
+            optimization_section_layout.addWidget(self.distribution_title)
+            optimization_section_layout.addWidget(self.distribution_inputs)
+            optimization_section_layout.addWidget(self.danjeon_title)
+            optimization_section_layout.addWidget(self.danjeon_inputs)
+            optimization_section_layout.addWidget(self.title_list_title)
+            optimization_section_layout.addWidget(self.title_inputs)
+            optimization_section_layout.addWidget(self.talisman_title)
+            optimization_section_layout.addWidget(self.talisman_inputs)
+            optimization_section_layout.addWidget(self.base_state_title)
+            optimization_section_layout.addWidget(self.base_state_list)
+            optimization_section_layout.addWidget(self.optimization_result_title)
+            optimization_section_layout.addWidget(self.optimization_result_list)
+
             layout = QVBoxLayout(self)
             layout.addLayout(metric_layout)
             layout.addWidget(self.stats_title)
             layout.addWidget(self.stats_inputs)
             layout.addWidget(self.scroll_title)
             layout.addWidget(self.skills)
-            layout.addWidget(self.optimization_title)
-            layout.addWidget(self.distribution_inputs)
-            layout.addWidget(self.danjeon_inputs)
-            layout.addWidget(self.title_inputs)
-            layout.addWidget(self.talisman_inputs)
-            layout.addWidget(self.base_state_title)
-            layout.addWidget(self.base_state_list)
-            layout.addWidget(self.optimization_result_title)
-            layout.addWidget(self.optimization_result_list)
-            layout.addWidget(self.current_power_title)
-            layout.addWidget(self.current_power_list)
-            layout.addWidget(self.stat_efficiency_title)
-            layout.addWidget(self.stat_efficiency_list)
-            layout.addWidget(self.level_up_title)
-            layout.addWidget(self.level_up_list)
-            layout.addWidget(self.realm_up_title)
-            layout.addWidget(self.realm_up_list)
-            layout.addWidget(self.scroll_efficiency_title)
-            layout.addWidget(self.scroll_efficiency_list)
-            layout.addWidget(self.custom_delta_title)
-            layout.addWidget(self.custom_delta_inputs)
-            layout.addWidget(self.custom_delta_result_list)
+            layout.addWidget(base_section)
+            layout.addWidget(optimization_section)
             layout.setSpacing(10)
             layout.setContentsMargins(10, 10, 10, 10)
             self.setLayout(layout)
