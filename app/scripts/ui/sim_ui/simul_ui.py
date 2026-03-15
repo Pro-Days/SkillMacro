@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
+    QCheckBox,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -69,14 +70,13 @@ from app.scripts.custom_classes import (
     SimAttack,
     SimResult,
     SkillImage,
-    Stats,
 )
 from app.scripts.data_manager import save_data
 from app.scripts.registry.resource_registry import (
     convert_resource_path,
     resource_registry,
 )
-from app.scripts.simulate_macro import simulate_deterministic, simulate_random
+from app.scripts.simulate_macro import simulate_random
 from app.scripts.ui.popup import NoticeKind
 from app.scripts.ui.sim_ui.graph import (
     DMGCanvas,
@@ -695,42 +695,14 @@ class Sim3UI(QFrame):
     ) -> None:
         super().__init__(parent)
 
-        # 초기 전투력 계산
-        powers: list[float] = simulate_deterministic(
-            stats=app_state.simulation.stats,
-            sim_details=app_state.simulation.sim_details,
-            skills_info=app_state.macro.current_preset.usage_settings,
-        ).powers
-
-        for i, power in enumerate(powers):
-            app_state.simulation.powers[i] = power
-
         # 스탯 효율 계산
         self.efficiency_title: Title = Title(self, "스탯 효율 계산")
         self.efficiency = self.Efficiency(self)
-
-        # 추가 스펙업 계산기
-        self.additional_title: Title = Title(self, "추가 스펙업 계산기")
-        self.additional = self.Additional(self)
-
-        # 잠재능력 계산기
-        self.potential_title: Title = Title(self, "잠재능력 계산기")
-        self.potential = self.Potential(self)
-
-        # 잠재능력 옵션 순위
-        self.potential_rank_title: Title = Title(self, "잠재능력 옵션 순위")
-        self.potential_ranks = PotentialRank(self)
 
         layout = QVBoxLayout(self)
 
         layout.addWidget(self.efficiency_title)
         layout.addWidget(self.efficiency)
-        layout.addWidget(self.additional_title)
-        layout.addWidget(self.additional)
-        layout.addWidget(self.potential_title)
-        layout.addWidget(self.potential)
-        layout.addWidget(self.potential_rank_title)
-        layout.addWidget(self.potential_ranks)
 
         # 레이아웃 여백과 간격 설정
         layout.setSpacing(10)  # 위젯들 사이의 간격
@@ -1024,6 +996,13 @@ class Sim3UI(QFrame):
                     self.inputs[field_name] = item_widget.input
                     layout.addWidget(item_widget)
 
+                # 잠금/초기화 토글 구성
+                self.lock_checkbox: QCheckBox = QCheckBox("잠금", self)
+                self.lock_checkbox.stateChanged.connect(connected_function)
+                self.reset_checkbox: QCheckBox = QCheckBox("초기화", self)
+                self.reset_checkbox.stateChanged.connect(connected_function)
+                layout.addWidget(self.lock_checkbox)
+                layout.addWidget(self.reset_checkbox)
                 layout.addStretch(1)
                 self.setLayout(layout)
 
@@ -1056,6 +1035,13 @@ class Sim3UI(QFrame):
                     self.inputs[field_name] = item_widget.input
                     layout.addWidget(item_widget)
 
+                # 잠금/초기화 토글 구성
+                self.lock_checkbox: QCheckBox = QCheckBox("잠금", self)
+                self.lock_checkbox.stateChanged.connect(connected_function)
+                self.reset_checkbox: QCheckBox = QCheckBox("초기화", self)
+                self.reset_checkbox.stateChanged.connect(connected_function)
+                layout.addWidget(self.lock_checkbox)
+                layout.addWidget(self.reset_checkbox)
                 layout.addStretch(1)
                 self.setLayout(layout)
 
@@ -1686,6 +1672,12 @@ class Sim3UI(QFrame):
             self.distribution_inputs.inputs["luck"].setText(
                 str(calculator_input.distribution.luck)
             )
+            self.distribution_inputs.lock_checkbox.setChecked(
+                calculator_input.distribution.is_locked
+            )
+            self.distribution_inputs.reset_checkbox.setChecked(
+                calculator_input.distribution.use_reset
+            )
             self.danjeon_inputs.inputs["upper"].setText(
                 str(calculator_input.danjeon.upper)
             )
@@ -1694,6 +1686,12 @@ class Sim3UI(QFrame):
             )
             self.danjeon_inputs.inputs["lower"].setText(
                 str(calculator_input.danjeon.lower)
+            )
+            self.danjeon_inputs.lock_checkbox.setChecked(
+                calculator_input.danjeon.is_locked
+            )
+            self.danjeon_inputs.reset_checkbox.setChecked(
+                calculator_input.danjeon.use_reset
             )
             self.title_inputs.load(
                 calculator_input.owned_titles,
@@ -1725,8 +1723,8 @@ class Sim3UI(QFrame):
                 dexterity=values["dexterity"],
                 vitality=values["vitality"],
                 luck=values["luck"],
-                is_locked=False,
-                use_reset=False,
+                is_locked=self.distribution_inputs.lock_checkbox.isChecked(),
+                use_reset=self.distribution_inputs.reset_checkbox.isChecked(),
             )
             return is_valid, distribution_state
 
@@ -1750,8 +1748,8 @@ class Sim3UI(QFrame):
                 upper=values["upper"],
                 middle=values["middle"],
                 lower=values["lower"],
-                is_locked=False,
-                use_reset=False,
+                is_locked=self.danjeon_inputs.lock_checkbox.isChecked(),
+                use_reset=self.danjeon_inputs.reset_checkbox.isChecked(),
             )
             return is_valid, danjeon_state
 
@@ -2271,250 +2269,6 @@ class Sim3UI(QFrame):
 
             self._refresh_custom_delta_output()
 
-    class Additional(QFrame):
-        def __init__(self, parent: QFrame) -> None:
-            super().__init__(parent)
-
-            if config.ui.debug_colors:
-                self.setStyleSheet(
-                    "QFrame { background-color: green; border: 0px solid; }"
-                )
-            else:
-                self.setStyleSheet(
-                    "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
-                )
-
-            stat_data: dict[str, str] = {
-                spec.label: "0" for spec in config.specs.STATS.values()
-            }
-            self.stats = StatInputs(self, stat_data, self.on_stat_changed)
-
-            skill_input_specs: list[SkillLevelInputSpec] = (
-                build_skill_level_input_specs()
-            )
-            self.skills: SkillInputs = SkillInputs(
-                self,
-                skill_input_specs,
-                self.on_skill_changed,
-            )
-
-            self.power_labels = PowerLabels(self)
-            self.update_powers()
-
-            layout = QVBoxLayout(self)
-            layout.addWidget(self.stats)
-            layout.addWidget(self.skills)
-            layout.addWidget(self.power_labels)
-            layout.setSpacing(10)
-            layout.setContentsMargins(10, 10, 10, 10)
-            self.setLayout(layout)
-
-            self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-
-        # todo: on_stat_changed, on_skill_changed를 합쳐서 하나로 만들기
-        def on_stat_changed(self) -> None:
-            # 스탯이 정상적으로 입력되었는지 확인
-            # 음수도 허용
-            def checkInput(num: int, text: str) -> bool:
-                try:
-                    value = int(text)
-
-                except ValueError:
-                    return False
-
-                name: str = list(config.specs.STATS.keys())[num]
-                stat: float = (
-                    app_state.simulation.stats.get_stat_from_name(name) + value
-                )
-
-                return (
-                    config.specs.STATS[name].min <= stat <= config.specs.STATS[name].max
-                )
-
-            # 모두 통과 여부 확인
-            all_valid = True
-            for i, j in enumerate(self.stats.inputs):
-                is_valid: bool = checkInput(i, j.text())
-
-                # 스타일 업데이트
-                j.set_valid(is_valid)
-
-                # 전체 유효 여부 업데이트
-                all_valid: bool = all_valid and is_valid
-
-            # 모두 통과했다면 저장 및 플래그 설정
-            if all_valid:
-                app_state.simulation.is_input_valid["sim3_stat"] = True
-
-            # 하나라도 통과하지 못했다면 플래그 설정
-            else:
-                app_state.simulation.is_input_valid["sim3_stat"] = False
-
-            self.update_powers()
-
-        def on_skill_changed(self) -> None:
-            # 스킬이 정상적으로 입력되었는지 확인
-            def checkInput(text: str) -> bool:
-                if not text.isdigit():
-                    return False
-
-                return 1 <= int(text) <= app_state.macro.current_server.max_skill_level
-
-            # 모두 통과 여부 확인
-            all_valid = True
-            for j in self.skills.inputs:
-                is_valid: bool = checkInput(j.text())
-
-                # 스타일 업데이트
-                j.set_valid(is_valid)
-
-                # 전체 유효 여부 업데이트
-                all_valid: bool = all_valid and is_valid
-
-            # 모두 통과했다면 저장 및 플래그 설정
-            if all_valid:
-                app_state.simulation.is_input_valid["sim3_skill"] = True
-
-            # 하나라도 통과하지 못했다면 플래그 설정
-            else:
-                app_state.simulation.is_input_valid["sim3_skill"] = False
-
-            self.update_powers()
-
-        def update_powers(self) -> None:
-            # 입력이 모두 정상인지 확인
-            if not all(
-                app_state.simulation.is_input_valid[k]
-                for k in ("sim3_stat", "sim3_skill")
-            ):
-                self.power_labels.set_texts("오류")
-
-                return
-
-            # 모든 입력이 정상이라면 계산 시작
-            # 스탯 적용
-            stats: Stats = app_state.simulation.stats.copy()
-            for i in self.stats.inputs:
-                stats.add_stat_from_index(self.stats.inputs.index(i), int(i.text()))
-
-            # 스킬 적용
-            # todo: 스킬 레벨을 적용시킬 때 다시 사용
-            # skills: list[SkillSetting] = [
-            #     replace(app_state.skill.settings[skill], level=int(j.text()))
-            #     for j, skill in zip(
-            #         self.skills.inputs,
-            #         app_state.macro.current_server.skill_registry.get_all_skill_ids(),
-            #     )
-            # ]
-
-            # 전투력 계산
-            powers: list[float] = simulate_deterministic(
-                stats,
-                app_state.simulation.sim_details,
-                app_state.macro.current_preset.usage_settings,
-            ).powers
-
-            # 차이 계산
-            diff_powers: list[float] = [
-                powers[i] - app_state.simulation.powers[i] for i in range(4)
-            ]
-
-            # 텍스트 설정
-            texts: list[str] = [
-                f"{int(powers[i]):}\n({diff_powers[i]:+.0f}, {diff_powers[i] / app_state.simulation.powers[i]:+.1%})"
-                for i in range(4)
-            ]
-            self.power_labels.set_texts(texts)
-
-    class Potential(QFrame):
-        def __init__(
-            self,
-            parent: QFrame,
-        ) -> None:
-            super().__init__(parent)
-
-            if config.ui.debug_colors:
-                self.setStyleSheet(
-                    "QFrame { background-color: green; border: 0px solid; }"
-                )
-            else:
-                self.setStyleSheet(
-                    "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
-                )
-
-            potential_options: list[str] = [
-                f"{spec.label} +{value}"
-                for spec in config.specs.STATS.values()
-                if spec.potential
-                for value in spec.potential.values
-            ]
-
-            self.option_comboboxes: list[CustomComboBox] = [
-                CustomComboBox(
-                    self,
-                    potential_options,
-                    self.update_values,
-                )
-                for _ in range(3)
-            ]
-
-            combobox_layout = QVBoxLayout()
-            for combobox in self.option_comboboxes:
-                combobox_layout.addWidget(combobox)
-            combobox_layout.setSpacing(5)
-            combobox_layout.setContentsMargins(0, 0, 0, 0)
-
-            self.power_labels = PowerLabels(self)
-
-            layout = QHBoxLayout(self)
-            layout.addLayout(combobox_layout)
-            layout.addWidget(self.power_labels)
-            layout.setSpacing(10)
-            layout.setContentsMargins(10, 10, 10, 10)
-            self.setLayout(layout)
-
-            self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-
-            self.update_values()
-
-        def update_values(self) -> None:
-            # 선택된 옵션들 가져오기
-            options: list[str] = [
-                self.option_comboboxes[i].currentText() for i in range(3)
-            ]
-
-            # 스탯에 옵션들 적용
-            stats: Stats = app_state.simulation.stats.copy()
-            for opt in options:
-                # 옵션 파싱
-                stat_ko, value = opt.split(" +")
-                value_int: int = int(value)
-
-                # 한글 스탯 이름을 영어 이름으로 변환
-                stat: str = ""
-                for name_en, spec in config.specs.STATS.items():
-                    if spec.label == stat_ko:
-                        stat: str = name_en
-                        break
-
-                if not stat:
-                    continue
-
-                # 스탯 적용
-                stats.add_stat_from_name(stat, value_int)
-
-            powers: list[float] = simulate_deterministic(
-                stats,
-                app_state.simulation.sim_details,
-                app_state.macro.current_preset.usage_settings,
-            ).powers
-
-            diff_powers: list[str] = [
-                f"{powers[i] - app_state.simulation.powers[i]:+.0f}" for i in range(4)
-            ]
-
-            self.power_labels.set_texts(diff_powers)
-
 
 class StatInputs(QFrame):
     def __init__(
@@ -2936,170 +2690,6 @@ class AnalysisDetails(QFrame):
             self.setLayout(layout)
 
             self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-
-
-class PotentialRank(QFrame):
-    def __init__(
-        self,
-        mainframe: QWidget,
-    ) -> None:
-        super().__init__(mainframe)
-
-        texts: list[list[list[str]]] = self.get_potential_rank()
-        colors: list[str] = ["#8CFFA386", "#59FF9800", "#4D2196F3", "#B3A5D6A7"]
-
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
-        self.setLayout(layout)
-
-        for i in range(4):
-            rank = self.Rank(
-                self,
-                config.simulation.power_titles[i],
-                texts[i],
-                config.ui.sim_colors4[i],
-                colors[i],
-            )
-
-            layout.addWidget(rank)
-
-    def get_potential_rank(
-        self,
-    ) -> list[list[list[str]]]:
-        options: list[list[tuple[str, float]]] = [[], [], [], []]
-
-        for stat, spec in config.specs.STATS.items():
-            if not spec.potential:
-                continue
-
-            for value in spec.potential.values:
-                key: str = f"{spec.label} +{value}"
-
-                stats: Stats = app_state.simulation.stats.copy()
-                stats.add_stat_from_name(stat, value)
-
-                powers: list[float] = simulate_deterministic(
-                    stats,
-                    app_state.simulation.sim_details,
-                    app_state.macro.current_preset.usage_settings,
-                ).powers
-
-                diff_powers: list[float] = [
-                    round(powers[i] - app_state.simulation.powers[i], 5)
-                    for i in range(4)
-                ]
-
-                for i in range(4):
-                    options[i].append((key, diff_powers[i]))
-
-        # 전투력 차이로 정렬
-        [options[i].sort(key=lambda x: x[1], reverse=True) for i in range(4)]
-
-        texts: list[list[list[str]]] = [[["순위", "옵션", "전투력"]] for _ in range(4)]
-        for i in range(4):
-            for j, opt in enumerate(options[i], start=1):
-                if opt[1] == 0:
-                    rank = ["", "", ""]
-                else:
-                    rank: list[str] = [str(j), opt[0], f"{opt[1]:+.0f}"]
-
-                texts[i].append(rank)
-
-        return texts
-
-    class Rank(QFrame):
-        def __init__(
-            self,
-            parent: QFrame,
-            name: str,
-            data: list[list[str]],
-            color: str,
-            header_color: str,
-        ):
-            super().__init__(parent)
-
-            self.setStyleSheet(
-                f"QFrame {{ background-color: rgba({color}, 120); border: 1px solid rgb({color}); border-radius: 4px; }}"
-            )
-
-            layout = QGridLayout(self)
-            layout.setContentsMargins(0, 0, 0, 0)
-            layout.setSpacing(0)
-            self.setLayout(layout)
-
-            title = QLabel(name, self)
-            title.setStyleSheet(
-                f"""QLabel {{
-                    background-color: rgb({color});
-                    border: 0px solid;
-                    border-top-left-radius: 4px;
-                    border-top-right-radius: 4px;
-                    border-bottom-left-radius: 0px;
-                    border-bottom-right-radius: 0px;
-                }}"""
-            )
-            title.setFont(CustomFont(14))
-            title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-            layout.addWidget(title, 0, 0, 1, 3)
-
-            ROWS = 16  # 인덱스 포함 16개
-            for row in range(ROWS):
-                rank = QLabel(data[row][0], self)
-                rank.setStyleSheet(
-                    f"""QLabel {{
-                        background-color: {header_color if row == 0 else "transparent"};
-                        border: 0px solid;
-                        border-top: 1px solid rgb({color});
-                        border-bottom: 0px solid;
-                        border-top-left-radius: 0px;
-                        border-top-right-radius: 0px;
-                        border-bottom-left-radius: {"4" if row == ROWS-1 else "0"}px;
-                        border-bottom-right-radius: 0px;
-                    }}"""
-                )
-                rank.setFont(CustomFont(10))
-                rank.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                rank.setFixedWidth(30)
-
-                label = QLabel(data[row][1], self)
-                label.setStyleSheet(
-                    f"""QLabel {{
-                        background-color: {header_color if row == 0 else "transparent"};
-                        border-top: 1px solid rgb({color});
-                        border-bottom: 0px solid;
-                        border-left: 1px solid rgb({color});
-                        border-right: 1px solid rgb({color});
-                        border-top-left-radius: 0px;
-                        border-top-right-radius: 0px;
-                        border-bottom-left-radius: 0px;
-                        border-bottom-right-radius: 0px;
-                    }}"""
-                )
-                label.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-                label.setFont(CustomFont(10))
-
-                power = QLabel(data[row][2], self)
-                power.setStyleSheet(
-                    f"""QLabel {{
-                        background-color: {header_color if row == 0 else "transparent"};
-                        border: 0px solid;
-                        border-top: 1px solid rgb({color});
-                        border-bottom: 0px solid;
-                        border-top-left-radius: 0px;
-                        border-top-right-radius: 0px;
-                        border-bottom-left-radius: 0px;
-                        border-bottom-right-radius: {"4" if row == ROWS-1 else "0"}px;
-                        }}"""
-                )
-                power.setFont(CustomFont(10))
-                power.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                power.setFixedWidth(60)
-
-                layout.addWidget(rank, row + 1, 0)
-                layout.addWidget(label, row + 1, 1)
-                layout.addWidget(power, row + 1, 2)
 
 
 class Title(QLabel):
