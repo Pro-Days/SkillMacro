@@ -514,6 +514,13 @@ CALCULATOR_STAT_SPECS: dict[StatKey, CalculatorStatSpec] = {
 }
 
 
+def get_calculator_stat_label(stat_key: StatKey | str) -> str:
+    """계산기 스탯 키 기준 표시 이름 반환"""
+
+    resolved_stat_key: StatKey = StatKey(str(stat_key))
+    return CALCULATOR_STAT_SPECS[resolved_stat_key].label
+
+
 # 경지 선택 목록과 허용 단전 포인트 고정
 REALM_TIER_SPECS: dict[RealmTier, RealmTierSpec] = {
     RealmTier.THIRD_RATE: RealmTierSpec(

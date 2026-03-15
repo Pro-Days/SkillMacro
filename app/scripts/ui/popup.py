@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.scripts.app_state import app_state
+from app.scripts.calculator_models import get_calculator_stat_label
 from app.scripts.config import config
 from app.scripts.custom_classes import CustomFont, CustomLineEdit, CustomShadowEffect
 from app.scripts.registry.key_registry import KeyRegistry
@@ -1201,7 +1202,7 @@ class PopupManager:
 
             elif isinstance(effect, BuffEffect):
                 buff_effect: BuffEffect = effect
-                stat_label: str = config.specs.STATS[buff_effect.stat].label
+                stat_label: str = get_calculator_stat_label(buff_effect.stat)
 
                 text = (
                     f"{self._format_number(buff_effect.time)}초: "
@@ -1236,7 +1237,7 @@ class PopupManager:
 
             elif isinstance(effect, BuffEffect):
                 buff_effect: BuffEffect = effect
-                stat_label: str = config.specs.STATS[buff_effect.stat].label
+                stat_label: str = get_calculator_stat_label(buff_effect.stat)
                 summaries.append(
                     f"{self._format_number(buff_effect.time)}초 {stat_label} {self._format_number(buff_effect.value)}"
                 )

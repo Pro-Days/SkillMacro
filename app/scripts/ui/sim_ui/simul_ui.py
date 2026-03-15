@@ -105,6 +105,16 @@ class SkillLevelInputSpec:
     scroll_id: str
 
 
+ANALYSIS_DETAIL_KEYS: tuple[str, ...] = (
+    "min",
+    "max",
+    "std",
+    "p25",
+    "p50",
+    "p75",
+)
+
+
 def build_skill_level_input_specs() -> list[SkillLevelInputSpec]:
     """현재 서버/프리셋 기준 스킬 레벨 입력 목록 구성"""
 
@@ -200,10 +210,7 @@ class SimUI:
 
     def change_layout(self, index: int) -> None:
         # 입력값 확인
-        if index in (1, 2, 3) and not all(
-            app_state.simulation.is_input_valid[k]
-            for k in ("stat", "skill")
-        ):
+        if index in (1, 2, 3) and not self.UI1.editor.has_valid_navigation_inputs():
             self.master.get_popup_manager().show_notice(NoticeKind.SIM_INPUT_ERROR)
 
             return
@@ -345,8 +352,7 @@ class Sim2UI(QFrame):
             overall_stats=calculator_input.overall_stats,
         )
         powers: list[float] = [
-            graph_report.metrics[power_metric]
-            for power_metric in DISPLAY_POWER_METRICS
+            graph_report.metrics[power_metric] for power_metric in DISPLAY_POWER_METRICS
         ]
         analysis: list[CalculatorGraphAnalysis] = list(graph_report.analysis)
         result_det: list[CalculatorGraphAttack] = list(
@@ -359,9 +365,6 @@ class Sim2UI(QFrame):
         power_titles: list[str] = [
             POWER_METRIC_LABELS[power_metric] for power_metric in DISPLAY_POWER_METRICS
         ]
-
-        # 전역 시뮬레이션 전투력 상태를 현재 5종 계산 결과로 교체
-        app_state.simulation.powers = powers.copy()
 
         # 전투력/분석/그래프 위젯 재생성
         power_title: Title = Title(self, "전투력")
@@ -661,7 +664,9 @@ class Sim3UI(QFrame):
                 self.on_custom_delta_changed,
                 self._build_empty_stat_map(),
             )
-            self.custom_delta_result_title: QLabel = QLabel("사용자 지정 변화량 결과", self)
+            self.custom_delta_result_title: QLabel = QLabel(
+                "사용자 지정 변화량 결과", self
+            )
             self.custom_delta_result_title.setFont(CustomFont(12))
             self.custom_delta_result_list = self.ResultList(self)
 
@@ -698,9 +703,7 @@ class Sim3UI(QFrame):
 
             # 최적화 섹션 구성
             optimization_section: QWidget = QWidget(self)
-            optimization_section_layout: QVBoxLayout = QVBoxLayout(
-                optimization_section
-            )
+            optimization_section_layout: QVBoxLayout = QVBoxLayout(optimization_section)
             optimization_section_layout.setContentsMargins(0, 0, 0, 0)
             optimization_section_layout.setSpacing(10)
             optimization_section_layout.addWidget(self.optimization_title)
@@ -731,6 +734,10 @@ class Sim3UI(QFrame):
 
             self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
+            # 페이지 이동 제한에 사용하는 입력 유효성 상태
+            self._is_stat_input_valid: bool = True
+            self._is_skill_input_valid: bool = True
+
             # 저장된 경지 선택 상태 동기화
             self.realm_combobox.setCurrentIndex(
                 self.realm_options.index(self._get_calculator_realm())
@@ -740,6 +747,11 @@ class Sim3UI(QFrame):
             # 초기 계산 결과 반영
             self.on_base_input_changed()
             self.on_custom_delta_changed()
+
+        def has_valid_navigation_inputs(self) -> bool:
+            """페이지 이동에 필요한 입력 유효성 반환"""
+
+            return self._is_stat_input_valid and self._is_skill_input_valid
 
         def set_result_sections_visible(self, is_visible: bool) -> None:
             """결과 전용 섹션 표시 여부 설정"""
@@ -803,9 +815,13 @@ class Sim3UI(QFrame):
             """다른 계산기 입력 위젯 상태 복제"""
 
             # 기준 선택 상태 복제
-            self.metric_combobox.setCurrentIndex(source_editor.metric_combobox.currentIndex())
+            self.metric_combobox.setCurrentIndex(
+                source_editor.metric_combobox.currentIndex()
+            )
             self.level_input.setText(source_editor.level_input.text())
-            self.realm_combobox.setCurrentIndex(source_editor.realm_combobox.currentIndex())
+            self.realm_combobox.setCurrentIndex(
+                source_editor.realm_combobox.currentIndex()
+            )
 
             # 전체 스탯/사용자 지정 변화량 입력값 복제
             for stat_key in CALCULATOR_STAT_SPECS.keys():
@@ -852,7 +868,9 @@ class Sim3UI(QFrame):
             title_valid: bool
             owned_titles: list[OwnedTitle]
             equipped_title_id: str | None
-            title_valid, owned_titles, equipped_title_id = source_editor.title_inputs.build_state()
+            title_valid, owned_titles, equipped_title_id = (
+                source_editor.title_inputs.build_state()
+            )
 
             if title_valid:
                 self.title_inputs.load(owned_titles, equipped_title_id)
@@ -1935,8 +1953,8 @@ class Sim3UI(QFrame):
             level_valid, level = self._read_level()
 
             scroll_valid: bool = self._read_scroll_levels()
-            app_state.simulation.is_input_valid["stat"] = stats_valid and level_valid
-            app_state.simulation.is_input_valid["skill"] = scroll_valid
+            self._is_stat_input_valid = stats_valid and level_valid
+            self._is_skill_input_valid = scroll_valid
 
             if not (stats_valid and level_valid and scroll_valid):
                 self._set_error_outputs()
@@ -2362,6 +2380,8 @@ class SkillInputs(QFrame):
 
             # layout 설정
             self.setLayout(grid)
+
+
 class PowerLabels(QFrame):
     def __init__(
         self,
@@ -2478,7 +2498,7 @@ class AnalysisDetails(QFrame):
             self.Analysis(
                 self,
                 analysis[i],
-                config.simulation.power_details,
+                ANALYSIS_DETAIL_KEYS,
                 config.ui.sim_colors4[i],
             )
             for i in range(4)

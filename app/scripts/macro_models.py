@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 from app.scripts.calculator_models import CalculatorPresetInput
 from app.scripts.config import config
-from app.scripts.custom_classes import Stats
 
 if TYPE_CHECKING:
     from app.scripts.registry.key_registry import KeySpec
@@ -324,8 +323,6 @@ class LinkSkill:
 class PresetInfo:
     """프리셋 정보 데이터 모델"""
 
-    # 스탯
-    stats: dict[str, int | float] = field(default_factory=dict)
     # 스크롤 레벨 (key: scroll_id, value: level)
     scroll_levels: dict[str, int] = field(default_factory=dict)
     # 새 계산기 입력 상태
@@ -338,7 +335,6 @@ class PresetInfo:
         """딕셔너리로부터 PresetInfo 생성"""
 
         return cls(
-            stats=data["stats"].copy(),
             scroll_levels=data["scroll_levels"].copy(),
             calculator=CalculatorPresetInput.from_dict(data["calculator"]),
         )
@@ -347,26 +343,9 @@ class PresetInfo:
         """딕셔너리로 변환"""
 
         return {
-            "stats": self.stats.copy(),
             "scroll_levels": self.scroll_levels.copy(),
             "calculator": self.calculator.to_dict(),
         }
-
-    @classmethod
-    def from_stats(
-        cls,
-        stats: "Stats",
-        scroll_levels: dict[str, int],
-    ) -> "PresetInfo":
-        """스탯 Stats로부터 PresetInfo 생성"""
-
-        return cls(
-            # Stats를 dict로 변환
-            # todo: Stats에 to_dict() 메서드 추가
-            stats=stats.to_dict(),
-            scroll_levels=scroll_levels.copy(),
-            calculator=CalculatorPresetInput.create_default(),
-        )
 
     def get_scroll_level(self, scroll_id: str) -> int:
         """스크롤 ID 기준 레벨 반환"""
@@ -411,26 +390,6 @@ class MacroPreset:
 
     # 모델 기본값
     DEFAULT_NAME: ClassVar[str] = "스킬 매크로"
-    DEFAULT_STATS: ClassVar[dict[str, int | float]] = {
-        "ATK": 100,
-        "DEF": 100,
-        "PWR": 100,
-        "STR": 100,
-        "INT": 100,
-        "RES": 10,
-        "CRIT_RATE": 50,
-        "CRIT_DMG": 50,
-        "BOSS_DMG": 20,
-        "ACC": 10,
-        "DODGE": 10,
-        "STATUS_RES": 10,
-        "NAEGONG": 10,
-        "HP": 2000,
-        "ATK_SPD": 15,
-        "POT_HEAL": 10,
-        "LUK": 10,
-        "EXP": 10,
-    }
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> MacroPreset:
         """딕셔너리로부터 MacroPreset 생성"""
@@ -504,7 +463,6 @@ class MacroPreset:
             },
             link_skills=[],
             info=PresetInfo(
-                stats=cls.DEFAULT_STATS.copy(),
                 # 현재 서버의 모든 스크롤 레벨 기본값 구성
                 scroll_levels={scroll_id: 1 for scroll_id in scroll_ids.copy()},
                 calculator=CalculatorPresetInput.create_default(),

@@ -111,23 +111,6 @@ class UiState:
     # todo: SessionState로 이동 고려
     is_setting_key: bool = False
 
-
-@dataclass
-class SimulationState:
-    # 전투력 리스트
-    powers: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0, 0.0, 0.0])
-
-    # 입력값 유효성 검사 결과
-    is_input_valid: dict[str, bool] = field(
-        default_factory=lambda: {
-            "stat": True,
-            "skill": True,
-            "sim3_stat": True,
-            "sim3_skill": True,
-        }
-    )
-
-
 @dataclass
 class AppState:
     # 싱글톤 인스턴스
@@ -138,7 +121,6 @@ class AppState:
 
     macro: MacroState = field(default_factory=MacroState)
     ui: UiState = field(default_factory=UiState)
-    simulation: SimulationState = field(default_factory=SimulationState)
 
     def is_key_using(self, key: KeySpec) -> bool:
         """
