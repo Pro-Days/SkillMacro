@@ -280,7 +280,6 @@ class GraphPage(QFrame):
         self.setLayout(self.main_layout)
 
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.refresh()
 
     def _clear_layout(self, target_layout: QVBoxLayout | QHBoxLayout) -> None:
         """기존 그래프 페이지 위젯 정리"""
@@ -707,10 +706,6 @@ class ResultsPage(QFrame):
 
             # 저장된 경지 선택 상태 동기화
             self.load_from_preset_state()
-
-            # 초기 계산 결과 반영
-            self.on_base_input_changed()
-            self.on_custom_delta_changed()
 
         def has_valid_navigation_inputs(self) -> bool:
             """페이지 이동에 필요한 입력 유효성 반환"""

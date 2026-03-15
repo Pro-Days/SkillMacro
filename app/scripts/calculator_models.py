@@ -435,7 +435,7 @@ class CalculatorPresetInput:
             equipped_data
         )
 
-        level: int = int(data["level"])
+        level: int = int(data["level"])  # type: ignore
         return cls(
             overall_stats=overall_stats,
             level=level,
