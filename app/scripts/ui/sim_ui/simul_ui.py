@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLayout,
     QLayoutItem,
     QPushButton,
     QScrollArea,
@@ -61,7 +62,7 @@ from app.scripts.registry.resource_registry import (
     convert_resource_path,
     resource_registry,
 )
-from app.scripts.simulate_macro import simulate_random
+from app.scripts.simulate_macro import simulate_random_from_calculator
 from app.scripts.ui.popup import NoticeKind
 from app.scripts.ui.sim_ui.graph import (
     DMGCanvas,
@@ -199,7 +200,7 @@ class SimUI:
         # 입력값 확인
         if index in (1, 2, 3) and not all(
             app_state.simulation.is_input_valid[k]
-            for k in ("stat", "skill", "simDetails")
+            for k in ("stat", "skill")
         ):
             self.master.get_popup_manager().show_notice(NoticeKind.SIM_INPUT_ERROR)
 
@@ -207,6 +208,14 @@ class SimUI:
 
         if index == self.stacked_layout.currentIndex():
             return
+
+        # 그래프 페이지 진입 직전 현재 계산기 입력 기준 결과 재생성
+        if index == 1:
+            self.UI2.refresh()
+
+        # 결과 페이지 진입 직전 입력 상태 동기화
+        if index == 2:
+            self.UI3.sync_from_editor(self.UI1.editor)
 
         # 네비게이션 버튼 색 변경
         self.update_nav(index)
@@ -253,39 +262,20 @@ class Sim1UI(QFrame):
     def __init__(
         self,
         parent: QFrame,
-    ):
+    ) -> None:
         super().__init__(parent)
 
         if config.ui.debug_colors:
             self.setStyleSheet("QFrame { background-color: gray;}")
 
-        # 스텟
-        self.stats_title: Title = Title(parent=self, text="캐릭터 스탯")
-        self.stats = self.Stats(self)
-
-        # 스킬 입력
-        self.skills_title: Title = Title(parent=self, text="스킬 레벨")
-        self.skills = self.Skills(self)
-
-        # 시뮬레이션 조건 입력
-        self.condition_title: Title = Title(parent=self, text="시뮬레이션 조건")
-        self.condition = self.Condition(self)
-
-        # Tab Order 설정
-        tab_orders: list[CustomLineEdit] = (
-            self.stats.inputs + self.skills.inputs + self.condition.inputs
-        )
-        for i in range(len(tab_orders) - 1):
-            QWidget.setTabOrder(tab_orders[i], tab_orders[i + 1])
+        # 계산기 입력 화면 구성
+        self.input_title: Title = Title(parent=self, text="계산기 입력")
+        self.editor: Sim3UI.Efficiency = Sim3UI.Efficiency(self)
+        self.editor.set_result_sections_visible(False)
 
         layout = QVBoxLayout(self)
-
-        layout.addWidget(self.stats_title)
-        layout.addWidget(self.stats)
-        layout.addWidget(self.skills_title)
-        layout.addWidget(self.skills)
-        layout.addWidget(self.condition_title)
-        layout.addWidget(self.condition)
+        layout.addWidget(self.input_title)
+        layout.addWidget(self.editor)
 
         # 레이아웃 여백과 간격 설정
         layout.setSpacing(10)  # 위젯들 사이의 간격
@@ -293,215 +283,6 @@ class Sim1UI(QFrame):
         self.setLayout(layout)
 
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-
-    class Stats(QWidget):
-        def __init__(
-            self,
-            parent: QFrame,
-        ) -> None:
-            super().__init__(parent)
-
-            # 스탯 데이터 생성
-            stats_data: dict[str, str] = {
-                spec.label: str(app_state.simulation.stats.get_stat_from_name(name_en))
-                for name_en, spec in config.specs.STATS.items()
-            }
-
-            # 스탯 입력 위젯 생성
-            self.stat_inputs = StatInputs(self, stats_data, self.input_changed)
-            self.inputs: list[CustomLineEdit] = self.stat_inputs.inputs
-
-            # 레이아웃 설정
-            layout = QVBoxLayout(self)
-            layout.addWidget(self.stat_inputs)
-            layout.setContentsMargins(0, 0, 0, 0)  # 여백 제거
-            layout.setSpacing(0)  # 위젯 간 간격 제거
-            self.setLayout(layout)
-
-            # 크기 정책: 가로는 부모 크기 최대, 세로는 내용에 맞게 최소
-            self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-
-            # 첫 번째 입력 상자에 포커스 설정
-            self.inputs[0].setFocus()
-
-            self.input_changed()
-
-        # KVInput에서 bool
-        # KVInput에 인덱스, 이름 저장 후 넘기기
-        def input_changed(self) -> None:
-            # 정상적으로 입력되었는지 확인
-            def checkInput(num: int, text: str) -> bool:
-                if not text.isdigit():
-                    return False
-
-                key: str = list(config.specs.STATS.keys())[num]
-
-                _min: int = config.specs.STATS[key].min
-                _max: int = config.specs.STATS[key].max
-
-                return _min <= int(text) <= _max
-
-            # 모두 통과 여부 확인
-            all_valid = True
-            for i, j in enumerate(self.inputs):
-                is_valid: bool = checkInput(i, j.text())
-
-                # 스타일 업데이트
-                j.set_valid(is_valid)
-
-                # 전체 유효 여부 업데이트
-                all_valid: bool = all_valid and is_valid
-
-            # 모두 통과했다면 저장 및 플래그 설정
-            if all_valid:
-                for i, j in enumerate(self.inputs):
-                    app_state.macro.current_preset.info.stats[
-                        list(config.specs.STATS.keys())[i]
-                    ] = int(j.text())
-
-                save_data()
-
-                app_state.simulation.is_input_valid["stat"] = True
-
-            # 하나라도 통과하지 못했다면 플래그 설정
-            else:
-                app_state.simulation.is_input_valid["stat"] = False
-
-    class Skills(QWidget):
-        def __init__(
-            self,
-            parent: QFrame,
-        ) -> None:
-            super().__init__(parent)
-
-            skill_input_specs: list[SkillLevelInputSpec] = (
-                build_skill_level_input_specs()
-            )
-
-            # 스크롤 공용 레벨 기준 입력 위젯 생성
-            self.skill_inputs: SkillInputs = SkillInputs(
-                self,
-                skill_input_specs,
-                self.input_changed,
-            )
-            self.inputs: list[CustomLineEdit] = self.skill_inputs.inputs
-            self.entries: list[SkillLevelInputSpec] = self.skill_inputs.entries
-
-            # 레이아웃 설정
-            layout = QVBoxLayout(self)
-            layout.addWidget(self.skill_inputs)
-            layout.setContentsMargins(0, 0, 0, 0)  # 여백 제거
-            layout.setSpacing(0)  # 위젯 간 간격 제거
-            self.setLayout(layout)
-
-            # 크기 정책: 가로는 부모 크기 최대, 세로는 내용에 맞게 최소
-            self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-
-            self.input_changed()
-
-        def input_changed(self) -> None:
-            # 정상적으로 입력되었는지 확인
-            def checkInput(text: str) -> bool:
-                if not text.isdigit():
-                    return False
-
-                return 1 <= int(text) <= app_state.macro.current_server.max_skill_level
-
-            # 모두 통과 여부 확인
-            all_valid: bool = True
-            for j in self.inputs:
-                is_valid: bool = checkInput(j.text())
-
-                # 스타일 업데이트
-                j.set_valid(is_valid)
-
-                # 전체 유효 여부 업데이트
-                all_valid: bool = all_valid and is_valid
-
-            # 모두 통과했다면 저장 및 플래그 설정
-            if all_valid:
-                # 스크롤 공용 레벨 입력값을 스크롤 ID 기준 저장소에 직접 반영
-                for _input, entry in zip(self.inputs, self.entries):
-                    input_level: int = int(_input.text())
-
-                    app_state.macro.current_preset.info.set_scroll_level(
-                        entry.scroll_id,
-                        input_level,
-                    )
-
-                save_data()
-
-                app_state.simulation.is_input_valid["skill"] = True
-
-            # 하나라도 통과하지 못했다면 플래그 설정
-            else:
-                app_state.simulation.is_input_valid["skill"] = False
-
-    class Condition(QWidget):
-        def __init__(
-            self,
-            parent: QFrame,
-        ) -> None:
-            super().__init__(parent)
-
-            # 시뮬레이션 조건 입력 위젯 생성
-            self.condition_inputs = ConditionInputs(
-                self,
-                {
-                    spec.label: str(app_state.simulation.sim_details[name])
-                    for name, spec in config.specs.SIM_DETAILS.items()
-                },
-                self.input_changed,
-            )
-            self.inputs: list[CustomLineEdit] = self.condition_inputs.inputs
-
-            # 레이아웃 설정
-            layout = QVBoxLayout(self)
-            layout.addWidget(self.condition_inputs)
-            layout.setContentsMargins(0, 0, 0, 0)  # 여백 제거
-            layout.setSpacing(0)  # 위젯 간 간격 제거
-            self.setLayout(layout)
-
-            # 크기 정책: 가로는 부모 크기 최대, 세로는 내용에 맞게 최소
-            self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-
-            self.input_changed()
-
-        def input_changed(self) -> None:
-            # 정상적으로 입력되었는지 확인
-            def checkInput(num, text) -> bool:
-                if not text.isdigit():
-                    return False
-
-                match num:
-                    case 0 | 1:
-                        return int(text) != 0
-                    case _:
-                        return True
-
-            # 모두 통과 여부 확인
-            all_valid = True
-            for i, j in enumerate(self.inputs):
-                is_valid: bool = checkInput(i, j.text())
-
-                # 스타일 업데이트
-                j.set_valid(is_valid)
-
-                # 전체 유효 여부 업데이트
-                all_valid: bool = all_valid and is_valid
-
-            # 모두 통과했다면 저장 및 플래그 설정
-            if all_valid:
-                for _input, name in zip(self.inputs, config.specs.SIM_DETAILS.keys()):
-                    app_state.simulation.sim_details[name] = int(_input.text())
-
-                save_data()
-
-                app_state.simulation.is_input_valid["simInfo"] = True
-
-            # 하나라도 통과하지 못했다면 플래그 설정
-            else:
-                app_state.simulation.is_input_valid["simInfo"] = False
 
 
 class Sim2UI(QFrame):
@@ -514,70 +295,95 @@ class Sim2UI(QFrame):
         if config.ui.debug_colors:
             self.setStyleSheet("QFrame { background-color: gray;}")
 
-        # 처음 생성때 계산하지 않고, 버튼을 누르면 시작.
-        # 횟수를 설정할 수 있도록 변경
-        # 진행 상황이 실시간으로 보이도록 그래핑 방식도 변경
-        # GPU를 사용하는 것도 고려.
-        # 레벨을 사용하도록 변경
-        sim_result: SimResult = simulate_random(
-            app_state.simulation.stats,
-            app_state.simulation.sim_details,
+        # 그래프 페이지 전체 레이아웃 준비
+        self.main_layout: QVBoxLayout = QVBoxLayout(self)
+        self.main_layout.setSpacing(10)
+        self.main_layout.setContentsMargins(10, 10, 10, 10)
+        self.setLayout(self.main_layout)
+
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.refresh()
+
+    def _clear_layout(self, target_layout: QVBoxLayout | QHBoxLayout) -> None:
+        """기존 그래프 페이지 위젯 정리"""
+
+        # 중첩 레이아웃까지 포함한 기존 위젯 트리 순차 제거
+        while target_layout.count():
+            child_item: QLayoutItem = target_layout.takeAt(0)
+            child_widget: QWidget | None = child_item.widget()
+            child_layout: QLayoutItem | None = None
+            nested_layout: QLayout | None = child_item.layout()
+
+            if child_widget is not None:
+                child_widget.deleteLater()
+                continue
+
+            if nested_layout is not None:
+                while nested_layout.count():
+                    child_layout = nested_layout.takeAt(0)
+                    nested_widget: QWidget | None = child_layout.widget()
+                    if nested_widget is not None:
+                        nested_widget.deleteLater()
+
+    def refresh(self) -> None:
+        """현재 계산기 입력 기준 그래프 페이지 재구성"""
+
+        # 직전 그래프/라벨 위젯 전부 제거
+        self._clear_layout(self.main_layout)
+
+        # 현재 프리셋 계산기 입력 기준 시뮬레이션 결과 계산
+        calculator_input: CalculatorPresetInput = (
+            app_state.macro.current_preset.info.calculator
+        )
+        sim_result: SimResult = simulate_random_from_calculator(
+            server_spec=app_state.macro.current_server,
+            preset=app_state.macro.current_preset,
+            skills_info=app_state.macro.current_preset.usage_settings,
+            delay_ms=app_state.macro.current_delay,
+            overall_stats=calculator_input.overall_stats,
         )
         powers: list[float] = sim_result.powers
         analysis: list[SimAnalysis] = sim_result.analysis
-        resultDet: list[SimAttack] = sim_result.deterministic_boss_attacks
+        result_det: list[SimAttack] = sim_result.deterministic_boss_attacks
         results: list[list[SimAttack]] = sim_result.random_boss_attacks
         str_powers: list[str] = sim_result.str_powers
+        power_titles: list[str] = [
+            POWER_METRIC_LABELS[power_metric] for power_metric in DISPLAY_POWER_METRICS
+        ]
 
-        for i, power in enumerate(powers):
-            app_state.simulation.powers[i] = power
+        # 전역 시뮬레이션 전투력 상태를 현재 5종 계산 결과로 교체
+        app_state.simulation.powers = powers.copy()
 
-        # 전투력
-        self.power_title: Title = Title(self, "전투력")
-        self.power = PowerLabels(self, str_powers)
+        # 전투력/분석/그래프 위젯 재생성
+        power_title: Title = Title(self, "전투력")
+        power: PowerLabels = PowerLabels(self, power_titles, str_powers)
+        analysis_title: Title = Title(self, "분석")
+        analysis_widget: AnalysisDetails = AnalysisDetails(self, analysis)
+        dpm_graph: Sim2UI.DPMGraph = self.DPMGraph(self, results)
+        ratio_graph: Sim2UI.RatioGraph = self.RatioGraph(self, result_det)
+        dps_graph: Sim2UI.DPSGraph = self.DPSGraph(self, results)
+        total_graph: Sim2UI.TotalGraph = self.TotalGraph(self, results)
+        contribution_graph: Sim2UI.ContributionGraph = self.ContributionGraph(
+            self,
+            result_det,
+        )
 
-        # 분석
-        self.analysis_title: Title = Title(self, "분석")
-        self.analysis = AnalysisDetails(self, analysis)
-
-        # DPM 분포
-        self.DPM_graph = self.DPMGraph(self, results)
-
-        # 스킬 비율
-        self.ratio_graph = self.RatioGraph(self, resultDet)
-
-        sub_layout = QHBoxLayout()
-        sub_layout.addWidget(self.DPM_graph)
-        sub_layout.addWidget(self.ratio_graph)
+        # 상단 2개 그래프 묶음 레이아웃 구성
+        sub_layout: QHBoxLayout = QHBoxLayout()
+        sub_layout.addWidget(dpm_graph)
+        sub_layout.addWidget(ratio_graph)
         sub_layout.setSpacing(10)
         sub_layout.setContentsMargins(10, 10, 10, 10)
 
-        # 시간 경과에 따른 피해량
-        self.dps_graph = self.DPSGraph(self, results)
-
-        # 누적 피해량
-        self.total_graph = self.TotalGraph(self, results)
-
-        # 스킬별 누적 기여도
-        self.contribution_graph = self.ContributionGraph(self, resultDet)
-
-        layout = QVBoxLayout(self)
-
-        layout.addWidget(self.power_title)
-        layout.addWidget(self.power)
-        layout.addWidget(self.analysis_title)
-        layout.addWidget(self.analysis)
-        layout.addLayout(sub_layout)
-        layout.addWidget(self.dps_graph)
-        layout.addWidget(self.total_graph)
-        layout.addWidget(self.contribution_graph)
-
-        # 레이아웃 여백과 간격 설정
-        layout.setSpacing(10)  # 위젯들 사이의 간격
-        layout.setContentsMargins(10, 10, 10, 10)  # 레이아웃의 여백
-        self.setLayout(layout)
-
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        # 메인 레이아웃에 최신 위젯 트리 추가
+        self.main_layout.addWidget(power_title)
+        self.main_layout.addWidget(power)
+        self.main_layout.addWidget(analysis_title)
+        self.main_layout.addWidget(analysis_widget)
+        self.main_layout.addLayout(sub_layout)
+        self.main_layout.addWidget(dps_graph)
+        self.main_layout.addWidget(total_graph)
+        self.main_layout.addWidget(contribution_graph)
 
     class DPMGraph(QFrame):
         def __init__(
@@ -700,6 +506,7 @@ class Sim3UI(QFrame):
         # 스탯 효율 계산
         self.efficiency_title: Title = Title(self, "스탯 효율 계산")
         self.efficiency = self.Efficiency(self)
+        self.efficiency.set_input_sections_visible(False)
 
         layout = QVBoxLayout(self)
 
@@ -712,6 +519,11 @@ class Sim3UI(QFrame):
         self.setLayout(layout)
 
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+    def sync_from_editor(self, source_editor: "Sim3UI.Efficiency") -> None:
+        """입력 페이지 상태를 결과 페이지에 동기화"""
+
+        self.efficiency.copy_input_state_from(source_editor)
 
     class Efficiency(QFrame):
         def __init__(
@@ -917,6 +729,138 @@ class Sim3UI(QFrame):
             self._load_optimization_inputs()
 
             # 초기 계산 결과 반영
+            self.on_base_input_changed()
+            self.on_custom_delta_changed()
+
+        def set_result_sections_visible(self, is_visible: bool) -> None:
+            """결과 전용 섹션 표시 여부 설정"""
+
+            # Sim1 입력 페이지에서 숨길 결과 위젯 일괄 구성
+            result_widgets: tuple[QWidget, ...] = (
+                self.current_power_title,
+                self.current_power_list,
+                self.stat_efficiency_title,
+                self.stat_efficiency_list,
+                self.level_up_title,
+                self.level_up_list,
+                self.realm_up_title,
+                self.realm_up_list,
+                self.scroll_efficiency_title,
+                self.scroll_efficiency_list,
+                self.custom_delta_result_title,
+                self.custom_delta_result_list,
+                self.base_state_title,
+                self.base_state_list,
+                self.optimization_result_title,
+                self.optimization_result_list,
+            )
+
+            # 입력 전용 화면/결과 전용 화면에 맞게 표시 토글
+            for target_widget in result_widgets:
+                target_widget.setVisible(is_visible)
+
+        def set_input_sections_visible(self, is_visible: bool) -> None:
+            """입력 전용 섹션 표시 여부 설정"""
+
+            # 결과 페이지에서 숨길 입력 위젯 일괄 구성
+            input_widgets: tuple[QWidget, ...] = (
+                self.metric_title,
+                self.metric_combobox,
+                self.level_input_widget,
+                self.realm_title,
+                self.realm_combobox,
+                self.stats_title,
+                self.stats_inputs,
+                self.scroll_title,
+                self.skills,
+                self.optimization_title,
+                self.distribution_title,
+                self.distribution_inputs,
+                self.danjeon_title,
+                self.danjeon_inputs,
+                self.title_list_title,
+                self.title_inputs,
+                self.talisman_title,
+                self.talisman_inputs,
+                self.custom_delta_title,
+                self.custom_delta_inputs,
+            )
+
+            # 입력 전용 위젯 표시 토글
+            for target_widget in input_widgets:
+                target_widget.setVisible(is_visible)
+
+        def copy_input_state_from(self, source_editor: "Sim3UI.Efficiency") -> None:
+            """다른 계산기 입력 위젯 상태 복제"""
+
+            # 기준 선택 상태 복제
+            self.metric_combobox.setCurrentIndex(source_editor.metric_combobox.currentIndex())
+            self.level_input.setText(source_editor.level_input.text())
+            self.realm_combobox.setCurrentIndex(source_editor.realm_combobox.currentIndex())
+
+            # 전체 스탯/사용자 지정 변화량 입력값 복제
+            for stat_key in CALCULATOR_STAT_SPECS.keys():
+                self.stats_inputs.inputs[stat_key].setText(
+                    source_editor.stats_inputs.inputs[stat_key].text()
+                )
+                self.custom_delta_inputs.inputs[stat_key].setText(
+                    source_editor.custom_delta_inputs.inputs[stat_key].text()
+                )
+
+            # 스크롤 레벨 입력값 복제
+            for target_input, source_input in zip(
+                self.skills.inputs,
+                source_editor.skills.inputs,
+            ):
+                target_input.setText(source_input.text())
+
+            # 스탯 분배/단전 입력값 및 토글 상태 복제
+            for field_name in self.distribution_inputs.inputs.keys():
+                self.distribution_inputs.inputs[field_name].setText(
+                    source_editor.distribution_inputs.inputs[field_name].text()
+                )
+
+            self.distribution_inputs.lock_checkbox.setChecked(
+                source_editor.distribution_inputs.lock_checkbox.isChecked()
+            )
+            self.distribution_inputs.reset_checkbox.setChecked(
+                source_editor.distribution_inputs.reset_checkbox.isChecked()
+            )
+
+            for field_name in self.danjeon_inputs.inputs.keys():
+                self.danjeon_inputs.inputs[field_name].setText(
+                    source_editor.danjeon_inputs.inputs[field_name].text()
+                )
+
+            self.danjeon_inputs.lock_checkbox.setChecked(
+                source_editor.danjeon_inputs.lock_checkbox.isChecked()
+            )
+            self.danjeon_inputs.reset_checkbox.setChecked(
+                source_editor.danjeon_inputs.reset_checkbox.isChecked()
+            )
+
+            # 칭호/부적 입력 상태를 모델로 복원한 뒤 동일하게 로드
+            title_valid: bool
+            owned_titles: list[OwnedTitle]
+            equipped_title_id: str | None
+            title_valid, owned_titles, equipped_title_id = source_editor.title_inputs.build_state()
+
+            if title_valid:
+                self.title_inputs.load(owned_titles, equipped_title_id)
+
+            talisman_valid: bool
+            owned_talismans: list[OwnedTalisman]
+            equipped_talisman_ids: list[str]
+            (
+                talisman_valid,
+                owned_talismans,
+                equipped_talisman_ids,
+            ) = source_editor.talisman_inputs.build_state()
+
+            if talisman_valid:
+                self.talisman_inputs.load(owned_talismans, equipped_talisman_ids)
+
+            # 복제 완료 후 출력 다시 계산
             self.on_base_input_changed()
             self.on_custom_delta_changed()
 
@@ -1982,6 +1926,8 @@ class Sim3UI(QFrame):
             level_valid, level = self._read_level()
 
             scroll_valid: bool = self._read_scroll_levels()
+            app_state.simulation.is_input_valid["stat"] = stats_valid and level_valid
+            app_state.simulation.is_input_valid["skill"] = scroll_valid
 
             if not (stats_valid and level_valid and scroll_valid):
                 self._set_error_outputs()
@@ -2303,53 +2249,6 @@ class Sim3UI(QFrame):
             self._refresh_custom_delta_output()
 
 
-class StatInputs(QFrame):
-    def __init__(
-        self,
-        mainframe: QWidget,
-        stats_data: dict[str, str],
-        connected_function: Callable[[], None],
-    ):
-        super().__init__(mainframe)
-
-        if config.ui.debug_colors:
-            self.setStyleSheet("QFrame { background-color: green; border: 0px solid; }")
-
-        # 그리드 레이아웃 위젯 생성
-        grid_layout = QGridLayout(self)
-
-        # 아이템을 저장할 리스트
-        self.inputs: list[CustomLineEdit] = []
-
-        # column 수 설정
-        # 서버가 많아지면 스탯 개수에 따라 자동으로 조절하는 기능 추가 필요
-        # QVBoxLayout에 각 행마다 QHBoxLayout을 추가하는 방식
-        # 그리드는 한 줄에 위젯이 부족하면 정렬이 안됨
-        COLS = 6
-        for i, (name, value) in enumerate(stats_data.items()):
-            item_widget = KVInput(self, name, value, connected_function)
-
-            # 위치 계산
-            row: int = i // COLS
-            column: int = i % COLS
-
-            # 그리드에 추가
-            grid_layout.addWidget(item_widget, row, column)
-
-            # 아이템 위젯을 리스트에 저장
-            self.inputs.append(item_widget.input)
-
-        # 그리드 레이아웃 간격 설정
-        grid_layout.setVerticalSpacing(10)
-        grid_layout.setHorizontalSpacing(20)
-
-        # 레이아웃 설정
-        self.setLayout(grid_layout)
-
-        # 크기 정책: 가로는 부모 크기 최대, 세로는 내용에 맞게 최소
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-
-
 class SkillInputs(QFrame):
     def __init__(
         self,
@@ -2454,61 +2353,14 @@ class SkillInputs(QFrame):
 
             # layout 설정
             self.setLayout(grid)
-
-
-class ConditionInputs(QFrame):
-    def __init__(
-        self,
-        mainframe: QWidget,
-        stats_data: dict[str, str],
-        connected_function: Callable[[], None],
-    ):
-        super().__init__(mainframe)
-
-        if config.ui.debug_colors:
-            self.setStyleSheet("QFrame { background-color: green; border: 0px solid; }")
-
-        # 그리드 레이아웃 위젯 생성
-        grid_layout = QGridLayout(self)
-
-        # 아이템을 저장할 리스트
-        self.inputs: list[CustomLineEdit] = []
-
-        # column 수 설정
-        COLS = 6
-        for i, (name, value) in enumerate(stats_data.items()):
-            # 위젯 생성
-            item_widget = KVInput(self, name, value, connected_function)
-
-            # 위치 계산
-            # 시뮬 조건 항목이 많아지면 스탯 입력과 같이 조절 필요
-            row: int = i // COLS
-            column: int = i % COLS
-
-            # 그리드에 추가
-            grid_layout.addWidget(item_widget, row, column)
-
-            # 아이템 위젯을 리스트에 저장
-            self.inputs.append(item_widget.input)
-
-        # 그리드 레이아웃 간격 설정
-        grid_layout.setVerticalSpacing(10)
-        grid_layout.setHorizontalSpacing(20)
-
-        # 레이아웃 설정
-        self.setLayout(grid_layout)
-
-        # 크기 정책: 가로는 부모 크기 최대, 세로는 내용에 맞게 최소
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-
-
 class PowerLabels(QFrame):
     def __init__(
         self,
-        mainframe,
+        mainframe: QWidget,
+        titles: list[str],
         texts: list[str] | str = "0",
-        font_size=18,
-    ):
+        font_size: int = 18,
+    ) -> None:
         super().__init__(mainframe)
 
         if config.ui.debug_colors:
@@ -2519,21 +2371,29 @@ class PowerLabels(QFrame):
             self.setStyleSheet("QFrame { background-color: white; border: 0px solid; }")
 
         # 레이아웃 설정
-        layout = QHBoxLayout(self)
+        layout: QHBoxLayout = QHBoxLayout(self)
 
         self.numbers: list[QLabel] = []
+        self.titles: list[str] = titles
+        self.colors: tuple[str, ...] = (
+            "255, 130, 130",
+            "255, 230, 140",
+            "170, 230, 255",
+            "150, 225, 210",
+            "210, 180, 255",
+        )
 
-        # texts가 문자열인 경우 4개의 동일한 값으로 변환
+        # 단일 문자열 입력 시 현재 전투력 칸 수만큼 동일 값 확장
         if isinstance(texts, str):
-            texts = [texts] * 4
+            texts = [texts] * len(self.titles)
 
-        # 전투력 라벨 추가
-        for i in range(4):
-            power = self.Power(
+        # 현재 전투력 종류 수만큼 카드 생성
+        for i, title in enumerate(self.titles):
+            power: PowerLabels.Power = self.Power(
                 self,
-                config.simulation.power_titles[i],
+                title,
                 texts[i],
-                config.ui.sim_colors4[i],
+                self.colors[i],
                 font_size,
             )
 
@@ -2548,18 +2408,25 @@ class PowerLabels(QFrame):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
     def set_texts(self, texts: list[str] | str) -> None:
-        # texts가 문자열인 경우 4개의 동일한 값으로 변환
+        # 단일 문자열 입력 시 현재 전투력 칸 수만큼 동일 값 확장
         if isinstance(texts, str):
-            texts = [texts] * 4
+            texts = [texts] * len(self.numbers)
 
-        for i in range(4):
+        for i in range(len(self.numbers)):
             self.numbers[i].setText(texts[i])
 
     class Power(QFrame):
-        def __init__(self, mainframe, name: str, text: str, color: str, font_size=18):
+        def __init__(
+            self,
+            mainframe: QWidget,
+            name: str,
+            text: str,
+            color: str,
+            font_size: int = 18,
+        ) -> None:
             super().__init__(mainframe)
 
-            label = QLabel(name, self)
+            label: QLabel = QLabel(name, self)
             label.setStyleSheet(
                 f"QLabel {{ background-color: rgb({color}); border: 1px solid rgb({color}); border-bottom: 0px solid; border-top-left-radius: 4px; border-top-right-radius: 4px; border-bottom-left-radius: 0px; border-bottom-right-radius: 0px; }}"
             )
@@ -2567,7 +2434,7 @@ class PowerLabels(QFrame):
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             label.setFixedHeight(50)
 
-            self.number = QLabel(text, self)
+            self.number: QLabel = QLabel(text, self)
             self.number.setStyleSheet(
                 f"QLabel {{ background-color: rgba({color}, 120); border: 1px solid rgb({color}); border-top: 0px solid; border-top-left-radius: 0px; border-top-right-radius: 0px; border-bottom-left-radius: 4px; border-bottom-right-radius: 4px }}"
             )
@@ -2575,7 +2442,7 @@ class PowerLabels(QFrame):
             self.number.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.number.setFixedHeight(90)
 
-            layout = QVBoxLayout(self)
+            layout: QVBoxLayout = QVBoxLayout(self)
             layout.addWidget(label)
             layout.addWidget(self.number)
             layout.setContentsMargins(0, 0, 0, 0)

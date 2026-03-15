@@ -328,8 +328,6 @@ class PresetInfo:
     stats: dict[str, int | float] = field(default_factory=dict)
     # 스크롤 레벨 (key: scroll_id, value: level)
     scroll_levels: dict[str, int] = field(default_factory=dict)
-    # 시뮬레이션 세부 정보
-    sim_details: dict[str, int] = field(default_factory=dict)
     # 새 계산기 입력 상태
     calculator: CalculatorPresetInput = field(
         default_factory=CalculatorPresetInput.create_default
@@ -342,7 +340,6 @@ class PresetInfo:
         return cls(
             stats=data["stats"].copy(),
             scroll_levels=data["scroll_levels"].copy(),
-            sim_details=data["sim_details"].copy(),
             calculator=CalculatorPresetInput.from_dict(data["calculator"]),
         )
 
@@ -352,7 +349,6 @@ class PresetInfo:
         return {
             "stats": self.stats.copy(),
             "scroll_levels": self.scroll_levels.copy(),
-            "sim_details": self.sim_details.copy(),
             "calculator": self.calculator.to_dict(),
         }
 
@@ -361,7 +357,6 @@ class PresetInfo:
         cls,
         stats: "Stats",
         scroll_levels: dict[str, int],
-        sim_details: dict[str, int],
     ) -> "PresetInfo":
         """스탯 Stats로부터 PresetInfo 생성"""
 
@@ -370,7 +365,6 @@ class PresetInfo:
             # todo: Stats에 to_dict() 메서드 추가
             stats=stats.to_dict(),
             scroll_levels=scroll_levels.copy(),
-            sim_details=sim_details.copy(),
             calculator=CalculatorPresetInput.create_default(),
         )
 
@@ -437,12 +431,6 @@ class MacroPreset:
         "LUK": 10,
         "EXP": 10,
     }
-    DEFAULT_SIM_DETAILS: ClassVar[dict[str, int]] = {
-        "NORMAL_NAEGONG": 10,
-        "BOSS_NAEGONG": 10,
-        "POTION_HEAL": 300,
-    }
-
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> MacroPreset:
         """딕셔너리로부터 MacroPreset 생성"""
@@ -519,7 +507,6 @@ class MacroPreset:
                 stats=cls.DEFAULT_STATS.copy(),
                 # 현재 서버의 모든 스크롤 레벨 기본값 구성
                 scroll_levels={scroll_id: 1 for scroll_id in scroll_ids.copy()},
-                sim_details=cls.DEFAULT_SIM_DETAILS.copy(),
                 calculator=CalculatorPresetInput.create_default(),
             ),
         )

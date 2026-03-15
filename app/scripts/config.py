@@ -59,9 +59,6 @@ class SimulationConfig:
 
     stats_counts: ClassVar[int] = 18
     skill_levels_counts: ClassVar[int] = 8
-    sim_details_counts: ClassVar[int] = 3
-
-
 @dataclass(frozen=True)
 class MacroConfig:
     # AFK 모드 활성화 여부: 정식 버전에서는 True로 변경
@@ -153,14 +150,6 @@ class MacroSpecs:
         ),
         "EXP": SettingSpec(label="경험치획득량", default=0, min=0, max=10000),
     }
-
-    # 시뮬레이션 환경 설정
-    SIM_DETAILS: ClassVar[dict[str, SettingSpec]] = {
-        "NORMAL_NAEGONG": SettingSpec(label="몬스터 내공", default=0, min=0, max=100),
-        "BOSS_NAEGONG": SettingSpec(label="보스 내공", default=0, min=0, max=100),
-        "POTION_HEAL": SettingSpec(label="포션 회복량", default=100, min=0, max=1000),
-    }
-
     # 기타 설정
     DELAY: ClassVar[SettingSpec] = SettingSpec(
         label="딜레이", default=150, min=50, max=1000

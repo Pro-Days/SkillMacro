@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -18,8 +19,10 @@ from app.scripts.calculator_models import (
     RealmTierSpec,
     StatKey,
 )
-from app.scripts.custom_classes import SimAttack, SimBuff
+from app.scripts.macro_models import EquippedSkillRef, LinkUseType
 from app.scripts.registry.skill_registry import BuffEffect, DamageEffect, LevelEffect
+from app.scripts.registry.skill_registry import get_builtin_skill_id
+from app.scripts.run_macro import get_prepared_link_skill_indices
 
 if TYPE_CHECKING:
     from app.scripts.macro_models import MacroPreset, SkillUsageSetting
@@ -133,6 +136,34 @@ class CalculatorTimeline:
 
     hit_events: tuple[CalculatorHitEvent, ...]
     buff_windows: tuple[CalculatorBuffWindow, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class CalculatorSkillUse:
+    """계산기용 스킬 사용 이벤트"""
+
+    skill_id: str
+    time: float
+
+
+@dataclass(frozen=True, slots=True)
+class CalculatorScheduledBuff:
+    """계산기용 버프 이벤트"""
+
+    skill_id: str
+    stat_key: StatKey
+    start_time: float
+    end_time: float
+    value: float
+
+
+@dataclass(frozen=True, slots=True)
+class CalculatorDamageEvent:
+    """계산기용 최종 피해 이벤트"""
+
+    skill_id: str
+    time: float
+    damage: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -989,6 +1020,291 @@ def _merge_buff_windows(
     return ordered_windows
 
 
+def _build_skill_sequence(
+    server_spec: "ServerSpec",
+    preset: "MacroPreset",
+    skills_info: dict[str, "SkillUsageSetting"],
+) -> tuple[EquippedSkillRef, ...]:
+    """우선순위 기준 스킬 순서 구성"""
+
+    # 현재 배치된 스킬만 우선순위 후보로 제한
+    placed_refs: list[EquippedSkillRef] = preset.skills.get_placed_skill_refs(server_spec)
+    skill_sequence: list[EquippedSkillRef] = []
+
+    # 우선순위 숫자 기준 1차 정렬 구성
+    for target_priority in range(1, len(placed_refs) + 1):
+        for skill_ref in placed_refs:
+            skill_id: str = preset.skills.get_placed_skill_id(skill_ref)
+            setting: "SkillUsageSetting" = skills_info[skill_id]
+            if setting.priority != target_priority:
+                continue
+
+            skill_sequence.append(skill_ref)
+
+    # 우선순위 미지정 스킬은 기존 배치 순서 유지
+    for skill_ref in placed_refs:
+        if skill_ref in skill_sequence:
+            continue
+
+        skill_sequence.append(skill_ref)
+
+    return tuple(skill_sequence)
+
+
+def _update_prepared_skills(
+    placed_refs: list[EquippedSkillRef],
+    skill_cooltime_timers_ms: dict[EquippedSkillRef, int],
+    skill_cooltimes_ms: dict[EquippedSkillRef, int],
+    elapsed_time_ms: int,
+    prepared_skills: set[EquippedSkillRef],
+) -> None:
+    """쿨타임 종료 스킬 준비 상태 반영"""
+
+    # 현재 시점까지 쿨타임이 끝난 스킬만 준비 상태로 복귀
+    for skill_ref in placed_refs:
+        if skill_ref in prepared_skills:
+            continue
+
+        elapsed_from_last_use: int = (
+            elapsed_time_ms - skill_cooltime_timers_ms[skill_ref]
+        )
+        if elapsed_from_last_use < skill_cooltimes_ms[skill_ref]:
+            continue
+
+        prepared_skills.add(skill_ref)
+
+
+def _build_next_task_list(
+    preset: "MacroPreset",
+    skills_info: dict[str, "SkillUsageSetting"],
+    prepared_skills: set[EquippedSkillRef],
+    link_skill_requirements: list[list[EquippedSkillRef]],
+    auto_link_skills: list[list[EquippedSkillRef]],
+    skill_sequence: tuple[EquippedSkillRef, ...],
+) -> list[EquippedSkillRef]:
+    """현재 시점 기준 실행 가능한 다음 작업 목록 구성"""
+
+    # 자동 연계 완성 여부를 먼저 확인
+    prepared_link_indices: list[int] = get_prepared_link_skill_indices(
+        prepared_skills=prepared_skills,
+        link_skills_requirements=link_skill_requirements,
+    )
+    if prepared_link_indices:
+        target_link_skills: list[EquippedSkillRef] = auto_link_skills[
+            prepared_link_indices[0]
+        ]
+        task_list: list[EquippedSkillRef] = []
+        for skill_ref in target_link_skills:
+            prepared_skills.discard(skill_ref)
+            task_list.append(skill_ref)
+
+        return task_list
+
+    # 연계에 속한 스킬인지 빠르게 판단할 수 있도록 평탄화
+    linked_skill_refs: set[EquippedSkillRef] = {
+        skill_ref
+        for requirement_group in link_skill_requirements
+        for skill_ref in requirement_group
+    }
+
+    # 우선순위 순회하며 단독 사용 스킬 또는 일반 스킬 하나 선택
+    for skill_ref in skill_sequence:
+        if skill_ref not in prepared_skills:
+            continue
+
+        skill_id: str = preset.skills.get_placed_skill_id(skill_ref)
+        setting: "SkillUsageSetting" = skills_info[skill_id]
+        if skill_ref in linked_skill_refs and setting.use_alone:
+            prepared_skills.discard(skill_ref)
+            return [skill_ref]
+
+        if skill_ref not in linked_skill_refs and setting.use_skill:
+            prepared_skills.discard(skill_ref)
+            return [skill_ref]
+
+    return []
+
+
+def build_skill_use_sequence(
+    server_spec: "ServerSpec",
+    preset: "MacroPreset",
+    skills_info: dict[str, "SkillUsageSetting"],
+    delay_ms: int,
+    cooltime_reduction: float,
+) -> tuple[CalculatorSkillUse, ...]:
+    """입력 상태 기준 60초 스킬 사용 순서 구성"""
+
+    # 실제 배치된 스킬이 없으면 빈 사용 기록 반환
+    placed_refs: list[EquippedSkillRef] = preset.skills.get_placed_skill_refs(server_spec)
+    if not placed_refs:
+        return ()
+
+    # 자동 연계 계산에 필요한 배치/설정 맵 구성
+    prepared_skills: set[EquippedSkillRef] = set(placed_refs)
+    skill_ref_map: dict[str, EquippedSkillRef] = preset.skills.get_placed_skill_ref_map(
+        server_spec
+    )
+    auto_link_skills: list[list[EquippedSkillRef]] = [
+        [skill_ref_map[skill_id] for skill_id in link_skill.skills]
+        for link_skill in preset.link_skills
+        if link_skill.use_type == LinkUseType.AUTO
+        and all(skill_id in skill_ref_map for skill_id in link_skill.skills)
+    ]
+    link_skill_requirements: list[list[EquippedSkillRef]] = [
+        [skill_ref for skill_ref in link_skill_group]
+        for link_skill_group in auto_link_skills
+    ]
+    skill_sequence: tuple[EquippedSkillRef, ...] = _build_skill_sequence(
+        server_spec=server_spec,
+        preset=preset,
+        skills_info=skills_info,
+    )
+
+    # 쿨타임 감소를 반영한 스킬별 재사용 대기시간 계산
+    skill_cooltime_timers_ms: dict[EquippedSkillRef, int] = {
+        skill_ref: 0 for skill_ref in placed_refs
+    }
+    skill_cooltimes_ms: dict[EquippedSkillRef, int] = {
+        skill_ref: int(
+            server_spec.skill_registry.get(preset.skills.get_placed_skill_id(skill_ref)).cooltime
+            * (100 - cooltime_reduction)
+            * 10
+        )
+        for skill_ref in placed_refs
+    }
+
+    # 60초 범위 내 실제 스킬 사용 시점 기록
+    task_list: list[EquippedSkillRef] = []
+    used_skills: list[CalculatorSkillUse] = []
+    elapsed_time_ms: int = 0
+    while elapsed_time_ms < 60000:
+        if not task_list:
+            _update_prepared_skills(
+                placed_refs=placed_refs,
+                skill_cooltime_timers_ms=skill_cooltime_timers_ms,
+                skill_cooltimes_ms=skill_cooltimes_ms,
+                elapsed_time_ms=elapsed_time_ms,
+                prepared_skills=prepared_skills,
+            )
+            task_list = _build_next_task_list(
+                preset=preset,
+                skills_info=skills_info,
+                prepared_skills=prepared_skills,
+                link_skill_requirements=link_skill_requirements,
+                auto_link_skills=auto_link_skills,
+                skill_sequence=skill_sequence,
+            )
+
+        if task_list:
+            skill_ref: EquippedSkillRef = task_list.pop(0)
+            skill_id: str = preset.skills.get_placed_skill_id(skill_ref)
+            used_skills.append(
+                CalculatorSkillUse(
+                    skill_id=skill_id,
+                    time=round(elapsed_time_ms * 0.001, 2),
+                )
+            )
+            skill_cooltime_timers_ms[skill_ref] = elapsed_time_ms
+            elapsed_time_ms += int(delay_ms)
+            continue
+
+        # 모든 준비 스킬이 없으면 가장 빨리 돌아오는 스킬까지 점프
+        waiting_refs: list[EquippedSkillRef] = [
+            skill_ref for skill_ref in placed_refs if skill_ref not in prepared_skills
+        ]
+        if not waiting_refs:
+            break
+
+        next_cooltime_ms: int = min(
+            skill_cooltimes_ms[skill_ref]
+            - (elapsed_time_ms - skill_cooltime_timers_ms[skill_ref])
+            for skill_ref in waiting_refs
+        )
+        elapsed_time_ms += next_cooltime_ms
+
+    return tuple(used_skills)
+
+
+def build_simulation_events(
+    server_spec: "ServerSpec",
+    preset: "MacroPreset",
+    skills_info: dict[str, "SkillUsageSetting"],
+    delay_ms: int,
+    cooltime_reduction: float,
+) -> tuple[tuple[CalculatorHitEvent, ...], tuple[CalculatorScheduledBuff, ...]]:
+    """공유 스케줄러 기준 공격/버프 이벤트 구성"""
+
+    # 평타 간격과 배치 스킬 사용 기록을 각각 이벤트로 확장
+    basic_attack_skill_id: str = get_builtin_skill_id(server_spec.id, "평타")
+    basic_attack_interval_ms: int = int((100 - cooltime_reduction) * 10)
+    hit_events: list[CalculatorHitEvent] = []
+    for current_time_ms in range(0, 60000, basic_attack_interval_ms):
+        hit_events.append(
+            CalculatorHitEvent(
+                skill_id=basic_attack_skill_id,
+                time=round(current_time_ms * 0.001, 2),
+                multiplier=1.0,
+                is_skill=False,
+            )
+        )
+
+    skill_uses: tuple[CalculatorSkillUse, ...] = build_skill_use_sequence(
+        server_spec=server_spec,
+        preset=preset,
+        skills_info=skills_info,
+        delay_ms=delay_ms,
+        cooltime_reduction=cooltime_reduction,
+    )
+
+    # 현재 스크롤 레벨 기준 데미지/버프 효과 테이블 조회
+    placed_skill_ids: list[str] = preset.skills.get_placed_skill_ids()
+    damage_effects_map: dict[str, list[DamageEffect]]
+    buff_effects_map: dict[str, list[BuffEffect]]
+    damage_effects_map, buff_effects_map = build_skill_effect_maps(
+        server_spec=server_spec,
+        preset=preset,
+        placed_skill_ids=placed_skill_ids,
+    )
+
+    # 사용 시점과 효과 테이블을 조합해 최종 이벤트 생성
+    buff_events: list[CalculatorScheduledBuff] = []
+    for skill_use in skill_uses:
+        damage_effects: list[DamageEffect] = damage_effects_map[skill_use.skill_id]
+        buff_effects: list[BuffEffect] = buff_effects_map[skill_use.skill_id]
+        for damage_effect in damage_effects:
+            hit_events.append(
+                CalculatorHitEvent(
+                    skill_id=skill_use.skill_id,
+                    time=round(skill_use.time + damage_effect.time, 2),
+                    multiplier=damage_effect.damage,
+                    is_skill=True,
+                )
+            )
+
+        for buff_effect in buff_effects:
+            buff_events.append(
+                CalculatorScheduledBuff(
+                    skill_id=skill_use.skill_id,
+                    stat_key=StatKey(str(buff_effect.stat)),
+                    start_time=round(skill_use.time + buff_effect.time, 2),
+                    end_time=round(
+                        skill_use.time + buff_effect.time + buff_effect.duration,
+                        2,
+                    ),
+                    value=float(buff_effect.value),
+                )
+            )
+
+    # 시각화/평가 일관성을 위한 시간순 정렬
+    ordered_hit_events: tuple[CalculatorHitEvent, ...] = tuple(
+        sorted(hit_events, key=lambda item: item.time)
+    )
+    ordered_buff_events: tuple[CalculatorScheduledBuff, ...] = tuple(
+        sorted(buff_events, key=lambda item: item.start_time)
+    )
+    return ordered_hit_events, ordered_buff_events
+
+
 def build_calculator_timeline(
     server_spec: "ServerSpec",
     preset: "MacroPreset",
@@ -998,46 +1314,24 @@ def build_calculator_timeline(
 ) -> CalculatorTimeline:
     """메인 화면 스킬 상태 기준 계산기용 60초 타임라인 생성"""
 
-    # 기존 시뮬레이터의 스킬 사용 순서를 그대로 재사용
-    from app.scripts.simulate_macro import get_simulated_skills
-
-    # 구형 시뮬레이터가 반환하는 공격/버프 이벤트를 재사용
-    skills_info_tuple: tuple[tuple[str, tuple[bool, bool, int]], ...] = tuple(
-        sorted(
-            (skill_id, setting.to_tuple()) for skill_id, setting in skills_info.items()
-        )
+    # 공유 스케줄러가 생성한 이벤트를 계산기 타임라인으로 정규화
+    hit_events: tuple[CalculatorHitEvent, ...]
+    buff_events: tuple[CalculatorScheduledBuff, ...]
+    hit_events, buff_events = build_simulation_events(
+        server_spec=server_spec,
+        preset=preset,
+        skills_info=skills_info,
+        delay_ms=delay_ms,
+        cooltime_reduction=cooltime_reduction,
     )
-    attack_details: list[SimAttack]
-    buff_details: list[SimBuff]
-    attack_details, buff_details = get_simulated_skills(
-        cooltimeReduce=cooltime_reduction,
-        skills_info_tuple=skills_info_tuple,
-    )
-
-    # 평타 여부와 데미지 배율만 남기는 계산기용 공격 이벤트 구성
-    hit_events: list[CalculatorHitEvent] = []
-    for attack_detail in attack_details:
-        is_skill: bool = not attack_detail.skill_id.endswith(":평타")
-        hit_events.append(
-            CalculatorHitEvent(
-                skill_id=attack_detail.skill_id,
-                time=attack_detail.time,
-                multiplier=attack_detail.damage,
-                is_skill=is_skill,
-            )
-        )
-
-    # 계산기 스탯 키로 직접 저장된 버프만 계산기 구간으로 변환
     converted_buff_windows: list[CalculatorBuffWindow] = []
-    for buff_detail in buff_details:
-        stat_key: StatKey = StatKey(str(buff_detail.stat))
-
+    for buff_event in buff_events:
         converted_buff_windows.append(
             CalculatorBuffWindow(
-                stat_key=stat_key,
-                start_time=float(buff_detail.start_time),
-                end_time=float(buff_detail.end_time),
-                value=float(buff_detail.value),
+                stat_key=buff_event.stat_key,
+                start_time=buff_event.start_time,
+                end_time=buff_event.end_time,
+                value=buff_event.value,
             )
         )
 
@@ -1045,7 +1339,7 @@ def build_calculator_timeline(
         converted_buff_windows
     )
     timeline: CalculatorTimeline = CalculatorTimeline(
-        hit_events=tuple(hit_events),
+        hit_events=hit_events,
         buff_windows=merged_buff_windows,
     )
     return timeline
@@ -1105,6 +1399,95 @@ def _calculate_hit_damage(
         damage *= 1.0 + (float(resolved_stats[StatKey.SKILL_DAMAGE_PERCENT]) * 0.01)
 
     return damage
+
+
+def _calculate_random_hit_damage(
+    resolved_stats: dict[StatKey, float],
+    hit_event: CalculatorHitEvent,
+    is_boss: bool,
+    rng: random.Random,
+) -> float:
+    """단일 타격 랜덤 피해량 계산"""
+
+    # 공격력 표시값에 최종 공격력과 보스 공격력을 차례대로 반영
+    attack_power: float = float(resolved_stats[StatKey.ATTACK])
+    attack_power *= 1.0 + (float(resolved_stats[StatKey.FINAL_ATTACK_PERCENT]) * 0.01)
+    if is_boss:
+        attack_power *= 1.0 + (
+            float(resolved_stats[StatKey.BOSS_ATTACK_PERCENT]) * 0.01
+        )
+
+    # 스킬 계수와 랜덤 최소/최대 데미지 폭 반영
+    damage: float = attack_power * hit_event.multiplier
+    damage *= rng.uniform(1.0, 1.2)
+
+    # 치명타 확률과 치명타 피해량 기반 랜덤 치명타 반영
+    crit_rate: float = min(float(resolved_stats[StatKey.CRIT_RATE_PERCENT]), 100.0)
+    crit_damage: float = float(resolved_stats[StatKey.CRIT_DAMAGE_PERCENT])
+    if rng.random() < (crit_rate * 0.01):
+        damage *= 1.0 + (crit_damage * 0.01)
+
+    # 평타가 아닌 스킬 타격에만 스킬 피해량 보정 적용
+    if hit_event.is_skill:
+        damage *= 1.0 + (float(resolved_stats[StatKey.SKILL_DAMAGE_PERCENT]) * 0.01)
+
+    return damage
+
+
+def build_damage_events(
+    timeline: CalculatorTimeline,
+    resolved_stats: CalculatorResolvedStats,
+    is_boss: bool,
+    deterministic: bool,
+    random_seed: float | None = None,
+) -> list[CalculatorDamageEvent]:
+    """타임라인과 스탯 기준 최종 피해 이벤트 목록 구성"""
+
+    # 랜덤 시뮬레이션에서만 독립 난수기 초기화
+    rng: random.Random | None = None
+    if not deterministic:
+        rng = random.Random(random_seed)
+
+    damage_events: list[CalculatorDamageEvent] = []
+    for hit_event in timeline.hit_events:
+        # 타격 시점 활성 버프 수집 및 버프 반영 스탯 구성
+        active_buffs: tuple[CalculatorBuffWindow, ...] = _collect_active_buffs(
+            timeline.buff_windows,
+            hit_event.time,
+        )
+        buffed_stats: dict[StatKey, float] = _apply_active_buffs(
+            resolved_stats, active_buffs
+        )
+
+        # 결정론/확률론 모드에 따라 최종 타격 피해량 계산
+        damage: float
+        if deterministic:
+            damage = _calculate_hit_damage(
+                resolved_stats=buffed_stats,
+                hit_event=hit_event,
+                is_boss=is_boss,
+            )
+
+        else:
+            if rng is None:
+                raise RuntimeError("random generator must exist for random simulation")
+
+            damage = _calculate_random_hit_damage(
+                resolved_stats=buffed_stats,
+                hit_event=hit_event,
+                is_boss=is_boss,
+                rng=rng,
+            )
+
+        damage_events.append(
+            CalculatorDamageEvent(
+                skill_id=hit_event.skill_id,
+                time=hit_event.time,
+                damage=damage,
+            )
+        )
+
+    return damage_events
 
 
 def evaluate_calculator_power(

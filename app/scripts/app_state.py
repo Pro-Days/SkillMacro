@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, ClassVar
 
 from app.scripts.config import config
-from app.scripts.custom_classes import Stats
 from app.scripts.macro_models import (
     EquippedSkillRef,
     LinkKeyType,
@@ -116,30 +115,17 @@ class UiState:
 @dataclass
 class SimulationState:
     # 전투력 리스트
-    powers: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0, 0.0])
+    powers: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0, 0.0, 0.0])
 
     # 입력값 유효성 검사 결과
     is_input_valid: dict[str, bool] = field(
         default_factory=lambda: {
             "stat": True,
             "skill": True,
-            # todo: sim_details로 변경
-            "simDetails": True,
             "sim3_stat": True,
             "sim3_skill": True,
         }
     )
-
-    @property
-    def stats(self) -> Stats:
-        """현재 시뮬레이션 스탯 반환"""
-        return Stats.from_dict(app_state.macro.current_preset.info.stats)
-
-    @property
-    def sim_details(self) -> dict[str, int]:
-        """현재 시뮬레이션 상세 설정 반환"""
-        # todo: SimDetails 클래스로 변경 고려
-        return app_state.macro.current_preset.info.sim_details
 
 
 @dataclass
