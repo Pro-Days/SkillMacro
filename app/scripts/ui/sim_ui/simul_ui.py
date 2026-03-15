@@ -96,16 +96,6 @@ if TYPE_CHECKING:
     from app.scripts.ui.main_window import MainWindow
 
 
-ANALYSIS_DETAIL_KEYS: tuple[str, ...] = (
-    "min",
-    "max",
-    "std",
-    "p25",
-    "p50",
-    "p75",
-)
-
-
 class SimUI:
     def __init__(self, master: MainWindow, parent: QFrame):
 
@@ -485,13 +475,12 @@ class ResultsPage(QFrame):
 
         # 스탯 효율 계산
         self.efficiency_title: Title = Title(self, "스탯 효율 계산")
-        self.efficiency = self.Efficiency(self)
-        self.efficiency.set_input_sections_visible(False)
+        self.view: ResultsPage.ResultsView = self.ResultsView(self)
 
         layout = QVBoxLayout(self)
 
         layout.addWidget(self.efficiency_title)
-        layout.addWidget(self.efficiency)
+        layout.addWidget(self.view)
 
         # 레이아웃 여백과 간격 설정
         layout.setSpacing(10)  # 위젯들 사이의 간격
@@ -503,9 +492,7 @@ class ResultsPage(QFrame):
     def sync_from_preset(self) -> None:
         """저장된 계산기 상태를 결과 페이지에 동기화"""
 
-        self.efficiency.load_from_preset_state()
-        self.efficiency.on_base_input_changed()
-        self.efficiency.on_custom_delta_changed()
+        self.view.refresh_from_preset()
 
     class Efficiency(QFrame):
         def __init__(
@@ -522,6 +509,9 @@ class ResultsPage(QFrame):
                 self.setStyleSheet(
                     "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
                 )
+
+            # 저장 상태 로드 중 이벤트 억제 플래그 구성
+            self._is_loading_state: bool = False
 
             # 전투력 선택지와 경지 선택지 순서 고정
             self.metric_options: list[PowerMetric] = list(DISPLAY_POWER_METRICS)
@@ -744,40 +734,11 @@ class ResultsPage(QFrame):
             for target_widget in result_widgets:
                 target_widget.setVisible(is_visible)
 
-        def set_input_sections_visible(self, is_visible: bool) -> None:
-            """입력 전용 섹션 표시 여부 설정"""
-
-            # 결과 페이지에서 숨길 입력 위젯 일괄 구성
-            input_widgets: tuple[QWidget, ...] = (
-                self.metric_title,
-                self.metric_combobox,
-                self.level_input_widget,
-                self.realm_title,
-                self.realm_combobox,
-                self.stats_title,
-                self.stats_inputs,
-                self.scroll_title,
-                self.skills,
-                self.optimization_title,
-                self.distribution_title,
-                self.distribution_inputs,
-                self.danjeon_title,
-                self.danjeon_inputs,
-                self.title_list_title,
-                self.title_inputs,
-                self.talisman_title,
-                self.talisman_inputs,
-                self.custom_delta_title,
-                self.custom_delta_inputs,
-            )
-
-            # 입력 전용 위젯 표시 토글
-            for target_widget in input_widgets:
-                target_widget.setVisible(is_visible)
-
         def load_from_preset_state(self) -> None:
             """저장된 계산기 상태를 현재 입력 위젯에 반영"""
 
+            # 프리셋 반영 중 입력 이벤트 기반 저장/재계산 억제
+            self._is_loading_state = True
             calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
             self.metric_combobox.setCurrentIndex(
                 self.metric_options.index(calculator_input.selected_metric)
@@ -801,6 +762,7 @@ class ResultsPage(QFrame):
                 )
 
             self._load_optimization_inputs()
+            self._is_loading_state = False
 
         class OverallStatInputs(QFrame):
             def __init__(
@@ -1812,6 +1774,7 @@ class ResultsPage(QFrame):
             self,
             overall_stats: dict[str, float],
             level: int,
+            persist: bool = True,
         ) -> None:
             """기준 입력 상태 저장"""
 
@@ -1823,11 +1786,13 @@ class ResultsPage(QFrame):
                 self.realm_combobox.currentIndex()
             ]
             calculator_input.selected_metric = self._get_selected_metric()
-            save_data()
+            if persist:
+                save_data()
 
         def _save_custom_stat_changes(
             self,
             custom_changes: dict[StatKey, float],
+            persist: bool = True,
         ) -> None:
             """사용자 지정 변화량 입력 상태 저장"""
 
@@ -1836,7 +1801,8 @@ class ResultsPage(QFrame):
                 stat_key.value: custom_changes.get(stat_key, 0.0)
                 for stat_key in CALCULATOR_STAT_SPECS.keys()
             }
-            save_data()
+            if persist:
+                save_data()
 
         def _save_optimization_inputs(
             self,
@@ -1845,6 +1811,7 @@ class ResultsPage(QFrame):
             owned_titles: list[OwnedTitle],
             equipped_state: EquippedOptimizationState,
             owned_talismans: list[OwnedTalisman],
+            persist: bool = True,
         ) -> None:
             """최적화 입력 상태 저장"""
 
@@ -1854,7 +1821,8 @@ class ResultsPage(QFrame):
             calculator_input.owned_titles = owned_titles
             calculator_input.equipped = equipped_state
             calculator_input.owned_talismans = owned_talismans
-            save_data()
+            if persist:
+                save_data()
 
         def _set_error_outputs(self) -> None:
             """기준 입력 오류 상태 출력"""
@@ -1868,7 +1836,11 @@ class ResultsPage(QFrame):
             self.base_state_list.set_rows(error_rows)
             self.optimization_result_list.set_rows(error_rows)
 
-        def _refresh_base_outputs(self) -> None:
+        def _refresh_base_outputs(
+            self,
+            persist_base: bool = False,
+            persist_optimization: bool = False,
+        ) -> None:
             """기준 입력 기반 효율 출력 갱신"""
 
             # 전체 스탯, 레벨, 스크롤 레벨 입력 유효성 확인
@@ -1887,7 +1859,11 @@ class ResultsPage(QFrame):
                 return
 
             # 저장 후 현재 프리셋 기준 컨텍스트 계산
-            self._save_base_inputs(overall_stats, level)
+            self._save_base_inputs(
+                overall_stats,
+                level,
+                persist=persist_base,
+            )
             context: CalculatorEvaluationContext = build_calculator_context(
                 server_spec=app_state.macro.current_server,
                 preset=self._get_preset(),
@@ -2036,6 +2012,7 @@ class ResultsPage(QFrame):
                 owned_titles=owned_titles,
                 equipped_state=equipped_state,
                 owned_talismans=owned_talismans,
+                persist=persist_optimization,
             )
             calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
             validation: CalculatorBaseValidation = validate_base_state(
@@ -2137,7 +2114,10 @@ class ResultsPage(QFrame):
                 ]
             )
 
-        def _refresh_custom_delta_output(self) -> None:
+        def _refresh_custom_delta_output(
+            self,
+            persist_custom: bool = False,
+        ) -> None:
             """사용자 지정 스탯 변화량 출력 갱신"""
 
             # 기준 입력 또는 변화량 입력이 유효하지 않으면 오류 출력
@@ -2158,7 +2138,10 @@ class ResultsPage(QFrame):
                 self.custom_delta_result_list.set_rows([("상태", "오류")])
                 return
 
-            self._save_custom_stat_changes(custom_changes)
+            self._save_custom_stat_changes(
+                custom_changes,
+                persist=persist_custom,
+            )
 
             # 현재 기준 컨텍스트와 변화량 계산 결과 구성
             context: CalculatorEvaluationContext = build_calculator_context(
@@ -2187,21 +2170,430 @@ class ResultsPage(QFrame):
         def on_optimization_input_changed(self) -> None:
             """최적화 입력 변경 시 기준 상태 분리 갱신"""
 
+            if self._is_loading_state:
+                return
+
             self.title_inputs.refresh_equipped_options()
             self.talisman_inputs.refresh_equipped_options()
-            self._refresh_base_outputs()
+            self._refresh_base_outputs(
+                persist_base=False,
+                persist_optimization=True,
+            )
 
         def on_base_input_changed(self) -> None:
             """기준 입력 변경 시 전체 효율 출력 갱신"""
 
+            if self._is_loading_state:
+                return
+
             # 기준 입력 변화 시 기준 출력과 사용자 지정 출력 동시 갱신
-            self._refresh_base_outputs()
-            self._refresh_custom_delta_output()
+            self._refresh_base_outputs(
+                persist_base=True,
+                persist_optimization=False,
+            )
+            self._refresh_custom_delta_output(persist_custom=False)
 
         def on_custom_delta_changed(self) -> None:
             """사용자 지정 변화량 변경 시 결과 갱신"""
 
-            self._refresh_custom_delta_output()
+            if self._is_loading_state:
+                return
+
+            self._refresh_custom_delta_output(persist_custom=True)
+
+    class ResultsView(QFrame):
+        def __init__(
+            self,
+            parent: QFrame,
+        ) -> None:
+            super().__init__(parent)
+
+            if config.ui.debug_colors:
+                self.setStyleSheet(
+                    "QFrame { background-color: green; border: 0px solid; }"
+                )
+            else:
+                self.setStyleSheet(
+                    "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
+                )
+
+            # 결과 전용 출력 위젯 구성
+            self.current_power_title: QLabel = QLabel("현재 전투력", self)
+            self.current_power_title.setFont(CustomFont(12))
+            self.current_power_list: ResultsPage.Efficiency.ResultList = (
+                ResultsPage.Efficiency.ResultList(self)
+            )
+
+            self.stat_efficiency_title: QLabel = QLabel("스탯 1당 효율", self)
+            self.stat_efficiency_title.setFont(CustomFont(12))
+            self.stat_efficiency_list: ResultsPage.Efficiency.ResultList = (
+                ResultsPage.Efficiency.ResultList(self)
+            )
+
+            self.level_up_title: QLabel = QLabel("레벨 1업 효율", self)
+            self.level_up_title.setFont(CustomFont(12))
+            self.level_up_list: ResultsPage.Efficiency.ResultList = (
+                ResultsPage.Efficiency.ResultList(self)
+            )
+
+            self.realm_up_title: QLabel = QLabel("다음 경지 효율", self)
+            self.realm_up_title.setFont(CustomFont(12))
+            self.realm_up_list: ResultsPage.Efficiency.ResultList = (
+                ResultsPage.Efficiency.ResultList(self)
+            )
+
+            self.scroll_efficiency_title: QLabel = QLabel("스크롤 +1 효율", self)
+            self.scroll_efficiency_title.setFont(CustomFont(12))
+            self.scroll_efficiency_list: ResultsPage.Efficiency.ResultList = (
+                ResultsPage.Efficiency.ResultList(self)
+            )
+
+            self.custom_delta_result_title: QLabel = QLabel(
+                "사용자 지정 변화량 결과", self
+            )
+            self.custom_delta_result_title.setFont(CustomFont(12))
+            self.custom_delta_result_list: ResultsPage.Efficiency.ResultList = (
+                ResultsPage.Efficiency.ResultList(self)
+            )
+
+            self.base_state_title: QLabel = QLabel("기준 상태 분리", self)
+            self.base_state_title.setFont(CustomFont(12))
+            self.base_state_list: ResultsPage.Efficiency.ResultList = (
+                ResultsPage.Efficiency.ResultList(self)
+            )
+
+            self.optimization_result_title: QLabel = QLabel("최적화 결과", self)
+            self.optimization_result_title.setFont(CustomFont(12))
+            self.optimization_result_list: ResultsPage.Efficiency.ResultList = (
+                ResultsPage.Efficiency.ResultList(self)
+            )
+
+            # 결과 섹션 묶음 레이아웃 구성
+            base_section: QWidget = QWidget(self)
+            base_section_layout: QVBoxLayout = QVBoxLayout(base_section)
+            base_section_layout.setContentsMargins(0, 0, 0, 0)
+            base_section_layout.setSpacing(10)
+            base_section_layout.addWidget(self.current_power_title)
+            base_section_layout.addWidget(self.current_power_list)
+            base_section_layout.addWidget(self.stat_efficiency_title)
+            base_section_layout.addWidget(self.stat_efficiency_list)
+            base_section_layout.addWidget(self.level_up_title)
+            base_section_layout.addWidget(self.level_up_list)
+            base_section_layout.addWidget(self.realm_up_title)
+            base_section_layout.addWidget(self.realm_up_list)
+            base_section_layout.addWidget(self.scroll_efficiency_title)
+            base_section_layout.addWidget(self.scroll_efficiency_list)
+            base_section_layout.addWidget(self.custom_delta_result_title)
+            base_section_layout.addWidget(self.custom_delta_result_list)
+
+            optimization_section: QWidget = QWidget(self)
+            optimization_section_layout: QVBoxLayout = QVBoxLayout(optimization_section)
+            optimization_section_layout.setContentsMargins(0, 0, 0, 0)
+            optimization_section_layout.setSpacing(10)
+            optimization_section_layout.addWidget(self.base_state_title)
+            optimization_section_layout.addWidget(self.base_state_list)
+            optimization_section_layout.addWidget(self.optimization_result_title)
+            optimization_section_layout.addWidget(self.optimization_result_list)
+
+            layout = QVBoxLayout(self)
+            layout.addWidget(base_section)
+            layout.addWidget(optimization_section)
+            layout.setSpacing(10)
+            layout.setContentsMargins(10, 10, 10, 10)
+            self.setLayout(layout)
+
+            self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+        def _get_preset(self) -> "MacroPreset":
+            """현재 선택 프리셋 반환"""
+
+            return app_state.macro.current_preset
+
+        def _format_delta(self, value: float) -> str:
+            """전투력 변화량 표시 문자열 생성"""
+
+            return f"{value:+,.2f}"
+
+        def _format_current_power(self, value: float) -> str:
+            """현재 전투력 표시 문자열 생성"""
+
+            return f"{value:,.2f}"
+
+        def _set_error_outputs(self) -> None:
+            """결과 페이지 오류 상태 출력"""
+
+            error_rows: list[tuple[str, str]] = [("상태", "오류")]
+            self.current_power_list.set_rows(error_rows)
+            self.stat_efficiency_list.set_rows(error_rows)
+            self.level_up_list.set_rows(error_rows)
+            self.realm_up_list.set_rows(error_rows)
+            self.scroll_efficiency_list.set_rows(error_rows)
+            self.custom_delta_result_list.set_rows(error_rows)
+            self.base_state_list.set_rows(error_rows)
+            self.optimization_result_list.set_rows(error_rows)
+
+        def refresh_from_preset(self) -> None:
+            """저장된 계산기 상태 기준 결과 전용 출력 재구성"""
+
+            # 저장된 계산기 입력 상태 직접 조회
+            preset: MacroPreset = self._get_preset()
+            calculator_input: CalculatorPresetInput = preset.info.calculator
+            overall_stats: dict[str, float] = calculator_input.overall_stats.copy()
+            level: int = calculator_input.level
+            selected_metric: PowerMetric = calculator_input.selected_metric
+
+            # 저장된 스크롤 레벨 유효성 사전 확인
+            scroll_is_valid: bool = True
+            for entry in SkillInputs.build_entries():
+                scroll_level: int = preset.info.get_scroll_level(entry.scroll_id)
+                if not (1 <= scroll_level <= app_state.macro.current_server.max_skill_level):
+                    scroll_is_valid = False
+                    break
+
+            if not scroll_is_valid:
+                self._set_error_outputs()
+                return
+
+            # 저장된 기준 입력 기준 전투력 컨텍스트 재구성
+            context: CalculatorEvaluationContext = build_calculator_context(
+                server_spec=app_state.macro.current_server,
+                preset=preset,
+                skills_info=preset.usage_settings,
+                delay_ms=app_state.macro.current_delay,
+                overall_stats=overall_stats,
+            )
+
+            # 현재 전투력 출력 행 구성
+            current_power_rows: list[tuple[str, str]] = []
+            for power_metric in DISPLAY_POWER_METRICS:
+                current_power_rows.append(
+                    (
+                        POWER_METRIC_LABELS[power_metric],
+                        self._format_current_power(
+                            context.baseline_summary.metrics[power_metric]
+                        ),
+                    )
+                )
+            self.current_power_list.set_rows(current_power_rows)
+
+            # 스탯 1당 효율 출력 행 구성
+            stat_rows: list[tuple[str, str]] = []
+            for stat_key, stat_spec in CALCULATOR_STAT_SPECS.items():
+                deltas: dict[PowerMetric, float] = evaluate_single_stat_delta(
+                    context=context,
+                    overall_stats=overall_stats,
+                    stat_key=stat_key,
+                    amount=1.0,
+                )
+                label: str = stat_spec.label
+                if stat_spec.is_percent:
+                    label = f"{label}(%) +1"
+                else:
+                    label = f"{label} +1"
+
+                stat_rows.append((label, self._format_delta(deltas[selected_metric])))
+
+            stat_rows.sort(
+                key=lambda row: float(row[1].replace(",", "")),
+                reverse=True,
+            )
+            self.stat_efficiency_list.set_rows(stat_rows)
+
+            # 레벨 1업 효율 결과 구성
+            level_up: LevelUpEvaluation = evaluate_level_up_delta(
+                context=context,
+                overall_stats=overall_stats,
+                target_metric=selected_metric,
+            )
+            level_distribution_text: str = (
+                f"힘 {level_up.stat_distribution[StatKey.STR]}, "
+                f"민첩 {level_up.stat_distribution[StatKey.DEXTERITY]}, "
+                f"생명력 {level_up.stat_distribution[StatKey.VITALITY]}, "
+                f"행운 {level_up.stat_distribution[StatKey.LUCK]}"
+            )
+            self.level_up_list.set_rows(
+                [
+                    ("레벨 1업", self._format_delta(level_up.deltas[selected_metric])),
+                    ("최적 분배", level_distribution_text),
+                ]
+            )
+
+            # 다음 경지 효율 결과 구성
+            realm_result: RealmAdvanceEvaluation | None = evaluate_next_realm_delta(
+                context=context,
+                overall_stats=overall_stats,
+                current_realm=calculator_input.realm_tier,
+                level=level,
+                target_metric=selected_metric,
+            )
+            if realm_result is None:
+                self.realm_up_list.set_rows([("다음 경지", "불가")])
+            else:
+                danjeon_text: str = (
+                    f"상 {realm_result.danjeon_distribution[0]}, "
+                    f"중 {realm_result.danjeon_distribution[1]}, "
+                    f"하 {realm_result.danjeon_distribution[2]}"
+                )
+                self.realm_up_list.set_rows(
+                    [
+                        (
+                            REALM_TIER_SPECS[realm_result.target_realm].label,
+                            self._format_delta(realm_result.deltas[selected_metric]),
+                        ),
+                        ("최적 분배", danjeon_text),
+                    ]
+                )
+
+            # 스크롤 +1 효율 결과 구성
+            scroll_rows: list[tuple[str, str]] = []
+            scroll_results: list[ScrollUpgradeEvaluation] = (
+                evaluate_scroll_upgrade_deltas(
+                    server_spec=app_state.macro.current_server,
+                    preset=preset,
+                    skills_info=preset.usage_settings,
+                    delay_ms=app_state.macro.current_delay,
+                    overall_stats=overall_stats,
+                )
+            )
+            for scroll_result in scroll_results:
+                scroll_rows.append(
+                    (
+                        f"{scroll_result.scroll_name} Lv.{scroll_result.next_level}",
+                        self._format_delta(scroll_result.deltas[selected_metric]),
+                    )
+                )
+
+            scroll_rows.sort(
+                key=lambda row: float(row[1].replace(",", "")),
+                reverse=True,
+            )
+            self.scroll_efficiency_list.set_rows(scroll_rows)
+
+            # 저장된 사용자 지정 변화량 결과 구성
+            custom_changes: dict[StatKey, float] = {}
+            for stat_key in CALCULATOR_STAT_SPECS.keys():
+                change_value: float = calculator_input.custom_stat_changes[stat_key.value]
+                if change_value == 0.0:
+                    continue
+
+                custom_changes[stat_key] = change_value
+
+            deltas: dict[PowerMetric, float] = evaluate_arbitrary_stat_delta(
+                context=context,
+                overall_stats=overall_stats,
+                stat_changes=custom_changes,
+            )
+            custom_rows: list[tuple[str, str]] = []
+            for power_metric in DISPLAY_POWER_METRICS:
+                custom_rows.append(
+                    (
+                        POWER_METRIC_LABELS[power_metric],
+                        self._format_delta(deltas[power_metric]),
+                    )
+                )
+            self.custom_delta_result_list.set_rows(custom_rows)
+
+            # 저장된 최적화 입력 기준 베이스 상태 검증 및 분리 결과 구성
+            validation: CalculatorBaseValidation = validate_base_state(
+                overall_stats=overall_stats,
+                calculator_input=calculator_input,
+            )
+            if not validation.is_valid:
+                self.base_state_list.set_rows(
+                    [("상태", "오류"), ("사유", validation.message)]
+                )
+                self.optimization_result_list.set_rows([("상태", "불가")])
+                return
+
+            base_state: CalculatorBaseState = build_base_state(
+                overall_stats=overall_stats,
+                calculator_input=calculator_input,
+            )
+            self.base_state_list.set_rows(
+                [
+                    ("상태", "정상"),
+                    (
+                        "기준 공격력",
+                        self._format_current_power(
+                            base_state.base_overall_stats[StatKey.ATTACK.value]
+                        ),
+                    ),
+                    (
+                        "기준 체력",
+                        self._format_current_power(
+                            base_state.base_overall_stats[StatKey.HP.value]
+                        ),
+                    ),
+                ]
+            )
+
+            # 저장된 최적화 선택지 기준 추천 결과 구성
+            optimization_result: OptimizationResult | None = optimize_current_selection(
+                server_spec=app_state.macro.current_server,
+                preset=preset,
+                skills_info=preset.usage_settings,
+                delay_ms=app_state.macro.current_delay,
+                context=context,
+                overall_stats=overall_stats,
+                calculator_input=calculator_input,
+                target_metric=selected_metric,
+            )
+            if optimization_result is None:
+                self.optimization_result_list.set_rows([("상태", "불가")])
+                return
+
+            title_text: str = "없음"
+            if optimization_result.candidate.equipped_title_id is not None:
+                for owned_title in calculator_input.owned_titles:
+                    if (
+                        owned_title.title_id
+                        == optimization_result.candidate.equipped_title_id
+                    ):
+                        title_text = owned_title.name
+                        break
+
+            talisman_name_map: dict[str, str] = {}
+            for owned_talisman in calculator_input.owned_talismans:
+                for template in BUILTIN_TALISMAN_TEMPLATES:
+                    if template.template_id != owned_talisman.template_id:
+                        continue
+
+                    talisman_name_map[owned_talisman.owned_id] = (
+                        f"{template.name} Lv.{owned_talisman.level}"
+                    )
+                    break
+
+            talisman_text: str = ", ".join(
+                talisman_name_map[talisman_id]
+                for talisman_id in optimization_result.candidate.equipped_talisman_ids
+                if talisman_id in talisman_name_map
+            )
+            if not talisman_text:
+                talisman_text = "없음"
+
+            distribution_text: str = (
+                f"힘 {optimization_result.candidate.distribution.strength}, "
+                f"민첩 {optimization_result.candidate.distribution.dexterity}, "
+                f"생명력 {optimization_result.candidate.distribution.vitality}, "
+                f"행운 {optimization_result.candidate.distribution.luck}"
+            )
+            danjeon_text: str = (
+                f"상 {optimization_result.candidate.danjeon.upper}, "
+                f"중 {optimization_result.candidate.danjeon.middle}, "
+                f"하 {optimization_result.candidate.danjeon.lower}"
+            )
+            self.optimization_result_list.set_rows(
+                [
+                    (
+                        "선택 전투력 증가",
+                        self._format_delta(optimization_result.deltas[selected_metric]),
+                    ),
+                    ("최적 스탯 분배", distribution_text),
+                    ("최적 단전", danjeon_text),
+                    ("최적 칭호", title_text),
+                    ("최적 부적", talisman_text),
+                ]
+            )
 
 
 class SkillInputs(QFrame):
@@ -2437,7 +2829,20 @@ class PowerLabels(QFrame):
 
 
 class AnalysisDetails(QFrame):
-    def __init__(self, mainframe, analysis: list[CalculatorGraphAnalysis]):
+    DETAIL_KEYS: tuple[str, ...] = (
+        "min",
+        "max",
+        "std",
+        "p25",
+        "p50",
+        "p75",
+    )
+
+    def __init__(
+        self,
+        mainframe: QWidget,
+        analysis: list[CalculatorGraphAnalysis],
+    ) -> None:
         super().__init__(mainframe)
 
         if config.ui.debug_colors:
@@ -2453,7 +2858,7 @@ class AnalysisDetails(QFrame):
             self.Analysis(
                 self,
                 analysis[i],
-                ANALYSIS_DETAIL_KEYS,
+                self.DETAIL_KEYS,
                 config.ui.analysis_card_colors[i],
             )
             for i in range(4)
