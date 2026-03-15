@@ -467,6 +467,19 @@ class GraphPage(QFrame):
 
 
 class ResultsPage(QFrame):
+    @dataclass(frozen=True)
+    class OutputRows:
+        """계산기 결과 섹션별 출력 행 묶음"""
+
+        current_power: list[tuple[str, str]]
+        stat_efficiency: list[tuple[str, str]]
+        level_up: list[tuple[str, str]]
+        realm_up: list[tuple[str, str]]
+        scroll_efficiency: list[tuple[str, str]]
+        custom_delta: list[tuple[str, str]]
+        base_state: list[tuple[str, str]]
+        optimization_result: list[tuple[str, str]]
+
     def __init__(
         self,
         parent: QFrame,
@@ -493,6 +506,266 @@ class ResultsPage(QFrame):
         """저장된 계산기 상태를 결과 페이지에 동기화"""
 
         self.view.refresh_from_preset()
+
+    @staticmethod
+    def _format_delta(value: float) -> str:
+        """전투력 변화량 표시 문자열 생성"""
+
+        return f"{value:+,.2f}"
+
+    @staticmethod
+    def _format_current_power(value: float) -> str:
+        """현재 전투력 표시 문자열 생성"""
+
+        return f"{value:,.2f}"
+
+    @classmethod
+    def _build_output_rows(
+        cls,
+        preset: "MacroPreset",
+        overall_stats: dict[str, float],
+        level: int,
+        selected_metric: "PowerMetric",
+        current_realm: "RealmTier",
+        calculator_input: CalculatorPresetInput,
+        context: "CalculatorEvaluationContext",
+    ) -> "ResultsPage.OutputRows":
+        """공용 계산기 결과 행 구성"""
+
+        # 현재 전투력 출력 행 구성
+        current_power_rows: list[tuple[str, str]] = []
+        for power_metric in DISPLAY_POWER_METRICS:
+            current_power_rows.append(
+                (
+                    POWER_METRIC_LABELS[power_metric],
+                    cls._format_current_power(
+                        context.baseline_summary.metrics[power_metric]
+                    ),
+                )
+            )
+
+        # 스탯 1당 효율 출력 행 구성
+        stat_rows: list[tuple[str, str]] = []
+        for stat_key, stat_spec in CALCULATOR_STAT_SPECS.items():
+            deltas: dict[PowerMetric, float] = evaluate_single_stat_delta(
+                context=context,
+                overall_stats=overall_stats,
+                stat_key=stat_key,
+                amount=1.0,
+            )
+            label: str = stat_spec.label
+            if stat_spec.is_percent:
+                label = f"{label}(%) +1"
+            else:
+                label = f"{label} +1"
+
+            stat_rows.append((label, cls._format_delta(deltas[selected_metric])))
+
+        stat_rows.sort(
+            key=lambda row: float(row[1].replace(",", "")),
+            reverse=True,
+        )
+
+        # 레벨 1업 효율 출력 행 구성
+        level_up: LevelUpEvaluation = evaluate_level_up_delta(
+            context=context,
+            overall_stats=overall_stats,
+            target_metric=selected_metric,
+        )
+        level_distribution_text: str = (
+            f"힘 {level_up.stat_distribution[StatKey.STR]}, "
+            f"민첩 {level_up.stat_distribution[StatKey.DEXTERITY]}, "
+            f"생명력 {level_up.stat_distribution[StatKey.VITALITY]}, "
+            f"행운 {level_up.stat_distribution[StatKey.LUCK]}"
+        )
+        level_up_rows: list[tuple[str, str]] = [
+            ("레벨 1업", cls._format_delta(level_up.deltas[selected_metric])),
+            ("최적 분배", level_distribution_text),
+        ]
+
+        # 다음 경지 효율 출력 행 구성
+        realm_result: RealmAdvanceEvaluation | None = evaluate_next_realm_delta(
+            context=context,
+            overall_stats=overall_stats,
+            current_realm=current_realm,
+            level=level,
+            target_metric=selected_metric,
+        )
+        if realm_result is None:
+            realm_rows: list[tuple[str, str]] = [("다음 경지", "불가")]
+        else:
+            danjeon_text: str = (
+                f"상 {realm_result.danjeon_distribution[0]}, "
+                f"중 {realm_result.danjeon_distribution[1]}, "
+                f"하 {realm_result.danjeon_distribution[2]}"
+            )
+            realm_rows = [
+                (
+                    REALM_TIER_SPECS[realm_result.target_realm].label,
+                    cls._format_delta(realm_result.deltas[selected_metric]),
+                ),
+                ("최적 분배", danjeon_text),
+            ]
+
+        # 스크롤 +1 효율 출력 행 구성
+        scroll_rows: list[tuple[str, str]] = []
+        scroll_results: list[ScrollUpgradeEvaluation] = (
+            evaluate_scroll_upgrade_deltas(
+                server_spec=app_state.macro.current_server,
+                preset=preset,
+                skills_info=preset.usage_settings,
+                delay_ms=app_state.macro.current_delay,
+                overall_stats=overall_stats,
+            )
+        )
+        for scroll_result in scroll_results:
+            scroll_rows.append(
+                (
+                    f"{scroll_result.scroll_name} Lv.{scroll_result.next_level}",
+                    cls._format_delta(scroll_result.deltas[selected_metric]),
+                )
+            )
+
+        scroll_rows.sort(
+            key=lambda row: float(row[1].replace(",", "")),
+            reverse=True,
+        )
+
+        # 사용자 지정 변화량 결과 행 구성
+        custom_changes: dict[StatKey, float] = {}
+        for stat_key in CALCULATOR_STAT_SPECS.keys():
+            change_value: float = calculator_input.custom_stat_changes[stat_key.value]
+            if change_value == 0.0:
+                continue
+
+            custom_changes[stat_key] = change_value
+
+        custom_deltas: dict[PowerMetric, float] = evaluate_arbitrary_stat_delta(
+            context=context,
+            overall_stats=overall_stats,
+            stat_changes=custom_changes,
+        )
+        custom_rows: list[tuple[str, str]] = []
+        for power_metric in DISPLAY_POWER_METRICS:
+            custom_rows.append(
+                (
+                    POWER_METRIC_LABELS[power_metric],
+                    cls._format_delta(custom_deltas[power_metric]),
+                )
+            )
+
+        # 기준 상태 분리 결과 행 구성
+        validation: CalculatorBaseValidation = validate_base_state(
+            overall_stats=overall_stats,
+            calculator_input=calculator_input,
+        )
+        if not validation.is_valid:
+            return cls.OutputRows(
+                current_power=current_power_rows,
+                stat_efficiency=stat_rows,
+                level_up=level_up_rows,
+                realm_up=realm_rows,
+                scroll_efficiency=scroll_rows,
+                custom_delta=custom_rows,
+                base_state=[("상태", "오류"), ("사유", validation.message)],
+                optimization_result=[("상태", "불가")],
+            )
+
+        base_state: CalculatorBaseState = build_base_state(
+            overall_stats=overall_stats,
+            calculator_input=calculator_input,
+        )
+        base_state_rows: list[tuple[str, str]] = [
+            ("상태", "정상"),
+            (
+                "기준 공격력",
+                cls._format_current_power(
+                    base_state.base_overall_stats[StatKey.ATTACK.value]
+                ),
+            ),
+            (
+                "기준 체력",
+                cls._format_current_power(
+                    base_state.base_overall_stats[StatKey.HP.value]
+                ),
+            ),
+        ]
+
+        # 최적화 결과 행 구성
+        optimization_result: OptimizationResult | None = optimize_current_selection(
+            server_spec=app_state.macro.current_server,
+            preset=preset,
+            skills_info=preset.usage_settings,
+            delay_ms=app_state.macro.current_delay,
+            context=context,
+            overall_stats=overall_stats,
+            calculator_input=calculator_input,
+            target_metric=selected_metric,
+        )
+        if optimization_result is None:
+            optimization_rows: list[tuple[str, str]] = [("상태", "불가")]
+        else:
+            title_text: str = "없음"
+            if optimization_result.candidate.equipped_title_id is not None:
+                for owned_title in calculator_input.owned_titles:
+                    if (
+                        owned_title.title_id
+                        == optimization_result.candidate.equipped_title_id
+                    ):
+                        title_text = owned_title.name
+                        break
+
+            talisman_name_map: dict[str, str] = {}
+            for owned_talisman in calculator_input.owned_talismans:
+                for template in BUILTIN_TALISMAN_TEMPLATES:
+                    if template.template_id != owned_talisman.template_id:
+                        continue
+
+                    talisman_name_map[owned_talisman.owned_id] = (
+                        f"{template.name} Lv.{owned_talisman.level}"
+                    )
+                    break
+
+            talisman_text: str = ", ".join(
+                talisman_name_map[talisman_id]
+                for talisman_id in optimization_result.candidate.equipped_talisman_ids
+                if talisman_id in talisman_name_map
+            )
+            if not talisman_text:
+                talisman_text = "없음"
+
+            distribution_text: str = (
+                f"힘 {optimization_result.candidate.distribution.strength}, "
+                f"민첩 {optimization_result.candidate.distribution.dexterity}, "
+                f"생명력 {optimization_result.candidate.distribution.vitality}, "
+                f"행운 {optimization_result.candidate.distribution.luck}"
+            )
+            danjeon_text: str = (
+                f"상 {optimization_result.candidate.danjeon.upper}, "
+                f"중 {optimization_result.candidate.danjeon.middle}, "
+                f"하 {optimization_result.candidate.danjeon.lower}"
+            )
+            optimization_rows = [
+                (
+                    "선택 전투력 증가",
+                    cls._format_delta(optimization_result.deltas[selected_metric]),
+                ),
+                ("최적 스탯 분배", distribution_text),
+                ("최적 단전", danjeon_text),
+                ("최적 칭호", title_text),
+                ("최적 부적", talisman_text),
+            ]
+
+        return cls.OutputRows(
+            current_power=current_power_rows,
+            stat_efficiency=stat_rows,
+            level_up=level_up_rows,
+            realm_up=realm_rows,
+            scroll_efficiency=scroll_rows,
+            custom_delta=custom_rows,
+            base_state=base_state_rows,
+            optimization_result=optimization_rows,
+        )
 
     class Efficiency(QFrame):
         def __init__(
@@ -1759,17 +2032,6 @@ class ResultsPage(QFrame):
 
             return all_valid
 
-        def _format_delta(self, value: float) -> str:
-            """전투력 변화량 표시 문자열 생성"""
-
-            # 큰 수치도 읽기 쉽게 고정 포맷 적용
-            return f"{value:+,.2f}"
-
-        def _format_current_power(self, value: float) -> str:
-            """현재 전투력 표시 문자열 생성"""
-
-            return f"{value:,.2f}"
-
         def _save_base_inputs(
             self,
             overall_stats: dict[str, float],
@@ -1871,121 +2133,6 @@ class ResultsPage(QFrame):
                 delay_ms=app_state.macro.current_delay,
                 overall_stats=overall_stats,
             )
-            selected_metric: PowerMetric = self._get_selected_metric()
-
-            # 현재 전투력 표시 행 구성
-            current_power_rows: list[tuple[str, str]] = []
-            for power_metric in DISPLAY_POWER_METRICS:
-                current_power_rows.append(
-                    (
-                        POWER_METRIC_LABELS[power_metric],
-                        self._format_current_power(
-                            context.baseline_summary.metrics[power_metric]
-                        ),
-                    )
-                )
-            self.current_power_list.set_rows(current_power_rows)
-
-            # 스탯 1당 효율 행 구성
-            stat_rows: list[tuple[str, str]] = []
-            for stat_key, stat_spec in CALCULATOR_STAT_SPECS.items():
-                amount: float = 1.0
-                deltas: dict[PowerMetric, float] = evaluate_single_stat_delta(
-                    context=context,
-                    overall_stats=overall_stats,
-                    stat_key=stat_key,
-                    amount=amount,
-                )
-
-                label: str = stat_spec.label
-                if stat_spec.is_percent:
-                    label = f"{label}(%) +1"
-                else:
-                    label = f"{label} +1"
-
-                stat_rows.append((label, self._format_delta(deltas[selected_metric])))
-
-            # 선택 전투력 기준 내림차순 정렬
-            stat_rows.sort(
-                key=lambda row: float(row[1].replace(",", "")),
-                reverse=True,
-            )
-            self.stat_efficiency_list.set_rows(stat_rows)
-
-            # 레벨 1업 효율 행 구성
-            level_up: LevelUpEvaluation = evaluate_level_up_delta(
-                context=context,
-                overall_stats=overall_stats,
-                target_metric=selected_metric,
-            )
-
-            level_distribution_text: str = (
-                f"힘 {level_up.stat_distribution[StatKey.STR]}, "
-                f"민첩 {level_up.stat_distribution[StatKey.DEXTERITY]}, "
-                f"생명력 {level_up.stat_distribution[StatKey.VITALITY]}, "
-                f"행운 {level_up.stat_distribution[StatKey.LUCK]}"
-            )
-
-            self.level_up_list.set_rows(
-                [
-                    ("레벨 1업", self._format_delta(level_up.deltas[selected_metric])),
-                    ("최적 분배", level_distribution_text),
-                ]
-            )
-
-            # 다음 경지 효율 행 구성
-            realm_result: RealmAdvanceEvaluation | None = evaluate_next_realm_delta(
-                context=context,
-                overall_stats=overall_stats,
-                current_realm=self.realm_options[self.realm_combobox.currentIndex()],
-                level=level,
-                target_metric=selected_metric,
-            )
-
-            if realm_result is None:
-                self.realm_up_list.set_rows([("다음 경지", "불가")])
-            else:
-                danjeon_text: str = (
-                    f"상 {realm_result.danjeon_distribution[0]}, "
-                    f"중 {realm_result.danjeon_distribution[1]}, "
-                    f"하 {realm_result.danjeon_distribution[2]}"
-                )
-
-                self.realm_up_list.set_rows(
-                    [
-                        (
-                            REALM_TIER_SPECS[realm_result.target_realm].label,
-                            self._format_delta(realm_result.deltas[selected_metric]),
-                        ),
-                        ("최적 분배", danjeon_text),
-                    ]
-                )
-
-            # 스크롤 +1 효율 행 구성
-            scroll_rows: list[tuple[str, str]] = []
-            scroll_results: list[ScrollUpgradeEvaluation] = (
-                evaluate_scroll_upgrade_deltas(
-                    server_spec=app_state.macro.current_server,
-                    preset=self._get_preset(),
-                    skills_info=self._get_preset().usage_settings,
-                    delay_ms=app_state.macro.current_delay,
-                    overall_stats=overall_stats,
-                )
-            )
-            for scroll_result in scroll_results:
-                scroll_rows.append(
-                    (
-                        f"{scroll_result.scroll_name} Lv.{scroll_result.next_level}",
-                        self._format_delta(scroll_result.deltas[selected_metric]),
-                    )
-                )
-
-            # 선택 전투력 기준 내림차순 정렬
-            scroll_rows.sort(
-                key=lambda row: float(row[1].replace(",", "")),
-                reverse=True,
-            )
-            self.scroll_efficiency_list.set_rows(scroll_rows)
 
             # 현재 선택 입력 기반 기준 상태 분리 결과 표시
             optimization_valid: bool
@@ -2015,104 +2162,22 @@ class ResultsPage(QFrame):
                 persist=persist_optimization,
             )
             calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
-            validation: CalculatorBaseValidation = validate_base_state(
-                overall_stats=overall_stats,
-                calculator_input=calculator_input,
-            )
-            if not validation.is_valid:
-                self.base_state_list.set_rows(
-                    [("상태", "오류"), ("사유", validation.message)]
-                )
-                return
-
-            base_state: CalculatorBaseState = build_base_state(
-                overall_stats=overall_stats,
-                calculator_input=calculator_input,
-            )
-            self.base_state_list.set_rows(
-                [
-                    ("상태", "정상"),
-                    (
-                        "기준 공격력",
-                        self._format_current_power(
-                            base_state.base_overall_stats[StatKey.ATTACK.value]
-                        ),
-                    ),
-                    (
-                        "기준 체력",
-                        self._format_current_power(
-                            base_state.base_overall_stats[StatKey.HP.value]
-                        ),
-                    ),
-                ]
-            )
-
-            optimization_result: OptimizationResult | None = optimize_current_selection(
-                server_spec=app_state.macro.current_server,
+            output_rows: ResultsPage.OutputRows = ResultsPage._build_output_rows(
                 preset=self._get_preset(),
-                skills_info=self._get_preset().usage_settings,
-                delay_ms=app_state.macro.current_delay,
-                context=context,
                 overall_stats=overall_stats,
                 calculator_input=calculator_input,
-                target_metric=selected_metric,
+                level=level,
+                selected_metric=self._get_selected_metric(),
+                current_realm=self.realm_options[self.realm_combobox.currentIndex()],
+                context=context,
             )
-            if optimization_result is None:
-                self.optimization_result_list.set_rows([("상태", "불가")])
-                return
-
-            title_text: str = "없음"
-            if optimization_result.candidate.equipped_title_id is not None:
-                for owned_title in owned_titles:
-                    if (
-                        owned_title.title_id
-                        == optimization_result.candidate.equipped_title_id
-                    ):
-                        title_text = owned_title.name
-                        break
-
-            talisman_name_map: dict[str, str] = {}
-            for owned_talisman in owned_talismans:
-                for template in BUILTIN_TALISMAN_TEMPLATES:
-                    if template.template_id != owned_talisman.template_id:
-                        continue
-
-                    talisman_name_map[owned_talisman.owned_id] = (
-                        f"{template.name} Lv.{owned_talisman.level}"
-                    )
-                    break
-
-            talisman_text: str = ", ".join(
-                talisman_name_map[talisman_id]
-                for talisman_id in optimization_result.candidate.equipped_talisman_ids
-                if talisman_id in talisman_name_map
-            )
-            if not talisman_text:
-                talisman_text = "없음"
-
-            distribution_text: str = (
-                f"힘 {optimization_result.candidate.distribution.strength}, "
-                f"민첩 {optimization_result.candidate.distribution.dexterity}, "
-                f"생명력 {optimization_result.candidate.distribution.vitality}, "
-                f"행운 {optimization_result.candidate.distribution.luck}"
-            )
-            danjeon_text: str = (
-                f"상 {optimization_result.candidate.danjeon.upper}, "
-                f"중 {optimization_result.candidate.danjeon.middle}, "
-                f"하 {optimization_result.candidate.danjeon.lower}"
-            )
-            self.optimization_result_list.set_rows(
-                [
-                    (
-                        "선택 전투력 증가",
-                        self._format_delta(optimization_result.deltas[selected_metric]),
-                    ),
-                    ("최적 스탯 분배", distribution_text),
-                    ("최적 단전", danjeon_text),
-                    ("최적 칭호", title_text),
-                    ("최적 부적", talisman_text),
-                ]
-            )
+            self.current_power_list.set_rows(output_rows.current_power)
+            self.stat_efficiency_list.set_rows(output_rows.stat_efficiency)
+            self.level_up_list.set_rows(output_rows.level_up)
+            self.realm_up_list.set_rows(output_rows.realm_up)
+            self.scroll_efficiency_list.set_rows(output_rows.scroll_efficiency)
+            self.base_state_list.set_rows(output_rows.base_state)
+            self.optimization_result_list.set_rows(output_rows.optimization_result)
 
         def _refresh_custom_delta_output(
             self,
@@ -2152,20 +2217,16 @@ class ResultsPage(QFrame):
                 overall_stats=overall_stats,
             )
 
-            deltas: dict[PowerMetric, float] = evaluate_arbitrary_stat_delta(
-                context=context,
+            output_rows: ResultsPage.OutputRows = ResultsPage._build_output_rows(
+                preset=self._get_preset(),
                 overall_stats=overall_stats,
-                stat_changes=custom_changes,
+                level=self._read_level()[1],
+                selected_metric=self._get_selected_metric(),
+                current_realm=self.realm_options[self.realm_combobox.currentIndex()],
+                calculator_input=self._get_preset().info.calculator,
+                context=context,
             )
-            rows: list[tuple[str, str]] = []
-            for power_metric in DISPLAY_POWER_METRICS:
-                rows.append(
-                    (
-                        POWER_METRIC_LABELS[power_metric],
-                        self._format_delta(deltas[power_metric]),
-                    )
-                )
-            self.custom_delta_result_list.set_rows(rows)
+            self.custom_delta_result_list.set_rows(output_rows.custom_delta)
 
         def on_optimization_input_changed(self) -> None:
             """최적화 입력 변경 시 기준 상태 분리 갱신"""
@@ -2309,16 +2370,6 @@ class ResultsPage(QFrame):
 
             return app_state.macro.current_preset
 
-        def _format_delta(self, value: float) -> str:
-            """전투력 변화량 표시 문자열 생성"""
-
-            return f"{value:+,.2f}"
-
-        def _format_current_power(self, value: float) -> str:
-            """현재 전투력 표시 문자열 생성"""
-
-            return f"{value:,.2f}"
-
         def _set_error_outputs(self) -> None:
             """결과 페이지 오류 상태 출력"""
 
@@ -2362,238 +2413,23 @@ class ResultsPage(QFrame):
                 delay_ms=app_state.macro.current_delay,
                 overall_stats=overall_stats,
             )
-
-            # 현재 전투력 출력 행 구성
-            current_power_rows: list[tuple[str, str]] = []
-            for power_metric in DISPLAY_POWER_METRICS:
-                current_power_rows.append(
-                    (
-                        POWER_METRIC_LABELS[power_metric],
-                        self._format_current_power(
-                            context.baseline_summary.metrics[power_metric]
-                        ),
-                    )
-                )
-            self.current_power_list.set_rows(current_power_rows)
-
-            # 스탯 1당 효율 출력 행 구성
-            stat_rows: list[tuple[str, str]] = []
-            for stat_key, stat_spec in CALCULATOR_STAT_SPECS.items():
-                deltas: dict[PowerMetric, float] = evaluate_single_stat_delta(
-                    context=context,
-                    overall_stats=overall_stats,
-                    stat_key=stat_key,
-                    amount=1.0,
-                )
-                label: str = stat_spec.label
-                if stat_spec.is_percent:
-                    label = f"{label}(%) +1"
-                else:
-                    label = f"{label} +1"
-
-                stat_rows.append((label, self._format_delta(deltas[selected_metric])))
-
-            stat_rows.sort(
-                key=lambda row: float(row[1].replace(",", "")),
-                reverse=True,
-            )
-            self.stat_efficiency_list.set_rows(stat_rows)
-
-            # 레벨 1업 효율 결과 구성
-            level_up: LevelUpEvaluation = evaluate_level_up_delta(
-                context=context,
-                overall_stats=overall_stats,
-                target_metric=selected_metric,
-            )
-            level_distribution_text: str = (
-                f"힘 {level_up.stat_distribution[StatKey.STR]}, "
-                f"민첩 {level_up.stat_distribution[StatKey.DEXTERITY]}, "
-                f"생명력 {level_up.stat_distribution[StatKey.VITALITY]}, "
-                f"행운 {level_up.stat_distribution[StatKey.LUCK]}"
-            )
-            self.level_up_list.set_rows(
-                [
-                    ("레벨 1업", self._format_delta(level_up.deltas[selected_metric])),
-                    ("최적 분배", level_distribution_text),
-                ]
-            )
-
-            # 다음 경지 효율 결과 구성
-            realm_result: RealmAdvanceEvaluation | None = evaluate_next_realm_delta(
-                context=context,
-                overall_stats=overall_stats,
-                current_realm=calculator_input.realm_tier,
-                level=level,
-                target_metric=selected_metric,
-            )
-            if realm_result is None:
-                self.realm_up_list.set_rows([("다음 경지", "불가")])
-            else:
-                danjeon_text: str = (
-                    f"상 {realm_result.danjeon_distribution[0]}, "
-                    f"중 {realm_result.danjeon_distribution[1]}, "
-                    f"하 {realm_result.danjeon_distribution[2]}"
-                )
-                self.realm_up_list.set_rows(
-                    [
-                        (
-                            REALM_TIER_SPECS[realm_result.target_realm].label,
-                            self._format_delta(realm_result.deltas[selected_metric]),
-                        ),
-                        ("최적 분배", danjeon_text),
-                    ]
-                )
-
-            # 스크롤 +1 효율 결과 구성
-            scroll_rows: list[tuple[str, str]] = []
-            scroll_results: list[ScrollUpgradeEvaluation] = (
-                evaluate_scroll_upgrade_deltas(
-                    server_spec=app_state.macro.current_server,
-                    preset=preset,
-                    skills_info=preset.usage_settings,
-                    delay_ms=app_state.macro.current_delay,
-                    overall_stats=overall_stats,
-                )
-            )
-            for scroll_result in scroll_results:
-                scroll_rows.append(
-                    (
-                        f"{scroll_result.scroll_name} Lv.{scroll_result.next_level}",
-                        self._format_delta(scroll_result.deltas[selected_metric]),
-                    )
-                )
-
-            scroll_rows.sort(
-                key=lambda row: float(row[1].replace(",", "")),
-                reverse=True,
-            )
-            self.scroll_efficiency_list.set_rows(scroll_rows)
-
-            # 저장된 사용자 지정 변화량 결과 구성
-            custom_changes: dict[StatKey, float] = {}
-            for stat_key in CALCULATOR_STAT_SPECS.keys():
-                change_value: float = calculator_input.custom_stat_changes[stat_key.value]
-                if change_value == 0.0:
-                    continue
-
-                custom_changes[stat_key] = change_value
-
-            deltas: dict[PowerMetric, float] = evaluate_arbitrary_stat_delta(
-                context=context,
-                overall_stats=overall_stats,
-                stat_changes=custom_changes,
-            )
-            custom_rows: list[tuple[str, str]] = []
-            for power_metric in DISPLAY_POWER_METRICS:
-                custom_rows.append(
-                    (
-                        POWER_METRIC_LABELS[power_metric],
-                        self._format_delta(deltas[power_metric]),
-                    )
-                )
-            self.custom_delta_result_list.set_rows(custom_rows)
-
-            # 저장된 최적화 입력 기준 베이스 상태 검증 및 분리 결과 구성
-            validation: CalculatorBaseValidation = validate_base_state(
-                overall_stats=overall_stats,
-                calculator_input=calculator_input,
-            )
-            if not validation.is_valid:
-                self.base_state_list.set_rows(
-                    [("상태", "오류"), ("사유", validation.message)]
-                )
-                self.optimization_result_list.set_rows([("상태", "불가")])
-                return
-
-            base_state: CalculatorBaseState = build_base_state(
-                overall_stats=overall_stats,
-                calculator_input=calculator_input,
-            )
-            self.base_state_list.set_rows(
-                [
-                    ("상태", "정상"),
-                    (
-                        "기준 공격력",
-                        self._format_current_power(
-                            base_state.base_overall_stats[StatKey.ATTACK.value]
-                        ),
-                    ),
-                    (
-                        "기준 체력",
-                        self._format_current_power(
-                            base_state.base_overall_stats[StatKey.HP.value]
-                        ),
-                    ),
-                ]
-            )
-
-            # 저장된 최적화 선택지 기준 추천 결과 구성
-            optimization_result: OptimizationResult | None = optimize_current_selection(
-                server_spec=app_state.macro.current_server,
+            output_rows: ResultsPage.OutputRows = ResultsPage._build_output_rows(
                 preset=preset,
-                skills_info=preset.usage_settings,
-                delay_ms=app_state.macro.current_delay,
-                context=context,
                 overall_stats=overall_stats,
                 calculator_input=calculator_input,
-                target_metric=selected_metric,
+                level=level,
+                selected_metric=selected_metric,
+                current_realm=calculator_input.realm_tier,
+                context=context,
             )
-            if optimization_result is None:
-                self.optimization_result_list.set_rows([("상태", "불가")])
-                return
-
-            title_text: str = "없음"
-            if optimization_result.candidate.equipped_title_id is not None:
-                for owned_title in calculator_input.owned_titles:
-                    if (
-                        owned_title.title_id
-                        == optimization_result.candidate.equipped_title_id
-                    ):
-                        title_text = owned_title.name
-                        break
-
-            talisman_name_map: dict[str, str] = {}
-            for owned_talisman in calculator_input.owned_talismans:
-                for template in BUILTIN_TALISMAN_TEMPLATES:
-                    if template.template_id != owned_talisman.template_id:
-                        continue
-
-                    talisman_name_map[owned_talisman.owned_id] = (
-                        f"{template.name} Lv.{owned_talisman.level}"
-                    )
-                    break
-
-            talisman_text: str = ", ".join(
-                talisman_name_map[talisman_id]
-                for talisman_id in optimization_result.candidate.equipped_talisman_ids
-                if talisman_id in talisman_name_map
-            )
-            if not talisman_text:
-                talisman_text = "없음"
-
-            distribution_text: str = (
-                f"힘 {optimization_result.candidate.distribution.strength}, "
-                f"민첩 {optimization_result.candidate.distribution.dexterity}, "
-                f"생명력 {optimization_result.candidate.distribution.vitality}, "
-                f"행운 {optimization_result.candidate.distribution.luck}"
-            )
-            danjeon_text: str = (
-                f"상 {optimization_result.candidate.danjeon.upper}, "
-                f"중 {optimization_result.candidate.danjeon.middle}, "
-                f"하 {optimization_result.candidate.danjeon.lower}"
-            )
-            self.optimization_result_list.set_rows(
-                [
-                    (
-                        "선택 전투력 증가",
-                        self._format_delta(optimization_result.deltas[selected_metric]),
-                    ),
-                    ("최적 스탯 분배", distribution_text),
-                    ("최적 단전", danjeon_text),
-                    ("최적 칭호", title_text),
-                    ("최적 부적", talisman_text),
-                ]
-            )
+            self.current_power_list.set_rows(output_rows.current_power)
+            self.stat_efficiency_list.set_rows(output_rows.stat_efficiency)
+            self.level_up_list.set_rows(output_rows.level_up)
+            self.realm_up_list.set_rows(output_rows.realm_up)
+            self.scroll_efficiency_list.set_rows(output_rows.scroll_efficiency)
+            self.custom_delta_result_list.set_rows(output_rows.custom_delta)
+            self.base_state_list.set_rows(output_rows.base_state)
+            self.optimization_result_list.set_rows(output_rows.optimization_result)
 
 
 class SkillInputs(QFrame):
