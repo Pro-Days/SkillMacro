@@ -243,6 +243,25 @@ class CalculatorBaseValidation:
     message: str
 
 
+@dataclass(frozen=True, slots=True)
+class OptimizationCandidate:
+    """최적화 후보 선택 상태"""
+
+    distribution: DistributionState
+    danjeon: DanjeonState
+    equipped_title_id: str | None
+    equipped_talisman_ids: list[str]
+
+
+@dataclass(frozen=True, slots=True)
+class OptimizationResult:
+    """최적화 최종 결과"""
+
+    candidate: OptimizationCandidate
+    deltas: dict[PowerMetric, float]
+    optimized_overall_stats: dict[str, float]
+
+
 def _copy_stats(stats: dict[StatKey, float]) -> dict[StatKey, float]:
     """스탯 맵 얕은 복사"""
 
@@ -1724,3 +1743,345 @@ def validate_base_state(
         )
 
     return CalculatorBaseValidation(is_valid=True, message="정상")
+
+
+def _build_overall_stats_from_base_and_contribution(
+    base_state: CalculatorBaseState,
+    contribution: CalculatorContribution,
+) -> dict[str, float]:
+    """기준 베이스와 후보 기여로 최종 전체 스탯 재구성"""
+
+    # 기준 베이스 스탯을 내부 원시 구성요소로 재해석
+    resolved_base: CalculatorResolvedStats = resolve_calculator_stats(
+        base_state.base_overall_stats
+    )
+
+    # 직접 퍼센트 스탯과 원시 구성요소에 후보 기여 합산
+    direct_values: dict[StatKey, float] = {
+        StatKey.HP_PERCENT: float(resolved_base.values[StatKey.HP_PERCENT])
+        + _get_direct_contribution_value(contribution, StatKey.HP_PERCENT),
+        StatKey.STR_PERCENT: float(resolved_base.values[StatKey.STR_PERCENT])
+        + _get_direct_contribution_value(contribution, StatKey.STR_PERCENT),
+        StatKey.DEXTERITY_PERCENT: float(
+            resolved_base.values[StatKey.DEXTERITY_PERCENT]
+        )
+        + _get_direct_contribution_value(contribution, StatKey.DEXTERITY_PERCENT),
+        StatKey.VITALITY_PERCENT: float(resolved_base.values[StatKey.VITALITY_PERCENT])
+        + _get_direct_contribution_value(contribution, StatKey.VITALITY_PERCENT),
+        StatKey.LUCK_PERCENT: float(resolved_base.values[StatKey.LUCK_PERCENT])
+        + _get_direct_contribution_value(contribution, StatKey.LUCK_PERCENT),
+        StatKey.SKILL_DAMAGE_PERCENT: float(
+            resolved_base.values[StatKey.SKILL_DAMAGE_PERCENT]
+        )
+        + _get_direct_contribution_value(contribution, StatKey.SKILL_DAMAGE_PERCENT),
+        StatKey.FINAL_ATTACK_PERCENT: float(
+            resolved_base.values[StatKey.FINAL_ATTACK_PERCENT]
+        )
+        + _get_direct_contribution_value(contribution, StatKey.FINAL_ATTACK_PERCENT),
+        StatKey.BOSS_ATTACK_PERCENT: float(
+            resolved_base.values[StatKey.BOSS_ATTACK_PERCENT]
+        )
+        + _get_direct_contribution_value(contribution, StatKey.BOSS_ATTACK_PERCENT),
+        StatKey.RESIST_PERCENT: float(resolved_base.values[StatKey.RESIST_PERCENT])
+        + _get_direct_contribution_value(contribution, StatKey.RESIST_PERCENT),
+        StatKey.SKILL_SPEED_PERCENT: float(
+            resolved_base.values[StatKey.SKILL_SPEED_PERCENT]
+        )
+        + _get_direct_contribution_value(contribution, StatKey.SKILL_SPEED_PERCENT),
+    }
+
+    return _build_base_overall_stats_from_components(
+        raw_strength=resolved_base.raw_strength + contribution.raw_strength,
+        raw_dexterity=resolved_base.raw_dexterity + contribution.raw_dexterity,
+        raw_vitality=resolved_base.raw_vitality + contribution.raw_vitality,
+        raw_luck=resolved_base.raw_luck + contribution.raw_luck,
+        strength_percent=direct_values[StatKey.STR_PERCENT],
+        dexterity_percent=direct_values[StatKey.DEXTERITY_PERCENT],
+        vitality_percent=direct_values[StatKey.VITALITY_PERCENT],
+        luck_percent=direct_values[StatKey.LUCK_PERCENT],
+        base_attack_source=resolved_base.base_attack_source
+        + contribution.base_attack_source,
+        base_hp_source=resolved_base.base_hp_source + contribution.base_hp_source,
+        base_attack_percent_source=resolved_base.base_attack_percent_source
+        + contribution.base_attack_percent_source,
+        base_crit_rate_source=resolved_base.base_crit_rate_source
+        + contribution.base_crit_rate_source,
+        base_crit_damage_source=resolved_base.base_crit_damage_source
+        + contribution.base_crit_damage_source,
+        base_drop_rate_source=resolved_base.base_drop_rate_source
+        + contribution.base_drop_rate_source,
+        base_exp_source=resolved_base.base_exp_source + contribution.base_exp_source,
+        base_dodge_source=resolved_base.base_dodge_source
+        + contribution.base_dodge_source,
+        base_potion_heal_source=resolved_base.base_potion_heal_source
+        + contribution.base_potion_heal_source,
+        direct_values=direct_values,
+    )
+
+
+def _build_distribution_candidates(
+    calculator_input: CalculatorPresetInput,
+) -> list[DistributionState]:
+    """스탯 분배 후보 목록 생성"""
+
+    current_state: DistributionState = calculator_input.distribution
+    if current_state.is_locked:
+        return [current_state]
+
+    max_points: int = calculator_input.level * 5
+    used_points: int = (
+        current_state.strength
+        + current_state.dexterity
+        + current_state.vitality
+        + current_state.luck
+    )
+    target_points: int = max_points if current_state.use_reset else used_points
+    free_points: int = (
+        max_points if current_state.use_reset else max_points - used_points
+    )
+
+    candidates: list[DistributionState] = []
+    if current_state.use_reset:
+        for strength in range(target_points + 1):
+            for dexterity in range(target_points - strength + 1):
+                for vitality in range(target_points - strength - dexterity + 1):
+                    luck: int = target_points - strength - dexterity - vitality
+                    candidates.append(
+                        DistributionState(
+                            strength=strength,
+                            dexterity=dexterity,
+                            vitality=vitality,
+                            luck=luck,
+                            is_locked=current_state.is_locked,
+                            use_reset=current_state.use_reset,
+                        )
+                    )
+        return candidates
+
+    for add_strength in range(free_points + 1):
+        for add_dexterity in range(free_points - add_strength + 1):
+            for add_vitality in range(free_points - add_strength - add_dexterity + 1):
+                add_luck: int = (
+                    free_points - add_strength - add_dexterity - add_vitality
+                )
+                candidates.append(
+                    DistributionState(
+                        strength=current_state.strength + add_strength,
+                        dexterity=current_state.dexterity + add_dexterity,
+                        vitality=current_state.vitality + add_vitality,
+                        luck=current_state.luck + add_luck,
+                        is_locked=current_state.is_locked,
+                        use_reset=current_state.use_reset,
+                    )
+                )
+
+    return candidates
+
+
+def _build_danjeon_candidates(
+    calculator_input: CalculatorPresetInput,
+) -> list[DanjeonState]:
+    """단전 후보 목록 생성"""
+
+    current_state: DanjeonState = calculator_input.danjeon
+    if current_state.is_locked:
+        return [current_state]
+
+    max_points: int = REALM_TIER_SPECS[calculator_input.realm_tier].danjeon_points
+    used_points: int = current_state.upper + current_state.middle + current_state.lower
+    target_points: int = max_points if current_state.use_reset else used_points
+    free_points: int = (
+        max_points if current_state.use_reset else max_points - used_points
+    )
+
+    candidates: list[DanjeonState] = []
+    if current_state.use_reset:
+        for upper in range(target_points + 1):
+            for middle in range(target_points - upper + 1):
+                lower: int = target_points - upper - middle
+                candidates.append(
+                    DanjeonState(
+                        upper=upper,
+                        middle=middle,
+                        lower=lower,
+                        is_locked=current_state.is_locked,
+                        use_reset=current_state.use_reset,
+                    )
+                )
+        return candidates
+
+    for add_upper in range(free_points + 1):
+        for add_middle in range(free_points - add_upper + 1):
+            add_lower: int = free_points - add_upper - add_middle
+            candidates.append(
+                DanjeonState(
+                    upper=current_state.upper + add_upper,
+                    middle=current_state.middle + add_middle,
+                    lower=current_state.lower + add_lower,
+                    is_locked=current_state.is_locked,
+                    use_reset=current_state.use_reset,
+                )
+            )
+
+    return candidates
+
+
+def _build_title_candidates(
+    calculator_input: CalculatorPresetInput,
+) -> list[str | None]:
+    """칭호 후보 목록 생성"""
+
+    if not calculator_input.owned_titles:
+        return [None]
+
+    title_ids: list[str | None] = [None]
+    for owned_title in calculator_input.owned_titles:
+        title_ids.append(owned_title.title_id)
+
+    return title_ids
+
+
+def _build_talisman_candidates(
+    calculator_input: CalculatorPresetInput,
+) -> list[list[str]]:
+    """부적 조합 후보 목록 생성"""
+
+    owned_talismans: list[OwnedTalisman] = calculator_input.owned_talismans
+    if not owned_talismans:
+        return [[]]
+
+    owned_template_map: dict[str, str] = {
+        owned_talisman.owned_id: owned_talisman.template_id
+        for owned_talisman in owned_talismans
+    }
+    owned_ids: list[str] = [
+        owned_talisman.owned_id for owned_talisman in owned_talismans
+    ]
+    target_size: int = min(3, len(owned_ids))
+    candidates: list[list[str]] = []
+
+    def build_combinations(start_index: int, selected_ids: list[str]) -> None:
+        """현재 보유 부적 조합 구성"""
+
+        if len(selected_ids) == target_size:
+            candidates.append(selected_ids.copy())
+            return
+
+        for current_index in range(start_index, len(owned_ids)):
+            owned_id: str = owned_ids[current_index]
+            template_id: str = owned_template_map[owned_id]
+            if any(
+                owned_template_map[selected_id] == template_id
+                for selected_id in selected_ids
+            ):
+                continue
+
+            selected_ids.append(owned_id)
+            build_combinations(current_index + 1, selected_ids)
+            selected_ids.pop()
+
+    build_combinations(0, [])
+    if not candidates:
+        return [[]]
+
+    return candidates
+
+
+def optimize_current_selection(
+    server_spec: "ServerSpec",
+    preset: "MacroPreset",
+    skills_info: dict[str, "SkillUsageSetting"],
+    delay_ms: int,
+    context: CalculatorEvaluationContext,
+    overall_stats: dict[str, float],
+    calculator_input: CalculatorPresetInput,
+    target_metric: PowerMetric,
+) -> OptimizationResult | None:
+    """현재 선택 조합 최적화"""
+
+    # 기준 베이스 분리 검증 실패 시 최적화 중단
+    validation: CalculatorBaseValidation = validate_base_state(
+        overall_stats=overall_stats,
+        calculator_input=calculator_input,
+    )
+    if not validation.is_valid:
+        return None
+
+    base_state: CalculatorBaseState = build_base_state(
+        overall_stats=overall_stats,
+        calculator_input=calculator_input,
+    )
+
+    # 각 선택지 후보 목록 구성
+    distribution_candidates: list[DistributionState] = _build_distribution_candidates(
+        calculator_input
+    )
+    danjeon_candidates: list[DanjeonState] = _build_danjeon_candidates(calculator_input)
+    title_candidates: list[str | None] = _build_title_candidates(calculator_input)
+    talisman_candidates: list[list[str]] = _build_talisman_candidates(calculator_input)
+
+    # 선택 전투력 기준 최고 후보 탐색
+    best_result: OptimizationResult | None = None
+    best_metric_delta: float | None = None
+    for distribution_state in distribution_candidates:
+        for danjeon_state in danjeon_candidates:
+            for equipped_title_id in title_candidates:
+                for equipped_talisman_ids in talisman_candidates:
+                    candidate_input: CalculatorPresetInput = CalculatorPresetInput(
+                        overall_stats=calculator_input.overall_stats,
+                        level=calculator_input.level,
+                        realm_tier=calculator_input.realm_tier,
+                        distribution=distribution_state,
+                        danjeon=danjeon_state,
+                        owned_titles=calculator_input.owned_titles,
+                        owned_talismans=calculator_input.owned_talismans,
+                        equipped=EquippedOptimizationState(
+                            equipped_title_id=equipped_title_id,
+                            equipped_talisman_ids=equipped_talisman_ids.copy(),
+                        ),
+                    )
+                    candidate_contribution: CalculatorContribution = (
+                        build_current_selected_contribution(candidate_input)
+                    )
+                    optimized_overall_stats: dict[str, float] = (
+                        _build_overall_stats_from_base_and_contribution(
+                            base_state,
+                            candidate_contribution,
+                        )
+                    )
+                    candidate_context: CalculatorEvaluationContext = (
+                        build_calculator_context(
+                            server_spec=server_spec,
+                            preset=preset,
+                            skills_info=skills_info,
+                            delay_ms=delay_ms,
+                            overall_stats=optimized_overall_stats,
+                        )
+                    )
+                    optimized_summary: CalculatorPowerSummary = (
+                        candidate_context.baseline_summary
+                    )
+                    deltas: dict[PowerMetric, float] = calculate_power_deltas(
+                        context.baseline_summary,
+                        optimized_summary,
+                    )
+                    metric_delta: float = deltas[target_metric]
+                    if (
+                        best_metric_delta is not None
+                        and metric_delta <= best_metric_delta
+                    ):
+                        continue
+
+                    best_metric_delta = metric_delta
+                    best_result = OptimizationResult(
+                        candidate=OptimizationCandidate(
+                            distribution=distribution_state,
+                            danjeon=danjeon_state,
+                            equipped_title_id=equipped_title_id,
+                            equipped_talisman_ids=equipped_talisman_ids.copy(),
+                        ),
+                        deltas=deltas,
+                        optimized_overall_stats=optimized_overall_stats,
+                    )
+
+    return best_result

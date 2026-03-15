@@ -29,6 +29,7 @@ from app.scripts.calculator_engine import (
     CalculatorBaseValidation,
     CalculatorEvaluationContext,
     LevelUpEvaluation,
+    OptimizationResult,
     RealmAdvanceEvaluation,
     ScrollUpgradeEvaluation,
     build_base_state,
@@ -38,6 +39,7 @@ from app.scripts.calculator_engine import (
     evaluate_next_realm_delta,
     evaluate_scroll_upgrade_deltas,
     evaluate_single_stat_delta,
+    optimize_current_selection,
     validate_base_state,
 )
 from app.scripts.calculator_models import (
@@ -823,6 +825,9 @@ class Sim3UI(QFrame):
             self.base_state_title: QLabel = QLabel("기준 상태 분리", self)
             self.base_state_title.setFont(CustomFont(12))
             self.base_state_list = self.ResultList(self)
+            self.optimization_result_title: QLabel = QLabel("최적화 결과", self)
+            self.optimization_result_title.setFont(CustomFont(12))
+            self.optimization_result_list = self.ResultList(self)
 
             # 결과 표시 UI 구성
             self.current_power_title: QLabel = QLabel("현재 전투력", self)
@@ -879,6 +884,8 @@ class Sim3UI(QFrame):
             layout.addWidget(self.talisman_inputs)
             layout.addWidget(self.base_state_title)
             layout.addWidget(self.base_state_list)
+            layout.addWidget(self.optimization_result_title)
+            layout.addWidget(self.optimization_result_list)
             layout.addWidget(self.current_power_title)
             layout.addWidget(self.current_power_list)
             layout.addWidget(self.stat_efficiency_title)
@@ -1605,6 +1612,7 @@ class Sim3UI(QFrame):
                     owned_talismans.append(owned_talisman)
 
                 equipped_ids: list[str] = []
+                seen_ids: set[str] = set()
                 for combobox in self.equipped_comboboxes:
                     selected_index: int = combobox.currentIndex()
                     if selected_index <= 0:
@@ -1614,7 +1622,12 @@ class Sim3UI(QFrame):
                     if target_index >= len(owned_talismans):
                         continue
 
-                    equipped_ids.append(owned_talismans[target_index].owned_id)
+                    target_owned_id: str = owned_talismans[target_index].owned_id
+                    if target_owned_id in seen_ids:
+                        continue
+
+                    seen_ids.add(target_owned_id)
+                    equipped_ids.append(target_owned_id)
 
                 return is_valid, owned_talismans, equipped_ids
 
@@ -1923,6 +1936,7 @@ class Sim3UI(QFrame):
             self.realm_up_list.set_rows(error_rows)
             self.scroll_efficiency_list.set_rows(error_rows)
             self.base_state_list.set_rows(error_rows)
+            self.optimization_result_list.set_rows(error_rows)
 
         def _refresh_base_outputs(self) -> None:
             """기준 입력 기반 효율 출력 갱신"""
@@ -2123,6 +2137,73 @@ class Sim3UI(QFrame):
                             base_state.base_overall_stats[StatKey.HP.value]
                         ),
                     ),
+                ]
+            )
+
+            optimization_result: OptimizationResult | None = optimize_current_selection(
+                server_spec=app_state.macro.current_server,
+                preset=self._get_preset(),
+                skills_info=self._get_preset().usage_settings,
+                delay_ms=app_state.macro.current_delay,
+                context=context,
+                overall_stats=overall_stats,
+                calculator_input=calculator_input,
+                target_metric=selected_metric,
+            )
+            if optimization_result is None:
+                self.optimization_result_list.set_rows([("상태", "불가")])
+                return
+
+            title_text: str = "없음"
+            if optimization_result.candidate.equipped_title_id is not None:
+                for owned_title in owned_titles:
+                    if (
+                        owned_title.title_id
+                        == optimization_result.candidate.equipped_title_id
+                    ):
+                        title_text = owned_title.name
+                        break
+
+            talisman_name_map: dict[str, str] = {}
+            for owned_talisman in owned_talismans:
+                for template in BUILTIN_TALISMAN_TEMPLATES:
+                    if template.template_id != owned_talisman.template_id:
+                        continue
+
+                    talisman_name_map[owned_talisman.owned_id] = (
+                        f"{template.name} Lv.{owned_talisman.level}"
+                    )
+                    break
+
+            talisman_text: str = ", ".join(
+                talisman_name_map[talisman_id]
+                for talisman_id in optimization_result.candidate.equipped_talisman_ids
+                if talisman_id in talisman_name_map
+            )
+            if not talisman_text:
+                talisman_text = "없음"
+
+            distribution_text: str = (
+                f"힘 {optimization_result.candidate.distribution.strength}, "
+                f"민첩 {optimization_result.candidate.distribution.dexterity}, "
+                f"생명력 {optimization_result.candidate.distribution.vitality}, "
+                f"행운 {optimization_result.candidate.distribution.luck}"
+            )
+            danjeon_text: str = (
+                f"상 {optimization_result.candidate.danjeon.upper}, "
+                f"중 {optimization_result.candidate.danjeon.middle}, "
+                f"하 {optimization_result.candidate.danjeon.lower}"
+            )
+            self.optimization_result_list.set_rows(
+                [
+                    (
+                        "선택 전투력 증가",
+                        self._format_delta(optimization_result.deltas[selected_metric]),
+                    ),
+                    ("최적 스탯 분배", distribution_text),
+                    ("최적 단전", danjeon_text),
+                    ("최적 칭호", title_text),
+                    ("최적 부적", talisman_text),
                 ]
             )
 
