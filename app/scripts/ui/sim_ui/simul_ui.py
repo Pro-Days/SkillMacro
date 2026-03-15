@@ -239,7 +239,6 @@ class InputPage(QFrame):
         # 계산기 입력 화면 구성
         self.input_title: Title = Title(parent=self, text="계산기 입력")
         self.editor: ResultsPage.Efficiency = ResultsPage.Efficiency(self)
-        self.editor.set_result_sections_visible(False)
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.input_title)
@@ -882,33 +881,6 @@ class ResultsPage(QFrame):
                 self,
                 self.on_optimization_input_changed,
             )
-            self.base_state_title: QLabel = QLabel("기준 상태 분리", self)
-            self.base_state_title.setFont(CustomFont(12))
-            self.base_state_list = self.ResultList(self)
-            self.optimization_result_title: QLabel = QLabel("최적화 결과", self)
-            self.optimization_result_title.setFont(CustomFont(12))
-            self.optimization_result_list = self.ResultList(self)
-
-            # 결과 표시 UI 구성
-            self.current_power_title: QLabel = QLabel("현재 전투력", self)
-            self.current_power_title.setFont(CustomFont(12))
-            self.current_power_list = self.ResultList(self)
-
-            self.stat_efficiency_title: QLabel = QLabel("스탯 1당 효율", self)
-            self.stat_efficiency_title.setFont(CustomFont(12))
-            self.stat_efficiency_list = self.ResultList(self)
-
-            self.level_up_title: QLabel = QLabel("레벨 1업 효율", self)
-            self.level_up_title.setFont(CustomFont(12))
-            self.level_up_list = self.ResultList(self)
-
-            self.realm_up_title: QLabel = QLabel("다음 경지 효율", self)
-            self.realm_up_title.setFont(CustomFont(12))
-            self.realm_up_list = self.ResultList(self)
-
-            self.scroll_efficiency_title: QLabel = QLabel("스크롤 +1 효율", self)
-            self.scroll_efficiency_title.setFont(CustomFont(12))
-            self.scroll_efficiency_list = self.ResultList(self)
 
             # 사용자 지정 변화량 입력 UI 구성
             self.custom_delta_title: QLabel = QLabel("사용자 지정 스탯 변화량", self)
@@ -918,11 +890,6 @@ class ResultsPage(QFrame):
                 self.on_custom_delta_changed,
                 self._build_empty_stat_map(),
             )
-            self.custom_delta_result_title: QLabel = QLabel(
-                "사용자 지정 변화량 결과", self
-            )
-            self.custom_delta_result_title.setFont(CustomFont(12))
-            self.custom_delta_result_list = self.ResultList(self)
 
             # 상단 기준 입력 행 구성
             metric_layout = QHBoxLayout()
@@ -934,26 +901,6 @@ class ResultsPage(QFrame):
             metric_layout.addWidget(self.realm_title)
             metric_layout.addWidget(self.realm_combobox)
             metric_layout.addStretch(1)
-
-            # 기준 계산 섹션 구성
-            base_section: QWidget = QWidget(self)
-            base_section_layout: QVBoxLayout = QVBoxLayout(base_section)
-            base_section_layout.setContentsMargins(0, 0, 0, 0)
-            base_section_layout.setSpacing(10)
-            base_section_layout.addWidget(self.current_power_title)
-            base_section_layout.addWidget(self.current_power_list)
-            base_section_layout.addWidget(self.stat_efficiency_title)
-            base_section_layout.addWidget(self.stat_efficiency_list)
-            base_section_layout.addWidget(self.level_up_title)
-            base_section_layout.addWidget(self.level_up_list)
-            base_section_layout.addWidget(self.realm_up_title)
-            base_section_layout.addWidget(self.realm_up_list)
-            base_section_layout.addWidget(self.scroll_efficiency_title)
-            base_section_layout.addWidget(self.scroll_efficiency_list)
-            base_section_layout.addWidget(self.custom_delta_title)
-            base_section_layout.addWidget(self.custom_delta_inputs)
-            base_section_layout.addWidget(self.custom_delta_result_title)
-            base_section_layout.addWidget(self.custom_delta_result_list)
 
             # 최적화 섹션 구성
             optimization_section: QWidget = QWidget(self)
@@ -969,10 +916,6 @@ class ResultsPage(QFrame):
             optimization_section_layout.addWidget(self.title_inputs)
             optimization_section_layout.addWidget(self.talisman_title)
             optimization_section_layout.addWidget(self.talisman_inputs)
-            optimization_section_layout.addWidget(self.base_state_title)
-            optimization_section_layout.addWidget(self.base_state_list)
-            optimization_section_layout.addWidget(self.optimization_result_title)
-            optimization_section_layout.addWidget(self.optimization_result_list)
 
             layout = QVBoxLayout(self)
             layout.addLayout(metric_layout)
@@ -980,7 +923,8 @@ class ResultsPage(QFrame):
             layout.addWidget(self.stats_inputs)
             layout.addWidget(self.scroll_title)
             layout.addWidget(self.skills)
-            layout.addWidget(base_section)
+            layout.addWidget(self.custom_delta_title)
+            layout.addWidget(self.custom_delta_inputs)
             layout.addWidget(optimization_section)
             layout.setSpacing(10)
             layout.setContentsMargins(10, 10, 10, 10)
@@ -1000,33 +944,6 @@ class ResultsPage(QFrame):
             level_valid, _ = self._read_level()
             scroll_valid: bool = self._read_scroll_levels(save_levels=False)
             return stats_valid and level_valid and scroll_valid
-
-        def set_result_sections_visible(self, is_visible: bool) -> None:
-            """결과 전용 섹션 표시 여부 설정"""
-
-            # Sim1 입력 페이지에서 숨길 결과 위젯 일괄 구성
-            result_widgets: tuple[QWidget, ...] = (
-                self.current_power_title,
-                self.current_power_list,
-                self.stat_efficiency_title,
-                self.stat_efficiency_list,
-                self.level_up_title,
-                self.level_up_list,
-                self.realm_up_title,
-                self.realm_up_list,
-                self.scroll_efficiency_title,
-                self.scroll_efficiency_list,
-                self.custom_delta_result_title,
-                self.custom_delta_result_list,
-                self.base_state_title,
-                self.base_state_list,
-                self.optimization_result_title,
-                self.optimization_result_list,
-            )
-
-            # 입력 전용 화면/결과 전용 화면에 맞게 표시 토글
-            for target_widget in result_widgets:
-                target_widget.setVisible(is_visible)
 
         def load_from_preset_state(self) -> None:
             """저장된 계산기 상태를 현재 입력 위젯에 반영"""
@@ -2107,55 +2024,14 @@ class ResultsPage(QFrame):
             if persist:
                 save_data()
 
-        def _set_error_outputs(self) -> None:
-            """기준 입력 오류 상태 출력"""
+        def on_optimization_input_changed(self) -> None:
+            """최적화 입력 변경 시 기준 상태 분리 갱신"""
 
-            error_rows: list[tuple[str, str]] = [("상태", "오류")]
-            self.current_power_list.set_rows(error_rows)
-            self.stat_efficiency_list.set_rows(error_rows)
-            self.level_up_list.set_rows(error_rows)
-            self.realm_up_list.set_rows(error_rows)
-            self.scroll_efficiency_list.set_rows(error_rows)
-            self.base_state_list.set_rows(error_rows)
-            self.optimization_result_list.set_rows(error_rows)
-
-        def _refresh_base_outputs(
-            self,
-            persist_base: bool = False,
-            persist_optimization: bool = False,
-        ) -> None:
-            """기준 입력 기반 효율 출력 갱신"""
-
-            # 전체 스탯, 레벨, 스크롤 레벨 입력 유효성 확인
-            stats_valid: bool
-            overall_stats: dict[str, float]
-            stats_valid, overall_stats = self._read_overall_stats()
-
-            level_valid: bool
-            level: int
-            level_valid, level = self._read_level()
-
-            scroll_valid: bool = self._read_scroll_levels()
-
-            if not (stats_valid and level_valid and scroll_valid):
-                self._set_error_outputs()
+            if self._is_loading_state:
                 return
 
-            # 저장 후 현재 프리셋 기준 컨텍스트 계산
-            self._save_base_inputs(
-                overall_stats,
-                level,
-                persist=persist_base,
-            )
-            context: CalculatorEvaluationContext = build_calculator_context(
-                server_spec=app_state.macro.current_server,
-                preset=self._get_preset(),
-                skills_info=self._get_preset().usage_settings,
-                delay_ms=app_state.macro.current_delay,
-                overall_stats=overall_stats,
-            )
-
-            # 현재 선택 입력 기반 기준 상태 분리 결과 표시
+            self.title_inputs.refresh_equipped_options()
+            self.talisman_inputs.refresh_equipped_options()
             optimization_valid: bool
             distribution_state: DistributionState
             danjeon_state: DanjeonState
@@ -2171,8 +2047,6 @@ class ResultsPage(QFrame):
                 owned_talismans,
             ) = self._read_optimization_state()
             if not optimization_valid:
-                self.base_state_list.set_rows([("상태", "입력 오류")])
-                self.optimization_result_list.set_rows([("상태", "입력 오류")])
                 return
 
             self._save_optimization_inputs(
@@ -2181,84 +2055,7 @@ class ResultsPage(QFrame):
                 owned_titles=owned_titles,
                 equipped_state=equipped_state,
                 owned_talismans=owned_talismans,
-                persist=persist_optimization,
-            )
-            calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
-            output_rows: ResultsPage.OutputRows = ResultsPage._build_output_rows(
-                server_spec=app_state.macro.current_server,
-                preset=self._get_preset(),
-                delay_ms=app_state.macro.current_delay,
-                overall_stats=overall_stats,
-                calculator_input=calculator_input,
-                level=level,
-                selected_metric=self._get_selected_metric(),
-                current_realm=self.realm_options[self.realm_combobox.currentIndex()],
-                context=context,
-            )
-            self.current_power_list.set_rows(output_rows.current_power)
-            self.stat_efficiency_list.set_rows(output_rows.stat_efficiency)
-            self.level_up_list.set_rows(output_rows.level_up)
-            self.realm_up_list.set_rows(output_rows.realm_up)
-            self.scroll_efficiency_list.set_rows(output_rows.scroll_efficiency)
-            self.base_state_list.set_rows(output_rows.base_state)
-            self.optimization_result_list.set_rows(output_rows.optimization_result)
-
-        def _refresh_custom_delta_output(
-            self,
-            persist_custom: bool = False,
-        ) -> None:
-            """사용자 지정 스탯 변화량 출력 갱신"""
-
-            # 기준 입력 또는 변화량 입력이 유효하지 않으면 오류 출력
-            stats_valid: bool
-            overall_stats: dict[str, float]
-            stats_valid, overall_stats = self._read_overall_stats()
-
-            level_valid: bool
-            level_valid, _ = self._read_level()
-
-            custom_valid: bool
-            custom_changes: dict[StatKey, float]
-            custom_valid, custom_changes = self._read_custom_stat_changes()
-
-            scroll_valid: bool = self._read_scroll_levels()
-
-            if not (stats_valid and level_valid and custom_valid and scroll_valid):
-                self.custom_delta_result_list.set_rows([("상태", "오류")])
-                return
-
-            self._save_custom_stat_changes(
-                custom_changes,
-                persist=persist_custom,
-            )
-
-            # 현재 기준 컨텍스트와 변화량 계산 결과 구성
-            context: CalculatorEvaluationContext = build_calculator_context(
-                server_spec=app_state.macro.current_server,
-                preset=self._get_preset(),
-                skills_info=self._get_preset().usage_settings,
-                delay_ms=app_state.macro.current_delay,
-                overall_stats=overall_stats,
-            )
-
-            custom_rows: list[tuple[str, str]] = ResultsPage._build_custom_delta_rows(
-                overall_stats=overall_stats,
-                calculator_input=self._get_preset().info.calculator,
-                context=context,
-            )
-            self.custom_delta_result_list.set_rows(custom_rows)
-
-        def on_optimization_input_changed(self) -> None:
-            """최적화 입력 변경 시 기준 상태 분리 갱신"""
-
-            if self._is_loading_state:
-                return
-
-            self.title_inputs.refresh_equipped_options()
-            self.talisman_inputs.refresh_equipped_options()
-            self._refresh_base_outputs(
-                persist_base=False,
-                persist_optimization=True,
+                persist=True,
             )
 
         def on_base_input_changed(self) -> None:
@@ -2267,12 +2064,24 @@ class ResultsPage(QFrame):
             if self._is_loading_state:
                 return
 
-            # 기준 입력 변화 시 기준 출력과 사용자 지정 출력 동시 갱신
-            self._refresh_base_outputs(
-                persist_base=True,
-                persist_optimization=False,
+            stats_valid: bool
+            overall_stats: dict[str, float]
+            stats_valid, overall_stats = self._read_overall_stats()
+
+            level_valid: bool
+            level: int
+            level_valid, level = self._read_level()
+
+            scroll_valid: bool = self._read_scroll_levels()
+
+            if not (stats_valid and level_valid and scroll_valid):
+                return
+
+            self._save_base_inputs(
+                overall_stats=overall_stats,
+                level=level,
+                persist=True,
             )
-            self._refresh_custom_delta_output(persist_custom=False)
 
         def on_custom_delta_changed(self) -> None:
             """사용자 지정 변화량 변경 시 결과 갱신"""
@@ -2280,7 +2089,16 @@ class ResultsPage(QFrame):
             if self._is_loading_state:
                 return
 
-            self._refresh_custom_delta_output(persist_custom=True)
+            custom_valid: bool
+            custom_changes: dict[StatKey, float]
+            custom_valid, custom_changes = self._read_custom_stat_changes()
+            if not custom_valid:
+                return
+
+            self._save_custom_stat_changes(
+                custom_changes=custom_changes,
+                persist=True,
+            )
 
     class ResultsView(QFrame):
         def __init__(
