@@ -522,7 +522,9 @@ class ResultsPage(QFrame):
     @classmethod
     def _build_output_rows(
         cls,
+        server_spec: "ServerSpec",
         preset: "MacroPreset",
+        delay_ms: int,
         overall_stats: dict[str, float],
         level: int,
         selected_metric: "PowerMetric",
@@ -611,10 +613,10 @@ class ResultsPage(QFrame):
         scroll_rows: list[tuple[str, str]] = []
         scroll_results: list[ScrollUpgradeEvaluation] = (
             evaluate_scroll_upgrade_deltas(
-                server_spec=app_state.macro.current_server,
+                server_spec=server_spec,
                 preset=preset,
                 skills_info=preset.usage_settings,
-                delay_ms=app_state.macro.current_delay,
+                delay_ms=delay_ms,
                 overall_stats=overall_stats,
             )
         )
@@ -631,28 +633,12 @@ class ResultsPage(QFrame):
             reverse=True,
         )
 
-        # 사용자 지정 변화량 결과 행 구성
-        custom_changes: dict[StatKey, float] = {}
-        for stat_key in CALCULATOR_STAT_SPECS.keys():
-            change_value: float = calculator_input.custom_stat_changes[stat_key.value]
-            if change_value == 0.0:
-                continue
-
-            custom_changes[stat_key] = change_value
-
-        custom_deltas: dict[PowerMetric, float] = evaluate_arbitrary_stat_delta(
-            context=context,
+        # 사용자 지정 변화량 결과 행 공용 구성
+        custom_rows: list[tuple[str, str]] = cls._build_custom_delta_rows(
             overall_stats=overall_stats,
-            stat_changes=custom_changes,
+            calculator_input=calculator_input,
+            context=context,
         )
-        custom_rows: list[tuple[str, str]] = []
-        for power_metric in DISPLAY_POWER_METRICS:
-            custom_rows.append(
-                (
-                    POWER_METRIC_LABELS[power_metric],
-                    cls._format_delta(custom_deltas[power_metric]),
-                )
-            )
 
         # 기준 상태 분리 결과 행 구성
         validation: CalculatorBaseValidation = validate_base_state(
@@ -693,10 +679,10 @@ class ResultsPage(QFrame):
 
         # 최적화 결과 행 구성
         optimization_result: OptimizationResult | None = optimize_current_selection(
-            server_spec=app_state.macro.current_server,
+            server_spec=server_spec,
             preset=preset,
             skills_info=preset.usage_settings,
-            delay_ms=app_state.macro.current_delay,
+            delay_ms=delay_ms,
             context=context,
             overall_stats=overall_stats,
             calculator_input=calculator_input,
@@ -766,6 +752,41 @@ class ResultsPage(QFrame):
             base_state=base_state_rows,
             optimization_result=optimization_rows,
         )
+
+    @classmethod
+    def _build_custom_delta_rows(
+        cls,
+        overall_stats: dict[str, float],
+        calculator_input: CalculatorPresetInput,
+        context: "CalculatorEvaluationContext",
+    ) -> list[tuple[str, str]]:
+        """사용자 지정 변화량 결과 행 공용 구성"""
+
+        # 저장된 사용자 지정 변화량 맵 복원
+        custom_changes: dict[StatKey, float] = {}
+        for stat_key in CALCULATOR_STAT_SPECS.keys():
+            change_value: float = calculator_input.custom_stat_changes[stat_key.value]
+            if change_value == 0.0:
+                continue
+
+            custom_changes[stat_key] = change_value
+
+        # 사용자 지정 변화량 기준 5종 전투력 변화량 계산
+        custom_deltas: dict[PowerMetric, float] = evaluate_arbitrary_stat_delta(
+            context=context,
+            overall_stats=overall_stats,
+            stat_changes=custom_changes,
+        )
+        custom_rows: list[tuple[str, str]] = []
+        for power_metric in DISPLAY_POWER_METRICS:
+            custom_rows.append(
+                (
+                    POWER_METRIC_LABELS[power_metric],
+                    cls._format_delta(custom_deltas[power_metric]),
+                )
+            )
+
+        return custom_rows
 
     class Efficiency(QFrame):
         def __init__(
@@ -2151,6 +2172,7 @@ class ResultsPage(QFrame):
             ) = self._read_optimization_state()
             if not optimization_valid:
                 self.base_state_list.set_rows([("상태", "입력 오류")])
+                self.optimization_result_list.set_rows([("상태", "입력 오류")])
                 return
 
             self._save_optimization_inputs(
@@ -2163,7 +2185,9 @@ class ResultsPage(QFrame):
             )
             calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
             output_rows: ResultsPage.OutputRows = ResultsPage._build_output_rows(
+                server_spec=app_state.macro.current_server,
                 preset=self._get_preset(),
+                delay_ms=app_state.macro.current_delay,
                 overall_stats=overall_stats,
                 calculator_input=calculator_input,
                 level=level,
@@ -2217,16 +2241,12 @@ class ResultsPage(QFrame):
                 overall_stats=overall_stats,
             )
 
-            output_rows: ResultsPage.OutputRows = ResultsPage._build_output_rows(
-                preset=self._get_preset(),
+            custom_rows: list[tuple[str, str]] = ResultsPage._build_custom_delta_rows(
                 overall_stats=overall_stats,
-                level=self._read_level()[1],
-                selected_metric=self._get_selected_metric(),
-                current_realm=self.realm_options[self.realm_combobox.currentIndex()],
                 calculator_input=self._get_preset().info.calculator,
                 context=context,
             )
-            self.custom_delta_result_list.set_rows(output_rows.custom_delta)
+            self.custom_delta_result_list.set_rows(custom_rows)
 
         def on_optimization_input_changed(self) -> None:
             """최적화 입력 변경 시 기준 상태 분리 갱신"""
@@ -2414,7 +2434,9 @@ class ResultsPage(QFrame):
                 overall_stats=overall_stats,
             )
             output_rows: ResultsPage.OutputRows = ResultsPage._build_output_rows(
+                server_spec=app_state.macro.current_server,
                 preset=preset,
+                delay_ms=app_state.macro.current_delay,
                 overall_stats=overall_stats,
                 calculator_input=calculator_input,
                 level=level,
