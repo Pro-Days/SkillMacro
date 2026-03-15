@@ -3,7 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from app.scripts.calculator_models import PowerMetric, StatKey
+from app.scripts.calculator_models import (
+    REALM_TIER_SPECS,
+    PowerMetric,
+    RealmTier,
+    RealmTierSpec,
+    StatKey,
+)
 from app.scripts.custom_classes import SimAttack, SimBuff
 from app.scripts.registry.skill_registry import BuffEffect, DamageEffect, LevelEffect
 
@@ -73,6 +79,26 @@ DISPLAY_PERCENT_STAT_KEYS: tuple[StatKey, ...] = (
 )
 
 
+# 전투력 표시 순서 고정
+DISPLAY_POWER_METRICS: tuple[PowerMetric, ...] = (
+    PowerMetric.BOSS_DAMAGE,
+    PowerMetric.NORMAL_DAMAGE,
+    PowerMetric.BOSS,
+    PowerMetric.NORMAL,
+    PowerMetric.OFFICIAL,
+)
+
+
+# 전투력 한글 라벨 고정
+POWER_METRIC_LABELS: dict[PowerMetric, str] = {
+    PowerMetric.BOSS_DAMAGE: "보스 데미지",
+    PowerMetric.NORMAL_DAMAGE: "일반 데미지",
+    PowerMetric.BOSS: "보스 전투력",
+    PowerMetric.NORMAL: "일반 전투력",
+    PowerMetric.OFFICIAL: "공식 전투력",
+}
+
+
 @dataclass(frozen=True, slots=True)
 class CalculatorBuffWindow:
     """계산기용 버프 활성 구간"""
@@ -124,6 +150,48 @@ class CalculatorPowerSummary:
     """계산기 전투력 요약"""
 
     metrics: dict[PowerMetric, float]
+
+
+@dataclass(frozen=True, slots=True)
+class CalculatorEvaluationContext:
+    """효율 계산 기준 컨텍스트"""
+
+    timeline: CalculatorTimeline
+    baseline_stats: CalculatorResolvedStats
+    baseline_summary: CalculatorPowerSummary
+
+
+@dataclass(frozen=True, slots=True)
+class LevelUpEvaluation:
+    """
+    레벨업 효율 계산 결과
+    단일 레벨업으로 얻는 체력 +10과 스탯 포인트 5개를 최적으로 분배했을 때의 스탯 분배와 전투력 변화량
+    """
+
+    stat_distribution: dict[StatKey, int]
+    deltas: dict[PowerMetric, float]
+
+
+@dataclass(frozen=True, slots=True)
+class RealmAdvanceEvaluation:
+    """
+    다음 경지 효율 계산 결과
+    다음 경지로 진급할 때의 경지 포인트 분배와 전투력 변화량
+    """
+
+    target_realm: RealmTier
+    danjeon_distribution: tuple[int, int, int]
+    deltas: dict[PowerMetric, float]
+
+
+@dataclass(frozen=True, slots=True)
+class ScrollUpgradeEvaluation:
+    """스크롤 레벨 상승 효율 계산 결과"""
+
+    scroll_id: str
+    scroll_name: str
+    next_level: int
+    deltas: dict[PowerMetric, float]
 
 
 def _copy_stats(stats: dict[StatKey, float]) -> dict[StatKey, float]:
@@ -297,6 +365,23 @@ def resolve_calculator_stats(
         base_dodge_source=base_dodge_source,
         base_potion_heal_source=base_potion_heal_source,
     )
+
+
+def calculate_power_deltas(
+    baseline_summary: CalculatorPowerSummary,
+    target_summary: CalculatorPowerSummary,
+) -> dict[PowerMetric, float]:
+    """기준 대비 전투력 변화량 계산"""
+
+    # 전투력 종류별 증감량 계산
+    deltas: dict[PowerMetric, float] = {}
+    for power_metric in DISPLAY_POWER_METRICS:
+        deltas[power_metric] = (
+            target_summary.metrics[power_metric]
+            - baseline_summary.metrics[power_metric]
+        )
+
+    return deltas
 
 
 def _merge_buff_windows(
@@ -530,6 +615,100 @@ def evaluate_calculator_power(
     return CalculatorPowerSummary(metrics=metrics)
 
 
+def build_calculator_context(
+    server_spec: "ServerSpec",
+    preset: "MacroPreset",
+    skills_info: dict[str, "SkillUsageSetting"],
+    delay_ms: int,
+    overall_stats: dict[str, float],
+) -> CalculatorEvaluationContext:
+    """현재 계산기 입력 기준 평가 컨텍스트 구성"""
+
+    # 현재 전체 스탯 기준 최종 계산 스탯 구성
+    baseline_stats: CalculatorResolvedStats = resolve_calculator_stats(
+        overall_stats=overall_stats
+    )
+
+    # 현재 스킬속도 기준 타임라인 구성
+    timeline: CalculatorTimeline = build_calculator_timeline(
+        server_spec=server_spec,
+        preset=preset,
+        skills_info=skills_info,
+        delay_ms=delay_ms,
+        cooltime_reduction=baseline_stats.values[StatKey.SKILL_SPEED_PERCENT],
+    )
+
+    # 기준 타임라인과 기준 스탯으로 기준 전투력 계산
+    baseline_summary: CalculatorPowerSummary = evaluate_calculator_power(
+        timeline=timeline,
+        resolved_stats=baseline_stats,
+    )
+
+    return CalculatorEvaluationContext(
+        timeline=timeline,
+        baseline_stats=baseline_stats,
+        baseline_summary=baseline_summary,
+    )
+
+
+def evaluate_stat_changes(
+    context: CalculatorEvaluationContext,
+    overall_stats: dict[str, float],
+    stat_changes: dict[StatKey, float],
+) -> CalculatorPowerSummary:
+    """전체 스탯 변화량 반영 후 전투력 계산"""
+
+    # 변화량을 반영한 최종 스탯 재계산
+    resolved_stats: CalculatorResolvedStats = resolve_calculator_stats(
+        overall_stats=overall_stats,
+        stat_changes=stat_changes,
+    )
+
+    # 기준 타임라인 재사용 기반 전투력 재평가
+    summary: CalculatorPowerSummary = evaluate_calculator_power(
+        timeline=context.timeline,
+        resolved_stats=resolved_stats,
+    )
+
+    return summary
+
+
+def evaluate_single_stat_delta(
+    context: CalculatorEvaluationContext,
+    overall_stats: dict[str, float],
+    stat_key: StatKey,
+    amount: float,
+) -> dict[PowerMetric, float]:
+    """단일 스탯 변화량 기준 전투력 차이 계산"""
+
+    # 단일 스탯 변화량 맵 구성
+    stat_changes: dict[StatKey, float] = {stat_key: amount}
+    target_summary: CalculatorPowerSummary = evaluate_stat_changes(
+        context=context,
+        overall_stats=overall_stats,
+        stat_changes=stat_changes,
+    )
+
+    return calculate_power_deltas(context.baseline_summary, target_summary)
+
+
+def evaluate_arbitrary_stat_delta(
+    context: CalculatorEvaluationContext,
+    overall_stats: dict[str, float],
+    stat_changes: dict[StatKey, float],
+) -> dict[PowerMetric, float]:
+    """여러 스탯 변화량 기준 전투력 차이 계산"""
+
+    # 다중 스탯 변화량 전투력 계산
+    target_summary: CalculatorPowerSummary = evaluate_stat_changes(
+        context=context,
+        overall_stats=overall_stats,
+        stat_changes=stat_changes,
+    )
+
+    return calculate_power_deltas(context.baseline_summary, target_summary)
+
+
 def extract_skill_level_effects(
     server_spec: "ServerSpec",
     preset: "MacroPreset",
@@ -577,3 +756,182 @@ def build_skill_effect_maps(
         buff_effects_map[skill_id] = buff_effects
 
     return damage_effects_map, buff_effects_map
+
+
+def evaluate_level_up_delta(
+    context: CalculatorEvaluationContext,
+    overall_stats: dict[str, float],
+    target_metric: PowerMetric,
+) -> LevelUpEvaluation:
+    """레벨 1업 시 최적 스탯 분배 기준 전투력 차이 계산"""
+
+    # 체력 +10과 스탯 포인트 5개 분배 조합 전체 탐색
+    best_distribution: dict[StatKey, int] = {
+        StatKey.STR: 0,
+        StatKey.DEXTERITY: 0,
+        StatKey.VITALITY: 0,
+        StatKey.LUCK: 0,
+    }
+    best_deltas: dict[PowerMetric, float] = {
+        power_metric: 0.0 for power_metric in DISPLAY_POWER_METRICS
+    }
+    best_metric_delta: float = 0.0
+    # 0~5 -> 6
+    for strength in range(6):
+        for dexterity in range(6 - strength):
+            for vitality in range(6 - strength - dexterity):
+                luck: int = 5 - strength - dexterity - vitality
+                stat_changes: dict[StatKey, float] = {
+                    StatKey.HP: 10.0,
+                    StatKey.STR: float(strength),
+                    StatKey.DEXTERITY: float(dexterity),
+                    StatKey.VITALITY: float(vitality),
+                    StatKey.LUCK: float(luck),
+                }
+                deltas: dict[PowerMetric, float] = evaluate_arbitrary_stat_delta(
+                    context=context,
+                    overall_stats=overall_stats,
+                    stat_changes=stat_changes,
+                )
+                metric_delta: float = deltas[target_metric]
+                if metric_delta <= best_metric_delta:
+                    continue
+
+                best_metric_delta = metric_delta
+                best_distribution = {
+                    StatKey.STR: strength,
+                    StatKey.DEXTERITY: dexterity,
+                    StatKey.VITALITY: vitality,
+                    StatKey.LUCK: luck,
+                }
+                best_deltas = deltas
+
+    return LevelUpEvaluation(
+        stat_distribution=best_distribution,
+        deltas=best_deltas,
+    )
+
+
+def _get_next_realm(current_realm: RealmTier) -> RealmTier | None:
+    """다음 경지 반환"""
+
+    # 선언 순서 기준 다음 경지 탐색
+    ordered_realms: list[RealmTier] = list(REALM_TIER_SPECS.keys())
+    current_index: int = ordered_realms.index(current_realm)
+    next_index: int = current_index + 1
+    if next_index >= len(ordered_realms):
+        return None
+
+    return ordered_realms[next_index]
+
+
+def evaluate_next_realm_delta(
+    context: CalculatorEvaluationContext,
+    overall_stats: dict[str, float],
+    current_realm: RealmTier,
+    level: int,
+    target_metric: PowerMetric,
+) -> RealmAdvanceEvaluation | None:
+    """현재 레벨 기준 다음 경지 상승 효율 계산"""
+
+    # 다음 경지와 요구 레벨 조건 확인
+    next_realm: RealmTier | None = _get_next_realm(current_realm)
+    if next_realm is None:
+        return None
+
+    next_realm_spec: RealmTierSpec = REALM_TIER_SPECS[next_realm]
+    if level < next_realm_spec.min_level:
+        return None
+
+    # 다음 경지에서 증가하는 단전 포인트 수 계산
+    current_points: int = REALM_TIER_SPECS[current_realm].danjeon_points
+    extra_points: int = next_realm_spec.danjeon_points - current_points
+
+    # 추가 단전 포인트 최적 분배 탐색
+    best_distribution: tuple[int, int, int] = (0, 0, 0)
+    best_deltas: dict[PowerMetric, float] = {
+        power_metric: 0.0 for power_metric in DISPLAY_POWER_METRICS
+    }
+    best_metric_delta: float = 0.0
+    for upper in range(extra_points + 1):
+        for middle in range(extra_points - upper + 1):
+            lower: int = extra_points - upper - middle
+            stat_changes: dict[StatKey, float] = {
+                StatKey.HP_PERCENT: float(upper * 3),
+                StatKey.RESIST_PERCENT: float(upper),
+                StatKey.ATTACK_PERCENT: float(middle),
+                StatKey.DROP_RATE_PERCENT: float(lower * 1.5),
+                StatKey.EXP_PERCENT: float(lower * 0.5),
+            }
+            deltas: dict[PowerMetric, float] = evaluate_arbitrary_stat_delta(
+                context=context,
+                overall_stats=overall_stats,
+                stat_changes=stat_changes,
+            )
+            metric_delta: float = deltas[target_metric]
+            if metric_delta <= best_metric_delta:
+                continue
+
+            best_metric_delta = metric_delta
+            best_distribution = (upper, middle, lower)
+            best_deltas = deltas
+
+    return RealmAdvanceEvaluation(
+        target_realm=next_realm,
+        danjeon_distribution=best_distribution,
+        deltas=best_deltas,
+    )
+
+
+def evaluate_scroll_upgrade_deltas(
+    server_spec: "ServerSpec",
+    preset: "MacroPreset",
+    skills_info: dict[str, "SkillUsageSetting"],
+    delay_ms: int,
+    overall_stats: dict[str, float],
+) -> list[ScrollUpgradeEvaluation]:
+    """각 스크롤 1레벨 상승 시 전투력 차이 계산"""
+
+    # 현재 레벨 기준 기준 전투력 컨텍스트 구성
+    baseline_context: CalculatorEvaluationContext = build_calculator_context(
+        server_spec=server_spec,
+        preset=preset,
+        skills_info=skills_info,
+        delay_ms=delay_ms,
+        overall_stats=overall_stats,
+    )
+
+    # 스크롤별 1레벨 상승 효과 계산
+    evaluations: list[ScrollUpgradeEvaluation] = []
+    for scroll_def in server_spec.skill_registry.get_all_scroll_defs():
+        current_level: int = preset.info.get_scroll_level(scroll_def.id)
+        if current_level >= server_spec.max_skill_level:
+            continue
+
+        # 현재 프리셋 레벨을 일시적으로 올려 상승 후 전투력 계산
+        preset.info.set_scroll_level(scroll_def.id, current_level + 1)
+        try:
+            upgraded_context: CalculatorEvaluationContext = build_calculator_context(
+                server_spec=server_spec,
+                preset=preset,
+                skills_info=skills_info,
+                delay_ms=delay_ms,
+                overall_stats=overall_stats,
+            )
+
+        finally:
+            preset.info.set_scroll_level(scroll_def.id, current_level)
+
+        evaluations.append(
+            ScrollUpgradeEvaluation(
+                scroll_id=scroll_def.id,
+                scroll_name=scroll_def.name,
+                next_level=current_level + 1,
+                deltas=calculate_power_deltas(
+                    baseline_summary=baseline_context.baseline_summary,
+                    target_summary=upgraded_context.baseline_summary,
+                ),
+            )
+        )
+
+    return evaluations

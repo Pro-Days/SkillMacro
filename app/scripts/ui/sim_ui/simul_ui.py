@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLayoutItem,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -21,6 +22,30 @@ from PySide6.QtWidgets import (
 )
 
 from app.scripts.app_state import app_state
+from app.scripts.calculator_engine import (
+    DISPLAY_POWER_METRICS,
+    POWER_METRIC_LABELS,
+    CalculatorEvaluationContext,
+    LevelUpEvaluation,
+    RealmAdvanceEvaluation,
+    ScrollUpgradeEvaluation,
+    build_calculator_context,
+    evaluate_arbitrary_stat_delta,
+    evaluate_level_up_delta,
+    evaluate_next_realm_delta,
+    evaluate_scroll_upgrade_deltas,
+    evaluate_single_stat_delta,
+)
+from app.scripts.calculator_models import (
+    CALCULATOR_STAT_SPECS,
+    OVERALL_STAT_GRID_ROWS,
+    REALM_TIER_SPECS,
+    CalculatorPresetInput,
+    CalculatorStatSpec,
+    PowerMetric,
+    RealmTier,
+    StatKey,
+)
 from app.scripts.config import config
 from app.scripts.custom_classes import (
     CustomComboBox,
@@ -38,11 +63,7 @@ from app.scripts.registry.resource_registry import (
     convert_resource_path,
     resource_registry,
 )
-from app.scripts.simulate_macro import (
-    get_req_stats,
-    simulate_deterministic,
-    simulate_random,
-)
+from app.scripts.simulate_macro import simulate_deterministic, simulate_random
 from app.scripts.ui.popup import NoticeKind
 from app.scripts.ui.sim_ui.graph import (
     DMGCanvas,
@@ -721,131 +742,560 @@ class Sim3UI(QFrame):
                     "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
                 )
 
-            widgets_width: int = 120
-            arrow_size: int = 60
+            # 전투력 선택지와 경지 선택지 순서 고정
+            self.metric_options: list[PowerMetric] = list(DISPLAY_POWER_METRICS)
+            self.realm_options: list[RealmTier] = list(REALM_TIER_SPECS.keys())
 
-            # 왼쪽 콤보박스
-            self.combobox_left = CustomComboBox(
+            # 계산 기준 입력 UI 구성
+            self.metric_title: QLabel = QLabel("기준 전투력", self)
+            self.metric_title.setFont(CustomFont(12))
+            self.metric_combobox = CustomComboBox(
                 self,
-                [spec.label for spec in config.specs.STATS.values()],
-                self.efficiency_changed,
-            )
-            self.combobox_left.setFixedWidth(widgets_width)
-
-            # 왼쪽 스탯 입력창
-            self.input = CustomLineEdit(self, self.efficiency_changed, "10")
-            self.input.setFocus()
-            self.input.setFixedWidth(widgets_width)
-
-            input_layout = QVBoxLayout()
-            input_layout.addStretch()
-            input_layout.addWidget(self.combobox_left)
-            input_layout.addWidget(self.input)
-            input_layout.addStretch()
-            input_layout.setSpacing(10)
-            input_layout.setContentsMargins(0, 0, 0, 0)
-
-            # 화살표
-            self.arrow = QLabel("", self)
-            self.arrow.setStyleSheet(
-                "QLabel { background-color: transparent; border: 0px solid; }"
+                [POWER_METRIC_LABELS[metric] for metric in self.metric_options],
+                self.on_base_input_changed,
             )
 
-            pixmap: QPixmap = QPixmap(
-                convert_resource_path("resources\\image\\lineArrow.png")
-            )
-            pixmap = pixmap.scaled(arrow_size, arrow_size)
-            self.arrow.setPixmap(pixmap)
-            self.arrow.setFixedSize(arrow_size, arrow_size)
-
-            # 오른쪽 콤보박스
-            self.combobox_right = CustomComboBox(
+            self.level_input_widget: KVInput = KVInput(
                 self,
-                [spec.label for spec in config.specs.STATS.values()],
-                self.efficiency_changed,
+                "레벨",
+                "0",
+                self.on_base_input_changed,
+                max_width=100,
             )
-            self.combobox_right.setFixedWidth(widgets_width)
+            self.level_input: CustomLineEdit = self.level_input_widget.input
 
-            self.power_labels = PowerLabels(self)
-            self.power_labels.setSizePolicy(
-                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+            self.realm_title: QLabel = QLabel("경지", self)
+            self.realm_title.setFont(CustomFont(12))
+            self.realm_combobox = CustomComboBox(
+                self,
+                [REALM_TIER_SPECS[realm].label for realm in self.realm_options],
+                self.on_base_input_changed,
             )
 
-            layout = QHBoxLayout(self)
-            layout.addLayout(input_layout, stretch=0)
-            layout.addWidget(self.arrow, stretch=0)
-            layout.addWidget(self.combobox_right, stretch=0)
-            layout.addWidget(self.power_labels, stretch=1)
+            # 전체 스탯 입력 UI 구성
+            self.stats_title: QLabel = QLabel("전체 스탯", self)
+            self.stats_title.setFont(CustomFont(12))
+            self.stats_inputs = self.OverallStatInputs(
+                self,
+                self.on_base_input_changed,
+                self._get_initial_overall_stats(),
+            )
+
+            # 스크롤 레벨 입력 UI 구성
+            self.scroll_title: QLabel = QLabel("스크롤 레벨", self)
+            self.scroll_title.setFont(CustomFont(12))
+            self.skills = SkillInputs(
+                self,
+                build_skill_level_input_specs(),
+                self.on_base_input_changed,
+            )
+
+            # 결과 표시 UI 구성
+            self.current_power_title: QLabel = QLabel("현재 전투력", self)
+            self.current_power_title.setFont(CustomFont(12))
+            self.current_power_list = self.ResultList(self)
+
+            self.stat_efficiency_title: QLabel = QLabel("스탯 1당 효율", self)
+            self.stat_efficiency_title.setFont(CustomFont(12))
+            self.stat_efficiency_list = self.ResultList(self)
+
+            self.level_up_title: QLabel = QLabel("레벨 1업 효율", self)
+            self.level_up_title.setFont(CustomFont(12))
+            self.level_up_list = self.ResultList(self)
+
+            self.realm_up_title: QLabel = QLabel("다음 경지 효율", self)
+            self.realm_up_title.setFont(CustomFont(12))
+            self.realm_up_list = self.ResultList(self)
+
+            self.scroll_efficiency_title: QLabel = QLabel("스크롤 +1 효율", self)
+            self.scroll_efficiency_title.setFont(CustomFont(12))
+            self.scroll_efficiency_list = self.ResultList(self)
+
+            # 사용자 지정 변화량 입력 UI 구성
+            self.custom_delta_title: QLabel = QLabel("사용자 지정 스탯 변화량", self)
+            self.custom_delta_title.setFont(CustomFont(12))
+            self.custom_delta_inputs = self.OverallStatInputs(
+                self,
+                self.on_custom_delta_changed,
+                self._build_empty_stat_map(),
+            )
+            self.custom_delta_result_list = self.ResultList(self)
+
+            # 상단 기준 입력 행 구성
+            metric_layout = QHBoxLayout()
+            metric_layout.addWidget(self.metric_title)
+            metric_layout.addWidget(self.metric_combobox)
+            metric_layout.addSpacing(20)
+            metric_layout.addWidget(self.level_input_widget)
+            metric_layout.addSpacing(20)
+            metric_layout.addWidget(self.realm_title)
+            metric_layout.addWidget(self.realm_combobox)
+            metric_layout.addStretch(1)
+
+            layout = QVBoxLayout(self)
+            layout.addLayout(metric_layout)
+            layout.addWidget(self.stats_title)
+            layout.addWidget(self.stats_inputs)
+            layout.addWidget(self.scroll_title)
+            layout.addWidget(self.skills)
+            layout.addWidget(self.current_power_title)
+            layout.addWidget(self.current_power_list)
+            layout.addWidget(self.stat_efficiency_title)
+            layout.addWidget(self.stat_efficiency_list)
+            layout.addWidget(self.level_up_title)
+            layout.addWidget(self.level_up_list)
+            layout.addWidget(self.realm_up_title)
+            layout.addWidget(self.realm_up_list)
+            layout.addWidget(self.scroll_efficiency_title)
+            layout.addWidget(self.scroll_efficiency_list)
+            layout.addWidget(self.custom_delta_title)
+            layout.addWidget(self.custom_delta_inputs)
+            layout.addWidget(self.custom_delta_result_list)
             layout.setSpacing(10)
             layout.setContentsMargins(10, 10, 10, 10)
             self.setLayout(layout)
 
             self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-            self.update_efficiency()
-
-        def update_efficiency(self) -> None:
-            left_index: int = self.combobox_left.currentIndex()
-            right_index: int = self.combobox_right.currentIndex()
-            value: int = int(self.input.text())
-
-            # 종류가 같다면 동일한 값 출력
-            if left_index == right_index:
-                self.power_labels.set_texts(f"{value:.2f}")
-
-                return
-
-            # 종류가 다르다면 적용 후 계산
-            stats: Stats = app_state.simulation.stats.copy()
-            stats.add_stat_from_index(left_index, value)
-
-            # 적용 후 전투력 계산
-            powers: list[float] = simulate_deterministic(
-                stats=stats,
-                sim_details=app_state.simulation.sim_details,
-                skills_info=app_state.macro.current_preset.usage_settings,
-            ).powers
-
-            # 요구량 계산
-            reqStats: list[float] = get_req_stats(
-                powers,
-                list(config.specs.STATS.keys())[right_index],
+            # 저장된 경지 선택 상태 동기화
+            self.realm_combobox.setCurrentIndex(
+                self.realm_options.index(self._get_calculator_realm())
             )
 
-            # 텍스트 설정
-            self.power_labels.set_texts([f"{t:.2f}" for t in reqStats])
+            # 초기 계산 결과 반영
+            self.on_base_input_changed()
+            self.on_custom_delta_changed()
 
-        def efficiency_changed(self) -> None:
-            text: str = self.input.text()
-            index: int = self.combobox_left.currentIndex()
-            stat_name: str = list(config.specs.STATS.keys())[index]
+        class OverallStatInputs(QFrame):
+            def __init__(
+                self,
+                parent: QWidget,
+                connected_function: Callable[[], None],
+                initial_values: dict[StatKey, str],
+            ) -> None:
+                super().__init__(parent)
 
-            # 입력이 숫자가 아니면 오류
+                # 전체 스탯 입력칸 맵 구성
+                self.inputs: dict[StatKey, CustomLineEdit] = {}
+                grid_layout: QGridLayout = QGridLayout(self)
+
+                for row_index, stat_row in enumerate(OVERALL_STAT_GRID_ROWS):
+                    for column_index, stat_key in enumerate(stat_row):
+                        if stat_key is None:
+                            continue
+
+                        # 이미지 표기와 동일한 라벨 구성
+                        stat_spec: CalculatorStatSpec = CALCULATOR_STAT_SPECS[stat_key]
+                        label: str = stat_spec.label
+
+                        if stat_spec.is_percent:
+                            label = f"{label}(%)"
+
+                        item_widget: KVInput = KVInput(
+                            self,
+                            label,
+                            initial_values[stat_key],
+                            connected_function,
+                            max_width=120,
+                        )
+                        self.inputs[stat_key] = item_widget.input
+                        grid_layout.addWidget(item_widget, row_index, column_index)
+
+                # 2열 배치 간격 고정
+                grid_layout.setVerticalSpacing(8)
+                grid_layout.setHorizontalSpacing(20)
+                self.setLayout(grid_layout)
+
+        class ResultList(QFrame):
+            def __init__(self, parent: QWidget) -> None:
+                super().__init__(parent)
+
+                # 결과 행을 재구성할 레이아웃 준비
+                self._layout: QVBoxLayout = QVBoxLayout(self)
+                self._layout.setContentsMargins(0, 0, 0, 0)
+                self._layout.setSpacing(6)
+                self.setLayout(self._layout)
+
+            def set_rows(self, rows: list[tuple[str, str]]) -> None:
+                """결과 행 목록 재렌더링"""
+
+                # 기존 결과 라벨 정리
+                while self._layout.count():
+                    child_item: QLayoutItem = self._layout.takeAt(0)
+                    child_widget: QWidget = child_item.widget()
+
+                    if child_widget is not None:
+                        child_widget.deleteLater()
+
+                # 새 결과 행 구성
+                for title, value in rows:
+                    row_widget: QFrame = QFrame(self)
+                    row_layout: QHBoxLayout = QHBoxLayout(row_widget)
+                    row_layout.setContentsMargins(8, 6, 8, 6)
+                    row_layout.setSpacing(10)
+
+                    title_label: QLabel = QLabel(title, row_widget)
+                    title_label.setFont(CustomFont(11))
+                    value_label: QLabel = QLabel(value, row_widget)
+                    value_label.setFont(CustomFont(11))
+                    value_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+
+                    row_layout.addWidget(title_label)
+                    row_layout.addStretch(1)
+                    row_layout.addWidget(value_label)
+                    self._layout.addWidget(row_widget)
+
+        def _get_preset(self) -> "MacroPreset":
+            """현재 선택 프리셋 반환"""
+
+            return app_state.macro.current_preset
+
+        def _get_calculator_realm(self) -> RealmTier:
+            """저장된 현재 경지 반환"""
+
+            return self._get_preset().info.calculator.realm_tier
+
+        def _get_initial_overall_stats(self) -> dict[StatKey, str]:
+            """저장된 전체 스탯 입력 문자열 맵 반환"""
+
+            # 저장된 전체 스탯을 입력 위젯 초기 문자열로 변환
+            calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
+            values: dict[StatKey, str] = {}
+            for stat_key in CALCULATOR_STAT_SPECS.keys():
+                values[stat_key] = f"{calculator_input.overall_stats[stat_key.value]:g}"
+
+            return values
+
+        def _build_empty_stat_map(self) -> dict[StatKey, str]:
+            """사용자 지정 변화량 초기값 맵 생성"""
+
+            # 변화량 입력은 전부 0에서 시작
+            values: dict[StatKey, str] = {}
+            for stat_key in CALCULATOR_STAT_SPECS.keys():
+                values[stat_key] = "0"
+
+            return values
+
+        def _get_selected_metric(self) -> PowerMetric:
+            """현재 선택 전투력 종류 반환"""
+
+            selected_metric: PowerMetric = self.metric_options[
+                self.metric_combobox.currentIndex()
+            ]
+            return selected_metric
+
+        def _read_overall_stats(self) -> tuple[bool, dict[str, float]]:
+            """전체 스탯 입력 복원 및 검증"""
+
+            # 모든 입력칸을 순회하며 실수 입력 복원
+            parsed_stats: dict[str, float] = {}
+            is_valid: bool = True
+            for stat_key, input_widget in self.stats_inputs.inputs.items():
+                try:
+                    value: float = float(input_widget.text())
+                    input_widget.set_valid(True)
+
+                except ValueError:
+                    value = 0.0
+                    is_valid = False
+                    input_widget.set_valid(False)
+
+                parsed_stats[stat_key.value] = value
+
+            return is_valid, parsed_stats
+
+        def _read_custom_stat_changes(self) -> tuple[bool, dict[StatKey, float]]:
+            """사용자 지정 스탯 변화량 복원 및 검증"""
+
+            # 0 입력 포함 전체 변화량 맵 구성
+            parsed_changes: dict[StatKey, float] = {}
+            is_valid: bool = True
+            for stat_key, input_widget in self.custom_delta_inputs.inputs.items():
+                try:
+                    value: float = float(input_widget.text())
+                    input_widget.set_valid(True)
+
+                except ValueError:
+                    value = 0.0
+                    is_valid = False
+                    input_widget.set_valid(False)
+
+                if value == 0.0:
+                    continue
+
+                parsed_changes[stat_key] = value
+
+            return is_valid, parsed_changes
+
+        def _read_level(self) -> tuple[bool, int]:
+            """레벨 입력 복원 및 검증"""
+
+            # 레벨은 정수 입력만 허용
+            text: str = self.level_input.text()
             if not text.isdigit():
-                self.power_labels.set_texts("오류")
+                self.level_input.set_valid(False)
+                return False, 0
 
+            self.level_input.set_valid(True)
+            level: int = int(text)
+            return True, level
+
+        def _read_scroll_levels(self) -> bool:
+            """스크롤 레벨 입력 검증 및 저장"""
+
+            # 모든 스크롤 레벨을 현재 프리셋에 직접 반영
+            all_valid: bool = True
+            for input_widget, entry in zip(self.skills.inputs, self.skills.entries):
+                text: str = input_widget.text()
+                is_valid: bool = text.isdigit() and (
+                    1 <= int(text) <= app_state.macro.current_server.max_skill_level
+                )
+                input_widget.set_valid(is_valid)
+                all_valid = all_valid and is_valid
+
+                if not is_valid:
+                    continue
+
+                self._get_preset().info.set_scroll_level(entry.scroll_id, int(text))
+
+            return all_valid
+
+        def _format_delta(self, value: float) -> str:
+            """전투력 변화량 표시 문자열 생성"""
+
+            # 큰 수치도 읽기 쉽게 고정 포맷 적용
+            return f"{value:+,.2f}"
+
+        def _format_current_power(self, value: float) -> str:
+            """현재 전투력 표시 문자열 생성"""
+
+            return f"{value:,.2f}"
+
+        def _save_base_inputs(
+            self,
+            overall_stats: dict[str, float],
+            level: int,
+        ) -> None:
+            """기준 입력 상태 저장"""
+
+            # 계산기 입력 블록에 현재 기준 입력 반영
+            calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
+            calculator_input.overall_stats = overall_stats
+            calculator_input.level = level
+            calculator_input.realm_tier = self.realm_options[
+                self.realm_combobox.currentIndex()
+            ]
+            save_data()
+
+        def _set_error_outputs(self) -> None:
+            """기준 입력 오류 상태 출력"""
+
+            error_rows: list[tuple[str, str]] = [("상태", "오류")]
+            self.current_power_list.set_rows(error_rows)
+            self.stat_efficiency_list.set_rows(error_rows)
+            self.level_up_list.set_rows(error_rows)
+            self.realm_up_list.set_rows(error_rows)
+            self.scroll_efficiency_list.set_rows(error_rows)
+
+        def _refresh_base_outputs(self) -> None:
+            """기준 입력 기반 효율 출력 갱신"""
+
+            # 전체 스탯, 레벨, 스크롤 레벨 입력 유효성 확인
+            stats_valid: bool
+            overall_stats: dict[str, float]
+            stats_valid, overall_stats = self._read_overall_stats()
+
+            level_valid: bool
+            level: int
+            level_valid, level = self._read_level()
+
+            scroll_valid: bool = self._read_scroll_levels()
+
+            if not (stats_valid and level_valid and scroll_valid):
+                self._set_error_outputs()
                 return
 
-            stat: int | float = app_state.simulation.stats.get_stat_from_name(
-                stat_name
-            ) + int(text)
+            # 저장 후 현재 프리셋 기준 컨텍스트 계산
+            self._save_base_inputs(overall_stats, level)
+            context: CalculatorEvaluationContext = build_calculator_context(
+                server_spec=app_state.macro.current_server,
+                preset=self._get_preset(),
+                skills_info=self._get_preset().usage_settings,
+                delay_ms=app_state.macro.current_delay,
+                overall_stats=overall_stats,
+            )
+            selected_metric: PowerMetric = self._get_selected_metric()
 
-            # 최소 범위보다 작으면 오류
-            if stat < config.specs.STATS[stat_name].min:
-                self.power_labels.set_texts("오류")
+            # 현재 전투력 표시 행 구성
+            current_power_rows: list[tuple[str, str]] = []
+            for power_metric in DISPLAY_POWER_METRICS:
+                current_power_rows.append(
+                    (
+                        POWER_METRIC_LABELS[power_metric],
+                        self._format_current_power(
+                            context.baseline_summary.metrics[power_metric]
+                        ),
+                    )
+                )
+            self.current_power_list.set_rows(current_power_rows)
 
+            # 스탯 1당 효율 행 구성
+            stat_rows: list[tuple[str, str]] = []
+            for stat_key, stat_spec in CALCULATOR_STAT_SPECS.items():
+                amount: float = 1.0
+                deltas: dict[PowerMetric, float] = evaluate_single_stat_delta(
+                    context=context,
+                    overall_stats=overall_stats,
+                    stat_key=stat_key,
+                    amount=amount,
+                )
+
+                label: str = stat_spec.label
+                if stat_spec.is_percent:
+                    label = f"{label}(%) +1"
+                else:
+                    label = f"{label} +1"
+
+                stat_rows.append((label, self._format_delta(deltas[selected_metric])))
+
+            # 선택 전투력 기준 내림차순 정렬
+            stat_rows.sort(
+                key=lambda row: float(row[1].replace(",", "")),
+                reverse=True,
+            )
+            self.stat_efficiency_list.set_rows(stat_rows)
+
+            # 레벨 1업 효율 행 구성
+            level_up: LevelUpEvaluation = evaluate_level_up_delta(
+                context=context,
+                overall_stats=overall_stats,
+                target_metric=selected_metric,
+            )
+
+            level_distribution_text: str = (
+                f"힘 {level_up.stat_distribution[StatKey.STR]}, "
+                f"민첩 {level_up.stat_distribution[StatKey.DEXTERITY]}, "
+                f"생명력 {level_up.stat_distribution[StatKey.VITALITY]}, "
+                f"행운 {level_up.stat_distribution[StatKey.LUCK]}"
+            )
+
+            self.level_up_list.set_rows(
+                [
+                    ("레벨 1업", self._format_delta(level_up.deltas[selected_metric])),
+                    ("최적 분배", level_distribution_text),
+                ]
+            )
+
+            # 다음 경지 효율 행 구성
+            realm_result: RealmAdvanceEvaluation | None = evaluate_next_realm_delta(
+                context=context,
+                overall_stats=overall_stats,
+                current_realm=self.realm_options[self.realm_combobox.currentIndex()],
+                level=level,
+                target_metric=selected_metric,
+            )
+
+            if realm_result is None:
+                self.realm_up_list.set_rows([("다음 경지", "불가")])
+            else:
+                danjeon_text: str = (
+                    f"상 {realm_result.danjeon_distribution[0]}, "
+                    f"중 {realm_result.danjeon_distribution[1]}, "
+                    f"하 {realm_result.danjeon_distribution[2]}"
+                )
+
+                self.realm_up_list.set_rows(
+                    [
+                        (
+                            REALM_TIER_SPECS[realm_result.target_realm].label,
+                            self._format_delta(realm_result.deltas[selected_metric]),
+                        ),
+                        ("최적 분배", danjeon_text),
+                    ]
+                )
+
+            # 스크롤 +1 효율 행 구성
+            scroll_rows: list[tuple[str, str]] = []
+            scroll_results: list[ScrollUpgradeEvaluation] = (
+                evaluate_scroll_upgrade_deltas(
+                    server_spec=app_state.macro.current_server,
+                    preset=self._get_preset(),
+                    skills_info=self._get_preset().usage_settings,
+                    delay_ms=app_state.macro.current_delay,
+                    overall_stats=overall_stats,
+                )
+            )
+            for scroll_result in scroll_results:
+                scroll_rows.append(
+                    (
+                        f"{scroll_result.scroll_name} Lv.{scroll_result.next_level}",
+                        self._format_delta(scroll_result.deltas[selected_metric]),
+                    )
+                )
+
+            # 선택 전투력 기준 내림차순 정렬
+            scroll_rows.sort(
+                key=lambda row: float(row[1].replace(",", "")),
+                reverse=True,
+            )
+            self.scroll_efficiency_list.set_rows(scroll_rows)
+
+        def _refresh_custom_delta_output(self) -> None:
+            """사용자 지정 스탯 변화량 출력 갱신"""
+
+            # 기준 입력 또는 변화량 입력이 유효하지 않으면 오류 출력
+            stats_valid: bool
+            overall_stats: dict[str, float]
+            stats_valid, overall_stats = self._read_overall_stats()
+
+            level_valid: bool
+            level_valid, _ = self._read_level()
+
+            custom_valid: bool
+            custom_changes: dict[StatKey, float]
+            custom_valid, custom_changes = self._read_custom_stat_changes()
+
+            scroll_valid: bool = self._read_scroll_levels()
+
+            if not (stats_valid and level_valid and custom_valid and scroll_valid):
+                self.custom_delta_result_list.set_rows([("상태", "오류")])
                 return
 
-            # 최대 범위가 존재한다면 비교 후 통과
-            if stat <= config.specs.STATS[stat_name].max:
-                self.update_efficiency()
+            # 현재 기준 컨텍스트와 변화량 계산 결과 구성
+            context: CalculatorEvaluationContext = build_calculator_context(
+                server_spec=app_state.macro.current_server,
+                preset=self._get_preset(),
+                skills_info=self._get_preset().usage_settings,
+                delay_ms=app_state.macro.current_delay,
+                overall_stats=overall_stats,
+            )
 
-                return
+            deltas: dict[PowerMetric, float] = evaluate_arbitrary_stat_delta(
+                context=context,
+                overall_stats=overall_stats,
+                stat_changes=custom_changes,
+            )
+            rows: list[tuple[str, str]] = []
+            for power_metric in DISPLAY_POWER_METRICS:
+                rows.append(
+                    (
+                        POWER_METRIC_LABELS[power_metric],
+                        self._format_delta(deltas[power_metric]),
+                    )
+                )
+            self.custom_delta_result_list.set_rows(rows)
 
-            # 최대 범위보다 크면 오류
-            self.power_labels.set_texts("오류")
+        def on_base_input_changed(self) -> None:
+            """기준 입력 변경 시 전체 효율 출력 갱신"""
 
-            return
+            # 기준 입력 변화 시 기준 출력과 사용자 지정 출력 동시 갱신
+            self._refresh_base_outputs()
+            self._refresh_custom_delta_output()
+
+        def on_custom_delta_changed(self) -> None:
+            """사용자 지정 변화량 변경 시 결과 갱신"""
+
+            self._refresh_custom_delta_output()
 
     class Additional(QFrame):
         def __init__(self, parent: QFrame) -> None:
