@@ -20,8 +20,12 @@ from app.scripts.calculator_models import (
     StatKey,
 )
 from app.scripts.macro_models import EquippedSkillRef, LinkUseType
-from app.scripts.registry.skill_registry import BuffEffect, DamageEffect, LevelEffect
-from app.scripts.registry.skill_registry import get_builtin_skill_id
+from app.scripts.registry.skill_registry import (
+    BuffEffect,
+    DamageEffect,
+    LevelEffect,
+    get_builtin_skill_id,
+)
 from app.scripts.run_macro import get_prepared_link_skill_indices
 
 if TYPE_CHECKING:
@@ -1084,7 +1088,9 @@ def _build_skill_sequence(
     """우선순위 기준 스킬 순서 구성"""
 
     # 현재 배치된 스킬만 우선순위 후보로 제한
-    placed_refs: list[EquippedSkillRef] = preset.skills.get_placed_skill_refs(server_spec)
+    placed_refs: list[EquippedSkillRef] = preset.skills.get_placed_skill_refs(
+        server_spec
+    )
     skill_sequence: list[EquippedSkillRef] = []
 
     # 우선순위 숫자 기준 1차 정렬 구성
@@ -1191,7 +1197,9 @@ def build_skill_use_sequence(
     """입력 상태 기준 60초 스킬 사용 순서 구성"""
 
     # 실제 배치된 스킬이 없으면 빈 사용 기록 반환
-    placed_refs: list[EquippedSkillRef] = preset.skills.get_placed_skill_refs(server_spec)
+    placed_refs: list[EquippedSkillRef] = preset.skills.get_placed_skill_refs(
+        server_spec
+    )
     if not placed_refs:
         return ()
 
@@ -1222,7 +1230,9 @@ def build_skill_use_sequence(
     }
     skill_cooltimes_ms: dict[EquippedSkillRef, int] = {
         skill_ref: int(
-            server_spec.skill_registry.get(preset.skills.get_placed_skill_id(skill_ref)).cooltime
+            server_spec.skill_registry.get(
+                preset.skills.get_placed_skill_id(skill_ref)
+            ).cooltime
             * (100 - cooltime_reduction)
             * 10
         )
@@ -2456,6 +2466,15 @@ def optimize_current_selection(
     title_candidates: list[str | None] = _build_title_candidates(calculator_input)
     talisman_candidates: list[list[str]] = _build_talisman_candidates(calculator_input)
 
+    # 기준 스킬속도 타임라인 재사용용 캐시 초기 상태 구성
+    baseline_skill_speed: float = float(
+        context.baseline_stats.values[StatKey.SKILL_SPEED_PERCENT]
+    )
+    baseline_speed_key: float = round(baseline_skill_speed, 2)
+    timeline_cache: dict[float, CalculatorTimeline] = {
+        baseline_speed_key: context.timeline
+    }
+
     # 선택 전투력 기준 최고 후보 탐색
     best_result: OptimizationResult | None = None
     best_metric_delta: float | None = None
@@ -2485,17 +2504,36 @@ def optimize_current_selection(
                             candidate_contribution,
                         )
                     )
-                    candidate_context: CalculatorEvaluationContext = (
-                        build_calculator_context(
+
+                    # 후보 최종 스탯 및 스킬속도 기준 타임라인 캐시 키 정규화
+                    optimized_resolved_stats: CalculatorResolvedStats = (
+                        resolve_calculator_stats(overall_stats=optimized_overall_stats)
+                    )
+                    candidate_skill_speed: float = float(
+                        optimized_resolved_stats.values[StatKey.SKILL_SPEED_PERCENT]
+                    )
+                    speed_key: float = round(candidate_skill_speed, 2)
+
+                    # 동일 스킬속도 구간 타임라인 재활용 및 최초 1회만 재계산
+                    cached_timeline: CalculatorTimeline | None = timeline_cache.get(
+                        speed_key
+                    )
+                    if cached_timeline is None:
+                        cached_timeline = build_calculator_timeline(
                             server_spec=server_spec,
                             preset=preset,
                             skills_info=skills_info,
                             delay_ms=delay_ms,
-                            overall_stats=optimized_overall_stats,
+                            cooltime_reduction=candidate_skill_speed,
                         )
-                    )
+                        timeline_cache[speed_key] = cached_timeline
+
+                    # 캐시된 타임라인과 후보 스탯 기준 전투력 재평가
                     optimized_summary: CalculatorPowerSummary = (
-                        candidate_context.baseline_summary
+                        evaluate_calculator_power(
+                            timeline=cached_timeline,
+                            resolved_stats=optimized_resolved_stats,
+                        )
                     )
                     deltas: dict[PowerMetric, float] = calculate_power_deltas(
                         context.baseline_summary,
