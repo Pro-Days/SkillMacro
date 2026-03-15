@@ -1,10 +1,18 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from app.scripts.calculator_models import (
+    BUILTIN_TALISMAN_TEMPLATES,
     REALM_TIER_SPECS,
+    TALISMAN_GRADE_OFFSETS,
+    CalculatorPresetInput,
+    DanjeonState,
+    DistributionState,
+    EquippedOptimizationState,
+    OwnedTalisman,
+    OwnedTitle,
     PowerMetric,
     RealmTier,
     RealmTierSpec,
@@ -137,12 +145,17 @@ class CalculatorResolvedStats:
     values: dict[StatKey, float]
     base_attack_source: float
     base_hp_source: float
+    base_attack_percent_source: float
     base_crit_rate_source: float
     base_crit_damage_source: float
     base_drop_rate_source: float
     base_exp_source: float
     base_dodge_source: float
     base_potion_heal_source: float
+    raw_strength: float
+    raw_dexterity: float
+    raw_vitality: float
+    raw_luck: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -192,6 +205,42 @@ class ScrollUpgradeEvaluation:
     scroll_name: str
     next_level: int
     deltas: dict[PowerMetric, float]
+
+
+@dataclass(frozen=True, slots=True)
+class CalculatorContribution:
+    """현재 선택 기여 합산 결과"""
+
+    raw_strength: float = 0.0
+    raw_dexterity: float = 0.0
+    raw_vitality: float = 0.0
+    raw_luck: float = 0.0
+    base_attack_source: float = 0.0
+    base_hp_source: float = 0.0
+    base_attack_percent_source: float = 0.0
+    base_crit_rate_source: float = 0.0
+    base_crit_damage_source: float = 0.0
+    base_drop_rate_source: float = 0.0
+    base_exp_source: float = 0.0
+    base_dodge_source: float = 0.0
+    base_potion_heal_source: float = 0.0
+    direct_values: dict[StatKey, float] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class CalculatorBaseState:
+    """기준 베이스 스탯 분리 결과"""
+
+    base_overall_stats: dict[str, float]
+    contribution: CalculatorContribution
+
+
+@dataclass(frozen=True, slots=True)
+class CalculatorBaseValidation:
+    """기준 베이스 스탯 검증 결과"""
+
+    is_valid: bool
+    message: str
 
 
 def _copy_stats(stats: dict[StatKey, float]) -> dict[StatKey, float]:
@@ -302,6 +351,9 @@ def resolve_calculator_stats(
     base_hp_source: float = float(
         round(raw_hp_before_secondary - (final_vitality * 5.0))
     )
+    base_attack_percent_source: float = float(changed_stats[StatKey.ATTACK_PERCENT]) - (
+        final_dexterity * 0.3
+    )
     base_crit_rate_source: float = float(changed_stats[StatKey.CRIT_RATE_PERCENT]) - (
         final_dexterity * 0.05
     )
@@ -347,9 +399,9 @@ def resolve_calculator_stats(
     resolved_values[StatKey.POTION_HEAL_PERCENT] = base_potion_heal_source + (
         final_vitality * 0.5
     )
-    resolved_values[StatKey.ATTACK_PERCENT] = float(
-        changed_stats[StatKey.ATTACK_PERCENT]
-    ) + (final_dexterity * 0.3)
+    resolved_values[StatKey.ATTACK_PERCENT] = base_attack_percent_source + (
+        final_dexterity * 0.3
+    )
     resolved_values[StatKey.SKILL_SPEED_PERCENT] = float(
         changed_stats[StatKey.SKILL_SPEED_PERCENT]
     )
@@ -358,12 +410,17 @@ def resolve_calculator_stats(
         values=resolved_values,
         base_attack_source=base_attack_source,
         base_hp_source=base_hp_source,
+        base_attack_percent_source=base_attack_percent_source,
         base_crit_rate_source=base_crit_rate_source,
         base_crit_damage_source=base_crit_damage_source,
         base_drop_rate_source=base_drop_rate_source,
         base_exp_source=base_exp_source,
         base_dodge_source=base_dodge_source,
         base_potion_heal_source=base_potion_heal_source,
+        raw_strength=raw_strength,
+        raw_dexterity=raw_dexterity,
+        raw_vitality=raw_vitality,
+        raw_luck=raw_luck,
     )
 
 
@@ -382,6 +439,488 @@ def calculate_power_deltas(
         )
 
     return deltas
+
+
+def _add_direct_contribution(
+    direct_values: dict[StatKey, float],
+    stat_key: StatKey,
+    value: float,
+) -> None:
+    """직접 반영 스탯 기여 누적"""
+
+    # 직접 누적 가능한 표시 스탯 합산
+    current_value: float = direct_values.get(stat_key, 0.0)
+    direct_values[stat_key] = current_value + value
+
+
+def _add_stat_contribution(
+    contribution: CalculatorContribution,
+    stat_key: StatKey,
+    value: float,
+) -> CalculatorContribution:
+    """단일 스탯 기여를 기여 모델에 반영"""
+
+    # 직접 누적 가능한 표시 스탯 사본 구성
+    next_direct_values: dict[StatKey, float] = {
+        key: float(current_value)
+        for key, current_value in contribution.direct_values.items()
+    }
+
+    if stat_key == StatKey.STR:
+        return CalculatorContribution(
+            raw_strength=contribution.raw_strength + value,
+            raw_dexterity=contribution.raw_dexterity,
+            raw_vitality=contribution.raw_vitality,
+            raw_luck=contribution.raw_luck,
+            base_attack_source=contribution.base_attack_source,
+            base_hp_source=contribution.base_hp_source,
+            base_attack_percent_source=contribution.base_attack_percent_source,
+            base_crit_rate_source=contribution.base_crit_rate_source,
+            base_crit_damage_source=contribution.base_crit_damage_source,
+            base_drop_rate_source=contribution.base_drop_rate_source,
+            base_exp_source=contribution.base_exp_source,
+            base_dodge_source=contribution.base_dodge_source,
+            base_potion_heal_source=contribution.base_potion_heal_source,
+            direct_values=next_direct_values,
+        )
+
+    if stat_key == StatKey.DEXTERITY:
+        return CalculatorContribution(
+            raw_strength=contribution.raw_strength,
+            raw_dexterity=contribution.raw_dexterity + value,
+            raw_vitality=contribution.raw_vitality,
+            raw_luck=contribution.raw_luck,
+            base_attack_source=contribution.base_attack_source,
+            base_hp_source=contribution.base_hp_source,
+            base_attack_percent_source=contribution.base_attack_percent_source,
+            base_crit_rate_source=contribution.base_crit_rate_source,
+            base_crit_damage_source=contribution.base_crit_damage_source,
+            base_drop_rate_source=contribution.base_drop_rate_source,
+            base_exp_source=contribution.base_exp_source,
+            base_dodge_source=contribution.base_dodge_source,
+            base_potion_heal_source=contribution.base_potion_heal_source,
+            direct_values=next_direct_values,
+        )
+
+    if stat_key == StatKey.VITALITY:
+        return CalculatorContribution(
+            raw_strength=contribution.raw_strength,
+            raw_dexterity=contribution.raw_dexterity,
+            raw_vitality=contribution.raw_vitality + value,
+            raw_luck=contribution.raw_luck,
+            base_attack_source=contribution.base_attack_source,
+            base_hp_source=contribution.base_hp_source,
+            base_attack_percent_source=contribution.base_attack_percent_source,
+            base_crit_rate_source=contribution.base_crit_rate_source,
+            base_crit_damage_source=contribution.base_crit_damage_source,
+            base_drop_rate_source=contribution.base_drop_rate_source,
+            base_exp_source=contribution.base_exp_source,
+            base_dodge_source=contribution.base_dodge_source,
+            base_potion_heal_source=contribution.base_potion_heal_source,
+            direct_values=next_direct_values,
+        )
+
+    if stat_key == StatKey.LUCK:
+        return CalculatorContribution(
+            raw_strength=contribution.raw_strength,
+            raw_dexterity=contribution.raw_dexterity,
+            raw_vitality=contribution.raw_vitality,
+            raw_luck=contribution.raw_luck + value,
+            base_attack_source=contribution.base_attack_source,
+            base_hp_source=contribution.base_hp_source,
+            base_attack_percent_source=contribution.base_attack_percent_source,
+            base_crit_rate_source=contribution.base_crit_rate_source,
+            base_crit_damage_source=contribution.base_crit_damage_source,
+            base_drop_rate_source=contribution.base_drop_rate_source,
+            base_exp_source=contribution.base_exp_source,
+            base_dodge_source=contribution.base_dodge_source,
+            base_potion_heal_source=contribution.base_potion_heal_source,
+            direct_values=next_direct_values,
+        )
+
+    if stat_key == StatKey.ATTACK:
+        return CalculatorContribution(
+            raw_strength=contribution.raw_strength,
+            raw_dexterity=contribution.raw_dexterity,
+            raw_vitality=contribution.raw_vitality,
+            raw_luck=contribution.raw_luck,
+            base_attack_source=contribution.base_attack_source + value,
+            base_hp_source=contribution.base_hp_source,
+            base_attack_percent_source=contribution.base_attack_percent_source,
+            base_crit_rate_source=contribution.base_crit_rate_source,
+            base_crit_damage_source=contribution.base_crit_damage_source,
+            base_drop_rate_source=contribution.base_drop_rate_source,
+            base_exp_source=contribution.base_exp_source,
+            base_dodge_source=contribution.base_dodge_source,
+            base_potion_heal_source=contribution.base_potion_heal_source,
+            direct_values=next_direct_values,
+        )
+
+    if stat_key == StatKey.HP:
+        return CalculatorContribution(
+            raw_strength=contribution.raw_strength,
+            raw_dexterity=contribution.raw_dexterity,
+            raw_vitality=contribution.raw_vitality,
+            raw_luck=contribution.raw_luck,
+            base_attack_source=contribution.base_attack_source,
+            base_hp_source=contribution.base_hp_source + value,
+            base_attack_percent_source=contribution.base_attack_percent_source,
+            base_crit_rate_source=contribution.base_crit_rate_source,
+            base_crit_damage_source=contribution.base_crit_damage_source,
+            base_drop_rate_source=contribution.base_drop_rate_source,
+            base_exp_source=contribution.base_exp_source,
+            base_dodge_source=contribution.base_dodge_source,
+            base_potion_heal_source=contribution.base_potion_heal_source,
+            direct_values=next_direct_values,
+        )
+
+    if stat_key == StatKey.ATTACK_PERCENT:
+        return CalculatorContribution(
+            raw_strength=contribution.raw_strength,
+            raw_dexterity=contribution.raw_dexterity,
+            raw_vitality=contribution.raw_vitality,
+            raw_luck=contribution.raw_luck,
+            base_attack_source=contribution.base_attack_source,
+            base_hp_source=contribution.base_hp_source,
+            base_attack_percent_source=contribution.base_attack_percent_source + value,
+            base_crit_rate_source=contribution.base_crit_rate_source,
+            base_crit_damage_source=contribution.base_crit_damage_source,
+            base_drop_rate_source=contribution.base_drop_rate_source,
+            base_exp_source=contribution.base_exp_source,
+            base_dodge_source=contribution.base_dodge_source,
+            base_potion_heal_source=contribution.base_potion_heal_source,
+            direct_values=next_direct_values,
+        )
+
+    if stat_key == StatKey.CRIT_RATE_PERCENT:
+        return CalculatorContribution(
+            raw_strength=contribution.raw_strength,
+            raw_dexterity=contribution.raw_dexterity,
+            raw_vitality=contribution.raw_vitality,
+            raw_luck=contribution.raw_luck,
+            base_attack_source=contribution.base_attack_source,
+            base_hp_source=contribution.base_hp_source,
+            base_attack_percent_source=contribution.base_attack_percent_source,
+            base_crit_rate_source=contribution.base_crit_rate_source + value,
+            base_crit_damage_source=contribution.base_crit_damage_source,
+            base_drop_rate_source=contribution.base_drop_rate_source,
+            base_exp_source=contribution.base_exp_source,
+            base_dodge_source=contribution.base_dodge_source,
+            base_potion_heal_source=contribution.base_potion_heal_source,
+            direct_values=next_direct_values,
+        )
+
+    if stat_key == StatKey.CRIT_DAMAGE_PERCENT:
+        return CalculatorContribution(
+            raw_strength=contribution.raw_strength,
+            raw_dexterity=contribution.raw_dexterity,
+            raw_vitality=contribution.raw_vitality,
+            raw_luck=contribution.raw_luck,
+            base_attack_source=contribution.base_attack_source,
+            base_hp_source=contribution.base_hp_source,
+            base_attack_percent_source=contribution.base_attack_percent_source,
+            base_crit_rate_source=contribution.base_crit_rate_source,
+            base_crit_damage_source=contribution.base_crit_damage_source + value,
+            base_drop_rate_source=contribution.base_drop_rate_source,
+            base_exp_source=contribution.base_exp_source,
+            base_dodge_source=contribution.base_dodge_source,
+            base_potion_heal_source=contribution.base_potion_heal_source,
+            direct_values=next_direct_values,
+        )
+
+    if stat_key == StatKey.DROP_RATE_PERCENT:
+        return CalculatorContribution(
+            raw_strength=contribution.raw_strength,
+            raw_dexterity=contribution.raw_dexterity,
+            raw_vitality=contribution.raw_vitality,
+            raw_luck=contribution.raw_luck,
+            base_attack_source=contribution.base_attack_source,
+            base_hp_source=contribution.base_hp_source,
+            base_attack_percent_source=contribution.base_attack_percent_source,
+            base_crit_rate_source=contribution.base_crit_rate_source,
+            base_crit_damage_source=contribution.base_crit_damage_source,
+            base_drop_rate_source=contribution.base_drop_rate_source + value,
+            base_exp_source=contribution.base_exp_source,
+            base_dodge_source=contribution.base_dodge_source,
+            base_potion_heal_source=contribution.base_potion_heal_source,
+            direct_values=next_direct_values,
+        )
+
+    if stat_key == StatKey.EXP_PERCENT:
+        return CalculatorContribution(
+            raw_strength=contribution.raw_strength,
+            raw_dexterity=contribution.raw_dexterity,
+            raw_vitality=contribution.raw_vitality,
+            raw_luck=contribution.raw_luck,
+            base_attack_source=contribution.base_attack_source,
+            base_hp_source=contribution.base_hp_source,
+            base_attack_percent_source=contribution.base_attack_percent_source,
+            base_crit_rate_source=contribution.base_crit_rate_source,
+            base_crit_damage_source=contribution.base_crit_damage_source,
+            base_drop_rate_source=contribution.base_drop_rate_source,
+            base_exp_source=contribution.base_exp_source + value,
+            base_dodge_source=contribution.base_dodge_source,
+            base_potion_heal_source=contribution.base_potion_heal_source,
+            direct_values=next_direct_values,
+        )
+
+    if stat_key == StatKey.DODGE_PERCENT:
+        return CalculatorContribution(
+            raw_strength=contribution.raw_strength,
+            raw_dexterity=contribution.raw_dexterity,
+            raw_vitality=contribution.raw_vitality,
+            raw_luck=contribution.raw_luck,
+            base_attack_source=contribution.base_attack_source,
+            base_hp_source=contribution.base_hp_source,
+            base_attack_percent_source=contribution.base_attack_percent_source,
+            base_crit_rate_source=contribution.base_crit_rate_source,
+            base_crit_damage_source=contribution.base_crit_damage_source,
+            base_drop_rate_source=contribution.base_drop_rate_source,
+            base_exp_source=contribution.base_exp_source,
+            base_dodge_source=contribution.base_dodge_source + value,
+            base_potion_heal_source=contribution.base_potion_heal_source,
+            direct_values=next_direct_values,
+        )
+
+    if stat_key == StatKey.POTION_HEAL_PERCENT:
+        return CalculatorContribution(
+            raw_strength=contribution.raw_strength,
+            raw_dexterity=contribution.raw_dexterity,
+            raw_vitality=contribution.raw_vitality,
+            raw_luck=contribution.raw_luck,
+            base_attack_source=contribution.base_attack_source,
+            base_hp_source=contribution.base_hp_source,
+            base_attack_percent_source=contribution.base_attack_percent_source,
+            base_crit_rate_source=contribution.base_crit_rate_source,
+            base_crit_damage_source=contribution.base_crit_damage_source,
+            base_drop_rate_source=contribution.base_drop_rate_source,
+            base_exp_source=contribution.base_exp_source,
+            base_dodge_source=contribution.base_dodge_source,
+            base_potion_heal_source=contribution.base_potion_heal_source + value,
+            direct_values=next_direct_values,
+        )
+
+    _add_direct_contribution(next_direct_values, stat_key, value)
+    return CalculatorContribution(
+        raw_strength=contribution.raw_strength,
+        raw_dexterity=contribution.raw_dexterity,
+        raw_vitality=contribution.raw_vitality,
+        raw_luck=contribution.raw_luck,
+        base_attack_source=contribution.base_attack_source,
+        base_hp_source=contribution.base_hp_source,
+        base_attack_percent_source=contribution.base_attack_percent_source,
+        base_crit_rate_source=contribution.base_crit_rate_source,
+        base_crit_damage_source=contribution.base_crit_damage_source,
+        base_drop_rate_source=contribution.base_drop_rate_source,
+        base_exp_source=contribution.base_exp_source,
+        base_dodge_source=contribution.base_dodge_source,
+        base_potion_heal_source=contribution.base_potion_heal_source,
+        direct_values=next_direct_values,
+    )
+
+
+def build_distribution_contribution(
+    distribution: DistributionState,
+) -> CalculatorContribution:
+    """현재 스탯 분배 기여 계산"""
+
+    contribution: CalculatorContribution = CalculatorContribution()
+    contribution = _add_stat_contribution(
+        contribution,
+        StatKey.STR,
+        float(distribution.strength),
+    )
+    contribution = _add_stat_contribution(
+        contribution,
+        StatKey.DEXTERITY,
+        float(distribution.dexterity),
+    )
+    contribution = _add_stat_contribution(
+        contribution,
+        StatKey.VITALITY,
+        float(distribution.vitality),
+    )
+    contribution = _add_stat_contribution(
+        contribution,
+        StatKey.LUCK,
+        float(distribution.luck),
+    )
+    return contribution
+
+
+def build_danjeon_contribution(danjeon: DanjeonState) -> CalculatorContribution:
+    """현재 단전 기여 계산"""
+
+    contribution: CalculatorContribution = CalculatorContribution()
+    contribution = _add_stat_contribution(
+        contribution,
+        StatKey.HP_PERCENT,
+        float(danjeon.upper * 3),
+    )
+    contribution = _add_stat_contribution(
+        contribution,
+        StatKey.RESIST_PERCENT,
+        float(danjeon.upper),
+    )
+    contribution = _add_stat_contribution(
+        contribution,
+        StatKey.ATTACK_PERCENT,
+        float(danjeon.middle),
+    )
+    contribution = _add_stat_contribution(
+        contribution,
+        StatKey.DROP_RATE_PERCENT,
+        float(danjeon.lower * 1.5),
+    )
+    contribution = _add_stat_contribution(
+        contribution,
+        StatKey.EXP_PERCENT,
+        float(danjeon.lower * 0.5),
+    )
+    return contribution
+
+
+def build_title_contribution(
+    owned_titles: list[OwnedTitle],
+    equipped_title_id: str | None,
+) -> CalculatorContribution:
+    """현재 장착 칭호 기여 계산"""
+
+    if equipped_title_id is None:
+        return CalculatorContribution()
+
+    equipped_title: OwnedTitle | None = None
+    for owned_title in owned_titles:
+        if owned_title.title_id == equipped_title_id:
+            equipped_title = owned_title
+            break
+
+    if equipped_title is None:
+        return CalculatorContribution()
+
+    contribution: CalculatorContribution = CalculatorContribution()
+    for stat_key_text, value in equipped_title.stats.items():
+        contribution = _add_stat_contribution(
+            contribution,
+            StatKey(stat_key_text),
+            float(value),
+        )
+    return contribution
+
+
+def _find_talisman_template(
+    owned_talisman: OwnedTalisman,
+) -> tuple[StatKey, int] | None:
+    """보유 부적의 스탯 대상과 등급 보정값 조회"""
+
+    for template in BUILTIN_TALISMAN_TEMPLATES:
+        if template.template_id != owned_talisman.template_id:
+            continue
+
+        grade_offset: int = TALISMAN_GRADE_OFFSETS[template.grade]
+        return template.stat_key, grade_offset
+
+    return None
+
+
+def build_talisman_contribution(
+    owned_talismans: list[OwnedTalisman],
+    equipped_state: EquippedOptimizationState,
+) -> CalculatorContribution:
+    """현재 장착 부적 기여 계산"""
+
+    contribution: CalculatorContribution = CalculatorContribution()
+    owned_map: dict[str, OwnedTalisman] = {
+        owned_talisman.owned_id: owned_talisman for owned_talisman in owned_talismans
+    }
+    for equipped_id in equipped_state.equipped_talisman_ids:
+        if equipped_id not in owned_map:
+            continue
+
+        owned_talisman: OwnedTalisman = owned_map[equipped_id]
+        talisman_spec = _find_talisman_template(owned_talisman)
+        if talisman_spec is None:
+            continue
+
+        stat_key: StatKey
+        grade_offset: int
+        stat_key, grade_offset = talisman_spec
+        stat_value: float = float((grade_offset * 10) + owned_talisman.level)
+        contribution = _add_stat_contribution(contribution, stat_key, stat_value)
+
+    return contribution
+
+
+def merge_contributions(
+    contributions: tuple[CalculatorContribution, ...],
+) -> CalculatorContribution:
+    """복수 기여 모델 병합"""
+
+    merged: CalculatorContribution = CalculatorContribution()
+    for contribution in contributions:
+        for stat_key, value in contribution.direct_values.items():
+            merged = _add_stat_contribution(merged, stat_key, value)
+
+        merged = CalculatorContribution(
+            raw_strength=merged.raw_strength + contribution.raw_strength,
+            raw_dexterity=merged.raw_dexterity + contribution.raw_dexterity,
+            raw_vitality=merged.raw_vitality + contribution.raw_vitality,
+            raw_luck=merged.raw_luck + contribution.raw_luck,
+            base_attack_source=merged.base_attack_source
+            + contribution.base_attack_source,
+            base_hp_source=merged.base_hp_source + contribution.base_hp_source,
+            base_attack_percent_source=(
+                merged.base_attack_percent_source
+                + contribution.base_attack_percent_source
+            ),
+            base_crit_rate_source=(
+                merged.base_crit_rate_source + contribution.base_crit_rate_source
+            ),
+            base_crit_damage_source=(
+                merged.base_crit_damage_source + contribution.base_crit_damage_source
+            ),
+            base_drop_rate_source=(
+                merged.base_drop_rate_source + contribution.base_drop_rate_source
+            ),
+            base_exp_source=merged.base_exp_source + contribution.base_exp_source,
+            base_dodge_source=merged.base_dodge_source + contribution.base_dodge_source,
+            base_potion_heal_source=(
+                merged.base_potion_heal_source + contribution.base_potion_heal_source
+            ),
+            direct_values=merged.direct_values,
+        )
+
+    return merged
+
+
+def build_current_selected_contribution(
+    calculator_input: CalculatorPresetInput,
+) -> CalculatorContribution:
+    """현재 선택 상태 전체 기여 계산"""
+
+    # 현재 스탯 분배/단전/칭호/부적 기여를 하나의 모델로 병합
+    distribution_contribution: CalculatorContribution = build_distribution_contribution(
+        calculator_input.distribution
+    )
+    danjeon_contribution: CalculatorContribution = build_danjeon_contribution(
+        calculator_input.danjeon
+    )
+    title_contribution: CalculatorContribution = build_title_contribution(
+        calculator_input.owned_titles,
+        calculator_input.equipped.equipped_title_id,
+    )
+    talisman_contribution: CalculatorContribution = build_talisman_contribution(
+        calculator_input.owned_talismans,
+        calculator_input.equipped,
+    )
+    return merge_contributions(
+        (
+            distribution_contribution,
+            danjeon_contribution,
+            title_contribution,
+            talisman_contribution,
+        )
+    )
 
 
 def _merge_buff_windows(
@@ -935,3 +1474,253 @@ def evaluate_scroll_upgrade_deltas(
         )
 
     return evaluations
+
+
+def _get_direct_contribution_value(
+    contribution: CalculatorContribution,
+    stat_key: StatKey,
+) -> float:
+    """직접 반영 스탯 기여 조회"""
+
+    if stat_key not in contribution.direct_values:
+        return 0.0
+
+    return float(contribution.direct_values[stat_key])
+
+
+def _build_base_overall_stats_from_components(
+    raw_strength: float,
+    raw_dexterity: float,
+    raw_vitality: float,
+    raw_luck: float,
+    strength_percent: float,
+    dexterity_percent: float,
+    vitality_percent: float,
+    luck_percent: float,
+    base_attack_source: float,
+    base_hp_source: float,
+    base_attack_percent_source: float,
+    base_crit_rate_source: float,
+    base_crit_damage_source: float,
+    base_drop_rate_source: float,
+    base_exp_source: float,
+    base_dodge_source: float,
+    base_potion_heal_source: float,
+    direct_values: dict[StatKey, float],
+) -> dict[str, float]:
+    """내부 원시 구성요소로 기준 전체 스탯 재구성"""
+
+    # 원시값과 퍼센트값으로 1차 스탯 재구성
+    final_strength: float = raw_strength * (1.0 + (strength_percent * 0.01))
+    final_dexterity: float = raw_dexterity * (1.0 + (dexterity_percent * 0.01))
+    final_vitality: float = raw_vitality * (1.0 + (vitality_percent * 0.01))
+    final_luck: float = raw_luck * (1.0 + (luck_percent * 0.01))
+
+    # 2차 효과 포함 최종 스탯 재구성
+    attack_percent: float = base_attack_percent_source + (final_dexterity * 0.3)
+    crit_rate: float = base_crit_rate_source + (final_dexterity * 0.05)
+    crit_damage: float = base_crit_damage_source + (final_strength * 0.1)
+    drop_rate: float = base_drop_rate_source + (final_luck * 0.2)
+    exp_rate: float = base_exp_source + (final_luck * 0.2)
+    dodge_rate: float = base_dodge_source + (final_vitality * 0.03)
+    potion_heal: float = base_potion_heal_source + (final_vitality * 0.5)
+    attack: float = (base_attack_source + final_strength) * (
+        1.0 + (attack_percent * 0.01)
+    )
+    hp: float = (base_hp_source + (final_vitality * 5.0)) * (
+        1.0 + (direct_values[StatKey.HP_PERCENT] * 0.01)
+    )
+
+    # 전체 스탯 맵 문자열 키로 재구성
+    base_overall_stats: dict[str, float] = {
+        StatKey.ATTACK.value: attack,
+        StatKey.ATTACK_PERCENT.value: attack_percent,
+        StatKey.HP.value: hp,
+        StatKey.HP_PERCENT.value: direct_values[StatKey.HP_PERCENT],
+        StatKey.STR.value: final_strength,
+        StatKey.STR_PERCENT.value: strength_percent,
+        StatKey.DEXTERITY.value: final_dexterity,
+        StatKey.DEXTERITY_PERCENT.value: dexterity_percent,
+        StatKey.VITALITY.value: final_vitality,
+        StatKey.VITALITY_PERCENT.value: vitality_percent,
+        StatKey.LUCK.value: final_luck,
+        StatKey.LUCK_PERCENT.value: luck_percent,
+        StatKey.SKILL_DAMAGE_PERCENT.value: direct_values[StatKey.SKILL_DAMAGE_PERCENT],
+        StatKey.FINAL_ATTACK_PERCENT.value: direct_values[StatKey.FINAL_ATTACK_PERCENT],
+        StatKey.CRIT_RATE_PERCENT.value: crit_rate,
+        StatKey.CRIT_DAMAGE_PERCENT.value: crit_damage,
+        StatKey.EXP_PERCENT.value: exp_rate,
+        StatKey.BOSS_ATTACK_PERCENT.value: direct_values[StatKey.BOSS_ATTACK_PERCENT],
+        StatKey.DROP_RATE_PERCENT.value: drop_rate,
+        StatKey.DODGE_PERCENT.value: dodge_rate,
+        StatKey.POTION_HEAL_PERCENT.value: potion_heal,
+        StatKey.RESIST_PERCENT.value: direct_values[StatKey.RESIST_PERCENT],
+        StatKey.SKILL_SPEED_PERCENT.value: direct_values[StatKey.SKILL_SPEED_PERCENT],
+    }
+
+    return base_overall_stats
+
+
+def build_base_state(
+    overall_stats: dict[str, float],
+    calculator_input: CalculatorPresetInput,
+) -> CalculatorBaseState:
+    """현재 선택 기여를 제거한 기준 베이스 스탯 계산"""
+
+    # 현재 전체 스탯을 내부 원시 구성요소로 해석
+    resolved_stats: CalculatorResolvedStats = resolve_calculator_stats(overall_stats)
+    contribution: CalculatorContribution = build_current_selected_contribution(
+        calculator_input
+    )
+
+    # 직접 반영 퍼센트 스탯 기여 제거 후 직접값 맵 구성
+    direct_values: dict[StatKey, float] = {
+        StatKey.HP_PERCENT: float(resolved_stats.values[StatKey.HP_PERCENT])
+        - _get_direct_contribution_value(contribution, StatKey.HP_PERCENT),
+        StatKey.STR_PERCENT: float(resolved_stats.values[StatKey.STR_PERCENT])
+        - _get_direct_contribution_value(contribution, StatKey.STR_PERCENT),
+        StatKey.DEXTERITY_PERCENT: float(
+            resolved_stats.values[StatKey.DEXTERITY_PERCENT]
+        )
+        - _get_direct_contribution_value(contribution, StatKey.DEXTERITY_PERCENT),
+        StatKey.VITALITY_PERCENT: float(resolved_stats.values[StatKey.VITALITY_PERCENT])
+        - _get_direct_contribution_value(contribution, StatKey.VITALITY_PERCENT),
+        StatKey.LUCK_PERCENT: float(resolved_stats.values[StatKey.LUCK_PERCENT])
+        - _get_direct_contribution_value(contribution, StatKey.LUCK_PERCENT),
+        StatKey.SKILL_DAMAGE_PERCENT: float(
+            resolved_stats.values[StatKey.SKILL_DAMAGE_PERCENT]
+        )
+        - _get_direct_contribution_value(contribution, StatKey.SKILL_DAMAGE_PERCENT),
+        StatKey.FINAL_ATTACK_PERCENT: float(
+            resolved_stats.values[StatKey.FINAL_ATTACK_PERCENT]
+        )
+        - _get_direct_contribution_value(contribution, StatKey.FINAL_ATTACK_PERCENT),
+        StatKey.BOSS_ATTACK_PERCENT: float(
+            resolved_stats.values[StatKey.BOSS_ATTACK_PERCENT]
+        )
+        - _get_direct_contribution_value(contribution, StatKey.BOSS_ATTACK_PERCENT),
+        StatKey.RESIST_PERCENT: float(resolved_stats.values[StatKey.RESIST_PERCENT])
+        - _get_direct_contribution_value(contribution, StatKey.RESIST_PERCENT),
+        StatKey.SKILL_SPEED_PERCENT: float(
+            resolved_stats.values[StatKey.SKILL_SPEED_PERCENT]
+        )
+        - _get_direct_contribution_value(contribution, StatKey.SKILL_SPEED_PERCENT),
+    }
+
+    # 원시 베이스 구성요소에 현재 선택 기여 제거
+    raw_strength: float = resolved_stats.raw_strength - contribution.raw_strength
+    raw_dexterity: float = resolved_stats.raw_dexterity - contribution.raw_dexterity
+    raw_vitality: float = resolved_stats.raw_vitality - contribution.raw_vitality
+    raw_luck: float = resolved_stats.raw_luck - contribution.raw_luck
+    base_attack_source: float = (
+        resolved_stats.base_attack_source - contribution.base_attack_source
+    )
+    base_hp_source: float = resolved_stats.base_hp_source - contribution.base_hp_source
+    base_attack_percent_source: float = (
+        resolved_stats.base_attack_percent_source
+        - contribution.base_attack_percent_source
+    )
+    base_crit_rate_source: float = (
+        resolved_stats.base_crit_rate_source - contribution.base_crit_rate_source
+    )
+    base_crit_damage_source: float = (
+        resolved_stats.base_crit_damage_source - contribution.base_crit_damage_source
+    )
+    base_drop_rate_source: float = (
+        resolved_stats.base_drop_rate_source - contribution.base_drop_rate_source
+    )
+    base_exp_source: float = (
+        resolved_stats.base_exp_source - contribution.base_exp_source
+    )
+    base_dodge_source: float = (
+        resolved_stats.base_dodge_source - contribution.base_dodge_source
+    )
+    base_potion_heal_source: float = (
+        resolved_stats.base_potion_heal_source - contribution.base_potion_heal_source
+    )
+
+    base_overall_stats: dict[str, float] = _build_base_overall_stats_from_components(
+        raw_strength=raw_strength,
+        raw_dexterity=raw_dexterity,
+        raw_vitality=raw_vitality,
+        raw_luck=raw_luck,
+        strength_percent=direct_values[StatKey.STR_PERCENT],
+        dexterity_percent=direct_values[StatKey.DEXTERITY_PERCENT],
+        vitality_percent=direct_values[StatKey.VITALITY_PERCENT],
+        luck_percent=direct_values[StatKey.LUCK_PERCENT],
+        base_attack_source=base_attack_source,
+        base_hp_source=base_hp_source,
+        base_attack_percent_source=base_attack_percent_source,
+        base_crit_rate_source=base_crit_rate_source,
+        base_crit_damage_source=base_crit_damage_source,
+        base_drop_rate_source=base_drop_rate_source,
+        base_exp_source=base_exp_source,
+        base_dodge_source=base_dodge_source,
+        base_potion_heal_source=base_potion_heal_source,
+        direct_values=direct_values,
+    )
+
+    return CalculatorBaseState(
+        base_overall_stats=base_overall_stats,
+        contribution=contribution,
+    )
+
+
+def validate_base_state(
+    overall_stats: dict[str, float],
+    calculator_input: CalculatorPresetInput,
+) -> CalculatorBaseValidation:
+    """현재 선택 기여 제거 가능 여부 검증"""
+
+    # 포인트 제한 검증
+    distribution_sum: int = (
+        calculator_input.distribution.strength
+        + calculator_input.distribution.dexterity
+        + calculator_input.distribution.vitality
+        + calculator_input.distribution.luck
+    )
+    if distribution_sum > calculator_input.level * 5:
+        return CalculatorBaseValidation(
+            is_valid=False,
+            message="스탯 분배 포인트가 레벨 기준 최대치를 초과합니다.",
+        )
+
+    danjeon_sum: int = (
+        calculator_input.danjeon.upper
+        + calculator_input.danjeon.middle
+        + calculator_input.danjeon.lower
+    )
+    realm_cap: int = REALM_TIER_SPECS[calculator_input.realm_tier].danjeon_points
+    if danjeon_sum > realm_cap:
+        return CalculatorBaseValidation(
+            is_valid=False,
+            message="단전 포인트가 현재 경지 최대치를 초과합니다.",
+        )
+
+    # 기준 베이스 스탯 분리 후 음수 구성요소 검증
+    base_state: CalculatorBaseState = build_base_state(overall_stats, calculator_input)
+    resolved_base: CalculatorResolvedStats = resolve_calculator_stats(
+        base_state.base_overall_stats
+    )
+    invalid_values: tuple[float, ...] = (
+        resolved_base.raw_strength,
+        resolved_base.raw_dexterity,
+        resolved_base.raw_vitality,
+        resolved_base.raw_luck,
+        resolved_base.base_attack_source,
+        resolved_base.base_hp_source,
+        resolved_base.base_attack_percent_source,
+        resolved_base.base_crit_rate_source,
+        resolved_base.base_crit_damage_source,
+        resolved_base.base_drop_rate_source,
+        resolved_base.base_exp_source,
+        resolved_base.base_dodge_source,
+        resolved_base.base_potion_heal_source,
+    )
+    if any(value < 0.0 for value in invalid_values):
+        return CalculatorBaseValidation(
+            is_valid=False,
+            message="현재 선택 기여를 제거하면 음수 원시 스탯이 발생합니다.",
+        )
+
+    return CalculatorBaseValidation(is_valid=True, message="정상")

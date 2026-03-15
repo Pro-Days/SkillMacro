@@ -25,26 +25,37 @@ from app.scripts.app_state import app_state
 from app.scripts.calculator_engine import (
     DISPLAY_POWER_METRICS,
     POWER_METRIC_LABELS,
+    CalculatorBaseState,
+    CalculatorBaseValidation,
     CalculatorEvaluationContext,
     LevelUpEvaluation,
     RealmAdvanceEvaluation,
     ScrollUpgradeEvaluation,
+    build_base_state,
     build_calculator_context,
     evaluate_arbitrary_stat_delta,
     evaluate_level_up_delta,
     evaluate_next_realm_delta,
     evaluate_scroll_upgrade_deltas,
     evaluate_single_stat_delta,
+    validate_base_state,
 )
 from app.scripts.calculator_models import (
+    BUILTIN_TALISMAN_TEMPLATES,
     CALCULATOR_STAT_SPECS,
     OVERALL_STAT_GRID_ROWS,
     REALM_TIER_SPECS,
     CalculatorPresetInput,
     CalculatorStatSpec,
+    DanjeonState,
+    DistributionState,
+    EquippedOptimizationState,
+    OwnedTalisman,
+    OwnedTitle,
     PowerMetric,
     RealmTier,
     StatKey,
+    TalismanTemplate,
 )
 from app.scripts.config import config
 from app.scripts.custom_classes import (
@@ -790,6 +801,29 @@ class Sim3UI(QFrame):
                 self.on_base_input_changed,
             )
 
+            # 최적화 기준 입력 UI 구성
+            self.optimization_title: QLabel = QLabel("현재 선택 입력", self)
+            self.optimization_title.setFont(CustomFont(12))
+            self.distribution_inputs = self.DistributionInputs(
+                self,
+                self.on_optimization_input_changed,
+            )
+            self.danjeon_inputs = self.DanjeonInputs(
+                self,
+                self.on_optimization_input_changed,
+            )
+            self.title_inputs = self.TitleInputs(
+                self,
+                self.on_optimization_input_changed,
+            )
+            self.talisman_inputs = self.TalismanInputs(
+                self,
+                self.on_optimization_input_changed,
+            )
+            self.base_state_title: QLabel = QLabel("기준 상태 분리", self)
+            self.base_state_title.setFont(CustomFont(12))
+            self.base_state_list = self.ResultList(self)
+
             # 결과 표시 UI 구성
             self.current_power_title: QLabel = QLabel("현재 전투력", self)
             self.current_power_title.setFont(CustomFont(12))
@@ -838,6 +872,13 @@ class Sim3UI(QFrame):
             layout.addWidget(self.stats_inputs)
             layout.addWidget(self.scroll_title)
             layout.addWidget(self.skills)
+            layout.addWidget(self.optimization_title)
+            layout.addWidget(self.distribution_inputs)
+            layout.addWidget(self.danjeon_inputs)
+            layout.addWidget(self.title_inputs)
+            layout.addWidget(self.talisman_inputs)
+            layout.addWidget(self.base_state_title)
+            layout.addWidget(self.base_state_list)
             layout.addWidget(self.current_power_title)
             layout.addWidget(self.current_power_list)
             layout.addWidget(self.stat_efficiency_title)
@@ -861,6 +902,7 @@ class Sim3UI(QFrame):
             self.realm_combobox.setCurrentIndex(
                 self.realm_options.index(self._get_calculator_realm())
             )
+            self._load_optimization_inputs()
 
             # 초기 계산 결과 반영
             self.on_base_input_changed()
@@ -945,6 +987,637 @@ class Sim3UI(QFrame):
                     row_layout.addWidget(value_label)
                     self._layout.addWidget(row_widget)
 
+        class DistributionInputs(QFrame):
+            def __init__(
+                self,
+                parent: QWidget,
+                connected_function: Callable[[], None],
+            ) -> None:
+                super().__init__(parent)
+
+                # 현재 스탯 분배 입력 행 구성
+                self.inputs: dict[str, CustomLineEdit] = {}
+                layout: QHBoxLayout = QHBoxLayout(self)
+                layout.setContentsMargins(0, 0, 0, 0)
+                layout.setSpacing(10)
+
+                for field_name, label in (
+                    ("strength", "힘"),
+                    ("dexterity", "민첩"),
+                    ("vitality", "생명력"),
+                    ("luck", "행운"),
+                ):
+                    item_widget: KVInput = KVInput(
+                        self,
+                        label,
+                        "0",
+                        connected_function,
+                        max_width=80,
+                    )
+                    self.inputs[field_name] = item_widget.input
+                    layout.addWidget(item_widget)
+
+                layout.addStretch(1)
+                self.setLayout(layout)
+
+        class DanjeonInputs(QFrame):
+            def __init__(
+                self,
+                parent: QWidget,
+                connected_function: Callable[[], None],
+            ) -> None:
+                super().__init__(parent)
+
+                # 현재 단전 입력 행 구성
+                self.inputs: dict[str, CustomLineEdit] = {}
+                layout: QHBoxLayout = QHBoxLayout(self)
+                layout.setContentsMargins(0, 0, 0, 0)
+                layout.setSpacing(10)
+
+                for field_name, label in (
+                    ("upper", "상단전"),
+                    ("middle", "중단전"),
+                    ("lower", "하단전"),
+                ):
+                    item_widget: KVInput = KVInput(
+                        self,
+                        label,
+                        "0",
+                        connected_function,
+                        max_width=80,
+                    )
+                    self.inputs[field_name] = item_widget.input
+                    layout.addWidget(item_widget)
+
+                layout.addStretch(1)
+                self.setLayout(layout)
+
+        class TitleInputs(QFrame):
+            class TitleStatRow(QFrame):
+                def __init__(
+                    self,
+                    parent: QWidget,
+                    connected_function: Callable[[], None],
+                    remove_function: Callable[
+                        ["Sim3UI.Efficiency.TitleInputs.TitleStatRow"], None
+                    ],
+                    stat_key: StatKey | None = None,
+                    value: float = 0.0,
+                ) -> None:
+                    super().__init__(parent)
+
+                    # 스탯 선택/수치/삭제 버튼 구성
+                    self._connected_function: Callable[[], None] = connected_function
+                    self._remove_function = remove_function
+                    self._stat_options: list[StatKey] = list(
+                        CALCULATOR_STAT_SPECS.keys()
+                    )
+
+                    layout: QHBoxLayout = QHBoxLayout(self)
+                    layout.setContentsMargins(0, 0, 0, 0)
+                    layout.setSpacing(8)
+
+                    self.stat_combobox = CustomComboBox(
+                        self,
+                        [
+                            f"{spec.label}(%)" if spec.is_percent else spec.label
+                            for spec in CALCULATOR_STAT_SPECS.values()
+                        ],
+                        self._connected_function,
+                    )
+                    if stat_key is not None:
+                        self.stat_combobox.setCurrentIndex(
+                            self._stat_options.index(stat_key)
+                        )
+
+                    self.value_input_widget: KVInput = KVInput(
+                        self,
+                        "수치",
+                        f"{value:g}",
+                        self._connected_function,
+                        max_width=100,
+                    )
+                    self.value_input: CustomLineEdit = self.value_input_widget.input
+
+                    self.remove_button: QPushButton = QPushButton("삭제", self)
+                    self.remove_button.clicked.connect(self._on_remove_clicked)
+                    self.remove_button.setFont(CustomFont(10))
+
+                    layout.addWidget(self.stat_combobox)
+                    layout.addWidget(self.value_input_widget)
+                    layout.addWidget(self.remove_button)
+                    self.setLayout(layout)
+
+                def _on_remove_clicked(self) -> None:
+                    """스탯 행 삭제 요청"""
+
+                    self._remove_function(self)
+
+                def get_value(self) -> tuple[bool, StatKey, float]:
+                    """행 데이터 복원"""
+
+                    text: str = self.value_input.text()
+                    is_valid: bool = True
+                    try:
+                        value: float = float(text)
+                        self.value_input.set_valid(True)
+
+                    except ValueError:
+                        value = 0.0
+                        is_valid = False
+                        self.value_input.set_valid(False)
+
+                    stat_key: StatKey = self._stat_options[
+                        self.stat_combobox.currentIndex()
+                    ]
+                    return is_valid, stat_key, value
+
+            class TitleCard(QFrame):
+                def __init__(
+                    self,
+                    parent: QWidget,
+                    connected_function: Callable[[], None],
+                    remove_function: Callable[
+                        ["Sim3UI.Efficiency.TitleInputs.TitleCard"], None
+                    ],
+                    data: OwnedTitle | None = None,
+                ) -> None:
+                    super().__init__(parent)
+
+                    # 칭호 카드 전체 편집 영역 구성
+                    self._connected_function: Callable[[], None] = connected_function
+                    self._remove_function: Callable[
+                        [Sim3UI.Efficiency.TitleInputs.TitleCard], None
+                    ] = remove_function
+                    self.stat_rows: list[Sim3UI.Efficiency.TitleInputs.TitleStatRow] = (
+                        []
+                    )
+
+                    root_layout: QVBoxLayout = QVBoxLayout(self)
+                    root_layout.setContentsMargins(8, 8, 8, 8)
+                    root_layout.setSpacing(8)
+
+                    self.name_input_widget: KVInput = KVInput(
+                        self,
+                        "칭호명",
+                        data.name if data is not None else "",
+                        connected_function,
+                        max_width=180,
+                    )
+                    self.name_input: CustomLineEdit = self.name_input_widget.input
+                    root_layout.addWidget(self.name_input_widget)
+
+                    self.stats_container: QWidget = QWidget(self)
+                    self.stats_layout: QVBoxLayout = QVBoxLayout(self.stats_container)
+                    self.stats_layout.setContentsMargins(0, 0, 0, 0)
+                    self.stats_layout.setSpacing(6)
+                    root_layout.addWidget(self.stats_container)
+
+                    self.add_stat_button: QPushButton = QPushButton("스탯 추가", self)
+                    self.add_stat_button.clicked.connect(self._add_empty_stat_row)
+                    self.add_stat_button.setFont(CustomFont(10))
+                    root_layout.addWidget(self.add_stat_button)
+
+                    self.remove_button: QPushButton = QPushButton("칭호 삭제", self)
+                    self.remove_button.clicked.connect(self._on_remove_clicked)
+                    self.remove_button.setFont(CustomFont(10))
+                    root_layout.addWidget(self.remove_button)
+                    self.setLayout(root_layout)
+
+                    if data is not None and data.stats:
+                        for stat_key_text, stat_value in data.stats.items():
+                            self._add_stat_row(
+                                StatKey(stat_key_text), float(stat_value)
+                            )
+
+                    else:
+                        self._add_empty_stat_row()
+
+                def _add_stat_row(self, stat_key: StatKey, value: float) -> None:
+                    """지정된 스탯 행 추가"""
+
+                    row = Sim3UI.Efficiency.TitleInputs.TitleStatRow(
+                        self.stats_container,
+                        self._connected_function,
+                        self._remove_stat_row,
+                        stat_key=stat_key,
+                        value=value,
+                    )
+                    self.stat_rows.append(row)
+                    self.stats_layout.addWidget(row)
+
+                def _add_empty_stat_row(self) -> None:
+                    """빈 스탯 행 추가"""
+
+                    self._add_stat_row(StatKey.ATTACK, 0.0)
+                    self._connected_function()
+
+                def _remove_stat_row(
+                    self,
+                    target_row: "Sim3UI.Efficiency.TitleInputs.TitleStatRow",
+                ) -> None:
+                    """스탯 행 제거"""
+
+                    self.stats_layout.removeWidget(target_row)
+                    self.stat_rows.remove(target_row)
+                    target_row.deleteLater()
+                    self._connected_function()
+
+                def _on_remove_clicked(self) -> None:
+                    """칭호 카드 삭제 요청"""
+
+                    self._remove_function(self)
+
+                def to_owned_title(self, title_id: str) -> tuple[bool, OwnedTitle]:
+                    """카드 데이터를 칭호 모델로 변환"""
+
+                    is_valid: bool = True
+                    stats: dict[str, float] = {}
+                    for stat_row in self.stat_rows:
+                        row_valid: bool
+                        stat_key: StatKey
+                        stat_value: float
+                        row_valid, stat_key, stat_value = stat_row.get_value()
+                        is_valid = is_valid and row_valid
+                        if stat_value == 0.0:
+                            continue
+
+                        current_value: float = stats.get(stat_key.value, 0.0)
+                        stats[stat_key.value] = current_value + stat_value
+
+                    name: str = self.name_input.text().strip()
+                    owned_title: OwnedTitle = OwnedTitle(
+                        title_id=title_id,
+                        name=name,
+                        stats=stats,
+                    )
+                    return is_valid, owned_title
+
+            def __init__(
+                self,
+                parent: QWidget,
+                connected_function: Callable[[], None],
+            ) -> None:
+                super().__init__(parent)
+
+                # 보유 칭호 목록 및 현재 장착 선택 UI 구성
+                self._connected_function: Callable[[], None] = connected_function
+                self._cards: list[Sim3UI.Efficiency.TitleInputs.TitleCard] = []
+
+                root_layout: QVBoxLayout = QVBoxLayout(self)
+                root_layout.setContentsMargins(0, 0, 0, 0)
+                root_layout.setSpacing(8)
+
+                equipped_layout: QHBoxLayout = QHBoxLayout()
+                equipped_layout.setContentsMargins(0, 0, 0, 0)
+                equipped_layout.setSpacing(8)
+                self.equipped_title_label: QLabel = QLabel("현재 장착 칭호", self)
+                self.equipped_title_label.setFont(CustomFont(11))
+                self.equipped_title_combobox = CustomComboBox(
+                    self,
+                    ["없음"],
+                    connected_function,
+                )
+                equipped_layout.addWidget(self.equipped_title_label)
+                equipped_layout.addWidget(self.equipped_title_combobox)
+                equipped_layout.addStretch(1)
+                root_layout.addLayout(equipped_layout)
+
+                self.cards_container: QWidget = QWidget(self)
+                self.cards_layout: QVBoxLayout = QVBoxLayout(self.cards_container)
+                self.cards_layout.setContentsMargins(0, 0, 0, 0)
+                self.cards_layout.setSpacing(8)
+                root_layout.addWidget(self.cards_container)
+
+                self.add_button: QPushButton = QPushButton("칭호 추가", self)
+                self.add_button.clicked.connect(self.add_card)
+                self.add_button.setFont(CustomFont(10))
+                root_layout.addWidget(self.add_button)
+                self.setLayout(root_layout)
+
+            def add_card(
+                self,
+                data: OwnedTitle | None = None,
+                emit_change: bool = True,
+            ) -> None:
+                """칭호 카드 추가"""
+
+                card = Sim3UI.Efficiency.TitleInputs.TitleCard(
+                    self.cards_container,
+                    self._connected_function,
+                    self.remove_card,
+                    data=data,
+                )
+                self._cards.append(card)
+                self.cards_layout.addWidget(card)
+                self.refresh_equipped_options()
+                if emit_change:
+                    self._connected_function()
+
+            def remove_card(
+                self,
+                target_card: "Sim3UI.Efficiency.TitleInputs.TitleCard",
+            ) -> None:
+                """칭호 카드 제거"""
+
+                self.cards_layout.removeWidget(target_card)
+                self._cards.remove(target_card)
+                target_card.deleteLater()
+                self.refresh_equipped_options()
+                self._connected_function()
+
+            def refresh_equipped_options(self) -> None:
+                """현재 장착 선택 목록 갱신"""
+
+                current_text: str = self.equipped_title_combobox.currentText()
+                self.equipped_title_combobox.blockSignals(True)
+                self.equipped_title_combobox.clear()
+                options: list[str] = ["없음"]
+                for index, card in enumerate(self._cards):
+                    title_name: str = card.name_input.text().strip()
+                    if not title_name:
+                        title_name = f"칭호 {index + 1}"
+                    options.append(title_name)
+                self.equipped_title_combobox.addItems(options)
+                if current_text in options:
+                    self.equipped_title_combobox.setCurrentIndex(
+                        options.index(current_text)
+                    )
+                self.equipped_title_combobox.blockSignals(False)
+
+            def load(
+                self,
+                owned_titles: list[OwnedTitle],
+                equipped_title_id: str | None,
+            ) -> None:
+                """저장된 칭호 입력 상태 로드"""
+
+                for card in self._cards.copy():
+                    self.remove_card(card)
+
+                for owned_title in owned_titles:
+                    self.add_card(owned_title, emit_change=False)
+
+                self.refresh_equipped_options()
+                if equipped_title_id is None:
+                    self.equipped_title_combobox.setCurrentIndex(0)
+                    return
+
+                for index, owned_title in enumerate(owned_titles, start=1):
+                    if owned_title.title_id == equipped_title_id:
+                        self.equipped_title_combobox.setCurrentIndex(index)
+                        return
+
+            def build_state(self) -> tuple[bool, list[OwnedTitle], str | None]:
+                """현재 칭호 입력 상태 복원"""
+
+                is_valid: bool = True
+                owned_titles: list[OwnedTitle] = []
+                for index, card in enumerate(self._cards):
+                    title_id: str = f"title_{index}"
+                    card_valid: bool
+                    owned_title: OwnedTitle
+                    card_valid, owned_title = card.to_owned_title(title_id)
+                    is_valid = is_valid and card_valid
+                    owned_titles.append(owned_title)
+
+                equipped_index: int = self.equipped_title_combobox.currentIndex()
+                equipped_title_id: str | None = None
+                if equipped_index > 0 and equipped_index - 1 < len(owned_titles):
+                    equipped_title_id = owned_titles[equipped_index - 1].title_id
+
+                return is_valid, owned_titles, equipped_title_id
+
+        class TalismanInputs(QFrame):
+            class TalismanRow(QFrame):
+                def __init__(
+                    self,
+                    parent: QWidget,
+                    connected_function: Callable[[], None],
+                    remove_function: Callable[
+                        ["Sim3UI.Efficiency.TalismanInputs.TalismanRow"], None
+                    ],
+                    data: OwnedTalisman | None = None,
+                ) -> None:
+                    super().__init__(parent)
+
+                    # 보유 부적 한 줄 편집 UI 구성
+                    self._connected_function: Callable[[], None] = connected_function
+                    self._remove_function = remove_function
+                    self._templates: list[TalismanTemplate] = list(
+                        BUILTIN_TALISMAN_TEMPLATES
+                    )
+
+                    layout: QHBoxLayout = QHBoxLayout(self)
+                    layout.setContentsMargins(0, 0, 0, 0)
+                    layout.setSpacing(8)
+
+                    self.template_combobox = CustomComboBox(
+                        self,
+                        [template.name for template in self._templates],
+                        connected_function,
+                    )
+                    if data is not None:
+                        for index, template in enumerate(self._templates):
+                            if template.template_id == data.template_id:
+                                self.template_combobox.setCurrentIndex(index)
+                                break
+
+                    self.level_input_widget: KVInput = KVInput(
+                        self,
+                        "레벨",
+                        f"{data.level if data is not None else 1}",
+                        connected_function,
+                        max_width=80,
+                    )
+                    self.level_input: CustomLineEdit = self.level_input_widget.input
+
+                    self.remove_button: QPushButton = QPushButton("삭제", self)
+                    self.remove_button.clicked.connect(self._on_remove_clicked)
+                    self.remove_button.setFont(CustomFont(10))
+
+                    layout.addWidget(self.template_combobox)
+                    layout.addWidget(self.level_input_widget)
+                    layout.addWidget(self.remove_button)
+                    self.setLayout(layout)
+
+                def _on_remove_clicked(self) -> None:
+                    """보유 부적 제거 요청"""
+
+                    self._remove_function(self)
+
+                def to_owned_talisman(
+                    self, owned_id: str
+                ) -> tuple[bool, OwnedTalisman]:
+                    """행 데이터를 보유 부적 모델로 변환"""
+
+                    text: str = self.level_input.text()
+                    try:
+                        level: int = int(text)
+                        is_valid: bool = 1 <= level <= 10
+                        self.level_input.set_valid(is_valid)
+
+                    except ValueError:
+                        level = 1
+                        is_valid = False
+                        self.level_input.set_valid(False)
+
+                    template: TalismanTemplate = self._templates[
+                        self.template_combobox.currentIndex()
+                    ]
+                    owned_talisman: OwnedTalisman = OwnedTalisman(
+                        owned_id=owned_id,
+                        template_id=template.template_id,
+                        level=level,
+                    )
+                    return is_valid, owned_talisman
+
+            def __init__(
+                self,
+                parent: QWidget,
+                connected_function: Callable[[], None],
+            ) -> None:
+                super().__init__(parent)
+
+                # 보유 부적 목록 및 현재 장착 선택 UI 구성
+                self._connected_function: Callable[[], None] = connected_function
+                self._rows: list[Sim3UI.Efficiency.TalismanInputs.TalismanRow] = []
+
+                root_layout: QVBoxLayout = QVBoxLayout(self)
+                root_layout.setContentsMargins(0, 0, 0, 0)
+                root_layout.setSpacing(8)
+
+                self.equipped_comboboxes: list[CustomComboBox] = []
+                for slot_index in range(3):
+                    equipped_layout: QHBoxLayout = QHBoxLayout()
+                    equipped_layout.setContentsMargins(0, 0, 0, 0)
+                    equipped_layout.setSpacing(8)
+                    label: QLabel = QLabel(f"현재 장착 부적 {slot_index + 1}", self)
+                    label.setFont(CustomFont(11))
+                    combobox = CustomComboBox(self, ["없음"], connected_function)
+                    self.equipped_comboboxes.append(combobox)
+                    equipped_layout.addWidget(label)
+                    equipped_layout.addWidget(combobox)
+                    equipped_layout.addStretch(1)
+                    root_layout.addLayout(equipped_layout)
+
+                self.rows_container: QWidget = QWidget(self)
+                self.rows_layout: QVBoxLayout = QVBoxLayout(self.rows_container)
+                self.rows_layout.setContentsMargins(0, 0, 0, 0)
+                self.rows_layout.setSpacing(6)
+                root_layout.addWidget(self.rows_container)
+
+                self.add_button: QPushButton = QPushButton("부적 추가", self)
+                self.add_button.clicked.connect(self.add_row)
+                self.add_button.setFont(CustomFont(10))
+                root_layout.addWidget(self.add_button)
+                self.setLayout(root_layout)
+
+            def add_row(
+                self,
+                data: OwnedTalisman | None = None,
+                emit_change: bool = True,
+            ) -> None:
+                """보유 부적 행 추가"""
+
+                row = Sim3UI.Efficiency.TalismanInputs.TalismanRow(
+                    self.rows_container,
+                    self._connected_function,
+                    self.remove_row,
+                    data=data,
+                )
+                self._rows.append(row)
+                self.rows_layout.addWidget(row)
+                self.refresh_equipped_options()
+                if emit_change:
+                    self._connected_function()
+
+            def remove_row(
+                self,
+                target_row: "Sim3UI.Efficiency.TalismanInputs.TalismanRow",
+            ) -> None:
+                """보유 부적 행 제거"""
+
+                self.rows_layout.removeWidget(target_row)
+                self._rows.remove(target_row)
+                target_row.deleteLater()
+                self.refresh_equipped_options()
+                self._connected_function()
+
+            def refresh_equipped_options(self) -> None:
+                """현재 장착 부적 선택 목록 갱신"""
+
+                options: list[str] = ["없음"]
+                for index, row in enumerate(self._rows):
+                    template_name: str = row.template_combobox.currentText()
+                    level_text: str = row.level_input.text()
+                    options.append(f"{template_name} Lv.{level_text} ({index + 1})")
+
+                for combobox in self.equipped_comboboxes:
+                    current_text: str = combobox.currentText()
+                    combobox.blockSignals(True)
+                    combobox.clear()
+                    combobox.addItems(options)
+                    if current_text in options:
+                        combobox.setCurrentIndex(options.index(current_text))
+                    combobox.blockSignals(False)
+
+            def load(
+                self,
+                owned_talismans: list[OwnedTalisman],
+                equipped_ids: list[str],
+            ) -> None:
+                """저장된 부적 입력 상태 로드"""
+
+                for row in self._rows.copy():
+                    self.remove_row(row)
+
+                for owned_talisman in owned_talismans:
+                    self.add_row(owned_talisman, emit_change=False)
+
+                self.refresh_equipped_options()
+                owned_id_order: list[str] = [
+                    owned_talisman.owned_id for owned_talisman in owned_talismans
+                ]
+                for combobox_index, combobox in enumerate(self.equipped_comboboxes):
+                    if combobox_index >= len(equipped_ids):
+                        combobox.setCurrentIndex(0)
+                        continue
+
+                    equipped_id: str = equipped_ids[combobox_index]
+                    if equipped_id not in owned_id_order:
+                        combobox.setCurrentIndex(0)
+                        continue
+
+                    combobox.setCurrentIndex(owned_id_order.index(equipped_id) + 1)
+
+            def build_state(self) -> tuple[bool, list[OwnedTalisman], list[str]]:
+                """현재 부적 입력 상태 복원"""
+
+                is_valid: bool = True
+                owned_talismans: list[OwnedTalisman] = []
+                for index, row in enumerate(self._rows):
+                    owned_id: str = f"talisman_{index}"
+                    row_valid: bool
+                    owned_talisman: OwnedTalisman
+                    row_valid, owned_talisman = row.to_owned_talisman(owned_id)
+                    is_valid = is_valid and row_valid
+                    owned_talismans.append(owned_talisman)
+
+                equipped_ids: list[str] = []
+                for combobox in self.equipped_comboboxes:
+                    selected_index: int = combobox.currentIndex()
+                    if selected_index <= 0:
+                        continue
+
+                    target_index: int = selected_index - 1
+                    if target_index >= len(owned_talismans):
+                        continue
+
+                    equipped_ids.append(owned_talismans[target_index].owned_id)
+
+                return is_valid, owned_talismans, equipped_ids
+
         def _get_preset(self) -> "MacroPreset":
             """현재 선택 프리셋 반환"""
 
@@ -983,6 +1656,141 @@ class Sim3UI(QFrame):
                 self.metric_combobox.currentIndex()
             ]
             return selected_metric
+
+        def _load_optimization_inputs(self) -> None:
+            """저장된 최적화 입력 상태 로드"""
+
+            calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
+            self.distribution_inputs.inputs["strength"].setText(
+                str(calculator_input.distribution.strength)
+            )
+            self.distribution_inputs.inputs["dexterity"].setText(
+                str(calculator_input.distribution.dexterity)
+            )
+            self.distribution_inputs.inputs["vitality"].setText(
+                str(calculator_input.distribution.vitality)
+            )
+            self.distribution_inputs.inputs["luck"].setText(
+                str(calculator_input.distribution.luck)
+            )
+            self.danjeon_inputs.inputs["upper"].setText(
+                str(calculator_input.danjeon.upper)
+            )
+            self.danjeon_inputs.inputs["middle"].setText(
+                str(calculator_input.danjeon.middle)
+            )
+            self.danjeon_inputs.inputs["lower"].setText(
+                str(calculator_input.danjeon.lower)
+            )
+            self.title_inputs.load(
+                calculator_input.owned_titles,
+                calculator_input.equipped.equipped_title_id,
+            )
+            self.talisman_inputs.load(
+                calculator_input.owned_talismans,
+                calculator_input.equipped.equipped_talisman_ids,
+            )
+
+        def _read_distribution_state(self) -> tuple[bool, DistributionState]:
+            """현재 스탯 분배 상태 복원"""
+
+            is_valid: bool = True
+            values: dict[str, int] = {}
+            for field_name, input_widget in self.distribution_inputs.inputs.items():
+                text: str = input_widget.text()
+                if not text.isdigit():
+                    input_widget.set_valid(False)
+                    is_valid = False
+                    values[field_name] = 0
+                    continue
+
+                input_widget.set_valid(True)
+                values[field_name] = int(text)
+
+            distribution_state: DistributionState = DistributionState(
+                strength=values["strength"],
+                dexterity=values["dexterity"],
+                vitality=values["vitality"],
+                luck=values["luck"],
+                is_locked=False,
+                use_reset=False,
+            )
+            return is_valid, distribution_state
+
+        def _read_danjeon_state(self) -> tuple[bool, DanjeonState]:
+            """현재 단전 상태 복원"""
+
+            is_valid: bool = True
+            values: dict[str, int] = {}
+            for field_name, input_widget in self.danjeon_inputs.inputs.items():
+                text: str = input_widget.text()
+                if not text.isdigit():
+                    input_widget.set_valid(False)
+                    is_valid = False
+                    values[field_name] = 0
+                    continue
+
+                input_widget.set_valid(True)
+                values[field_name] = int(text)
+
+            danjeon_state: DanjeonState = DanjeonState(
+                upper=values["upper"],
+                middle=values["middle"],
+                lower=values["lower"],
+                is_locked=False,
+                use_reset=False,
+            )
+            return is_valid, danjeon_state
+
+        def _read_optimization_state(
+            self,
+        ) -> tuple[
+            bool,
+            DistributionState,
+            DanjeonState,
+            list[OwnedTitle],
+            EquippedOptimizationState,
+            list[OwnedTalisman],
+        ]:
+            """현재 최적화 입력 상태 전체 복원"""
+
+            distribution_valid: bool
+            distribution_state: DistributionState
+            distribution_valid, distribution_state = self._read_distribution_state()
+
+            danjeon_valid: bool
+            danjeon_state: DanjeonState
+            danjeon_valid, danjeon_state = self._read_danjeon_state()
+
+            title_valid: bool
+            owned_titles: list[OwnedTitle]
+            equipped_title_id: str | None
+            title_valid, owned_titles, equipped_title_id = (
+                self.title_inputs.build_state()
+            )
+
+            talisman_valid: bool
+            owned_talismans: list[OwnedTalisman]
+            equipped_talisman_ids: list[str]
+            talisman_valid, owned_talismans, equipped_talisman_ids = (
+                self.talisman_inputs.build_state()
+            )
+
+            equipped_state: EquippedOptimizationState = EquippedOptimizationState(
+                equipped_title_id=equipped_title_id,
+                equipped_talisman_ids=equipped_talisman_ids,
+            )
+            is_valid: bool = (
+                distribution_valid and danjeon_valid and title_valid and talisman_valid
+            )
+            return (
+                is_valid,
+                distribution_state,
+                danjeon_state,
+                owned_titles,
+                equipped_state,
+                owned_talismans,
+            )
 
         def _read_overall_stats(self) -> tuple[bool, dict[str, float]]:
             """전체 스탯 입력 복원 및 검증"""
@@ -1087,6 +1895,24 @@ class Sim3UI(QFrame):
             ]
             save_data()
 
+        def _save_optimization_inputs(
+            self,
+            distribution_state: DistributionState,
+            danjeon_state: DanjeonState,
+            owned_titles: list[OwnedTitle],
+            equipped_state: EquippedOptimizationState,
+            owned_talismans: list[OwnedTalisman],
+        ) -> None:
+            """최적화 입력 상태 저장"""
+
+            calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
+            calculator_input.distribution = distribution_state
+            calculator_input.danjeon = danjeon_state
+            calculator_input.owned_titles = owned_titles
+            calculator_input.equipped = equipped_state
+            calculator_input.owned_talismans = owned_talismans
+            save_data()
+
         def _set_error_outputs(self) -> None:
             """기준 입력 오류 상태 출력"""
 
@@ -1096,6 +1922,7 @@ class Sim3UI(QFrame):
             self.level_up_list.set_rows(error_rows)
             self.realm_up_list.set_rows(error_rows)
             self.scroll_efficiency_list.set_rows(error_rows)
+            self.base_state_list.set_rows(error_rows)
 
         def _refresh_base_outputs(self) -> None:
             """기준 입력 기반 효율 출력 갱신"""
@@ -1240,6 +2067,65 @@ class Sim3UI(QFrame):
             )
             self.scroll_efficiency_list.set_rows(scroll_rows)
 
+            # 현재 선택 입력 기반 기준 상태 분리 결과 표시
+            optimization_valid: bool
+            distribution_state: DistributionState
+            danjeon_state: DanjeonState
+            owned_titles: list[OwnedTitle]
+            equipped_state: EquippedOptimizationState
+            owned_talismans: list[OwnedTalisman]
+            (
+                optimization_valid,
+                distribution_state,
+                danjeon_state,
+                owned_titles,
+                equipped_state,
+                owned_talismans,
+            ) = self._read_optimization_state()
+            if not optimization_valid:
+                self.base_state_list.set_rows([("상태", "입력 오류")])
+                return
+
+            self._save_optimization_inputs(
+                distribution_state=distribution_state,
+                danjeon_state=danjeon_state,
+                owned_titles=owned_titles,
+                equipped_state=equipped_state,
+                owned_talismans=owned_talismans,
+            )
+            calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
+            validation: CalculatorBaseValidation = validate_base_state(
+                overall_stats=overall_stats,
+                calculator_input=calculator_input,
+            )
+            if not validation.is_valid:
+                self.base_state_list.set_rows(
+                    [("상태", "오류"), ("사유", validation.message)]
+                )
+                return
+
+            base_state: CalculatorBaseState = build_base_state(
+                overall_stats=overall_stats,
+                calculator_input=calculator_input,
+            )
+            self.base_state_list.set_rows(
+                [
+                    ("상태", "정상"),
+                    (
+                        "기준 공격력",
+                        self._format_current_power(
+                            base_state.base_overall_stats[StatKey.ATTACK.value]
+                        ),
+                    ),
+                    (
+                        "기준 체력",
+                        self._format_current_power(
+                            base_state.base_overall_stats[StatKey.HP.value]
+                        ),
+                    ),
+                ]
+            )
+
         def _refresh_custom_delta_output(self) -> None:
             """사용자 지정 스탯 변화량 출력 갱신"""
 
@@ -1284,6 +2170,13 @@ class Sim3UI(QFrame):
                     )
                 )
             self.custom_delta_result_list.set_rows(rows)
+
+        def on_optimization_input_changed(self) -> None:
+            """최적화 입력 변경 시 기준 상태 분리 갱신"""
+
+            self.title_inputs.refresh_equipped_options()
+            self.talisman_inputs.refresh_equipped_options()
+            self._refresh_base_outputs()
 
         def on_base_input_changed(self) -> None:
             """기준 입력 변경 시 전체 효율 출력 갱신"""
