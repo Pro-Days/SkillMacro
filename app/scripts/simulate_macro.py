@@ -6,15 +6,14 @@ from typing import TYPE_CHECKING
 from app.scripts.calculator_engine import (
     CalculatorDamageEvent,
     CalculatorEvaluationContext,
+    CalculatorGraphAnalysis,
+    CalculatorGraphAttack,
+    CalculatorGraphReport,
     DISPLAY_POWER_METRICS,
     build_calculator_context,
     build_damage_events,
 )
-from app.scripts.custom_classes import (
-    SimAnalysis,
-    SimAttack,
-    SimResult,
-)
+from app.scripts.calculator_models import PowerMetric
 from app.scripts.macro_models import SkillUsageSetting
 
 if TYPE_CHECKING:
@@ -28,7 +27,7 @@ def simulate_random_from_calculator(
     skills_info: dict[str, SkillUsageSetting],
     delay_ms: int,
     overall_stats: dict[str, float],
-) -> SimResult:
+) -> CalculatorGraphReport:
     """계산기 입력 기준 그래프용 시뮬레이션 결과 구성"""
 
     # 계산기 기준 타임라인과 5종 전투력 요약 구성
@@ -55,18 +54,18 @@ def simulate_random_from_calculator(
     )
 
     # 그래프 위젯 재사용을 위한 기존 공격 DTO 변환
-    deterministic_boss_attacks: list[SimAttack] = [
-        SimAttack(
+    deterministic_boss_attacks: tuple[CalculatorGraphAttack, ...] = tuple(
+        CalculatorGraphAttack(
             skill_id=event.skill_id,
             time=event.time,
             damage=event.damage,
         )
         for event in deterministic_boss_events
-    ]
+    )
 
     # 확률 분포 분석용 랜덤 보스/일반 공격 이벤트 반복 생성
-    random_boss_attacks: list[list[SimAttack]] = []
-    random_normal_attacks: list[list[SimAttack]] = []
+    random_boss_attacks: list[tuple[CalculatorGraphAttack, ...]] = []
+    random_normal_attacks: list[list[float]] = []
     for _ in range(1000):
         boss_seed: float = random.random()
         normal_seed: float = random.random()
@@ -84,26 +83,19 @@ def simulate_random_from_calculator(
             deterministic=False,
             random_seed=normal_seed,
         )
+        # 그래프 출력용 보스 공격 이벤트만 새 DTO로 누적
         random_boss_attacks.append(
-            [
-                SimAttack(
+            tuple(
+                CalculatorGraphAttack(
                     skill_id=event.skill_id,
                     time=event.time,
                     damage=event.damage,
                 )
                 for event in boss_events
-            ]
+            )
         )
-        random_normal_attacks.append(
-            [
-                SimAttack(
-                    skill_id=event.skill_id,
-                    time=event.time,
-                    damage=event.damage,
-                )
-                for event in normal_events
-            ]
-        )
+        # 분석 카드 계산용 일반 공격 총합만 유지
+        random_normal_attacks.append([event.damage for event in normal_events])
 
     # 확률 통계 계산용 총 피해량 집계
     total_boss_damage: float = sum(
@@ -117,7 +109,7 @@ def simulate_random_from_calculator(
         for attack_list in random_boss_attacks
     ]
     total_normal_damages: list[float] = [
-        sum(attack.damage for attack in attack_list)
+        sum(attack_damage for attack_damage in attack_list)
         for attack_list in random_normal_attacks
     ]
 
@@ -143,8 +135,8 @@ def simulate_random_from_calculator(
         return variance**0.5
 
     # 보스/일반 피해량 분석 카드 데이터 구성
-    analysis: list[SimAnalysis] = [
-        SimAnalysis(
+    analysis: tuple[CalculatorGraphAnalysis, ...] = (
+        CalculatorGraphAnalysis(
             title="초당 보스피해량",
             value=f"{int(total_boss_damage / 60)}",
             min=f"{int(min(total_boss_damages) / 60)}",
@@ -154,7 +146,7 @@ def simulate_random_from_calculator(
             p50=f"{int(calculate_percentile(total_boss_damages, 50) / 60)}",
             p75=f"{int(calculate_percentile(total_boss_damages, 75) / 60)}",
         ),
-        SimAnalysis(
+        CalculatorGraphAnalysis(
             title="총 보스피해량",
             value=f"{int(total_boss_damage)}",
             min=f"{int(min(total_boss_damages))}",
@@ -164,7 +156,7 @@ def simulate_random_from_calculator(
             p50=f"{int(calculate_percentile(total_boss_damages, 50))}",
             p75=f"{int(calculate_percentile(total_boss_damages, 75))}",
         ),
-        SimAnalysis(
+        CalculatorGraphAnalysis(
             title="초당 피해량",
             value=f"{int(total_normal_damage / 60)}",
             min=f"{int(min(total_normal_damages) / 60)}",
@@ -174,7 +166,7 @@ def simulate_random_from_calculator(
             p50=f"{int(calculate_percentile(total_normal_damages, 50) / 60)}",
             p75=f"{int(calculate_percentile(total_normal_damages, 75) / 60)}",
         ),
-        SimAnalysis(
+        CalculatorGraphAnalysis(
             title="총 피해량",
             value=f"{int(total_normal_damage)}",
             min=f"{int(min(total_normal_damages))}",
@@ -184,16 +176,16 @@ def simulate_random_from_calculator(
             p50=f"{int(calculate_percentile(total_normal_damages, 50))}",
             p75=f"{int(calculate_percentile(total_normal_damages, 75))}",
         ),
-    ]
+    )
 
-    # 계산기 전투력 순서 기준 5칸 전투력 목록 구성
-    powers: list[float] = [
-        context.baseline_summary.metrics[power_metric]
+    # 계산기 전투력 순서 기준 5종 지표 사본 구성
+    metrics: dict[PowerMetric, float] = {
+        power_metric: context.baseline_summary.metrics[power_metric]
         for power_metric in DISPLAY_POWER_METRICS
-    ]
-    return SimResult(
-        powers=powers,
+    }
+    return CalculatorGraphReport(
+        metrics=metrics,
         analysis=analysis,
         deterministic_boss_attacks=deterministic_boss_attacks,
-        random_boss_attacks=random_boss_attacks,
+        random_boss_attacks=tuple(random_boss_attacks),
     )

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont, QPixmap
@@ -214,17 +214,6 @@ class SimBuff:
     stat: str
     value: float
     skill_id: str
-
-
-@dataclass
-class SimAttack:
-    """
-    시뮬레이션에서 공격의 정보를 담는 클래스
-    """
-
-    skill_id: str
-    time: float
-    damage: float
 
 
 @dataclass
@@ -480,55 +469,3 @@ class Stats:
             EXP=data.get("EXP", 0),
         )
 
-
-@dataclass
-class SimAnalysis:
-    """
-    시뮬레이션 분석 결과를 담는 클래스
-    """
-
-    title: str
-
-    value: str
-
-    min: str
-    max: str
-
-    std: str
-
-    p25: str
-    p50: str
-    p75: str
-
-    def get_data_from_str(self, data_name: str) -> str:
-        """
-        결과의 세부 정보를 반환
-        """
-
-        if hasattr(self, data_name):
-            return getattr(self, data_name)
-
-        else:
-            raise AttributeError(f"{data_name} 항목이 존재하지 않습니다.")
-
-
-@dataclass
-class SimResult:
-    """
-    시뮬레이션 결과를 담는 클래스
-    """
-
-    powers: list[float]
-    analysis: list[SimAnalysis] = field(default_factory=list)
-    deterministic_boss_attacks: list[SimAttack] = field(default_factory=list)
-    random_boss_attacks: list[list[SimAttack]] = field(default_factory=list)
-
-    str_powers: list[str] = field(default_factory=list)
-
-    def __post_init__(self) -> None:
-        """
-        클래스 초기화 후 실행되는 메서드
-        powers -> str_powers 변환해서 저장
-        """
-
-        self.str_powers = [str(int(i)) for i in self.powers]

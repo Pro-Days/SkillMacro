@@ -76,6 +76,9 @@ if TYPE_CHECKING:
         CalculatorBaseState,
         CalculatorBaseValidation,
         CalculatorEvaluationContext,
+        CalculatorGraphAnalysis,
+        CalculatorGraphAttack,
+        CalculatorGraphReport,
         LevelUpEvaluation,
         OptimizationResult,
         RealmAdvanceEvaluation,
@@ -88,7 +91,6 @@ if TYPE_CHECKING:
         RealmTier,
         TalismanTemplate,
     )
-    from app.scripts.custom_classes import SimAnalysis, SimAttack, SimResult
     from app.scripts.macro_models import MacroPreset
     from app.scripts.registry.server_registry import ServerSpec
     from app.scripts.ui.main_window import MainWindow
@@ -335,18 +337,25 @@ class Sim2UI(QFrame):
         calculator_input: CalculatorPresetInput = (
             app_state.macro.current_preset.info.calculator
         )
-        sim_result: SimResult = simulate_random_from_calculator(
+        graph_report: CalculatorGraphReport = simulate_random_from_calculator(
             server_spec=app_state.macro.current_server,
             preset=app_state.macro.current_preset,
             skills_info=app_state.macro.current_preset.usage_settings,
             delay_ms=app_state.macro.current_delay,
             overall_stats=calculator_input.overall_stats,
         )
-        powers: list[float] = sim_result.powers
-        analysis: list[SimAnalysis] = sim_result.analysis
-        result_det: list[SimAttack] = sim_result.deterministic_boss_attacks
-        results: list[list[SimAttack]] = sim_result.random_boss_attacks
-        str_powers: list[str] = sim_result.str_powers
+        powers: list[float] = [
+            graph_report.metrics[power_metric]
+            for power_metric in DISPLAY_POWER_METRICS
+        ]
+        analysis: list[CalculatorGraphAnalysis] = list(graph_report.analysis)
+        result_det: list[CalculatorGraphAttack] = list(
+            graph_report.deterministic_boss_attacks
+        )
+        results: list[list[CalculatorGraphAttack]] = [
+            list(result_row) for result_row in graph_report.random_boss_attacks
+        ]
+        str_powers: list[str] = [str(int(power)) for power in powers]
         power_titles: list[str] = [
             POWER_METRIC_LABELS[power_metric] for power_metric in DISPLAY_POWER_METRICS
         ]
@@ -389,7 +398,7 @@ class Sim2UI(QFrame):
         def __init__(
             self,
             parent: QFrame,
-            results: list[list[SimAttack]],
+            results: list[list[CalculatorGraphAttack]],
         ) -> None:
             super().__init__(parent)
 
@@ -409,7 +418,7 @@ class Sim2UI(QFrame):
         def __init__(
             self,
             parent: QFrame,
-            resultDet: list[SimAttack],
+            resultDet: list[CalculatorGraphAttack],
         ) -> None:
             super().__init__(parent)
 
@@ -434,7 +443,7 @@ class Sim2UI(QFrame):
         def __init__(
             self,
             parent: QFrame,
-            results: list[list[SimAttack]],
+            results: list[list[CalculatorGraphAttack]],
         ) -> None:
             super().__init__(parent)
 
@@ -454,7 +463,7 @@ class Sim2UI(QFrame):
         def __init__(
             self,
             parent: QFrame,
-            results: list[list[SimAttack]],
+            results: list[list[CalculatorGraphAttack]],
         ) -> None:
             super().__init__(parent)
 
@@ -474,7 +483,7 @@ class Sim2UI(QFrame):
         def __init__(
             self,
             parent: QFrame,
-            resultDet: list[SimAttack],
+            resultDet: list[CalculatorGraphAttack],
         ) -> None:
             super().__init__(parent)
 
@@ -2453,7 +2462,7 @@ class PowerLabels(QFrame):
 
 
 class AnalysisDetails(QFrame):
-    def __init__(self, mainframe, analysis: list[SimAnalysis]):
+    def __init__(self, mainframe, analysis: list[CalculatorGraphAnalysis]):
         super().__init__(mainframe)
 
         if config.ui.debug_colors:
@@ -2489,7 +2498,7 @@ class AnalysisDetails(QFrame):
         def __init__(
             self,
             parent: QFrame,
-            analysis: SimAnalysis,
+            analysis: CalculatorGraphAnalysis,
             statistics: tuple[str, ...],
             color: str,
         ) -> None:

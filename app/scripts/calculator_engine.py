@@ -167,6 +167,62 @@ class CalculatorDamageEvent:
 
 
 @dataclass(frozen=True, slots=True)
+class CalculatorGraphAttack:
+    """그래프 출력용 단일 피해 이벤트"""
+
+    # 그래프 범례와 스킬 기여도 계산에 사용할 스킬 식별자
+    skill_id: str
+    # 그래프 x축 배치에 사용할 타격 시점
+    time: float
+    # 그래프 y축 배치에 사용할 최종 피해량
+    damage: float
+
+
+@dataclass(frozen=True, slots=True)
+class CalculatorGraphAnalysis:
+    """그래프 분석 카드 1행 데이터"""
+
+    # 분석 카드 제목
+    title: str
+    # 기준값 표기 문자열
+    value: str
+    # 최소값 표기 문자열
+    min: str
+    # 최대값 표기 문자열
+    max: str
+    # 표준편차 표기 문자열
+    std: str
+    # 25퍼센타일 표기 문자열
+    p25: str
+    # 50퍼센타일 표기 문자열
+    p50: str
+    # 75퍼센타일 표기 문자열
+    p75: str
+
+    def get_data_from_str(self, data_name: str) -> str:
+        """분석 카드 세부 항목 문자열 반환"""
+
+        if not hasattr(self, data_name):
+            raise AttributeError(f"{data_name} 항목이 존재하지 않습니다.")
+
+        return str(getattr(self, data_name))
+
+
+@dataclass(frozen=True, slots=True)
+class CalculatorGraphReport:
+    """그래프/요약 화면 공용 리포트"""
+
+    # 5종 전투력 원본 수치 맵
+    metrics: dict[PowerMetric, float]
+    # 그래프 상단 분석 카드 데이터
+    analysis: tuple[CalculatorGraphAnalysis, ...] = ()
+    # 보스 기준 결정론 타격 이벤트 목록
+    deterministic_boss_attacks: tuple[CalculatorGraphAttack, ...] = ()
+    # 보스 기준 확률론 타격 이벤트 목록
+    random_boss_attacks: tuple[tuple[CalculatorGraphAttack, ...], ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class CalculatorResolvedStats:
     """
     계산기 공식 계산에 사용할 최종 스탯
