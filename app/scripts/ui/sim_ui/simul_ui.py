@@ -96,15 +96,6 @@ if TYPE_CHECKING:
     from app.scripts.ui.main_window import MainWindow
 
 
-@dataclass(frozen=True)
-class SkillLevelInputSpec:
-    """스킬 레벨 입력 UI 한 칸의 표시/저장 정보"""
-
-    title: str
-    value: int
-    scroll_id: str
-
-
 ANALYSIS_DETAIL_KEYS: tuple[str, ...] = (
     "min",
     "max",
@@ -113,28 +104,6 @@ ANALYSIS_DETAIL_KEYS: tuple[str, ...] = (
     "p50",
     "p75",
 )
-
-
-def build_skill_level_input_specs() -> list[SkillLevelInputSpec]:
-    """현재 서버/프리셋 기준 스킬 레벨 입력 목록 구성"""
-
-    # 스크롤 레벨만 입력 대상으로 노출하는 현재 구조 기준 준비
-    server: ServerSpec = app_state.macro.current_server
-    preset: MacroPreset = app_state.macro.current_preset
-    specs: list[SkillLevelInputSpec] = []
-
-    # 스크롤 공용 레벨 입력 칸 우선 구성
-    for scroll_def in server.skill_registry.get_all_scroll_defs():
-        shared_level: int = preset.info.get_scroll_level(scroll_def.id)
-        specs.append(
-            SkillLevelInputSpec(
-                title=scroll_def.name,
-                value=shared_level,
-                scroll_id=scroll_def.id,
-            )
-        )
-
-    return specs
 
 
 class SimUI:
@@ -191,16 +160,13 @@ class SimUI:
         # 페이지 레이아웃 설정
         self.stacked_layout = QStackedLayout(self.main_frame)
 
-        # UI{N} 이름을 각각 수행하는 기능을 대표하는 이름으로 변경
-        self.UI1 = Sim1UI(self.main_frame)
-        self.UI2 = Sim2UI(self.main_frame)
-        self.UI3 = Sim3UI(self.main_frame)
+        self.input_page = InputPage(self.main_frame)
+        self.graph_page = GraphPage(self.main_frame)
+        self.results_page = ResultsPage(self.main_frame)
 
-        # SimUI4 완전히 제거?
-        # self.UI4 = Sim4UI(self.main_frame)
-        self.stacked_layout.addWidget(self.UI1)
-        self.stacked_layout.addWidget(self.UI2)
-        self.stacked_layout.addWidget(self.UI3)
+        self.stacked_layout.addWidget(self.input_page)
+        self.stacked_layout.addWidget(self.graph_page)
+        self.stacked_layout.addWidget(self.results_page)
 
         self.stacked_layout.setCurrentIndex(0)
         # 스택 레이아웃 설정
@@ -210,7 +176,10 @@ class SimUI:
 
     def change_layout(self, index: int) -> None:
         # 입력값 확인
-        if index in (1, 2, 3) and not self.UI1.editor.has_valid_navigation_inputs():
+        if (
+            index in (1, 2, 3)
+            and not self.input_page.editor.has_valid_navigation_inputs()
+        ):
             self.master.get_popup_manager().show_notice(NoticeKind.SIM_INPUT_ERROR)
 
             return
@@ -220,11 +189,11 @@ class SimUI:
 
         # 그래프 페이지 진입 직전 현재 계산기 입력 기준 결과 재생성
         if index == 1:
-            self.UI2.refresh()
+            self.graph_page.refresh()
 
-        # 결과 페이지 진입 직전 입력 상태 동기화
+        # 결과 페이지 진입 직전 저장된 계산기 상태 기준 재동기화
         if index == 2:
-            self.UI3.sync_from_editor(self.UI1.editor)
+            self.results_page.sync_from_preset()
 
         # 네비게이션 버튼 색 변경
         self.update_nav(index)
@@ -267,7 +236,7 @@ class SimUI:
             self.main_frame.setFixedHeight(height)
 
 
-class Sim1UI(QFrame):
+class InputPage(QFrame):
     def __init__(
         self,
         parent: QFrame,
@@ -279,7 +248,7 @@ class Sim1UI(QFrame):
 
         # 계산기 입력 화면 구성
         self.input_title: Title = Title(parent=self, text="계산기 입력")
-        self.editor: Sim3UI.Efficiency = Sim3UI.Efficiency(self)
+        self.editor: ResultsPage.Efficiency = ResultsPage.Efficiency(self)
         self.editor.set_result_sections_visible(False)
 
         layout = QVBoxLayout(self)
@@ -294,7 +263,7 @@ class Sim1UI(QFrame):
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
 
-class Sim2UI(QFrame):
+class GraphPage(QFrame):
     def __init__(
         self,
         parent: QFrame,
@@ -355,7 +324,7 @@ class Sim2UI(QFrame):
             graph_report.metrics[power_metric] for power_metric in DISPLAY_POWER_METRICS
         ]
         analysis: list[CalculatorGraphAnalysis] = list(graph_report.analysis)
-        result_det: list[CalculatorGraphAttack] = list(
+        deterministic_attacks: list[CalculatorGraphAttack] = list(
             graph_report.deterministic_boss_attacks
         )
         results: list[list[CalculatorGraphAttack]] = [
@@ -371,13 +340,13 @@ class Sim2UI(QFrame):
         power: PowerLabels = PowerLabels(self, power_titles, str_powers)
         analysis_title: Title = Title(self, "분석")
         analysis_widget: AnalysisDetails = AnalysisDetails(self, analysis)
-        dpm_graph: Sim2UI.DPMGraph = self.DPMGraph(self, results)
-        ratio_graph: Sim2UI.RatioGraph = self.RatioGraph(self, result_det)
-        dps_graph: Sim2UI.DPSGraph = self.DPSGraph(self, results)
-        total_graph: Sim2UI.TotalGraph = self.TotalGraph(self, results)
-        contribution_graph: Sim2UI.ContributionGraph = self.ContributionGraph(
+        dpm_graph: GraphPage.DPMGraph = self.DPMGraph(self, results)
+        ratio_graph: GraphPage.RatioGraph = self.RatioGraph(self, deterministic_attacks)
+        dps_graph: GraphPage.DPSGraph = self.DPSGraph(self, results)
+        total_graph: GraphPage.TotalGraph = self.TotalGraph(self, results)
+        contribution_graph: GraphPage.ContributionGraph = self.ContributionGraph(
             self,
-            result_det,
+            deterministic_attacks,
         )
 
         # 상단 2개 그래프 묶음 레이아웃 구성
@@ -421,7 +390,7 @@ class Sim2UI(QFrame):
         def __init__(
             self,
             parent: QFrame,
-            resultDet: list[CalculatorGraphAttack],
+            deterministic_attacks: list[CalculatorGraphAttack],
         ) -> None:
             super().__init__(parent)
 
@@ -431,7 +400,7 @@ class Sim2UI(QFrame):
 
             self.graph = SkillDpsRatioCanvas(
                 self,
-                resultDet,
+                deterministic_attacks,
                 app_state.macro.current_preset.skills.get_placed_skill_ids(),
                 app_state.macro.current_server.id,
             )
@@ -486,7 +455,7 @@ class Sim2UI(QFrame):
         def __init__(
             self,
             parent: QFrame,
-            resultDet: list[CalculatorGraphAttack],
+            deterministic_attacks: list[CalculatorGraphAttack],
         ) -> None:
             super().__init__(parent)
 
@@ -496,7 +465,7 @@ class Sim2UI(QFrame):
 
             self.graph = SkillContributionCanvas(
                 self,
-                resultDet,
+                deterministic_attacks,
                 app_state.macro.current_preset.skills.get_placed_skill_ids(),
                 app_state.macro.current_server.id,
             )
@@ -508,7 +477,7 @@ class Sim2UI(QFrame):
             self.setLayout(layout)
 
 
-class Sim3UI(QFrame):
+class ResultsPage(QFrame):
     def __init__(
         self,
         parent: QFrame,
@@ -532,10 +501,12 @@ class Sim3UI(QFrame):
 
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-    def sync_from_editor(self, source_editor: "Sim3UI.Efficiency") -> None:
-        """입력 페이지 상태를 결과 페이지에 동기화"""
+    def sync_from_preset(self) -> None:
+        """저장된 계산기 상태를 결과 페이지에 동기화"""
 
-        self.efficiency.copy_input_state_from(source_editor)
+        self.efficiency.load_from_preset_state()
+        self.efficiency.on_base_input_changed()
+        self.efficiency.on_custom_delta_changed()
 
     class Efficiency(QFrame):
         def __init__(
@@ -597,7 +568,7 @@ class Sim3UI(QFrame):
             self.scroll_title.setFont(CustomFont(12))
             self.skills = SkillInputs(
                 self,
-                build_skill_level_input_specs(),
+                SkillInputs.build_entries(),
                 self.on_base_input_changed,
             )
 
@@ -734,15 +705,8 @@ class Sim3UI(QFrame):
 
             self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-            # 페이지 이동 제한에 사용하는 입력 유효성 상태
-            self._is_stat_input_valid: bool = True
-            self._is_skill_input_valid: bool = True
-
             # 저장된 경지 선택 상태 동기화
-            self.realm_combobox.setCurrentIndex(
-                self.realm_options.index(self._get_calculator_realm())
-            )
-            self._load_optimization_inputs()
+            self.load_from_preset_state()
 
             # 초기 계산 결과 반영
             self.on_base_input_changed()
@@ -751,7 +715,12 @@ class Sim3UI(QFrame):
         def has_valid_navigation_inputs(self) -> bool:
             """페이지 이동에 필요한 입력 유효성 반환"""
 
-            return self._is_stat_input_valid and self._is_skill_input_valid
+            stats_valid: bool
+            level_valid: bool
+            stats_valid, _ = self._read_overall_stats()
+            level_valid, _ = self._read_level()
+            scroll_valid: bool = self._read_scroll_levels(save_levels=False)
+            return stats_valid and level_valid and scroll_valid
 
         def set_result_sections_visible(self, is_visible: bool) -> None:
             """결과 전용 섹션 표시 여부 설정"""
@@ -811,85 +780,32 @@ class Sim3UI(QFrame):
             for target_widget in input_widgets:
                 target_widget.setVisible(is_visible)
 
-        def copy_input_state_from(self, source_editor: "Sim3UI.Efficiency") -> None:
-            """다른 계산기 입력 위젯 상태 복제"""
+        def load_from_preset_state(self) -> None:
+            """저장된 계산기 상태를 현재 입력 위젯에 반영"""
 
-            # 기준 선택 상태 복제
+            calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
             self.metric_combobox.setCurrentIndex(
-                source_editor.metric_combobox.currentIndex()
+                self.metric_options.index(calculator_input.selected_metric)
             )
-            self.level_input.setText(source_editor.level_input.text())
+            self.level_input.setText(str(calculator_input.level))
             self.realm_combobox.setCurrentIndex(
-                source_editor.realm_combobox.currentIndex()
+                self.realm_options.index(calculator_input.realm_tier)
             )
 
-            # 전체 스탯/사용자 지정 변화량 입력값 복제
             for stat_key in CALCULATOR_STAT_SPECS.keys():
                 self.stats_inputs.inputs[stat_key].setText(
-                    source_editor.stats_inputs.inputs[stat_key].text()
+                    f"{calculator_input.overall_stats[stat_key.value]:g}"
                 )
                 self.custom_delta_inputs.inputs[stat_key].setText(
-                    source_editor.custom_delta_inputs.inputs[stat_key].text()
+                    f"{calculator_input.custom_stat_changes[stat_key.value]:g}"
                 )
 
-            # 스크롤 레벨 입력값 복제
-            for target_input, source_input in zip(
-                self.skills.inputs,
-                source_editor.skills.inputs,
-            ):
-                target_input.setText(source_input.text())
-
-            # 스탯 분배/단전 입력값 및 토글 상태 복제
-            for field_name in self.distribution_inputs.inputs.keys():
-                self.distribution_inputs.inputs[field_name].setText(
-                    source_editor.distribution_inputs.inputs[field_name].text()
+            for input_widget, entry in zip(self.skills.inputs, self.skills.entries):
+                input_widget.setText(
+                    str(self._get_preset().info.get_scroll_level(entry.scroll_id))
                 )
 
-            self.distribution_inputs.lock_checkbox.setChecked(
-                source_editor.distribution_inputs.lock_checkbox.isChecked()
-            )
-            self.distribution_inputs.reset_checkbox.setChecked(
-                source_editor.distribution_inputs.reset_checkbox.isChecked()
-            )
-
-            for field_name in self.danjeon_inputs.inputs.keys():
-                self.danjeon_inputs.inputs[field_name].setText(
-                    source_editor.danjeon_inputs.inputs[field_name].text()
-                )
-
-            self.danjeon_inputs.lock_checkbox.setChecked(
-                source_editor.danjeon_inputs.lock_checkbox.isChecked()
-            )
-            self.danjeon_inputs.reset_checkbox.setChecked(
-                source_editor.danjeon_inputs.reset_checkbox.isChecked()
-            )
-
-            # 칭호/부적 입력 상태를 모델로 복원한 뒤 동일하게 로드
-            title_valid: bool
-            owned_titles: list[OwnedTitle]
-            equipped_title_id: str | None
-            title_valid, owned_titles, equipped_title_id = (
-                source_editor.title_inputs.build_state()
-            )
-
-            if title_valid:
-                self.title_inputs.load(owned_titles, equipped_title_id)
-
-            talisman_valid: bool
-            owned_talismans: list[OwnedTalisman]
-            equipped_talisman_ids: list[str]
-            (
-                talisman_valid,
-                owned_talismans,
-                equipped_talisman_ids,
-            ) = source_editor.talisman_inputs.build_state()
-
-            if talisman_valid:
-                self.talisman_inputs.load(owned_talismans, equipped_talisman_ids)
-
-            # 복제 완료 후 출력 다시 계산
-            self.on_base_input_changed()
-            self.on_custom_delta_changed()
+            self._load_optimization_inputs()
 
         class OverallStatInputs(QFrame):
             def __init__(
@@ -1056,7 +972,7 @@ class Sim3UI(QFrame):
                     parent: QWidget,
                     connected_function: Callable[[], None],
                     remove_function: Callable[
-                        ["Sim3UI.Efficiency.TitleInputs.TitleStatRow"], None
+                        ["ResultsPage.Efficiency.TitleInputs.TitleStatRow"], None
                     ],
                     stat_key: StatKey | None = None,
                     value: float = 0.0,
@@ -1135,7 +1051,7 @@ class Sim3UI(QFrame):
                     parent: QWidget,
                     connected_function: Callable[[], None],
                     remove_function: Callable[
-                        ["Sim3UI.Efficiency.TitleInputs.TitleCard"], None
+                        ["ResultsPage.Efficiency.TitleInputs.TitleCard"], None
                     ],
                     data: OwnedTitle | None = None,
                 ) -> None:
@@ -1144,11 +1060,11 @@ class Sim3UI(QFrame):
                     # 칭호 카드 전체 편집 영역 구성
                     self._connected_function: Callable[[], None] = connected_function
                     self._remove_function: Callable[
-                        [Sim3UI.Efficiency.TitleInputs.TitleCard], None
+                        [ResultsPage.Efficiency.TitleInputs.TitleCard], None
                     ] = remove_function
-                    self.stat_rows: list[Sim3UI.Efficiency.TitleInputs.TitleStatRow] = (
-                        []
-                    )
+                    self.stat_rows: list[
+                        ResultsPage.Efficiency.TitleInputs.TitleStatRow
+                    ] = []
 
                     root_layout: QVBoxLayout = QVBoxLayout(self)
                     root_layout.setContentsMargins(8, 8, 8, 8)
@@ -1193,7 +1109,7 @@ class Sim3UI(QFrame):
                 def _add_stat_row(self, stat_key: StatKey, value: float) -> None:
                     """지정된 스탯 행 추가"""
 
-                    row = Sim3UI.Efficiency.TitleInputs.TitleStatRow(
+                    row = ResultsPage.Efficiency.TitleInputs.TitleStatRow(
                         self.stats_container,
                         self._connected_function,
                         self._remove_stat_row,
@@ -1211,7 +1127,7 @@ class Sim3UI(QFrame):
 
                 def _remove_stat_row(
                     self,
-                    target_row: "Sim3UI.Efficiency.TitleInputs.TitleStatRow",
+                    target_row: "ResultsPage.Efficiency.TitleInputs.TitleStatRow",
                 ) -> None:
                     """스탯 행 제거"""
 
@@ -1259,7 +1175,7 @@ class Sim3UI(QFrame):
 
                 # 보유 칭호 목록 및 현재 장착 선택 UI 구성
                 self._connected_function: Callable[[], None] = connected_function
-                self._cards: list[Sim3UI.Efficiency.TitleInputs.TitleCard] = []
+                self._cards: list[ResultsPage.Efficiency.TitleInputs.TitleCard] = []
 
                 root_layout: QVBoxLayout = QVBoxLayout(self)
                 root_layout.setContentsMargins(0, 0, 0, 0)
@@ -1299,7 +1215,7 @@ class Sim3UI(QFrame):
             ) -> None:
                 """칭호 카드 추가"""
 
-                card = Sim3UI.Efficiency.TitleInputs.TitleCard(
+                card = ResultsPage.Efficiency.TitleInputs.TitleCard(
                     self.cards_container,
                     self._connected_function,
                     self.remove_card,
@@ -1313,7 +1229,7 @@ class Sim3UI(QFrame):
 
             def remove_card(
                 self,
-                target_card: "Sim3UI.Efficiency.TitleInputs.TitleCard",
+                target_card: "ResultsPage.Efficiency.TitleInputs.TitleCard",
             ) -> None:
                 """칭호 카드 제거"""
 
@@ -1392,7 +1308,7 @@ class Sim3UI(QFrame):
                     parent: QWidget,
                     connected_function: Callable[[], None],
                     remove_function: Callable[
-                        ["Sim3UI.Efficiency.TalismanInputs.TalismanRow"], None
+                        ["ResultsPage.Efficiency.TalismanInputs.TalismanRow"], None
                     ],
                     data: OwnedTalisman | None = None,
                 ) -> None:
@@ -1478,7 +1394,7 @@ class Sim3UI(QFrame):
 
                 # 보유 부적 목록 및 현재 장착 선택 UI 구성
                 self._connected_function: Callable[[], None] = connected_function
-                self._rows: list[Sim3UI.Efficiency.TalismanInputs.TalismanRow] = []
+                self._rows: list[ResultsPage.Efficiency.TalismanInputs.TalismanRow] = []
 
                 root_layout: QVBoxLayout = QVBoxLayout(self)
                 root_layout.setContentsMargins(0, 0, 0, 0)
@@ -1517,7 +1433,7 @@ class Sim3UI(QFrame):
             ) -> None:
                 """보유 부적 행 추가"""
 
-                row = Sim3UI.Efficiency.TalismanInputs.TalismanRow(
+                row = ResultsPage.Efficiency.TalismanInputs.TalismanRow(
                     self.rows_container,
                     self._connected_function,
                     self.remove_row,
@@ -1531,7 +1447,7 @@ class Sim3UI(QFrame):
 
             def remove_row(
                 self,
-                target_row: "Sim3UI.Efficiency.TalismanInputs.TalismanRow",
+                target_row: "ResultsPage.Efficiency.TalismanInputs.TalismanRow",
             ) -> None:
                 """보유 부적 행 제거"""
 
@@ -1645,10 +1561,13 @@ class Sim3UI(QFrame):
         def _build_empty_stat_map(self) -> dict[StatKey, str]:
             """사용자 지정 변화량 초기값 맵 생성"""
 
-            # 변화량 입력은 전부 0에서 시작
+            # 저장된 변화량 입력을 위젯 초기 문자열로 변환
+            calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
             values: dict[StatKey, str] = {}
             for stat_key in CALCULATOR_STAT_SPECS.keys():
-                values[stat_key] = "0"
+                values[stat_key] = (
+                    f"{calculator_input.custom_stat_changes[stat_key.value]:g}"
+                )
 
             return values
 
@@ -1863,10 +1782,10 @@ class Sim3UI(QFrame):
             level: int = int(text)
             return True, level
 
-        def _read_scroll_levels(self) -> bool:
+        def _read_scroll_levels(self, save_levels: bool = True) -> bool:
             """스크롤 레벨 입력 검증 및 저장"""
 
-            # 모든 스크롤 레벨을 현재 프리셋에 직접 반영
+            # 모든 스크롤 레벨을 검증하고 필요 시 현재 프리셋에 반영
             all_valid: bool = True
             for input_widget, entry in zip(self.skills.inputs, self.skills.entries):
                 text: str = input_widget.text()
@@ -1876,7 +1795,7 @@ class Sim3UI(QFrame):
                 input_widget.set_valid(is_valid)
                 all_valid = all_valid and is_valid
 
-                if not is_valid:
+                if not (is_valid and save_levels):
                     continue
 
                 self._get_preset().info.set_scroll_level(entry.scroll_id, int(text))
@@ -1908,6 +1827,20 @@ class Sim3UI(QFrame):
             calculator_input.realm_tier = self.realm_options[
                 self.realm_combobox.currentIndex()
             ]
+            calculator_input.selected_metric = self._get_selected_metric()
+            save_data()
+
+        def _save_custom_stat_changes(
+            self,
+            custom_changes: dict[StatKey, float],
+        ) -> None:
+            """사용자 지정 변화량 입력 상태 저장"""
+
+            calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
+            calculator_input.custom_stat_changes = {
+                stat_key.value: custom_changes.get(stat_key, 0.0)
+                for stat_key in CALCULATOR_STAT_SPECS.keys()
+            }
             save_data()
 
         def _save_optimization_inputs(
@@ -1953,8 +1886,6 @@ class Sim3UI(QFrame):
             level_valid, level = self._read_level()
 
             scroll_valid: bool = self._read_scroll_levels()
-            self._is_stat_input_valid = stats_valid and level_valid
-            self._is_skill_input_valid = scroll_valid
 
             if not (stats_valid and level_valid and scroll_valid):
                 self._set_error_outputs()
@@ -2232,6 +2163,8 @@ class Sim3UI(QFrame):
                 self.custom_delta_result_list.set_rows([("상태", "오류")])
                 return
 
+            self._save_custom_stat_changes(custom_changes)
+
             # 현재 기준 컨텍스트와 변화량 계산 결과 구성
             context: CalculatorEvaluationContext = build_calculator_context(
                 server_spec=app_state.macro.current_server,
@@ -2277,10 +2210,37 @@ class Sim3UI(QFrame):
 
 
 class SkillInputs(QFrame):
+    @dataclass(frozen=True)
+    class Entry:
+        """스크롤 레벨 입력 UI 한 칸의 표시/저장 정보"""
+
+        title: str
+        value: int
+        scroll_id: str
+
+    @staticmethod
+    def build_entries() -> list["SkillInputs.Entry"]:
+        """현재 서버/프리셋 기준 스크롤 레벨 입력 목록 구성"""
+
+        server: ServerSpec = app_state.macro.current_server
+        preset: MacroPreset = app_state.macro.current_preset
+        entries: list[SkillInputs.Entry] = []
+
+        for scroll_def in server.skill_registry.get_all_scroll_defs():
+            entries.append(
+                SkillInputs.Entry(
+                    title=scroll_def.name,
+                    value=preset.info.get_scroll_level(scroll_def.id),
+                    scroll_id=scroll_def.id,
+                )
+            )
+
+        return entries
+
     def __init__(
         self,
         mainframe: QWidget,
-        entries: list[SkillLevelInputSpec],
+        entries: list["SkillInputs.Entry"],
         connected_function: Callable[[], None],
     ) -> None:
         super().__init__(mainframe)
@@ -2292,7 +2252,7 @@ class SkillInputs(QFrame):
         grid_layout: QGridLayout = QGridLayout(self)
 
         # 아이템을 저장할 리스트
-        self.entries: list[SkillLevelInputSpec] = entries
+        self.entries: list[SkillInputs.Entry] = entries
         self.inputs: list[CustomLineEdit] = []
 
         # column 수 설정
@@ -2328,7 +2288,7 @@ class SkillInputs(QFrame):
         def __init__(
             self,
             parent: QWidget,
-            entry: SkillLevelInputSpec,
+            entry: "SkillInputs.Entry",
             connected_function: Callable[[], None],
         ) -> None:
             super().__init__(parent)
@@ -2499,7 +2459,7 @@ class AnalysisDetails(QFrame):
                 self,
                 analysis[i],
                 ANALYSIS_DETAIL_KEYS,
-                config.ui.sim_colors4[i],
+                config.ui.analysis_card_colors[i],
             )
             for i in range(4)
         ]

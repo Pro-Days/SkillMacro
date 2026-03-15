@@ -905,7 +905,7 @@ class SkillContributionCanvas(pg.PlotWidget):
     def __init__(
         self,
         parent: QWidget,
-        resultDet: list[CalculatorGraphAttack],
+        deterministic_attacks: list[CalculatorGraphAttack],
         skill_ids: list[str],
         server_id: str,
     ) -> None:
@@ -926,7 +926,7 @@ class SkillContributionCanvas(pg.PlotWidget):
                 sum(
                     [
                         j.damage
-                        for j in resultDet
+                        for j in deterministic_attacks
                         if j.skill_id == skill_id and j.time < (i + 1) * step
                     ]
                 )
@@ -937,9 +937,9 @@ class SkillContributionCanvas(pg.PlotWidget):
 
         # totalData = []
         # for i in range(timeStepCount):
-        #     totalData.append(sum([j[2] for j in resultDet if j[1] < (i + 1) * timeStep]))
+        #     totalData.append(sum([j[2] for j in deterministic_attacks if j[1] < (i + 1) * timeStep]))
         totalData: list[float] = [0.0] + [
-            sum([j.damage for j in resultDet if j.time < (i + 1) * step])
+            sum([j.damage for j in deterministic_attacks if j.time < (i + 1) * step])
             for i in range(count)
         ]
 

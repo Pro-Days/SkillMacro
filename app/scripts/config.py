@@ -21,7 +21,7 @@ class UiConfig:
     DEFAULT_WINDOW_WIDTH: ClassVar[int] = 960
     DEFAULT_WINDOW_HEIGHT: ClassVar[int] = 540
 
-    sim_colors4: ClassVar[tuple[str, ...]] = (
+    analysis_card_colors: ClassVar[tuple[str, ...]] = (
         "255, 130, 130",  # #FF8282
         "255, 230, 140",  # #FFE68C
         "170, 230, 255",  # #AAE6FF

@@ -338,6 +338,7 @@ class CalculatorPresetInput:
     overall_stats: dict[str, float] = field(default_factory=dict)
     level: int = 0
     realm_tier: RealmTier = RealmTier.THIRD_RATE
+    selected_metric: PowerMetric = PowerMetric.BOSS_DAMAGE
 
     # 현재 분배 상태 저장
     distribution: DistributionState = field(default_factory=DistributionState)
@@ -349,6 +350,7 @@ class CalculatorPresetInput:
     equipped: EquippedOptimizationState = field(
         default_factory=EquippedOptimizationState
     )
+    custom_stat_changes: dict[str, float] = field(default_factory=dict)
 
     @classmethod
     def create_default(cls) -> "CalculatorPresetInput":
@@ -358,7 +360,13 @@ class CalculatorPresetInput:
         overall_stats: dict[str, float] = {
             stat_key.value: 0.0 for stat_key in OVERALL_STAT_ORDER
         }
-        return cls(overall_stats=overall_stats)
+        custom_stat_changes: dict[str, float] = {
+            stat_key.value: 0.0 for stat_key in OVERALL_STAT_ORDER
+        }
+        return cls(
+            overall_stats=overall_stats,
+            custom_stat_changes=custom_stat_changes,
+        )
 
     @classmethod
     def from_dict(cls, data: dict[str, object]) -> "CalculatorPresetInput":
@@ -373,9 +381,18 @@ class CalculatorPresetInput:
             stat_key.value: float(raw_stats[stat_key.value])
             for stat_key in OVERALL_STAT_ORDER
         }
+        custom_stat_changes_raw: object = data["custom_stat_changes"]
+        if not isinstance(custom_stat_changes_raw, dict):
+            raise TypeError("custom_stat_changes must be a dict")
+
+        custom_stat_changes: dict[str, float] = {
+            stat_key.value: float(custom_stat_changes_raw[stat_key.value])
+            for stat_key in OVERALL_STAT_ORDER
+        }
 
         # 경지/분배/보유 목록 구조 직접 복원
         realm_tier: RealmTier = RealmTier(str(data["realm_tier"]))
+        selected_metric: PowerMetric = PowerMetric(str(data["selected_metric"]))
         distribution_data: object = data["distribution"]
         if not isinstance(distribution_data, dict):
             raise TypeError("distribution must be a dict")
@@ -423,11 +440,13 @@ class CalculatorPresetInput:
             overall_stats=overall_stats,
             level=level,
             realm_tier=realm_tier,
+            selected_metric=selected_metric,
             distribution=distribution,
             danjeon=danjeon,
             owned_titles=owned_titles,
             owned_talismans=owned_talismans,
             equipped=equipped,
+            custom_stat_changes=custom_stat_changes,
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -439,6 +458,7 @@ class CalculatorPresetInput:
             },
             "level": self.level,
             "realm_tier": self.realm_tier.value,
+            "selected_metric": self.selected_metric.value,
             "distribution": self.distribution.to_dict(),
             "danjeon": self.danjeon.to_dict(),
             "owned_titles": [title.to_dict() for title in self.owned_titles],
@@ -446,6 +466,9 @@ class CalculatorPresetInput:
                 talisman.to_dict() for talisman in self.owned_talismans
             ],
             "equipped": self.equipped.to_dict(),
+            "custom_stat_changes": {
+                key: float(value) for key, value in self.custom_stat_changes.items()
+            },
         }
         return data
 
