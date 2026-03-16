@@ -115,6 +115,11 @@ POWER_METRIC_LABELS: dict[PowerMetric, str] = {
 }
 
 
+# 계산기 고정 타임라인 길이 상수
+CALCULATOR_TIMELINE_SECONDS: float = 60.0
+CALCULATOR_TIMELINE_MILLISECONDS: int = 60000
+
+
 @dataclass(frozen=True, slots=True)
 class CalculatorBuffWindow:
     """계산기용 버프 활성 구간"""
@@ -144,11 +149,22 @@ class CalculatorTimeline:
 
 
 @dataclass(frozen=True, slots=True)
+class CalculatorTimelineSegment:
+    """계산기용 비타격 전투력 평가 구간"""
+
+    start_time: float
+    end_time: float
+    duration: float
+    active_buffs: tuple[CalculatorBuffWindow, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class CalculatorTimelineEvaluationArtifacts:
     """타임라인 평가용 사전 계산 결과"""
 
     timeline: CalculatorTimeline
     active_buffs_by_hit: tuple[tuple[CalculatorBuffWindow, ...], ...]
+    timeline_segments: tuple[CalculatorTimelineSegment, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -1307,7 +1323,7 @@ def build_skill_use_sequence(
     task_list: list[EquippedSkillRef] = []
     used_skills: list[CalculatorSkillUse] = []
     elapsed_time_ms: int = 0
-    while elapsed_time_ms < 60000:
+    while elapsed_time_ms < CALCULATOR_TIMELINE_MILLISECONDS:
         if not task_list:
             _update_prepared_skills(
                 placed_refs=placed_refs,
@@ -1368,7 +1384,11 @@ def build_simulation_events(
     basic_attack_skill_id: str = get_builtin_skill_id(server_spec.id, "평타")
     basic_attack_interval_ms: int = int((100 - cooltime_reduction) * 10)
     hit_events: list[CalculatorHitEvent] = []
-    for current_time_ms in range(0, 60000, basic_attack_interval_ms):
+    for current_time_ms in range(
+        0,
+        CALCULATOR_TIMELINE_MILLISECONDS,
+        basic_attack_interval_ms,
+    ):
         hit_events.append(
             CalculatorHitEvent(
                 skill_id=basic_attack_skill_id,
@@ -1518,11 +1538,54 @@ def _build_timeline_evaluation_artifacts(
         )
         active_buffs_by_hit.append(active_buffs)
 
+    # 데미지가 아닌 전투력 평가용 시간 경계와 활성 버프 구간 계산
+    boundary_values: set[float] = {0.0, CALCULATOR_TIMELINE_SECONDS}
+    buff_window: CalculatorBuffWindow
+    for buff_window in timeline.buff_windows:
+        clamped_start_time: float = max(
+            0.0,
+            min(buff_window.start_time, CALCULATOR_TIMELINE_SECONDS),
+        )
+        clamped_end_time: float = max(
+            0.0,
+            min(buff_window.end_time, CALCULATOR_TIMELINE_SECONDS),
+        )
+        boundary_values.add(clamped_start_time)
+        boundary_values.add(clamped_end_time)
+
+    # 반열린 구간 기준 비타격 전투력 평가 세그먼트 구성
+    ordered_boundaries: tuple[float, ...] = tuple(sorted(boundary_values))
+    timeline_segments: list[CalculatorTimelineSegment] = []
+    boundary_index: int
+    for boundary_index in range(len(ordered_boundaries) - 1):
+        start_time: float = ordered_boundaries[boundary_index]
+        end_time: float = ordered_boundaries[boundary_index + 1]
+
+        # 세그먼트 시작 시점 활성 버프 수집
+        segment_active_buffs: tuple[CalculatorBuffWindow, ...] = tuple(
+            current_buff_window
+            for current_buff_window in timeline.buff_windows
+            if (
+                current_buff_window.start_time
+                <= start_time
+                < current_buff_window.end_time
+            )
+        )
+        timeline_segments.append(
+            CalculatorTimelineSegment(
+                start_time=start_time,
+                end_time=end_time,
+                duration=end_time - start_time,
+                active_buffs=segment_active_buffs,
+            )
+        )
+
     # 동일 타임라인 재평가 시 재사용할 불변 구조로 고정
     artifacts: CalculatorTimelineEvaluationArtifacts = (
         CalculatorTimelineEvaluationArtifacts(
             timeline=timeline,
             active_buffs_by_hit=tuple(active_buffs_by_hit),
+            timeline_segments=tuple(timeline_segments),
         )
     )
     return artifacts
@@ -1681,25 +1744,46 @@ def evaluate_calculator_power(
             is_boss=False,
         )
 
-    # 전투력 계산
-    hp_value: float = float(resolved_stats.values[StatKey.HP])
-    dodge_value: float = float(resolved_stats.values[StatKey.DODGE_PERCENT])
-    resist_value: float = float(resolved_stats.values[StatKey.RESIST_PERCENT])
-    potion_heal_value: float = float(resolved_stats.values[StatKey.POTION_HEAL_PERCENT])
-    drop_rate_value: float = float(resolved_stats.values[StatKey.DROP_RATE_PERCENT])
-    exp_value: float = float(resolved_stats.values[StatKey.EXP_PERCENT])
+    # 세그먼트별 비타격 전투력 배수 시간가중 평균 누적
+    weighted_boss_multiplier_sum: float = 0.0
+    weighted_normal_multiplier_sum: float = 0.0
+    timeline_segment: CalculatorTimelineSegment
+    for timeline_segment in artifacts.timeline_segments:
+        segment_stats: dict[StatKey, float] = _apply_active_buffs(
+            resolved_stats,
+            timeline_segment.active_buffs,
+        )
 
-    dodge_denominator: float = max(1.0 - (dodge_value * 0.01), 0.01)
+        # 보스 전투력용 생존 배수 계산
+        hp_value: float = float(segment_stats[StatKey.HP])
+        dodge_value: float = float(segment_stats[StatKey.DODGE_PERCENT])
+        resist_value: float = float(segment_stats[StatKey.RESIST_PERCENT])
+        potion_heal_value: float = float(segment_stats[StatKey.POTION_HEAL_PERCENT])
+        dodge_denominator: float = max(1.0 - (dodge_value * 0.01), 0.01)
 
-    boss_power: float = total_boss_damage
-    boss_power *= hp_value
-    boss_power *= 1.0 / dodge_denominator
-    boss_power *= 1.0 + (resist_value * 0.01)
-    boss_power *= 1.0 + (potion_heal_value * 0.01)
+        boss_multiplier: float = hp_value
+        boss_multiplier *= 1.0 / dodge_denominator
+        boss_multiplier *= 1.0 + (resist_value * 0.01)
+        boss_multiplier *= 1.0 + (potion_heal_value * 0.01)
+        weighted_boss_multiplier_sum += boss_multiplier * timeline_segment.duration
 
-    normal_power: float = total_normal_damage
-    normal_power *= 1.0 + (drop_rate_value * 0.01)
-    normal_power *= 1.0 + (exp_value * 0.01)
+        # 일반 전투력용 획득 배수 계산
+        drop_rate_value: float = float(segment_stats[StatKey.DROP_RATE_PERCENT])
+        exp_value: float = float(segment_stats[StatKey.EXP_PERCENT])
+
+        normal_multiplier: float = 1.0 + (drop_rate_value * 0.01)
+        normal_multiplier *= 1.0 + (exp_value * 0.01)
+        weighted_normal_multiplier_sum += normal_multiplier * timeline_segment.duration
+
+    # 60초 기준 평균 배수로 최종 전투력 계산
+    averaged_boss_multiplier: float = (
+        weighted_boss_multiplier_sum / CALCULATOR_TIMELINE_SECONDS
+    )
+    averaged_normal_multiplier: float = (
+        weighted_normal_multiplier_sum / CALCULATOR_TIMELINE_SECONDS
+    )
+    boss_power: float = total_boss_damage * averaged_boss_multiplier
+    normal_power: float = total_normal_damage * averaged_normal_multiplier
 
     official_power: float = (total_boss_damage + total_normal_damage) * 0.5
 
