@@ -41,13 +41,13 @@ def simulate_random_from_calculator(
 
     # 결정론 기준 보스/일반 공격 이벤트 생성
     deterministic_boss_events: list[CalculatorDamageEvent] = build_damage_events(
-        timeline=context.timeline,
+        timeline=context.timeline_artifacts.timeline,
         resolved_stats=context.baseline_stats,
         is_boss=True,
         deterministic=True,
     )
     deterministic_normal_events: list[CalculatorDamageEvent] = build_damage_events(
-        timeline=context.timeline,
+        timeline=context.timeline_artifacts.timeline,
         resolved_stats=context.baseline_stats,
         is_boss=False,
         deterministic=True,
@@ -70,14 +70,14 @@ def simulate_random_from_calculator(
         boss_seed: float = random.random()
         normal_seed: float = random.random()
         boss_events: list[CalculatorDamageEvent] = build_damage_events(
-            timeline=context.timeline,
+            timeline=context.timeline_artifacts.timeline,
             resolved_stats=context.baseline_stats,
             is_boss=True,
             deterministic=False,
             random_seed=boss_seed,
         )
         normal_events: list[CalculatorDamageEvent] = build_damage_events(
-            timeline=context.timeline,
+            timeline=context.timeline_artifacts.timeline,
             resolved_stats=context.baseline_stats,
             is_boss=False,
             deterministic=False,

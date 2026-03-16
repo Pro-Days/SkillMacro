@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -268,7 +269,6 @@ class CalculatorPowerSummary:
 class CalculatorEvaluationContext:
     """효율 계산 기준 컨텍스트"""
 
-    timeline: CalculatorTimeline
     timeline_artifacts: CalculatorTimelineEvaluationArtifacts
     baseline_stats: CalculatorResolvedStats
     baseline_summary: CalculatorPowerSummary
@@ -351,7 +351,7 @@ class OptimizationCandidate:
     distribution: DistributionState
     danjeon: DanjeonState
     equipped_title_id: str | None
-    equipped_talisman_ids: list[str]
+    equipped_talisman_ids: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -910,10 +910,7 @@ def build_title_contribution(
         return CalculatorContribution()
 
     # 사전 계산된 칭호 조회 맵 기반 즉시 조회
-    equipped_title: OwnedTitle | None = owned_title_map.get(equipped_title_id)
-
-    if equipped_title is None:
-        return CalculatorContribution()
+    equipped_title: OwnedTitle = owned_title_map[equipped_title_id]
 
     contribution: CalculatorContribution = CalculatorContribution()
     for stat_key_text, value in equipped_title.stats.items():
@@ -1601,17 +1598,16 @@ def build_damage_events(
 ) -> list[CalculatorDamageEvent]:
     """타임라인과 스탯 기준 최종 피해 이벤트 목록 구성"""
 
+    artifacts: CalculatorTimelineEvaluationArtifacts = (
+        _build_timeline_evaluation_artifacts(timeline)
+    )
     damage_events: list[CalculatorDamageEvent] = []
-    for hit_event in timeline.hit_events:
-        # 타격 시점 활성 버프 수집 및 버프 반영 스탯 구성
-        active_buffs: tuple[CalculatorBuffWindow, ...] = _collect_active_buffs(
-            timeline.buff_windows,
-            hit_event.time,
-        )
-        buffed_stats: dict[StatKey, float] = _apply_active_buffs(
-            resolved_stats, active_buffs
-        )
-
+    hit_event: CalculatorHitEvent
+    buffed_stats: dict[StatKey, float]
+    for hit_event, buffed_stats in _iterate_buffed_hit_events(
+        artifacts,
+        resolved_stats,
+    ):
         # 결정론/확률론 모드에 따라 최종 타격 피해량 계산
         damage: float
         if deterministic:
@@ -1640,15 +1636,11 @@ def build_damage_events(
     return damage_events
 
 
-def evaluate_calculator_power(
+def _iterate_buffed_hit_events(
     artifacts: CalculatorTimelineEvaluationArtifacts,
     resolved_stats: CalculatorResolvedStats,
-) -> CalculatorPowerSummary:
-    """사전 계산 타임라인 아티팩트 기준 5종 전투력 계산"""
-
-    # 타격별 활성 버프 스냅샷 재사용 기반 총데미지 누적
-    total_boss_damage: float = 0.0
-    total_normal_damage: float = 0.0
+) -> Iterator[tuple[CalculatorHitEvent, dict[StatKey, float]]]:
+    """타임라인 아티팩트 기준 버프 반영 타격 순회"""
 
     hit_index: int
     hit_event: CalculatorHitEvent
@@ -1659,6 +1651,25 @@ def evaluate_calculator_power(
         buffed_stats: dict[StatKey, float] = _apply_active_buffs(
             resolved_stats, active_buffs
         )
+        yield hit_event, buffed_stats
+
+
+def evaluate_calculator_power(
+    artifacts: CalculatorTimelineEvaluationArtifacts,
+    resolved_stats: CalculatorResolvedStats,
+) -> CalculatorPowerSummary:
+    """사전 계산 타임라인 아티팩트 기준 5종 전투력 계산"""
+
+    # 타격별 활성 버프 스냅샷 재사용 기반 총데미지 누적
+    total_boss_damage: float = 0.0
+    total_normal_damage: float = 0.0
+
+    hit_event: CalculatorHitEvent
+    buffed_stats: dict[StatKey, float]
+    for hit_event, buffed_stats in _iterate_buffed_hit_events(
+        artifacts,
+        resolved_stats,
+    ):
         total_boss_damage += _calculate_hit_damage(
             resolved_stats=buffed_stats,
             hit_event=hit_event,
@@ -1736,7 +1747,6 @@ def build_calculator_context(
     )
 
     return CalculatorEvaluationContext(
-        timeline=timeline,
         timeline_artifacts=timeline_artifacts,
         baseline_stats=baseline_stats,
         baseline_summary=baseline_summary,
@@ -2603,9 +2613,9 @@ def optimize_current_selection(
     baseline_skill_speed: float = float(
         context.baseline_stats.values[StatKey.SKILL_SPEED_PERCENT]
     )
-    baseline_speed_key: float = round(baseline_skill_speed, 2)
+    baseline_speed_cache_key: float = round(baseline_skill_speed, 2)
     timeline_cache: dict[float, CalculatorTimelineEvaluationArtifacts] = {
-        baseline_speed_key: context.timeline_artifacts
+        baseline_speed_cache_key: context.timeline_artifacts
     }
 
     # 선택 전투력 기준 최고 후보 탐색
@@ -2638,12 +2648,12 @@ def optimize_current_selection(
                     candidate_skill_speed: float = float(
                         optimized_resolved_stats.values[StatKey.SKILL_SPEED_PERCENT]
                     )
-                    speed_key: float = round(candidate_skill_speed, 2)
+                    speed_cache_key: float = round(candidate_skill_speed, 2)
 
                     # 동일 스킬속도 구간 타임라인 재활용 및 최초 1회만 재계산
                     cached_timeline_artifacts: (
                         CalculatorTimelineEvaluationArtifacts | None
-                    ) = timeline_cache.get(speed_key)
+                    ) = timeline_cache.get(speed_cache_key)
                     if cached_timeline_artifacts is None:
                         cached_timeline: CalculatorTimeline = build_calculator_timeline(
                             server_spec=server_spec,
@@ -2655,7 +2665,7 @@ def optimize_current_selection(
                         cached_timeline_artifacts = (
                             _build_timeline_evaluation_artifacts(cached_timeline)
                         )
-                        timeline_cache[speed_key] = cached_timeline_artifacts
+                        timeline_cache[speed_cache_key] = cached_timeline_artifacts
 
                     # 캐시된 타임라인 활성 버프 스냅샷과 후보 스탯 기준 전투력 재평가
                     optimized_summary: CalculatorPowerSummary = (
@@ -2681,7 +2691,7 @@ def optimize_current_selection(
                             distribution=distribution_state,
                             danjeon=danjeon_state,
                             equipped_title_id=equipped_title_id,
-                            equipped_talisman_ids=equipped_talisman_ids.copy(),
+                            equipped_talisman_ids=tuple(equipped_talisman_ids),
                         ),
                         deltas=deltas,
                         optimized_overall_stats=optimized_overall_stats,
