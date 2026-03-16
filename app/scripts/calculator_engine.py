@@ -126,15 +126,6 @@ POWER_METRIC_LABELS: dict[PowerMetric, str] = {
 CALCULATOR_TIMELINE_SECONDS: float = 60.0
 CALCULATOR_TIMELINE_MILLISECONDS: int = 60000
 
-# 최적화 병렬화 최소 옵션 조합 수 기준
-OPTIMIZATION_MIN_PARALLEL_EQUIPMENT_ENTRIES: int = 8
-
-# 최적화 병렬화 시 워커당 최소 옵션 조합 수 기준
-OPTIMIZATION_MIN_PARALLEL_EQUIPMENT_ENTRIES_PER_WORKER: int = 4
-
-# 최적화 병렬화 최대 워커 수 상한
-OPTIMIZATION_MAX_PARALLEL_WORKERS: int = 8
-
 
 @dataclass(frozen=True, slots=True)
 class CalculatorBuffWindow:
@@ -408,6 +399,14 @@ class OptimizationEquipmentEntry:
 
 
 @dataclass(frozen=True, slots=True)
+class OptimizationDistributionChunk:
+    """분배 후보 청크 식별 정보"""
+
+    chunk_index: int
+    chunk_count: int
+
+
+@dataclass(frozen=True, slots=True)
 class OptimizationSearchContext:
     """최적화 탐색 공통 입력 묶음"""
 
@@ -424,6 +423,7 @@ class OptimizationSearchContext:
         tuple[DanjeonState, CalculatorContribution, tuple[float, ...]],
         ...,
     ]
+    equipment_entries: tuple[OptimizationEquipmentEntry, ...]
     remaining_projection_by_exact_key: dict[tuple[float, ...], tuple[float, ...]]
     equipment_max_projection_by_exact_key: dict[tuple[float, ...], tuple[float, ...]]
 
@@ -433,7 +433,7 @@ class OptimizationWorkerInput:
     """최적화 워커 단위 입력"""
 
     search_context: OptimizationSearchContext
-    equipment_entries: tuple[OptimizationEquipmentEntry, ...]
+    distribution_chunk: OptimizationDistributionChunk
 
 
 @dataclass(frozen=True, slots=True)
@@ -2593,14 +2593,123 @@ def _build_resolved_stats_from_base_and_contribution(
     )
 
 
+def _iter_distribution_coordinates(
+    total_points: int,
+    metric_axes: OptimizationMetricAxes,
+    distribution_chunk: OptimizationDistributionChunk | None,
+) -> Iterator[tuple[int, int, int, int]]:
+    """목표 축 기준 분배 좌표 청크 순회"""
+
+    # 청크 미지정 시 전체 범위 단일 청크로 정규화
+    chunk_index: int = 0
+    chunk_count: int = 1
+    if distribution_chunk is not None:
+        chunk_index = distribution_chunk.chunk_index
+        chunk_count = distribution_chunk.chunk_count
+
+    # 순회 순서를 유지하며 청크 기준 좌표 선별
+    candidate_index: int = 0
+    strength: int
+    for strength in range(total_points + 1):
+        remaining_after_strength: int = total_points - strength
+
+        # 힘/민첩 2축 분배 좌표 구성
+        if not metric_axes.include_vitality and not metric_axes.include_luck:
+            dexterity: int = remaining_after_strength
+            if candidate_index % chunk_count == chunk_index:
+                yield (strength, dexterity, 0, 0)
+
+            candidate_index += 1
+            continue
+
+        dexterity: int
+        for dexterity in range(remaining_after_strength + 1):
+            remaining_after_dexterity: int = remaining_after_strength - dexterity
+
+            # 힘/민첩/체력 3축 분배 좌표 구성
+            if metric_axes.include_vitality and not metric_axes.include_luck:
+                vitality: int = remaining_after_dexterity
+                if candidate_index % chunk_count == chunk_index:
+                    yield (strength, dexterity, vitality, 0)
+
+                candidate_index += 1
+                continue
+
+            # 힘/민첩/행운 3축 분배 좌표 구성
+            if not metric_axes.include_vitality and metric_axes.include_luck:
+                luck: int = remaining_after_dexterity
+                if candidate_index % chunk_count == chunk_index:
+                    yield (strength, dexterity, 0, luck)
+
+                candidate_index += 1
+                continue
+
+            # 힘/민첩/체력/행운 4축 분배 좌표 구성
+            vitality: int
+            for vitality in range(remaining_after_dexterity + 1):
+                luck: int = remaining_after_dexterity - vitality
+                if candidate_index % chunk_count == chunk_index:
+                    yield (strength, dexterity, vitality, luck)
+
+                candidate_index += 1
+
+
+def _count_distribution_candidates(
+    calculator_input: CalculatorPresetInput,
+    metric_axes: OptimizationMetricAxes,
+) -> int:
+    """목표 축 기준 정확한 분배 후보 수 계산"""
+
+    current_state: DistributionState = calculator_input.distribution
+    if current_state.is_locked:
+        return 1
+
+    # 리셋 여부에 따른 분배 대상 포인트 수 계산
+    max_points: int = calculator_input.level * 5
+    used_points: int = (
+        current_state.strength
+        + current_state.dexterity
+        + current_state.vitality
+        + current_state.luck
+    )
+    distribution_points: int = (
+        max_points if current_state.use_reset else max_points - used_points
+    )
+
+    # 목표 축 수 기준 조합 수 계산
+    axis_count: int = 2
+    if metric_axes.include_vitality:
+        axis_count += 1
+
+    if metric_axes.include_luck:
+        axis_count += 1
+
+    if axis_count == 2:
+        return distribution_points + 1
+
+    if axis_count == 3:
+        return ((distribution_points + 2) * (distribution_points + 1)) // 2
+
+    return (
+        (distribution_points + 3)
+        * (distribution_points + 2)
+        * (distribution_points + 1)
+    ) // 6
+
+
 def _build_distribution_candidates(
     calculator_input: CalculatorPresetInput,
     metric_axes: OptimizationMetricAxes,
+    distribution_chunk: OptimizationDistributionChunk | None = None,
 ) -> Iterator[DistributionState]:
     """스탯 분배 후보 순회"""
 
     current_state: DistributionState = calculator_input.distribution
     if current_state.is_locked:
+        # 잠금 상태 단일 후보를 첫 번째 청크에만 배정
+        if distribution_chunk is not None and distribution_chunk.chunk_index != 0:
+            return
+
         yield current_state
         return
 
@@ -2620,128 +2729,57 @@ def _build_distribution_candidates(
     fixed_vitality: int = 0 if current_state.use_reset else current_state.vitality
     fixed_luck: int = 0 if current_state.use_reset else current_state.luck
 
+    # 리셋 사용 시 전체 재분배 좌표를 그대로 후보 상태로 변환
     if current_state.use_reset:
-        # 영향 축 기준 전체 포인트 재분배 후보 구성
-        # 데미지 전투력
-        if not metric_axes.include_vitality and not metric_axes.include_luck:
-            for strength in range(target_points + 1):
-                dexterity: int = target_points - strength
-                yield DistributionState(
-                    strength=strength,
-                    dexterity=dexterity,
-                    vitality=0,
-                    luck=0,
-                    is_locked=current_state.is_locked,
-                    use_reset=current_state.use_reset,
-                )
-            return
-
-        # 보스 전투력
-        if metric_axes.include_vitality and not metric_axes.include_luck:
-            for strength in range(target_points + 1):
-                for dexterity in range(target_points - strength + 1):
-                    vitality: int = target_points - strength - dexterity
-                    yield DistributionState(
-                        strength=strength,
-                        dexterity=dexterity,
-                        vitality=vitality,
-                        luck=0,
-                        is_locked=current_state.is_locked,
-                        use_reset=current_state.use_reset,
-                    )
-            return
-
-        # 일반 전투력
-        if not metric_axes.include_vitality and metric_axes.include_luck:
-            for strength in range(target_points + 1):
-                for dexterity in range(target_points - strength + 1):
-                    luck: int = target_points - strength - dexterity
-                    yield DistributionState(
-                        strength=strength,
-                        dexterity=dexterity,
-                        vitality=0,
-                        luck=luck,
-                        is_locked=current_state.is_locked,
-                        use_reset=current_state.use_reset,
-                    )
-            return
-
-        # 모든 축을 사용하는 경우 (향후 대비: 비효율적)
-        for strength in range(target_points + 1):
-            for dexterity in range(target_points - strength + 1):
-                for vitality in range(target_points - strength - dexterity + 1):
-                    luck: int = target_points - strength - dexterity - vitality
-                    yield DistributionState(
-                        strength=strength,
-                        dexterity=dexterity,
-                        vitality=vitality,
-                        luck=luck,
-                        is_locked=current_state.is_locked,
-                        use_reset=current_state.use_reset,
-                    )
-        return
-
-    # 리셋 미사용
-    # 미사용 포인트를 영향 축에만 배분하는 후보 구성
-    # 데미지 전투력
-    if not metric_axes.include_vitality and not metric_axes.include_luck:
-        for add_strength in range(free_points + 1):
-            add_dexterity: int = free_points - add_strength
+        strength: int
+        dexterity: int
+        vitality: int
+        luck: int
+        for (
+            strength,
+            dexterity,
+            vitality,
+            luck,
+        ) in _iter_distribution_coordinates(
+            target_points,
+            metric_axes,
+            distribution_chunk,
+        ):
             yield DistributionState(
-                strength=current_state.strength + add_strength,
-                dexterity=current_state.dexterity + add_dexterity,
-                vitality=fixed_vitality,
-                luck=fixed_luck,
+                strength=strength,
+                dexterity=dexterity,
+                vitality=vitality,
+                luck=luck,
                 is_locked=current_state.is_locked,
                 use_reset=current_state.use_reset,
             )
+
         return
 
-    # 보스 전투력
-    if metric_axes.include_vitality and not metric_axes.include_luck:
-        for add_strength in range(free_points + 1):
-            for add_dexterity in range(free_points - add_strength + 1):
-                add_vitality: int = free_points - add_strength - add_dexterity
-                yield DistributionState(
-                    strength=current_state.strength + add_strength,
-                    dexterity=current_state.dexterity + add_dexterity,
-                    vitality=current_state.vitality + add_vitality,
-                    luck=fixed_luck,
-                    is_locked=current_state.is_locked,
-                    use_reset=current_state.use_reset,
-                )
-        return
+    # 리셋 미사용 시 영향 축 증분만 계산 후 고정 축과 합성
+    add_strength: int
+    add_dexterity: int
+    add_vitality: int
+    add_luck: int
+    for (
+        add_strength,
+        add_dexterity,
+        add_vitality,
+        add_luck,
+    ) in _iter_distribution_coordinates(
+        free_points,
+        metric_axes,
+        distribution_chunk,
+    ):
+        yield DistributionState(
+            strength=current_state.strength + add_strength,
+            dexterity=current_state.dexterity + add_dexterity,
+            vitality=fixed_vitality + add_vitality,
+            luck=fixed_luck + add_luck,
+            is_locked=current_state.is_locked,
+            use_reset=current_state.use_reset,
+        )
 
-    # 일반 전투력
-    if not metric_axes.include_vitality and metric_axes.include_luck:
-        for add_strength in range(free_points + 1):
-            for add_dexterity in range(free_points - add_strength + 1):
-                add_luck: int = free_points - add_strength - add_dexterity
-                yield DistributionState(
-                    strength=current_state.strength + add_strength,
-                    dexterity=current_state.dexterity + add_dexterity,
-                    vitality=fixed_vitality,
-                    luck=current_state.luck + add_luck,
-                    is_locked=current_state.is_locked,
-                    use_reset=current_state.use_reset,
-                )
-        return
-
-    # 모든 축을 사용하는 경우 (향후 대비: 비효율적)
-    for add_strength in range(free_points + 1):
-        for add_dexterity in range(free_points - add_strength + 1):
-            for add_vitality in range(free_points - add_strength - add_dexterity + 1):
-                add_luck: int = (
-                    free_points - add_strength - add_dexterity - add_vitality
-                )
-                yield DistributionState(
-                    strength=current_state.strength + add_strength,
-                    dexterity=current_state.dexterity + add_dexterity,
-                    vitality=current_state.vitality + add_vitality,
-                    luck=current_state.luck + add_luck,
-                    is_locked=current_state.is_locked,
-                    use_reset=current_state.use_reset,
-                )
     return
 
 
@@ -3319,28 +3357,21 @@ def _build_talisman_candidates(
 
 def _build_optimization_worker_inputs(
     search_context: OptimizationSearchContext,
-    equipment_entries: list[OptimizationEquipmentEntry],
     parallel_worker_count: int,
 ) -> tuple[OptimizationWorkerInput, ...]:
-    """옵션 조합 목록 병렬 워커 단위 분할"""
+    """분배 청크 기준 워커 입력 구성"""
 
-    # 워커 수 기준 균등 분할 크기 계산
-    chunk_size: int = max(
-        1,
-        (len(equipment_entries) + parallel_worker_count - 1) // parallel_worker_count,
-    )
-
-    # 각 워커별 옵션 조합 묶음 구성
+    # 분배 청크 개수만큼 독립 워커 입력 구성
     worker_inputs: list[OptimizationWorkerInput] = []
-    start_index: int
-    for start_index in range(0, len(equipment_entries), chunk_size):
-        equipment_chunk: tuple[OptimizationEquipmentEntry, ...] = tuple(
-            equipment_entries[start_index : start_index + chunk_size]
-        )
+    chunk_index: int
+    for chunk_index in range(parallel_worker_count):
         worker_inputs.append(
             OptimizationWorkerInput(
                 search_context=search_context,
-                equipment_entries=equipment_chunk,
+                distribution_chunk=OptimizationDistributionChunk(
+                    chunk_index=chunk_index,
+                    chunk_count=parallel_worker_count,
+                ),
             )
         )
 
@@ -3354,8 +3385,9 @@ def _search_best_optimization_result(
 
     # 병렬 워커 공통 탐색 입력 전개
     search_context: OptimizationSearchContext = worker_input.search_context
+    distribution_chunk: OptimizationDistributionChunk = worker_input.distribution_chunk
     equipment_entries: tuple[OptimizationEquipmentEntry, ...] = (
-        worker_input.equipment_entries
+        search_context.equipment_entries
     )
     if not equipment_entries:
         return None
@@ -3382,6 +3414,7 @@ def _search_best_optimization_result(
     for distribution_state in _build_distribution_candidates(
         search_context.calculator_input,
         search_context.metric_axes,
+        distribution_chunk,
     ):
         distribution_contribution: CalculatorContribution = (
             build_distribution_contribution(distribution_state)
@@ -3708,26 +3741,31 @@ def optimize_current_selection(
         target_metric=target_metric,
         metric_axes=metric_axes,
         danjeon_entries=tuple(danjeon_entry_with_projection),
+        equipment_entries=tuple(equipment_entries),
         remaining_projection_by_exact_key=remaining_projection_by_exact_key,
         equipment_max_projection_by_exact_key=equipment_max_projection_by_exact_key,
     )
 
-    # 옵션 조합 규모 기준 병렬 워커 수 계산
+    # 분배 후보 규모 기준 병렬 워커 수 계산
+    distribution_candidate_count: int = _count_distribution_candidates(
+        calculator_input,
+        metric_axes,
+    )
     available_cpu_count: int = os.cpu_count() or 1
     parallel_worker_count: int = min(
-        OPTIMIZATION_MAX_PARALLEL_WORKERS,
         available_cpu_count,
-        len(equipment_entries) // OPTIMIZATION_MIN_PARALLEL_EQUIPMENT_ENTRIES_PER_WORKER,
+        distribution_candidate_count,
     )
-    if len(equipment_entries) < OPTIMIZATION_MIN_PARALLEL_EQUIPMENT_ENTRIES:
-        parallel_worker_count = 1
 
-    # 소규모 탐색은 단일 프로세스 경로 유지
+    # 실질 청크 수가 1 이하인 경우 단일 프로세스 경로 유지
     if parallel_worker_count < 2:
         return _search_best_optimization_result(
             OptimizationWorkerInput(
                 search_context=search_context,
-                equipment_entries=tuple(equipment_entries),
+                distribution_chunk=OptimizationDistributionChunk(
+                    chunk_index=0,
+                    chunk_count=1,
+                ),
             )
         )
 
@@ -3735,7 +3773,6 @@ def optimize_current_selection(
     worker_inputs: tuple[OptimizationWorkerInput, ...] = (
         _build_optimization_worker_inputs(
             search_context,
-            equipment_entries,
             parallel_worker_count,
         )
     )
@@ -3756,10 +3793,7 @@ def optimize_current_selection(
                 best_result = worker_result
                 continue
 
-            if (
-                worker_result.deltas[target_metric]
-                > best_result.deltas[target_metric]
-            ):
+            if worker_result.deltas[target_metric] > best_result.deltas[target_metric]:
                 best_result = worker_result
 
     return best_result
