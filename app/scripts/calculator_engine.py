@@ -1509,11 +1509,6 @@ def build_damage_events(
 ) -> list[CalculatorDamageEvent]:
     """타임라인과 스탯 기준 최종 피해 이벤트 목록 구성"""
 
-    # 랜덤 시뮬레이션에서만 독립 난수기 초기화
-    rng: random.Random | None = None
-    if not deterministic:
-        rng = random.Random(random_seed)
-
     damage_events: list[CalculatorDamageEvent] = []
     for hit_event in timeline.hit_events:
         # 타격 시점 활성 버프 수집 및 버프 반영 스탯 구성
@@ -1535,14 +1530,11 @@ def build_damage_events(
             )
 
         else:
-            if rng is None:
-                raise RuntimeError("random generator must exist for random simulation")
-
             damage = _calculate_random_hit_damage(
                 resolved_stats=buffed_stats,
                 hit_event=hit_event,
                 is_boss=is_boss,
-                rng=rng,
+                rng=random.Random(random_seed),
             )
 
         damage_events.append(

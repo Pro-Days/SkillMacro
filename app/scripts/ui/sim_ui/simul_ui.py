@@ -280,16 +280,15 @@ class GraphPage(QFrame):
             child_layout: QLayoutItem | None = None
             nested_layout: QLayout | None = child_item.layout()
 
-            if child_widget is not None:
-                child_widget.deleteLater()
-                continue
-
             if nested_layout is not None:
                 while nested_layout.count():
                     child_layout = nested_layout.takeAt(0)
                     nested_widget: QWidget | None = child_layout.widget()
                     if nested_widget is not None:
                         nested_widget.deleteLater()
+
+            if child_widget is not None:
+                child_widget.deleteLater()
 
     def refresh(self) -> None:
         """현재 계산기 입력 기준 그래프 페이지 재구성"""
@@ -610,14 +609,12 @@ class ResultsPage(QFrame):
 
         # 스크롤 +1 효율 출력 행 구성
         scroll_rows: list[tuple[str, str]] = []
-        scroll_results: list[ScrollUpgradeEvaluation] = (
-            evaluate_scroll_upgrade_deltas(
-                server_spec=server_spec,
-                preset=preset,
-                skills_info=preset.usage_settings,
-                delay_ms=delay_ms,
-                overall_stats=overall_stats,
-            )
+        scroll_results: list[ScrollUpgradeEvaluation] = evaluate_scroll_upgrade_deltas(
+            server_spec=server_spec,
+            preset=preset,
+            skills_info=preset.usage_settings,
+            delay_ms=delay_ms,
+            overall_stats=overall_stats,
         )
         for scroll_result in scroll_results:
             scroll_rows.append(
@@ -2235,7 +2232,9 @@ class ResultsPage(QFrame):
             scroll_is_valid: bool = True
             for entry in SkillInputs.build_entries():
                 scroll_level: int = preset.info.get_scroll_level(entry.scroll_id)
-                if not (1 <= scroll_level <= app_state.macro.current_server.max_skill_level):
+                if not (
+                    1 <= scroll_level <= app_state.macro.current_server.max_skill_level
+                ):
                     scroll_is_valid = False
                     break
 
