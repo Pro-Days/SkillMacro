@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import multiprocessing
+import os
 import random
 from collections.abc import Iterator
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeVar
 
 from app.scripts.calculator_models import (
     BUILTIN_TALISMAN_TEMPLATES,
@@ -32,6 +35,10 @@ from app.scripts.run_macro import get_prepared_link_skill_indices
 if TYPE_CHECKING:
     from app.scripts.macro_models import MacroPreset, SkillUsageSetting
     from app.scripts.registry.server_registry import ServerSpec
+
+
+# 후보 키 타입 변수
+CandidateKeyT = TypeVar("CandidateKeyT")
 
 
 # 스탯 표시 순서 고정
@@ -118,6 +125,15 @@ POWER_METRIC_LABELS: dict[PowerMetric, str] = {
 # 계산기 고정 타임라인 길이 상수
 CALCULATOR_TIMELINE_SECONDS: float = 60.0
 CALCULATOR_TIMELINE_MILLISECONDS: int = 60000
+
+# 최적화 병렬화 최소 옵션 조합 수 기준
+OPTIMIZATION_MIN_PARALLEL_EQUIPMENT_ENTRIES: int = 8
+
+# 최적화 병렬화 시 워커당 최소 옵션 조합 수 기준
+OPTIMIZATION_MIN_PARALLEL_EQUIPMENT_ENTRIES_PER_WORKER: int = 4
+
+# 최적화 병렬화 최대 워커 수 상한
+OPTIMIZATION_MAX_PARALLEL_WORKERS: int = 8
 
 
 @dataclass(frozen=True, slots=True)
@@ -368,6 +384,56 @@ class OptimizationCandidate:
     danjeon: DanjeonState
     equipped_title_id: str | None
     equipped_talisman_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class OptimizationMetricAxes:
+    """목표 전투력 기준 관련 축 정의"""
+
+    include_vitality: bool
+    include_luck: bool
+    include_upper_danjeon: bool
+    include_lower_danjeon: bool
+
+
+@dataclass(frozen=True, slots=True)
+class OptimizationEquipmentEntry:
+    """옵션 선택 조합 사전 계산 결과"""
+
+    equipped_title_id: str | None
+    equipped_talisman_ids: tuple[str, ...]
+    contribution: CalculatorContribution
+    projection: tuple[float, ...]
+    exact_key: tuple[float, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class OptimizationSearchContext:
+    """최적화 탐색 공통 입력 묶음"""
+
+    server_spec: ServerSpec
+    preset: MacroPreset
+    skills_info: dict[str, SkillUsageSetting]
+    delay_ms: int
+    context: CalculatorEvaluationContext
+    base_state: CalculatorBaseState
+    calculator_input: CalculatorPresetInput
+    target_metric: PowerMetric
+    metric_axes: OptimizationMetricAxes
+    danjeon_entries: tuple[
+        tuple[DanjeonState, CalculatorContribution, tuple[float, ...]],
+        ...,
+    ]
+    remaining_projection_by_exact_key: dict[tuple[float, ...], tuple[float, ...]]
+    equipment_max_projection_by_exact_key: dict[tuple[float, ...], tuple[float, ...]]
+
+
+@dataclass(frozen=True, slots=True)
+class OptimizationWorkerInput:
+    """최적화 워커 단위 입력"""
+
+    search_context: OptimizationSearchContext
+    equipment_entries: tuple[OptimizationEquipmentEntry, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -2381,11 +2447,11 @@ def validate_base_state(
     return CalculatorBaseValidation(is_valid=True, message="정상")
 
 
-def _build_overall_stats_from_base_and_contribution(
+def _build_resolved_stats_from_base_and_contribution(
     base_state: CalculatorBaseState,
     contribution: CalculatorContribution,
-) -> dict[str, float]:
-    """기준 베이스와 후보 기여로 최종 전체 스탯 재구성"""
+) -> CalculatorResolvedStats:
+    """기준 베이스와 후보 기여로 최종 계산 스탯 재구성"""
 
     # 기준 베이스 스탯을 내부 원시 구성요소로 재해석
     resolved_base: CalculatorResolvedStats = base_state.resolved_base
@@ -2424,43 +2490,119 @@ def _build_overall_stats_from_base_and_contribution(
         + _get_direct_contribution_value(contribution, StatKey.SKILL_SPEED_PERCENT),
     }
 
-    return _build_base_overall_stats_from_components(
-        raw_strength=resolved_base.raw_strength + contribution.raw_strength,
-        raw_dexterity=resolved_base.raw_dexterity + contribution.raw_dexterity,
-        raw_vitality=resolved_base.raw_vitality + contribution.raw_vitality,
-        raw_luck=resolved_base.raw_luck + contribution.raw_luck,
-        strength_percent=direct_values[StatKey.STR_PERCENT],
-        dexterity_percent=direct_values[StatKey.DEXTERITY_PERCENT],
-        vitality_percent=direct_values[StatKey.VITALITY_PERCENT],
-        luck_percent=direct_values[StatKey.LUCK_PERCENT],
-        base_attack_source=resolved_base.base_attack_source
-        + contribution.base_attack_source,
-        base_hp_source=resolved_base.base_hp_source + contribution.base_hp_source,
-        base_attack_percent_source=resolved_base.base_attack_percent_source
-        + contribution.base_attack_percent_source,
-        base_crit_rate_source=resolved_base.base_crit_rate_source
-        + contribution.base_crit_rate_source,
-        base_crit_damage_source=resolved_base.base_crit_damage_source
-        + contribution.base_crit_damage_source,
-        base_drop_rate_source=resolved_base.base_drop_rate_source
-        + contribution.base_drop_rate_source,
-        base_exp_source=resolved_base.base_exp_source + contribution.base_exp_source,
-        base_dodge_source=resolved_base.base_dodge_source
-        + contribution.base_dodge_source,
-        base_potion_heal_source=resolved_base.base_potion_heal_source
-        + contribution.base_potion_heal_source,
-        direct_values=direct_values,
+    # 원시 베이스 구성요소와 후보 기여 합산
+    raw_strength: float = resolved_base.raw_strength + contribution.raw_strength
+    raw_dexterity: float = resolved_base.raw_dexterity + contribution.raw_dexterity
+    raw_vitality: float = resolved_base.raw_vitality + contribution.raw_vitality
+    raw_luck: float = resolved_base.raw_luck + contribution.raw_luck
+
+    base_attack_source: float = (
+        resolved_base.base_attack_source + contribution.base_attack_source
+    )
+    base_hp_source: float = resolved_base.base_hp_source + contribution.base_hp_source
+    base_attack_percent_source: float = (
+        resolved_base.base_attack_percent_source
+        + contribution.base_attack_percent_source
+    )
+    base_crit_rate_source: float = (
+        resolved_base.base_crit_rate_source + contribution.base_crit_rate_source
+    )
+    base_crit_damage_source: float = (
+        resolved_base.base_crit_damage_source + contribution.base_crit_damage_source
+    )
+    base_drop_rate_source: float = (
+        resolved_base.base_drop_rate_source + contribution.base_drop_rate_source
+    )
+    base_exp_source: float = (
+        resolved_base.base_exp_source + contribution.base_exp_source
+    )
+    base_dodge_source: float = (
+        resolved_base.base_dodge_source + contribution.base_dodge_source
+    )
+    base_potion_heal_source: float = (
+        resolved_base.base_potion_heal_source + contribution.base_potion_heal_source
+    )
+
+    # 퍼센트 적용 후 1차 스탯 재구성
+    strength_percent: float = direct_values[StatKey.STR_PERCENT]
+    dexterity_percent: float = direct_values[StatKey.DEXTERITY_PERCENT]
+    vitality_percent: float = direct_values[StatKey.VITALITY_PERCENT]
+    luck_percent: float = direct_values[StatKey.LUCK_PERCENT]
+    final_strength: float = raw_strength * (1.0 + (strength_percent * 0.01))
+    final_dexterity: float = raw_dexterity * (1.0 + (dexterity_percent * 0.01))
+    final_vitality: float = raw_vitality * (1.0 + (vitality_percent * 0.01))
+    final_luck: float = raw_luck * (1.0 + (luck_percent * 0.01))
+
+    # 2차 효과 포함 최종 표시 스탯 재구성
+    attack_percent: float = base_attack_percent_source + (final_dexterity * 0.3)
+    crit_rate: float = base_crit_rate_source + (final_dexterity * 0.05)
+    crit_damage: float = base_crit_damage_source + (final_strength * 0.1)
+    drop_rate: float = base_drop_rate_source + (final_luck * 0.2)
+    exp_rate: float = base_exp_source + (final_luck * 0.2)
+    dodge_rate: float = base_dodge_source + (final_vitality * 0.03)
+    potion_heal: float = base_potion_heal_source + (final_vitality * 0.5)
+    attack: float = (base_attack_source + final_strength) * (
+        1.0 + (attack_percent * 0.01)
+    )
+    hp: float = (base_hp_source + (final_vitality * 5.0)) * (
+        1.0 + (direct_values[StatKey.HP_PERCENT] * 0.01)
+    )
+
+    # 최종 표시 스탯 맵 구성
+    resolved_values: dict[StatKey, float] = {
+        StatKey.ATTACK: attack,
+        StatKey.ATTACK_PERCENT: attack_percent,
+        StatKey.HP: hp,
+        StatKey.HP_PERCENT: direct_values[StatKey.HP_PERCENT],
+        StatKey.STR: final_strength,
+        StatKey.STR_PERCENT: strength_percent,
+        StatKey.DEXTERITY: final_dexterity,
+        StatKey.DEXTERITY_PERCENT: dexterity_percent,
+        StatKey.VITALITY: final_vitality,
+        StatKey.VITALITY_PERCENT: vitality_percent,
+        StatKey.LUCK: final_luck,
+        StatKey.LUCK_PERCENT: luck_percent,
+        StatKey.SKILL_DAMAGE_PERCENT: direct_values[StatKey.SKILL_DAMAGE_PERCENT],
+        StatKey.FINAL_ATTACK_PERCENT: direct_values[StatKey.FINAL_ATTACK_PERCENT],
+        StatKey.CRIT_RATE_PERCENT: crit_rate,
+        StatKey.CRIT_DAMAGE_PERCENT: crit_damage,
+        StatKey.EXP_PERCENT: exp_rate,
+        StatKey.BOSS_ATTACK_PERCENT: direct_values[StatKey.BOSS_ATTACK_PERCENT],
+        StatKey.DROP_RATE_PERCENT: drop_rate,
+        StatKey.DODGE_PERCENT: dodge_rate,
+        StatKey.POTION_HEAL_PERCENT: potion_heal,
+        StatKey.RESIST_PERCENT: direct_values[StatKey.RESIST_PERCENT],
+        StatKey.SKILL_SPEED_PERCENT: direct_values[StatKey.SKILL_SPEED_PERCENT],
+    }
+
+    return CalculatorResolvedStats(
+        values=resolved_values,
+        base_attack_source=base_attack_source,
+        base_hp_source=base_hp_source,
+        base_attack_percent_source=base_attack_percent_source,
+        base_crit_rate_source=base_crit_rate_source,
+        base_crit_damage_source=base_crit_damage_source,
+        base_drop_rate_source=base_drop_rate_source,
+        base_exp_source=base_exp_source,
+        base_dodge_source=base_dodge_source,
+        base_potion_heal_source=base_potion_heal_source,
+        raw_strength=raw_strength,
+        raw_dexterity=raw_dexterity,
+        raw_vitality=raw_vitality,
+        raw_luck=raw_luck,
     )
 
 
 def _build_distribution_candidates(
     calculator_input: CalculatorPresetInput,
-) -> list[DistributionState]:
-    """스탯 분배 후보 목록 생성"""
+    metric_axes: OptimizationMetricAxes,
+) -> Iterator[DistributionState]:
+    """스탯 분배 후보 순회"""
 
     current_state: DistributionState = calculator_input.distribution
     if current_state.is_locked:
-        return [current_state]
+        yield current_state
+        return
 
     max_points: int = calculator_input.level * 5
     used_points: int = (
@@ -2474,52 +2616,145 @@ def _build_distribution_candidates(
         max_points if current_state.use_reset else max_points - used_points
     )
 
-    candidates: list[DistributionState] = []
+    # 목표 전투력에 영향 없는 축 고정 상태 계산
+    fixed_vitality: int = 0 if current_state.use_reset else current_state.vitality
+    fixed_luck: int = 0 if current_state.use_reset else current_state.luck
+
     if current_state.use_reset:
+        # 영향 축 기준 전체 포인트 재분배 후보 구성
+        # 데미지 전투력
+        if not metric_axes.include_vitality and not metric_axes.include_luck:
+            for strength in range(target_points + 1):
+                dexterity: int = target_points - strength
+                yield DistributionState(
+                    strength=strength,
+                    dexterity=dexterity,
+                    vitality=0,
+                    luck=0,
+                    is_locked=current_state.is_locked,
+                    use_reset=current_state.use_reset,
+                )
+            return
+
+        # 보스 전투력
+        if metric_axes.include_vitality and not metric_axes.include_luck:
+            for strength in range(target_points + 1):
+                for dexterity in range(target_points - strength + 1):
+                    vitality: int = target_points - strength - dexterity
+                    yield DistributionState(
+                        strength=strength,
+                        dexterity=dexterity,
+                        vitality=vitality,
+                        luck=0,
+                        is_locked=current_state.is_locked,
+                        use_reset=current_state.use_reset,
+                    )
+            return
+
+        # 일반 전투력
+        if not metric_axes.include_vitality and metric_axes.include_luck:
+            for strength in range(target_points + 1):
+                for dexterity in range(target_points - strength + 1):
+                    luck: int = target_points - strength - dexterity
+                    yield DistributionState(
+                        strength=strength,
+                        dexterity=dexterity,
+                        vitality=0,
+                        luck=luck,
+                        is_locked=current_state.is_locked,
+                        use_reset=current_state.use_reset,
+                    )
+            return
+
+        # 모든 축을 사용하는 경우 (향후 대비: 비효율적)
         for strength in range(target_points + 1):
             for dexterity in range(target_points - strength + 1):
                 for vitality in range(target_points - strength - dexterity + 1):
                     luck: int = target_points - strength - dexterity - vitality
-                    candidates.append(
-                        DistributionState(
-                            strength=strength,
-                            dexterity=dexterity,
-                            vitality=vitality,
-                            luck=luck,
-                            is_locked=current_state.is_locked,
-                            use_reset=current_state.use_reset,
-                        )
+                    yield DistributionState(
+                        strength=strength,
+                        dexterity=dexterity,
+                        vitality=vitality,
+                        luck=luck,
+                        is_locked=current_state.is_locked,
+                        use_reset=current_state.use_reset,
                     )
-        return candidates
+        return
 
+    # 리셋 미사용
+    # 미사용 포인트를 영향 축에만 배분하는 후보 구성
+    # 데미지 전투력
+    if not metric_axes.include_vitality and not metric_axes.include_luck:
+        for add_strength in range(free_points + 1):
+            add_dexterity: int = free_points - add_strength
+            yield DistributionState(
+                strength=current_state.strength + add_strength,
+                dexterity=current_state.dexterity + add_dexterity,
+                vitality=fixed_vitality,
+                luck=fixed_luck,
+                is_locked=current_state.is_locked,
+                use_reset=current_state.use_reset,
+            )
+        return
+
+    # 보스 전투력
+    if metric_axes.include_vitality and not metric_axes.include_luck:
+        for add_strength in range(free_points + 1):
+            for add_dexterity in range(free_points - add_strength + 1):
+                add_vitality: int = free_points - add_strength - add_dexterity
+                yield DistributionState(
+                    strength=current_state.strength + add_strength,
+                    dexterity=current_state.dexterity + add_dexterity,
+                    vitality=current_state.vitality + add_vitality,
+                    luck=fixed_luck,
+                    is_locked=current_state.is_locked,
+                    use_reset=current_state.use_reset,
+                )
+        return
+
+    # 일반 전투력
+    if not metric_axes.include_vitality and metric_axes.include_luck:
+        for add_strength in range(free_points + 1):
+            for add_dexterity in range(free_points - add_strength + 1):
+                add_luck: int = free_points - add_strength - add_dexterity
+                yield DistributionState(
+                    strength=current_state.strength + add_strength,
+                    dexterity=current_state.dexterity + add_dexterity,
+                    vitality=fixed_vitality,
+                    luck=current_state.luck + add_luck,
+                    is_locked=current_state.is_locked,
+                    use_reset=current_state.use_reset,
+                )
+        return
+
+    # 모든 축을 사용하는 경우 (향후 대비: 비효율적)
     for add_strength in range(free_points + 1):
         for add_dexterity in range(free_points - add_strength + 1):
             for add_vitality in range(free_points - add_strength - add_dexterity + 1):
                 add_luck: int = (
                     free_points - add_strength - add_dexterity - add_vitality
                 )
-                candidates.append(
-                    DistributionState(
-                        strength=current_state.strength + add_strength,
-                        dexterity=current_state.dexterity + add_dexterity,
-                        vitality=current_state.vitality + add_vitality,
-                        luck=current_state.luck + add_luck,
-                        is_locked=current_state.is_locked,
-                        use_reset=current_state.use_reset,
-                    )
+                yield DistributionState(
+                    strength=current_state.strength + add_strength,
+                    dexterity=current_state.dexterity + add_dexterity,
+                    vitality=current_state.vitality + add_vitality,
+                    luck=current_state.luck + add_luck,
+                    is_locked=current_state.is_locked,
+                    use_reset=current_state.use_reset,
                 )
-
-    return candidates
+    return
 
 
 def _build_danjeon_candidates(
     calculator_input: CalculatorPresetInput,
-) -> list[DanjeonState]:
-    """단전 후보 목록 생성"""
+    metric_axes: OptimizationMetricAxes,
+) -> Iterator[DanjeonState]:
+    """단전 후보 순회"""
 
     current_state: DanjeonState = calculator_input.danjeon
     if current_state.is_locked:
-        return [current_state]
+        yield current_state
+        return
 
     max_points: int = REALM_TIER_SPECS[calculator_input.realm_tier].danjeon_points
     used_points: int = current_state.upper + current_state.middle + current_state.lower
@@ -2528,55 +2763,486 @@ def _build_danjeon_candidates(
         max_points if current_state.use_reset else max_points - used_points
     )
 
-    candidates: list[DanjeonState] = []
-    if current_state.use_reset:
-        for upper in range(target_points + 1):
-            for middle in range(target_points - upper + 1):
-                lower: int = target_points - upper - middle
-                candidates.append(
-                    DanjeonState(
-                        upper=upper,
-                        middle=middle,
-                        lower=lower,
-                        is_locked=current_state.is_locked,
-                        use_reset=current_state.use_reset,
-                    )
-                )
-        return candidates
+    # 목표 전투력에 영향 없는 단전 축 고정 상태 계산
+    fixed_upper: int = 0 if current_state.use_reset else current_state.upper
+    fixed_lower: int = 0 if current_state.use_reset else current_state.lower
 
-    for add_upper in range(free_points + 1):
-        for add_middle in range(free_points - add_upper + 1):
-            add_lower: int = free_points - add_upper - add_middle
-            candidates.append(
-                DanjeonState(
-                    upper=current_state.upper + add_upper,
-                    middle=current_state.middle + add_middle,
-                    lower=current_state.lower + add_lower,
+    if current_state.use_reset:
+        # 목표 전투력에 필요한 단전 축만 남긴 재분배 후보 구성
+        # 데미지 전투력
+        if (
+            not metric_axes.include_upper_danjeon
+            and not metric_axes.include_lower_danjeon
+        ):
+            yield DanjeonState(
+                upper=0,
+                middle=target_points,
+                lower=0,
+                is_locked=current_state.is_locked,
+                use_reset=current_state.use_reset,
+            )
+            return
+
+        # 보스 전투력
+        if metric_axes.include_upper_danjeon and not metric_axes.include_lower_danjeon:
+            for upper in range(target_points + 1):
+                middle: int = target_points - upper
+                yield DanjeonState(
+                    upper=upper,
+                    middle=middle,
+                    lower=0,
                     is_locked=current_state.is_locked,
                     use_reset=current_state.use_reset,
                 )
-            )
+            return
 
-    return candidates
+        # 일반 전투력
+        if not metric_axes.include_upper_danjeon and metric_axes.include_lower_danjeon:
+            for middle in range(target_points + 1):
+                lower: int = target_points - middle
+                yield DanjeonState(
+                    upper=0,
+                    middle=middle,
+                    lower=lower,
+                    is_locked=current_state.is_locked,
+                    use_reset=current_state.use_reset,
+                )
+            return
+
+        # 모든 축을 사용하는 경우 (향후 대비: 비효율적)
+        for upper in range(target_points + 1):
+            for middle in range(target_points - upper + 1):
+                lower: int = target_points - upper - middle
+                yield DanjeonState(
+                    upper=upper,
+                    middle=middle,
+                    lower=lower,
+                    is_locked=current_state.is_locked,
+                    use_reset=current_state.use_reset,
+                )
+        return
+
+    # 리셋 미사용
+
+    # 미사용 단전 포인트를 영향 축에만 배분하는 후보 구성
+    # 데미지 전투력
+    if not metric_axes.include_upper_danjeon and not metric_axes.include_lower_danjeon:
+        yield DanjeonState(
+            upper=fixed_upper,
+            middle=current_state.middle + free_points,
+            lower=fixed_lower,
+            is_locked=current_state.is_locked,
+            use_reset=current_state.use_reset,
+        )
+        return
+
+    # 보스 전투력
+    if metric_axes.include_upper_danjeon and not metric_axes.include_lower_danjeon:
+        for add_upper in range(free_points + 1):
+            add_middle: int = free_points - add_upper
+            yield DanjeonState(
+                upper=current_state.upper + add_upper,
+                middle=current_state.middle + add_middle,
+                lower=fixed_lower,
+                is_locked=current_state.is_locked,
+                use_reset=current_state.use_reset,
+            )
+        return
+
+    # 일반 전투력
+    if not metric_axes.include_upper_danjeon and metric_axes.include_lower_danjeon:
+        for add_middle in range(free_points + 1):
+            add_lower: int = free_points - add_middle
+            yield DanjeonState(
+                upper=fixed_upper,
+                middle=current_state.middle + add_middle,
+                lower=current_state.lower + add_lower,
+                is_locked=current_state.is_locked,
+                use_reset=current_state.use_reset,
+            )
+        return
+
+    # 모든 축을 사용하는 경우 (향후 대비: 비효율적)
+    for add_upper in range(free_points + 1):
+        for add_middle in range(free_points - add_upper + 1):
+            add_lower: int = free_points - add_upper - add_middle
+            yield DanjeonState(
+                upper=current_state.upper + add_upper,
+                middle=current_state.middle + add_middle,
+                lower=current_state.lower + add_lower,
+                is_locked=current_state.is_locked,
+                use_reset=current_state.use_reset,
+            )
+    return
+
+
+def _build_optimization_metric_axes(
+    target_metric: PowerMetric,
+) -> OptimizationMetricAxes:
+    """목표 전투력 기준 최적화 축 구성"""
+
+    # 순수 데미지 계열 지표에서 비영향 축 제거
+    if target_metric in (
+        PowerMetric.BOSS_DAMAGE,
+        PowerMetric.NORMAL_DAMAGE,
+        PowerMetric.OFFICIAL,
+    ):
+        return OptimizationMetricAxes(
+            include_vitality=False,
+            include_luck=False,
+            include_upper_danjeon=False,
+            include_lower_danjeon=False,
+        )
+
+    # 보스 전투력용 생존 축 포함 구성
+    if target_metric == PowerMetric.BOSS:
+        return OptimizationMetricAxes(
+            include_vitality=True,
+            include_luck=False,
+            include_upper_danjeon=True,
+            include_lower_danjeon=False,
+        )
+
+    # 일반 전투력용 획득 축 포함 구성
+    if target_metric == PowerMetric.NORMAL:
+        return OptimizationMetricAxes(
+            include_vitality=False,
+            include_luck=True,
+            include_upper_danjeon=False,
+            include_lower_danjeon=True,
+        )
+
+    # 지원 범위 밖 전투력 지표 차단
+    raise ValueError(f"지원하지 않는 전투력 지표입니다: {target_metric}")
+
+
+def _build_optimization_contribution_projection(
+    contribution: CalculatorContribution,
+    target_metric: PowerMetric,
+) -> tuple[float, ...]:
+    """목표 전투력 기준 기여 비교 축 구성"""
+
+    # 모든 지표에 공통으로 영향을 주는 공격 계열 축 구성
+    projection_values: list[float] = [
+        contribution.raw_strength,
+        contribution.raw_dexterity,
+        contribution.base_attack_source,
+        contribution.base_attack_percent_source,
+        contribution.base_crit_rate_source,
+        contribution.base_crit_damage_source,
+        _get_direct_contribution_value(contribution, StatKey.STR_PERCENT),
+        _get_direct_contribution_value(contribution, StatKey.DEXTERITY_PERCENT),
+        _get_direct_contribution_value(contribution, StatKey.FINAL_ATTACK_PERCENT),
+        _get_direct_contribution_value(contribution, StatKey.SKILL_DAMAGE_PERCENT),
+    ]
+
+    # 보스 계열 데미지 반영 지표 축 추가
+    if target_metric in (
+        PowerMetric.BOSS_DAMAGE,
+        PowerMetric.BOSS,
+        PowerMetric.OFFICIAL,
+    ):
+        projection_values.append(
+            _get_direct_contribution_value(contribution, StatKey.BOSS_ATTACK_PERCENT)
+        )
+
+    # 보스 전투력 생존 배수 축 추가
+    if target_metric == PowerMetric.BOSS:
+        projection_values.extend(
+            (
+                contribution.raw_vitality,
+                contribution.base_hp_source,
+                contribution.base_dodge_source,
+                contribution.base_potion_heal_source,
+                _get_direct_contribution_value(contribution, StatKey.VITALITY_PERCENT),
+                _get_direct_contribution_value(contribution, StatKey.HP_PERCENT),
+                _get_direct_contribution_value(contribution, StatKey.RESIST_PERCENT),
+            )
+        )
+
+    # 일반 전투력 획득 배수 축 추가
+    if target_metric == PowerMetric.NORMAL:
+        projection_values.extend(
+            (
+                contribution.raw_luck,
+                contribution.base_drop_rate_source,
+                contribution.base_exp_source,
+                _get_direct_contribution_value(contribution, StatKey.LUCK_PERCENT),
+            )
+        )
+
+    return tuple(projection_values)
+
+
+def _build_optimization_exact_key(
+    contribution: CalculatorContribution,
+) -> tuple[float, ...]:
+    """타임라인이 달라질 수 있는 비단조 축 분리를 위한 동일성 확인 축 구성"""
+
+    return (_get_direct_contribution_value(contribution, StatKey.SKILL_SPEED_PERCENT),)
+
+
+def _is_projection_covered(
+    covering_projection: tuple[float, ...],
+    covered_projection: tuple[float, ...],
+) -> bool:
+    """비교용 축 포함 관계 판정"""
+
+    # 각 축에서 열세가 없는 후보만 후보로 인정
+    covering_value: float
+    covered_value: float
+    for covering_value, covered_value in zip(
+        covering_projection,
+        covered_projection,
+    ):
+        if covering_value < covered_value:
+            return False
+
+    return True
+
+
+def _update_superior_candidate_entries(
+    retained_entries: list[tuple[CandidateKeyT, tuple[float, ...], tuple[float, ...]]],
+    candidate_key: CandidateKeyT,
+    candidate_projection: tuple[float, ...],
+    candidate_exact_key: tuple[float, ...],
+) -> tuple[list[tuple[CandidateKeyT, tuple[float, ...], tuple[float, ...]]], bool]:
+    """동일 비교 축 내 우세 후보만 유지"""
+
+    next_retained_entries: list[
+        tuple[CandidateKeyT, tuple[float, ...], tuple[float, ...]]
+    ] = []
+    is_inferior_candidate: bool = False
+
+    # 기존 후보와의 우세 비교 및 열세 후보 제외
+    retained_key: CandidateKeyT
+    retained_projection: tuple[float, ...]
+    retained_exact_key: tuple[float, ...]
+    for retained_key, retained_projection, retained_exact_key in retained_entries:
+        if retained_exact_key != candidate_exact_key:
+            next_retained_entries.append(
+                (
+                    retained_key,
+                    retained_projection,
+                    retained_exact_key,
+                )
+            )
+            continue
+
+        if _is_projection_covered(retained_projection, candidate_projection):
+            is_inferior_candidate = True
+            break
+
+        if _is_projection_covered(candidate_projection, retained_projection):
+            continue
+
+        next_retained_entries.append(
+            (
+                retained_key,
+                retained_projection,
+                retained_exact_key,
+            )
+        )
+
+    if is_inferior_candidate:
+        return next_retained_entries, True
+
+    # 새 후보를 포함한 우세 후보 목록 갱신
+    next_retained_entries.append(
+        (
+            candidate_key,
+            candidate_projection,
+            candidate_exact_key,
+        )
+    )
+    return next_retained_entries, False
+
+
+def _retain_superior_candidate_keys(
+    candidate_entries: list[tuple[CandidateKeyT, CalculatorContribution]],
+    target_metric: PowerMetric,
+) -> list[CandidateKeyT]:
+    """후보 기여 목록에서 우세 후보 키만 유지"""
+
+    retained_entries: list[
+        tuple[CandidateKeyT, tuple[float, ...], tuple[float, ...]]
+    ] = []
+    candidate_key: CandidateKeyT
+    candidate_contribution: CalculatorContribution
+    for candidate_key, candidate_contribution in candidate_entries:
+        # 후보 기여를 비교용 축으로 변환
+        candidate_projection: tuple[float, ...] = (
+            _build_optimization_contribution_projection(
+                candidate_contribution,
+                target_metric,
+            )
+        )
+        candidate_exact_key: tuple[float, ...] = _build_optimization_exact_key(
+            candidate_contribution
+        )
+
+        # 기존 후보와의 우세 비교 및 열세 후보 제외
+        retained_entries, is_inferior_candidate = _update_superior_candidate_entries(
+            retained_entries,
+            candidate_key,
+            candidate_projection,
+            candidate_exact_key,
+        )
+
+        # 열세 후보 제외
+        if is_inferior_candidate:
+            continue
+
+    return [candidate_key for candidate_key, _, _ in retained_entries]
+
+
+def _add_projection_values(
+    left_projection: tuple[float, ...],
+    right_projection: tuple[float, ...],
+) -> tuple[float, ...]:
+    """비교 축 좌표별 합산"""
+
+    merged_values: list[float] = []
+    left_value: float
+    right_value: float
+    for left_value, right_value in zip(left_projection, right_projection):
+        merged_values.append(left_value + right_value)
+
+    return tuple(merged_values)
+
+
+def _merge_superior_projection_entries(
+    retained_entries: list[tuple[float, ...]],
+    candidate_projection: tuple[float, ...],
+) -> list[tuple[float, ...]]:
+    """
+    우세 전투력 축 목록 갱신
+    - 기존 우세 축 중 후보 축에 열세가 없는 축은 유지
+    """
+
+    next_retained_entries: list[tuple[float, ...]] = []
+    retained_projection: tuple[float, ...]
+    for retained_projection in retained_entries:
+        if _is_projection_covered(retained_projection, candidate_projection):
+            return retained_entries
+
+        if _is_projection_covered(candidate_projection, retained_projection):
+            continue
+
+        next_retained_entries.append(retained_projection)
+
+    next_retained_entries.append(candidate_projection)
+    return next_retained_entries
+
+
+def _is_projection_covered_by_entries(
+    retained_entries: list[tuple[float, ...]],
+    candidate_projection: tuple[float, ...],
+) -> bool:
+    """우세 전투력 축 목록 기준 가지치기 가능 여부 판정"""
+
+    retained_projection: tuple[float, ...]
+    for retained_projection in retained_entries:
+        if _is_projection_covered(retained_projection, candidate_projection):
+            return True
+
+    return False
+
+
+def _build_max_projection_by_exact_key(
+    equipment_entries: list[OptimizationEquipmentEntry],
+) -> dict[tuple[float, ...], tuple[float, ...]]:
+    """옵션 조합 기준 동일 키별 최대 비교 축 구성"""
+
+    max_projection_by_exact_key: dict[tuple[float, ...], tuple[float, ...]] = {}
+    equipment_entry: OptimizationEquipmentEntry
+    for equipment_entry in equipment_entries:
+        if equipment_entry.exact_key not in max_projection_by_exact_key:
+            max_projection_by_exact_key[equipment_entry.exact_key] = (
+                equipment_entry.projection
+            )
+            continue
+
+        current_max_projection: tuple[float, ...] = max_projection_by_exact_key[
+            equipment_entry.exact_key
+        ]
+        max_projection_by_exact_key[equipment_entry.exact_key] = tuple(
+            max(current_value, candidate_value)
+            for current_value, candidate_value in zip(
+                current_max_projection,
+                equipment_entry.projection,
+            )
+        )
+
+    return max_projection_by_exact_key
+
+
+def _is_partial_branch_prunable(
+    partial_projection: tuple[float, ...],
+    remaining_projection_by_exact_key: dict[tuple[float, ...], tuple[float, ...]],
+    superior_projection_entries_by_exact_key: dict[
+        tuple[float, ...], list[tuple[float, ...]]
+    ],
+) -> bool:
+    """남은 축 최대치 기준 부분 가지치기 가능 여부 판정"""
+
+    remaining_exact_key: tuple[float, ...]
+    remaining_projection: tuple[float, ...]
+    for (
+        remaining_exact_key,
+        remaining_projection,
+    ) in remaining_projection_by_exact_key.items():
+        optimistic_projection: tuple[float, ...] = _add_projection_values(
+            partial_projection,
+            remaining_projection,
+        )
+        retained_entries: list[tuple[float, ...]] = (
+            superior_projection_entries_by_exact_key.get(remaining_exact_key, [])
+        )
+        if not _is_projection_covered_by_entries(
+            retained_entries, optimistic_projection
+        ):
+            return False
+
+    return True
 
 
 def _build_title_candidates(
     calculator_input: CalculatorPresetInput,
+    owned_title_map: dict[str, OwnedTitle],
+    target_metric: PowerMetric,
 ) -> list[str | None]:
     """칭호 후보 목록 생성"""
 
     if not calculator_input.owned_titles:
         return [None]
 
+    # 미장착 포함 원본 칭호 후보 목록 구성
     title_ids: list[str | None] = [None]
     for owned_title in calculator_input.owned_titles:
         title_ids.append(owned_title.title_id)
 
-    return title_ids
+    # 목표 전투력 기준 열세 제외 칭호만 유지
+    candidate_entries: list[tuple[str | None, CalculatorContribution]] = []
+    equipped_title_id: str | None
+    for equipped_title_id in title_ids:
+        title_contribution: CalculatorContribution = build_title_contribution(
+            equipped_title_id,
+            owned_title_map,
+        )
+        candidate_entries.append(
+            (
+                equipped_title_id,
+                title_contribution,
+            )
+        )
+    return _retain_superior_candidate_keys(candidate_entries, target_metric)
 
 
 def _build_talisman_candidates(
     calculator_input: CalculatorPresetInput,
+    talisman_stat_map: dict[str, tuple[StatKey, float]],
+    target_metric: PowerMetric,
 ) -> list[list[str]]:
     """부적 조합 후보 목록 생성"""
 
@@ -2584,13 +3250,36 @@ def _build_talisman_candidates(
     if not owned_talismans:
         return [[]]
 
-    owned_template_map: dict[str, str] = {
-        owned_talisman.owned_id: owned_talisman.template_id
-        for owned_talisman in owned_talismans
-    }
-    owned_ids: list[str] = [
-        owned_talisman.owned_id for owned_talisman in owned_talismans
-    ]
+    # 동일 템플릿 중 최상위 인스턴스만 유지
+    candidate_entries_by_template: dict[
+        str, list[tuple[str, CalculatorContribution]]
+    ] = {}
+    owned_talisman: OwnedTalisman
+    for owned_talisman in owned_talismans:
+        talisman_contribution: CalculatorContribution = build_talisman_contribution(
+            [owned_talisman.owned_id],
+            talisman_stat_map,
+        )
+        if owned_talisman.template_id not in candidate_entries_by_template:
+            candidate_entries_by_template[owned_talisman.template_id] = []
+
+        candidate_entries_by_template[owned_talisman.template_id].append(
+            (
+                owned_talisman.owned_id,
+                talisman_contribution,
+            )
+        )
+
+    # 템플릿 축약 후 장착 가능 인스턴스 목록 구성
+    owned_ids: list[str] = []
+    template_candidate_entries: list[tuple[str, CalculatorContribution]]
+    for template_candidate_entries in candidate_entries_by_template.values():
+        superior_owned_ids: list[str] = _retain_superior_candidate_keys(
+            template_candidate_entries,
+            target_metric,
+        )
+        owned_ids.append(superior_owned_ids[0])
+
     target_size: int = min(3, len(owned_ids))
     candidates: list[list[str]] = []
 
@@ -2603,13 +3292,6 @@ def _build_talisman_candidates(
 
         for current_index in range(start_index, len(owned_ids)):
             owned_id: str = owned_ids[current_index]
-            template_id: str = owned_template_map[owned_id]
-            if any(
-                owned_template_map[selected_id] == template_id
-                for selected_id in selected_ids
-            ):
-                continue
-
             selected_ids.append(owned_id)
             build_combinations(current_index + 1, selected_ids)
             selected_ids.pop()
@@ -2618,7 +3300,237 @@ def _build_talisman_candidates(
     if not candidates:
         return [[]]
 
-    return candidates
+    # 목표 전투력 기준 열세 제외 부적 조합만 유지
+    candidate_entries: list[tuple[list[str], CalculatorContribution]] = []
+    candidate_ids: list[str]
+    for candidate_ids in candidates:
+        talisman_contribution: CalculatorContribution = build_talisman_contribution(
+            candidate_ids,
+            talisman_stat_map,
+        )
+        candidate_entries.append(
+            (
+                candidate_ids,
+                talisman_contribution,
+            )
+        )
+    return _retain_superior_candidate_keys(candidate_entries, target_metric)
+
+
+def _build_optimization_worker_inputs(
+    search_context: OptimizationSearchContext,
+    equipment_entries: list[OptimizationEquipmentEntry],
+    parallel_worker_count: int,
+) -> tuple[OptimizationWorkerInput, ...]:
+    """옵션 조합 목록 병렬 워커 단위 분할"""
+
+    # 워커 수 기준 균등 분할 크기 계산
+    chunk_size: int = max(
+        1,
+        (len(equipment_entries) + parallel_worker_count - 1) // parallel_worker_count,
+    )
+
+    # 각 워커별 옵션 조합 묶음 구성
+    worker_inputs: list[OptimizationWorkerInput] = []
+    start_index: int
+    for start_index in range(0, len(equipment_entries), chunk_size):
+        equipment_chunk: tuple[OptimizationEquipmentEntry, ...] = tuple(
+            equipment_entries[start_index : start_index + chunk_size]
+        )
+        worker_inputs.append(
+            OptimizationWorkerInput(
+                search_context=search_context,
+                equipment_entries=equipment_chunk,
+            )
+        )
+
+    return tuple(worker_inputs)
+
+
+def _search_best_optimization_result(
+    worker_input: OptimizationWorkerInput,
+) -> OptimizationResult | None:
+    """워커 단위 옵션 조합 범위에서 최고 후보 탐색"""
+
+    # 병렬 워커 공통 탐색 입력 전개
+    search_context: OptimizationSearchContext = worker_input.search_context
+    equipment_entries: tuple[OptimizationEquipmentEntry, ...] = (
+        worker_input.equipment_entries
+    )
+    if not equipment_entries:
+        return None
+
+    # 기준 스킬속도 타임라인 재사용용 캐시 초기 상태 구성
+    baseline_skill_speed: float = float(
+        search_context.context.baseline_stats.values[StatKey.SKILL_SPEED_PERCENT]
+    )
+    baseline_speed_cache_key: float = round(baseline_skill_speed, 2)
+    timeline_cache: dict[float, CalculatorTimelineEvaluationArtifacts] = {
+        baseline_speed_cache_key: search_context.context.timeline_artifacts
+    }
+
+    # 워커 범위 내 최고 후보 추적 상태 초기화
+    best_result: OptimizationResult | None = None
+    best_metric_delta: float | None = None
+    superior_projection_entries_by_exact_key: dict[
+        tuple[float, ...], list[tuple[float, ...]]
+    ] = {}
+    empty_contribution: CalculatorContribution = CalculatorContribution()
+
+    # 분배 후보 순회 기반 워커 범위 탐색
+    distribution_state: DistributionState
+    for distribution_state in _build_distribution_candidates(
+        search_context.calculator_input,
+        search_context.metric_axes,
+    ):
+        distribution_contribution: CalculatorContribution = (
+            build_distribution_contribution(distribution_state)
+        )
+        distribution_projection: tuple[float, ...] = (
+            _build_optimization_contribution_projection(
+                distribution_contribution,
+                search_context.target_metric,
+            )
+        )
+
+        # 분배 기준 남은 축 최대치로 전체 가지치기 판단
+        if _is_partial_branch_prunable(
+            distribution_projection,
+            search_context.remaining_projection_by_exact_key,
+            superior_projection_entries_by_exact_key,
+        ):
+            continue
+
+        # 단전 축과 옵션 축을 결합한 완성 후보 탐색
+        danjeon_state: DanjeonState
+        danjeon_contribution: CalculatorContribution
+        danjeon_projection: tuple[float, ...]
+        for (
+            danjeon_state,
+            danjeon_contribution,
+            danjeon_projection,
+        ) in search_context.danjeon_entries:
+            partial_projection: tuple[float, ...] = _add_projection_values(
+                distribution_projection,
+                danjeon_projection,
+            )
+
+            # 단전 기준 남은 장비 축 최대치로 부분 가지치기 판단
+            if _is_partial_branch_prunable(
+                partial_projection,
+                search_context.equipment_max_projection_by_exact_key,
+                superior_projection_entries_by_exact_key,
+            ):
+                continue
+
+            # 분배와 단전 기여 선결합
+            partial_contribution: CalculatorContribution = (
+                _merge_selection_contributions(
+                    distribution_contribution,
+                    danjeon_contribution,
+                    empty_contribution,
+                    empty_contribution,
+                )
+            )
+
+            # 워커가 담당한 옵션 조합 범위 순회
+            equipment_entry: OptimizationEquipmentEntry
+            for equipment_entry in equipment_entries:
+                full_projection: tuple[float, ...] = _add_projection_values(
+                    partial_projection,
+                    equipment_entry.projection,
+                )
+                retained_projection_entries: list[tuple[float, ...]] = (
+                    superior_projection_entries_by_exact_key.get(
+                        equipment_entry.exact_key,
+                        [],
+                    )
+                )
+
+                # 동일 키 우세 후보 존재 시 완성 후보 가지치기
+                if _is_projection_covered_by_entries(
+                    retained_projection_entries,
+                    full_projection,
+                ):
+                    continue
+
+                # 후보 파트별 기여 직접 병합 기반 최종 스탯 구성
+                candidate_contribution: CalculatorContribution = (
+                    _merge_selection_contributions(
+                        partial_contribution,
+                        empty_contribution,
+                        equipment_entry.contribution,
+                        empty_contribution,
+                    )
+                )
+                optimized_resolved_stats: CalculatorResolvedStats = (
+                    _build_resolved_stats_from_base_and_contribution(
+                        search_context.base_state,
+                        candidate_contribution,
+                    )
+                )
+
+                # 후보 최종 스탯 및 스킬속도 기준 타임라인 캐시 키 정규화
+                candidate_skill_speed: float = float(
+                    optimized_resolved_stats.values[StatKey.SKILL_SPEED_PERCENT]
+                )
+                speed_cache_key: float = round(candidate_skill_speed, 2)
+
+                # 동일 스킬속도 구간 타임라인 재활용 및 최초 1회만 재계산
+                cached_timeline_artifacts: (
+                    CalculatorTimelineEvaluationArtifacts | None
+                ) = timeline_cache.get(speed_cache_key)
+                if cached_timeline_artifacts is None:
+                    cached_timeline: CalculatorTimeline = build_calculator_timeline(
+                        server_spec=search_context.server_spec,
+                        preset=search_context.preset,
+                        skills_info=search_context.skills_info,
+                        delay_ms=search_context.delay_ms,
+                        cooltime_reduction=candidate_skill_speed,
+                    )
+                    cached_timeline_artifacts = _build_timeline_evaluation_artifacts(
+                        cached_timeline
+                    )
+                    timeline_cache[speed_cache_key] = cached_timeline_artifacts
+
+                # 캐시된 타임라인 활성 버프 스냅샷과 후보 스탯 기준 전투력 재평가
+                optimized_summary: CalculatorPowerSummary = evaluate_calculator_power(
+                    artifacts=cached_timeline_artifacts,
+                    resolved_stats=optimized_resolved_stats,
+                )
+                deltas: dict[PowerMetric, float] = calculate_power_deltas(
+                    search_context.context.baseline_summary,
+                    optimized_summary,
+                )
+                metric_delta: float = deltas[search_context.target_metric]
+                retained_projection_entries = _merge_superior_projection_entries(
+                    retained_projection_entries,
+                    full_projection,
+                )
+                superior_projection_entries_by_exact_key[equipment_entry.exact_key] = (
+                    retained_projection_entries
+                )
+                if best_metric_delta is not None and metric_delta <= best_metric_delta:
+                    continue
+
+                # 최종 채택 후보 표시 스탯 맵 직접 구성
+                optimized_overall_stats: dict[str, float] = {
+                    stat_key.value: float(optimized_resolved_stats.values[stat_key])
+                    for stat_key in DISPLAY_STAT_KEYS
+                }
+                best_metric_delta = metric_delta
+                best_result = OptimizationResult(
+                    candidate=OptimizationCandidate(
+                        distribution=distribution_state,
+                        danjeon=danjeon_state,
+                        equipped_title_id=equipment_entry.equipped_title_id,
+                        equipped_talisman_ids=equipment_entry.equipped_talisman_ids,
+                    ),
+                    deltas=deltas,
+                    optimized_overall_stats=optimized_overall_stats,
+                )
+
+    return best_result
 
 
 def optimize_current_selection(
@@ -2646,13 +3558,8 @@ def optimize_current_selection(
         calculator_input=calculator_input,
     )
 
-    # 각 선택지 후보 목록 구성
-    distribution_candidates: list[DistributionState] = _build_distribution_candidates(
-        calculator_input
-    )
-    danjeon_candidates: list[DanjeonState] = _build_danjeon_candidates(calculator_input)
-    title_candidates: list[str | None] = _build_title_candidates(calculator_input)
-    talisman_candidates: list[list[str]] = _build_talisman_candidates(calculator_input)
+    # 목표 전투력 기준 최적화 축 고정
+    metric_axes: OptimizationMetricAxes = _build_optimization_metric_axes(target_metric)
 
     # 최적화 1회 동안 불변인 보유 칭호/부적 조회 구조 사전 계산
     owned_title_map: dict[str, OwnedTitle] = _build_owned_title_map(
@@ -2662,16 +3569,24 @@ def optimize_current_selection(
         _build_owned_talisman_stat_map(calculator_input.owned_talismans)
     )
 
-    # 기여 모델 사전 계산
-    distribution_entries: list[tuple[DistributionState, CalculatorContribution]] = []
-    for distribution_state in distribution_candidates:
-        distribution_contribution: CalculatorContribution = (
-            build_distribution_contribution(distribution_state)
-        )
-        distribution_entries.append((distribution_state, distribution_contribution))
+    # 각 선택지 후보 목록 구성
+    title_candidates: list[str | None] = _build_title_candidates(
+        calculator_input,
+        owned_title_map,
+        target_metric,
+    )
+    talisman_candidates: list[list[str]] = _build_talisman_candidates(
+        calculator_input,
+        talisman_stat_map,
+        target_metric,
+    )
 
+    # 기여 모델 사전 계산
     danjeon_entries: list[tuple[DanjeonState, CalculatorContribution]] = []
-    for danjeon_state in danjeon_candidates:
+    for danjeon_state in _build_danjeon_candidates(
+        calculator_input,
+        metric_axes,
+    ):
         danjeon_contribution: CalculatorContribution = build_danjeon_contribution(
             danjeon_state
         )
@@ -2693,92 +3608,158 @@ def optimize_current_selection(
         )
         talisman_entries.append((equipped_talisman_ids, talisman_contribution))
 
-    # 기준 스킬속도 타임라인 재사용용 캐시 초기 상태 구성
-    baseline_skill_speed: float = float(
-        context.baseline_stats.values[StatKey.SKILL_SPEED_PERCENT]
-    )
-    baseline_speed_cache_key: float = round(baseline_skill_speed, 2)
-    timeline_cache: dict[float, CalculatorTimelineEvaluationArtifacts] = {
-        baseline_speed_cache_key: context.timeline_artifacts
+    # 칭호/부적 결합 기여와 비교 축 사전 계산
+    equipment_entries: list[OptimizationEquipmentEntry] = []
+    equipped_title_id: str | None
+    title_contribution: CalculatorContribution
+    equipped_talisman_ids: list[str]
+    talisman_contribution: CalculatorContribution
+    for equipped_title_id, title_contribution in title_entries:
+        for equipped_talisman_ids, talisman_contribution in talisman_entries:
+            equipment_contribution: CalculatorContribution = (
+                _merge_selection_contributions(
+                    CalculatorContribution(),
+                    CalculatorContribution(),
+                    title_contribution,
+                    talisman_contribution,
+                )
+            )
+            equipment_projection: tuple[float, ...] = (
+                _build_optimization_contribution_projection(
+                    equipment_contribution,
+                    target_metric,
+                )
+            )
+            equipment_exact_key: tuple[float, ...] = _build_optimization_exact_key(
+                equipment_contribution
+            )
+            equipment_entries.append(
+                OptimizationEquipmentEntry(
+                    equipped_title_id=equipped_title_id,
+                    equipped_talisman_ids=tuple(equipped_talisman_ids),
+                    contribution=equipment_contribution,
+                    projection=equipment_projection,
+                    exact_key=equipment_exact_key,
+                )
+            )
+
+    # 단전 비교 축 최대치와 장비 비교 축 최대치 사전 계산
+    danjeon_max_projection: tuple[float, ...] = ()
+    if danjeon_entries:
+        first_danjeon_projection: tuple[float, ...] = (
+            _build_optimization_contribution_projection(
+                danjeon_entries[0][1],
+                target_metric,
+            )
+        )
+        danjeon_max_projection = first_danjeon_projection
+
+    danjeon_entry_with_projection: list[
+        tuple[DanjeonState, CalculatorContribution, tuple[float, ...]]
+    ] = []
+    danjeon_state: DanjeonState
+    danjeon_contribution: CalculatorContribution
+    for danjeon_state, danjeon_contribution in danjeon_entries:
+        danjeon_projection: tuple[float, ...] = (
+            _build_optimization_contribution_projection(
+                danjeon_contribution,
+                target_metric,
+            )
+        )
+        danjeon_entry_with_projection.append(
+            (
+                danjeon_state,
+                danjeon_contribution,
+                danjeon_projection,
+            )
+        )
+        if not danjeon_max_projection:
+            danjeon_max_projection = danjeon_projection
+            continue
+
+        danjeon_max_projection = tuple(
+            max(current_value, candidate_value)
+            for current_value, candidate_value in zip(
+                danjeon_max_projection,
+                danjeon_projection,
+            )
+        )
+
+    equipment_max_projection_by_exact_key: dict[
+        tuple[float, ...], tuple[float, ...]
+    ] = _build_max_projection_by_exact_key(equipment_entries)
+    remaining_projection_by_exact_key: dict[tuple[float, ...], tuple[float, ...]] = {
+        exact_key: _add_projection_values(
+            danjeon_max_projection,
+            equipment_projection,
+        )
+        for exact_key, equipment_projection in equipment_max_projection_by_exact_key.items()
     }
 
-    # 선택 전투력 기준 최고 후보 탐색
+    # 공통 탐색 입력 묶음 구성
+    search_context: OptimizationSearchContext = OptimizationSearchContext(
+        server_spec=server_spec,
+        preset=preset,
+        skills_info=skills_info,
+        delay_ms=delay_ms,
+        context=context,
+        base_state=base_state,
+        calculator_input=calculator_input,
+        target_metric=target_metric,
+        metric_axes=metric_axes,
+        danjeon_entries=tuple(danjeon_entry_with_projection),
+        remaining_projection_by_exact_key=remaining_projection_by_exact_key,
+        equipment_max_projection_by_exact_key=equipment_max_projection_by_exact_key,
+    )
+
+    # 옵션 조합 규모 기준 병렬 워커 수 계산
+    available_cpu_count: int = os.cpu_count() or 1
+    parallel_worker_count: int = min(
+        OPTIMIZATION_MAX_PARALLEL_WORKERS,
+        available_cpu_count,
+        len(equipment_entries) // OPTIMIZATION_MIN_PARALLEL_EQUIPMENT_ENTRIES_PER_WORKER,
+    )
+    if len(equipment_entries) < OPTIMIZATION_MIN_PARALLEL_EQUIPMENT_ENTRIES:
+        parallel_worker_count = 1
+
+    # 소규모 탐색은 단일 프로세스 경로 유지
+    if parallel_worker_count < 2:
+        return _search_best_optimization_result(
+            OptimizationWorkerInput(
+                search_context=search_context,
+                equipment_entries=tuple(equipment_entries),
+            )
+        )
+
+    # 옵션 조합 범위 분할 후 병렬 워커 실행
+    worker_inputs: tuple[OptimizationWorkerInput, ...] = (
+        _build_optimization_worker_inputs(
+            search_context,
+            equipment_entries,
+            parallel_worker_count,
+        )
+    )
     best_result: OptimizationResult | None = None
-    best_metric_delta: float | None = None
-    for distribution_state, distribution_contribution in distribution_entries:
-        for danjeon_state, danjeon_contribution in danjeon_entries:
-            for equipped_title_id, title_contribution in title_entries:
-                for equipped_talisman_ids, talisman_contribution in talisman_entries:
-                    # 후보 파트별 기여 직접 병합 기반 최종 스탯 구성
-                    candidate_contribution: CalculatorContribution = (
-                        _merge_selection_contributions(
-                            distribution_contribution,
-                            danjeon_contribution,
-                            title_contribution,
-                            talisman_contribution,
-                        )
-                    )
-                    optimized_overall_stats: dict[str, float] = (
-                        _build_overall_stats_from_base_and_contribution(
-                            base_state,
-                            candidate_contribution,
-                        )
-                    )
+    worker_result: OptimizationResult | None
+    with ProcessPoolExecutor(
+        max_workers=len(worker_inputs),
+        mp_context=multiprocessing.get_context("spawn"),
+    ) as executor:
+        for worker_result in executor.map(
+            _search_best_optimization_result,
+            worker_inputs,
+        ):
+            if worker_result is None:
+                continue
 
-                    # 후보 최종 스탯 및 스킬속도 기준 타임라인 캐시 키 정규화
-                    optimized_resolved_stats: CalculatorResolvedStats = (
-                        resolve_calculator_stats(overall_stats=optimized_overall_stats)
-                    )
-                    candidate_skill_speed: float = float(
-                        optimized_resolved_stats.values[StatKey.SKILL_SPEED_PERCENT]
-                    )
-                    speed_cache_key: float = round(candidate_skill_speed, 2)
+            if best_result is None:
+                best_result = worker_result
+                continue
 
-                    # 동일 스킬속도 구간 타임라인 재활용 및 최초 1회만 재계산
-                    cached_timeline_artifacts: (
-                        CalculatorTimelineEvaluationArtifacts | None
-                    ) = timeline_cache.get(speed_cache_key)
-                    if cached_timeline_artifacts is None:
-                        cached_timeline: CalculatorTimeline = build_calculator_timeline(
-                            server_spec=server_spec,
-                            preset=preset,
-                            skills_info=skills_info,
-                            delay_ms=delay_ms,
-                            cooltime_reduction=candidate_skill_speed,
-                        )
-                        cached_timeline_artifacts = (
-                            _build_timeline_evaluation_artifacts(cached_timeline)
-                        )
-                        timeline_cache[speed_cache_key] = cached_timeline_artifacts
-
-                    # 캐시된 타임라인 활성 버프 스냅샷과 후보 스탯 기준 전투력 재평가
-                    optimized_summary: CalculatorPowerSummary = (
-                        evaluate_calculator_power(
-                            artifacts=cached_timeline_artifacts,
-                            resolved_stats=optimized_resolved_stats,
-                        )
-                    )
-                    deltas: dict[PowerMetric, float] = calculate_power_deltas(
-                        context.baseline_summary,
-                        optimized_summary,
-                    )
-                    metric_delta: float = deltas[target_metric]
-                    if (
-                        best_metric_delta is not None
-                        and metric_delta <= best_metric_delta
-                    ):
-                        continue
-
-                    best_metric_delta = metric_delta
-                    best_result = OptimizationResult(
-                        candidate=OptimizationCandidate(
-                            distribution=distribution_state,
-                            danjeon=danjeon_state,
-                            equipped_title_id=equipped_title_id,
-                            equipped_talisman_ids=tuple(equipped_talisman_ids),
-                        ),
-                        deltas=deltas,
-                        optimized_overall_stats=optimized_overall_stats,
-                    )
+            if (
+                worker_result.deltas[target_metric]
+                > best_result.deltas[target_metric]
+            ):
+                best_result = worker_result
 
     return best_result
