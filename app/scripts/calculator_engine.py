@@ -143,6 +143,14 @@ class CalculatorTimeline:
 
 
 @dataclass(frozen=True, slots=True)
+class CalculatorTimelineEvaluationArtifacts:
+    """타임라인 평가용 사전 계산 결과"""
+
+    timeline: CalculatorTimeline
+    active_buffs_by_hit: tuple[tuple[CalculatorBuffWindow, ...], ...]
+
+
+@dataclass(frozen=True, slots=True)
 class CalculatorSkillUse:
     """계산기용 스킬 사용 이벤트"""
 
@@ -261,6 +269,7 @@ class CalculatorEvaluationContext:
     """효율 계산 기준 컨텍스트"""
 
     timeline: CalculatorTimeline
+    timeline_artifacts: CalculatorTimelineEvaluationArtifacts
     baseline_stats: CalculatorResolvedStats
     baseline_summary: CalculatorPowerSummary
 
@@ -323,6 +332,7 @@ class CalculatorBaseState:
     """기준 베이스 스탯 분리 결과"""
 
     base_overall_stats: dict[str, float]
+    resolved_base: CalculatorResolvedStats
     contribution: CalculatorContribution
 
 
@@ -891,19 +901,16 @@ def build_danjeon_contribution(danjeon: DanjeonState) -> CalculatorContribution:
 
 
 def build_title_contribution(
-    owned_titles: list[OwnedTitle],
     equipped_title_id: str | None,
+    owned_title_map: dict[str, OwnedTitle],
 ) -> CalculatorContribution:
     """현재 장착 칭호 기여 계산"""
 
     if equipped_title_id is None:
         return CalculatorContribution()
 
-    equipped_title: OwnedTitle | None = None
-    for owned_title in owned_titles:
-        if owned_title.title_id == equipped_title_id:
-            equipped_title = owned_title
-            break
+    # 사전 계산된 칭호 조회 맵 기반 즉시 조회
+    equipped_title: OwnedTitle | None = owned_title_map.get(equipped_title_id)
 
     if equipped_title is None:
         return CalculatorContribution()
@@ -933,78 +940,140 @@ def _find_talisman_template(
     return None
 
 
-def build_talisman_contribution(
-    owned_talismans: list[OwnedTalisman],
-    equipped_state: EquippedOptimizationState,
-) -> CalculatorContribution:
-    """현재 장착 부적 기여 계산"""
+def _build_owned_title_map(owned_titles: list[OwnedTitle]) -> dict[str, OwnedTitle]:
+    """보유 칭호 ID 기준 조회 맵 구성"""
 
-    contribution: CalculatorContribution = CalculatorContribution()
-    owned_map: dict[str, OwnedTalisman] = {
-        owned_talisman.owned_id: owned_talisman for owned_talisman in owned_talismans
+    owned_title_map: dict[str, OwnedTitle] = {
+        owned_title.title_id: owned_title for owned_title in owned_titles
     }
-    for equipped_id in equipped_state.equipped_talisman_ids:
-        if equipped_id not in owned_map:
-            continue
+    return owned_title_map
 
-        owned_talisman: OwnedTalisman = owned_map[equipped_id]
-        talisman_spec = _find_talisman_template(owned_talisman)
+
+def _build_owned_talisman_stat_map(
+    owned_talismans: list[OwnedTalisman],
+) -> dict[str, tuple[StatKey, float]]:
+    """보유 부적 ID 기준 최종 스탯값 조회 맵 구성"""
+
+    talisman_stat_map: dict[str, tuple[StatKey, float]] = {}
+    for owned_talisman in owned_talismans:
+        talisman_spec: tuple[StatKey, int] | None = _find_talisman_template(
+            owned_talisman
+        )
         if talisman_spec is None:
             continue
 
+        # 장착 시 즉시 더할 수 있는 최종 스탯값 형태로 고정 저장
         stat_key: StatKey
         grade_offset: int
         stat_key, grade_offset = talisman_spec
         stat_value: float = float((grade_offset * 10) + owned_talisman.level)
+        talisman_stat_map[owned_talisman.owned_id] = (stat_key, stat_value)
+
+    return talisman_stat_map
+
+
+def build_talisman_contribution(
+    equipped_talisman_ids: list[str],
+    talisman_stat_map: dict[str, tuple[StatKey, float]],
+) -> CalculatorContribution:
+    """현재 장착 부적 기여 계산"""
+
+    contribution: CalculatorContribution = CalculatorContribution()
+    for equipped_id in equipped_talisman_ids:
+        stat_key: StatKey
+        stat_value: float
+        stat_key, stat_value = talisman_stat_map[equipped_id]
         contribution = _add_stat_contribution(contribution, stat_key, stat_value)
 
     return contribution
 
 
-def merge_contributions(
-    contributions: tuple[CalculatorContribution, ...],
+def _merge_selection_contributions(
+    distribution_contribution: CalculatorContribution,
+    danjeon_contribution: CalculatorContribution,
+    title_contribution: CalculatorContribution,
+    talisman_contribution: CalculatorContribution,
 ) -> CalculatorContribution:
-    """복수 기여 모델 병합"""
+    """고정 4축 선택 기여 병합"""
 
-    merged: CalculatorContribution = CalculatorContribution()
-    for contribution in contributions:
+    # 스탯 합산 맵 구성
+    direct_values: dict[StatKey, float] = {}
+    contribution: CalculatorContribution
+    for contribution in (
+        distribution_contribution,
+        danjeon_contribution,
+        title_contribution,
+        talisman_contribution,
+    ):
+        stat_key: StatKey
+        value: float
         for stat_key, value in contribution.direct_values.items():
-            merged = _add_stat_contribution(merged, stat_key, value)
+            current_value: float = direct_values.get(stat_key, 0.0)
+            direct_values[stat_key] = current_value + value
 
-        merged = CalculatorContribution(
-            raw_strength=merged.raw_strength + contribution.raw_strength,
-            raw_dexterity=merged.raw_dexterity + contribution.raw_dexterity,
-            raw_vitality=merged.raw_vitality + contribution.raw_vitality,
-            raw_luck=merged.raw_luck + contribution.raw_luck,
-            base_attack_source=merged.base_attack_source
-            + contribution.base_attack_source,
-            base_hp_source=merged.base_hp_source + contribution.base_hp_source,
-            base_attack_percent_source=(
-                merged.base_attack_percent_source
-                + contribution.base_attack_percent_source
-            ),
-            base_crit_rate_source=(
-                merged.base_crit_rate_source + contribution.base_crit_rate_source
-            ),
-            base_crit_damage_source=(
-                merged.base_crit_damage_source + contribution.base_crit_damage_source
-            ),
-            base_drop_rate_source=(
-                merged.base_drop_rate_source + contribution.base_drop_rate_source
-            ),
-            base_exp_source=merged.base_exp_source + contribution.base_exp_source,
-            base_dodge_source=merged.base_dodge_source + contribution.base_dodge_source,
-            base_potion_heal_source=(
-                merged.base_potion_heal_source + contribution.base_potion_heal_source
-            ),
-            direct_values=merged.direct_values,
-        )
-
-    return merged
+    # 원시/베이스 수치 필드 직접 합산 기반 단일 결과 객체 구성
+    merged_contribution: CalculatorContribution = CalculatorContribution(
+        raw_strength=distribution_contribution.raw_strength
+        + danjeon_contribution.raw_strength
+        + title_contribution.raw_strength
+        + talisman_contribution.raw_strength,
+        raw_dexterity=distribution_contribution.raw_dexterity
+        + danjeon_contribution.raw_dexterity
+        + title_contribution.raw_dexterity
+        + talisman_contribution.raw_dexterity,
+        raw_vitality=distribution_contribution.raw_vitality
+        + danjeon_contribution.raw_vitality
+        + title_contribution.raw_vitality
+        + talisman_contribution.raw_vitality,
+        raw_luck=distribution_contribution.raw_luck
+        + danjeon_contribution.raw_luck
+        + title_contribution.raw_luck
+        + talisman_contribution.raw_luck,
+        base_attack_source=distribution_contribution.base_attack_source
+        + danjeon_contribution.base_attack_source
+        + title_contribution.base_attack_source
+        + talisman_contribution.base_attack_source,
+        base_hp_source=distribution_contribution.base_hp_source
+        + danjeon_contribution.base_hp_source
+        + title_contribution.base_hp_source
+        + talisman_contribution.base_hp_source,
+        base_attack_percent_source=distribution_contribution.base_attack_percent_source
+        + danjeon_contribution.base_attack_percent_source
+        + title_contribution.base_attack_percent_source
+        + talisman_contribution.base_attack_percent_source,
+        base_crit_rate_source=distribution_contribution.base_crit_rate_source
+        + danjeon_contribution.base_crit_rate_source
+        + title_contribution.base_crit_rate_source
+        + talisman_contribution.base_crit_rate_source,
+        base_crit_damage_source=distribution_contribution.base_crit_damage_source
+        + danjeon_contribution.base_crit_damage_source
+        + title_contribution.base_crit_damage_source
+        + talisman_contribution.base_crit_damage_source,
+        base_drop_rate_source=distribution_contribution.base_drop_rate_source
+        + danjeon_contribution.base_drop_rate_source
+        + title_contribution.base_drop_rate_source
+        + talisman_contribution.base_drop_rate_source,
+        base_exp_source=distribution_contribution.base_exp_source
+        + danjeon_contribution.base_exp_source
+        + title_contribution.base_exp_source
+        + talisman_contribution.base_exp_source,
+        base_dodge_source=distribution_contribution.base_dodge_source
+        + danjeon_contribution.base_dodge_source
+        + title_contribution.base_dodge_source
+        + talisman_contribution.base_dodge_source,
+        base_potion_heal_source=distribution_contribution.base_potion_heal_source
+        + danjeon_contribution.base_potion_heal_source
+        + title_contribution.base_potion_heal_source
+        + talisman_contribution.base_potion_heal_source,
+        direct_values=direct_values,
+    )
+    return merged_contribution
 
 
 def build_current_selected_contribution(
     calculator_input: CalculatorPresetInput,
+    owned_title_map: dict[str, OwnedTitle],
+    talisman_stat_map: dict[str, tuple[StatKey, float]],
 ) -> CalculatorContribution:
     """현재 선택 상태 전체 기여 계산"""
 
@@ -1016,20 +1085,18 @@ def build_current_selected_contribution(
         calculator_input.danjeon
     )
     title_contribution: CalculatorContribution = build_title_contribution(
-        calculator_input.owned_titles,
         calculator_input.equipped.equipped_title_id,
+        owned_title_map,
     )
     talisman_contribution: CalculatorContribution = build_talisman_contribution(
-        calculator_input.owned_talismans,
-        calculator_input.equipped,
+        calculator_input.equipped.equipped_talisman_ids,
+        talisman_stat_map,
     )
-    return merge_contributions(
-        (
-            distribution_contribution,
-            danjeon_contribution,
-            title_contribution,
-            talisman_contribution,
-        )
+    return _merge_selection_contributions(
+        distribution_contribution,
+        danjeon_contribution,
+        title_contribution,
+        talisman_contribution,
     )
 
 
@@ -1439,6 +1506,31 @@ def _collect_active_buffs(
     return active_buffs
 
 
+def _build_timeline_evaluation_artifacts(
+    timeline: CalculatorTimeline,
+) -> CalculatorTimelineEvaluationArtifacts:
+    """타임라인 평가 반복용 활성 버프 스냅샷 구성"""
+
+    # 타격 이벤트 순서 기준 활성 버프 튜플 1회 계산
+    active_buffs_by_hit: list[tuple[CalculatorBuffWindow, ...]] = []
+    hit_event: CalculatorHitEvent
+    for hit_event in timeline.hit_events:
+        active_buffs: tuple[CalculatorBuffWindow, ...] = _collect_active_buffs(
+            timeline.buff_windows,
+            hit_event.time,
+        )
+        active_buffs_by_hit.append(active_buffs)
+
+    # 동일 타임라인 재평가 시 재사용할 불변 구조로 고정
+    artifacts: CalculatorTimelineEvaluationArtifacts = (
+        CalculatorTimelineEvaluationArtifacts(
+            timeline=timeline,
+            active_buffs_by_hit=tuple(active_buffs_by_hit),
+        )
+    )
+    return artifacts
+
+
 def _calculate_hit_damage(
     resolved_stats: dict[StatKey, float],
     hit_event: CalculatorHitEvent,
@@ -1549,20 +1641,21 @@ def build_damage_events(
 
 
 def evaluate_calculator_power(
-    timeline: CalculatorTimeline,
+    artifacts: CalculatorTimelineEvaluationArtifacts,
     resolved_stats: CalculatorResolvedStats,
 ) -> CalculatorPowerSummary:
-    """계산기 타임라인과 최종 스탯 기준 5종 전투력 계산"""
+    """사전 계산 타임라인 아티팩트 기준 5종 전투력 계산"""
 
-    # 보스/일반 총데미지 누적
+    # 타격별 활성 버프 스냅샷 재사용 기반 총데미지 누적
     total_boss_damage: float = 0.0
     total_normal_damage: float = 0.0
 
-    for hit_event in timeline.hit_events:
-        active_buffs: tuple[CalculatorBuffWindow, ...] = _collect_active_buffs(
-            timeline.buff_windows,
-            hit_event.time,
-        )
+    hit_index: int
+    hit_event: CalculatorHitEvent
+    for hit_index, hit_event in enumerate(artifacts.timeline.hit_events):
+        active_buffs: tuple[CalculatorBuffWindow, ...] = artifacts.active_buffs_by_hit[
+            hit_index
+        ]
         buffed_stats: dict[StatKey, float] = _apply_active_buffs(
             resolved_stats, active_buffs
         )
@@ -1577,7 +1670,7 @@ def evaluate_calculator_power(
             is_boss=False,
         )
 
-    # 5종 전투력 계산
+    # 전투력 계산
     hp_value: float = float(resolved_stats.values[StatKey.HP])
     dodge_value: float = float(resolved_stats.values[StatKey.DODGE_PERCENT])
     resist_value: float = float(resolved_stats.values[StatKey.RESIST_PERCENT])
@@ -1597,7 +1690,6 @@ def evaluate_calculator_power(
     normal_power *= 1.0 + (drop_rate_value * 0.01)
     normal_power *= 1.0 + (exp_value * 0.01)
 
-    # 임시 공식 전투력
     official_power: float = (total_boss_damage + total_normal_damage) * 0.5
 
     metrics: dict[PowerMetric, float] = {
@@ -1633,15 +1725,19 @@ def build_calculator_context(
         delay_ms=delay_ms,
         cooltime_reduction=baseline_stats.values[StatKey.SKILL_SPEED_PERCENT],
     )
+    timeline_artifacts: CalculatorTimelineEvaluationArtifacts = (
+        _build_timeline_evaluation_artifacts(timeline)
+    )
 
-    # 기준 타임라인과 기준 스탯으로 기준 전투력 계산
+    # 기준 타임라인 아티팩트와 기준 스탯으로 기준 전투력 계산
     baseline_summary: CalculatorPowerSummary = evaluate_calculator_power(
-        timeline=timeline,
+        artifacts=timeline_artifacts,
         resolved_stats=baseline_stats,
     )
 
     return CalculatorEvaluationContext(
         timeline=timeline,
+        timeline_artifacts=timeline_artifacts,
         baseline_stats=baseline_stats,
         baseline_summary=baseline_summary,
     )
@@ -1660,9 +1756,9 @@ def evaluate_stat_changes(
         stat_changes=stat_changes,
     )
 
-    # 기준 타임라인 재사용 기반 전투력 재평가
+    # 기준 타임라인 아티팩트 재사용 기반 전투력 재평가
     summary: CalculatorPowerSummary = evaluate_calculator_power(
-        timeline=context.timeline,
+        artifacts=context.timeline_artifacts,
         resolved_stats=resolved_stats,
     )
 
@@ -2026,8 +2122,16 @@ def build_base_state(
 
     # 현재 전체 스탯을 내부 원시 구성요소로 해석
     resolved_stats: CalculatorResolvedStats = resolve_calculator_stats(overall_stats)
+    owned_title_map: dict[str, OwnedTitle] = _build_owned_title_map(
+        calculator_input.owned_titles
+    )
+    talisman_stat_map: dict[str, tuple[StatKey, float]] = (
+        _build_owned_talisman_stat_map(calculator_input.owned_talismans)
+    )
     contribution: CalculatorContribution = build_current_selected_contribution(
-        calculator_input
+        calculator_input,
+        owned_title_map,
+        talisman_stat_map,
     )
 
     # 직접 반영 퍼센트 스탯 기여 제거 후 직접값 맵 구성
@@ -2119,6 +2223,7 @@ def build_base_state(
 
     return CalculatorBaseState(
         base_overall_stats=base_overall_stats,
+        resolved_base=resolve_calculator_stats(base_overall_stats),
         contribution=contribution,
     )
 
@@ -2156,9 +2261,8 @@ def validate_base_state(
 
     # 기준 베이스 스탯 분리 후 음수 구성요소 검증
     base_state: CalculatorBaseState = build_base_state(overall_stats, calculator_input)
-    resolved_base: CalculatorResolvedStats = resolve_calculator_stats(
-        base_state.base_overall_stats
-    )
+    resolved_base: CalculatorResolvedStats = base_state.resolved_base
+
     invalid_values: tuple[float, ...] = (
         resolved_base.raw_strength,
         resolved_base.raw_dexterity,
@@ -2190,9 +2294,7 @@ def _build_overall_stats_from_base_and_contribution(
     """기준 베이스와 후보 기여로 최종 전체 스탯 재구성"""
 
     # 기준 베이스 스탯을 내부 원시 구성요소로 재해석
-    resolved_base: CalculatorResolvedStats = resolve_calculator_stats(
-        base_state.base_overall_stats
-    )
+    resolved_base: CalculatorResolvedStats = base_state.resolved_base
 
     # 직접 퍼센트 스탯과 원시 구성요소에 후보 기여 합산
     direct_values: dict[StatKey, float] = {
@@ -2458,37 +2560,69 @@ def optimize_current_selection(
     title_candidates: list[str | None] = _build_title_candidates(calculator_input)
     talisman_candidates: list[list[str]] = _build_talisman_candidates(calculator_input)
 
+    # 최적화 1회 동안 불변인 보유 칭호/부적 조회 구조 사전 계산
+    owned_title_map: dict[str, OwnedTitle] = _build_owned_title_map(
+        calculator_input.owned_titles
+    )
+    talisman_stat_map: dict[str, tuple[StatKey, float]] = (
+        _build_owned_talisman_stat_map(calculator_input.owned_talismans)
+    )
+
+    # 기여 모델 사전 계산
+    distribution_entries: list[tuple[DistributionState, CalculatorContribution]] = []
+    for distribution_state in distribution_candidates:
+        distribution_contribution: CalculatorContribution = (
+            build_distribution_contribution(distribution_state)
+        )
+        distribution_entries.append((distribution_state, distribution_contribution))
+
+    danjeon_entries: list[tuple[DanjeonState, CalculatorContribution]] = []
+    for danjeon_state in danjeon_candidates:
+        danjeon_contribution: CalculatorContribution = build_danjeon_contribution(
+            danjeon_state
+        )
+        danjeon_entries.append((danjeon_state, danjeon_contribution))
+
+    title_entries: list[tuple[str | None, CalculatorContribution]] = []
+    for equipped_title_id in title_candidates:
+        title_contribution: CalculatorContribution = build_title_contribution(
+            equipped_title_id,
+            owned_title_map,
+        )
+        title_entries.append((equipped_title_id, title_contribution))
+
+    talisman_entries: list[tuple[list[str], CalculatorContribution]] = []
+    for equipped_talisman_ids in talisman_candidates:
+        talisman_contribution: CalculatorContribution = build_talisman_contribution(
+            equipped_talisman_ids,
+            talisman_stat_map,
+        )
+        talisman_entries.append((equipped_talisman_ids, talisman_contribution))
+
     # 기준 스킬속도 타임라인 재사용용 캐시 초기 상태 구성
     baseline_skill_speed: float = float(
         context.baseline_stats.values[StatKey.SKILL_SPEED_PERCENT]
     )
     baseline_speed_key: float = round(baseline_skill_speed, 2)
-    timeline_cache: dict[float, CalculatorTimeline] = {
-        baseline_speed_key: context.timeline
+    timeline_cache: dict[float, CalculatorTimelineEvaluationArtifacts] = {
+        baseline_speed_key: context.timeline_artifacts
     }
 
     # 선택 전투력 기준 최고 후보 탐색
     best_result: OptimizationResult | None = None
     best_metric_delta: float | None = None
-    for distribution_state in distribution_candidates:
-        for danjeon_state in danjeon_candidates:
-            for equipped_title_id in title_candidates:
-                for equipped_talisman_ids in talisman_candidates:
-                    candidate_input: CalculatorPresetInput = CalculatorPresetInput(
-                        overall_stats=calculator_input.overall_stats,
-                        level=calculator_input.level,
-                        realm_tier=calculator_input.realm_tier,
-                        distribution=distribution_state,
-                        danjeon=danjeon_state,
-                        owned_titles=calculator_input.owned_titles,
-                        owned_talismans=calculator_input.owned_talismans,
-                        equipped=EquippedOptimizationState(
-                            equipped_title_id=equipped_title_id,
-                            equipped_talisman_ids=equipped_talisman_ids.copy(),
-                        ),
-                    )
+    for distribution_state, distribution_contribution in distribution_entries:
+        for danjeon_state, danjeon_contribution in danjeon_entries:
+            for equipped_title_id, title_contribution in title_entries:
+                for equipped_talisman_ids, talisman_contribution in talisman_entries:
+                    # 후보 파트별 기여 직접 병합 기반 최종 스탯 구성
                     candidate_contribution: CalculatorContribution = (
-                        build_current_selected_contribution(candidate_input)
+                        _merge_selection_contributions(
+                            distribution_contribution,
+                            danjeon_contribution,
+                            title_contribution,
+                            talisman_contribution,
+                        )
                     )
                     optimized_overall_stats: dict[str, float] = (
                         _build_overall_stats_from_base_and_contribution(
@@ -2507,23 +2641,26 @@ def optimize_current_selection(
                     speed_key: float = round(candidate_skill_speed, 2)
 
                     # 동일 스킬속도 구간 타임라인 재활용 및 최초 1회만 재계산
-                    cached_timeline: CalculatorTimeline | None = timeline_cache.get(
-                        speed_key
-                    )
-                    if cached_timeline is None:
-                        cached_timeline = build_calculator_timeline(
+                    cached_timeline_artifacts: (
+                        CalculatorTimelineEvaluationArtifacts | None
+                    ) = timeline_cache.get(speed_key)
+                    if cached_timeline_artifacts is None:
+                        cached_timeline: CalculatorTimeline = build_calculator_timeline(
                             server_spec=server_spec,
                             preset=preset,
                             skills_info=skills_info,
                             delay_ms=delay_ms,
                             cooltime_reduction=candidate_skill_speed,
                         )
-                        timeline_cache[speed_key] = cached_timeline
+                        cached_timeline_artifacts = (
+                            _build_timeline_evaluation_artifacts(cached_timeline)
+                        )
+                        timeline_cache[speed_key] = cached_timeline_artifacts
 
-                    # 캐시된 타임라인과 후보 스탯 기준 전투력 재평가
+                    # 캐시된 타임라인 활성 버프 스냅샷과 후보 스탯 기준 전투력 재평가
                     optimized_summary: CalculatorPowerSummary = (
                         evaluate_calculator_power(
-                            timeline=cached_timeline,
+                            artifacts=cached_timeline_artifacts,
                             resolved_stats=optimized_resolved_stats,
                         )
                     )
