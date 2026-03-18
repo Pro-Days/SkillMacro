@@ -38,13 +38,13 @@ from app.scripts.calculator_engine import (
     validate_base_state,
 )
 from app.scripts.calculator_models import (
-    BUILTIN_TALISMAN_TEMPLATES,
-    CALCULATOR_STAT_SPECS,
     OVERALL_STAT_GRID_ROWS,
     REALM_TIER_SPECS,
+    STAT_SPECS,
+    TALISMAN_SPECS,
     DanjeonState,
     DistributionState,
-    EquippedOptimizationState,
+    EquippedState,
     OwnedTalisman,
     OwnedTitle,
     StatKey,
@@ -86,10 +86,9 @@ if TYPE_CHECKING:
     )
     from app.scripts.calculator_models import (
         CalculatorPresetInput,
-        CalculatorStatSpec,
         PowerMetric,
         RealmTier,
-        TalismanTemplate,
+        TalismanSpec,
     )
     from app.scripts.macro_models import MacroPreset
     from app.scripts.registry.server_registry import ServerSpec
@@ -546,7 +545,7 @@ class ResultsPage(QFrame):
 
         # 스탯 1당 효율 출력 행 구성
         stat_rows: list[tuple[str, str]] = []
-        for stat_key, stat_spec in CALCULATOR_STAT_SPECS.items():
+        for stat_key, stat_spec in STAT_SPECS.items():
             deltas: dict[PowerMetric, float] = evaluate_single_stat_delta(
                 context=context,
                 overall_stats=overall_stats,
@@ -699,7 +698,7 @@ class ResultsPage(QFrame):
 
             talisman_name_map: dict[str, str] = {}
             for owned_talisman in calculator_input.owned_talismans:
-                for template in BUILTIN_TALISMAN_TEMPLATES:
+                for template in TALISMAN_SPECS:
                     if template.template_id != owned_talisman.template_id:
                         continue
 
@@ -760,7 +759,7 @@ class ResultsPage(QFrame):
 
         # 저장된 사용자 지정 변화량 맵 복원
         custom_changes: dict[StatKey, float] = {}
-        for stat_key in CALCULATOR_STAT_SPECS.keys():
+        for stat_key in STAT_SPECS.keys():
             change_value: float = calculator_input.custom_stat_changes[stat_key.value]
             if change_value == 0.0:
                 continue
@@ -956,7 +955,7 @@ class ResultsPage(QFrame):
                 self.realm_options.index(calculator_input.realm_tier)
             )
 
-            for stat_key in CALCULATOR_STAT_SPECS.keys():
+            for stat_key in STAT_SPECS.keys():
                 self.stats_inputs.inputs[stat_key].setText(
                     f"{calculator_input.overall_stats[stat_key.value]:g}"
                 )
@@ -991,11 +990,8 @@ class ResultsPage(QFrame):
                             continue
 
                         # 이미지 표기와 동일한 라벨 구성
-                        stat_spec: CalculatorStatSpec = CALCULATOR_STAT_SPECS[stat_key]
-                        label: str = stat_spec.label
-
-                        if stat_spec.is_percent:
-                            label = f"{label}(%)"
+                        stat_spec: str = STAT_SPECS[stat_key]
+                        label: str = stat_spec
 
                         item_widget: KVInput = KVInput(
                             self,
@@ -1147,9 +1143,7 @@ class ResultsPage(QFrame):
                     # 스탯 선택/수치/삭제 버튼 구성
                     self._connected_function: Callable[[], None] = connected_function
                     self._remove_function = remove_function
-                    self._stat_options: list[StatKey] = list(
-                        CALCULATOR_STAT_SPECS.keys()
-                    )
+                    self._stat_options: list[StatKey] = list(STAT_SPECS.keys())
 
                     layout: QHBoxLayout = QHBoxLayout(self)
                     layout.setContentsMargins(0, 0, 0, 0)
@@ -1157,10 +1151,7 @@ class ResultsPage(QFrame):
 
                     self.stat_combobox = CustomComboBox(
                         self,
-                        [
-                            f"{spec.label}(%)" if spec.is_percent else spec.label
-                            for spec in CALCULATOR_STAT_SPECS.values()
-                        ],
+                        list(STAT_SPECS.values()),
                         self._connected_function,
                     )
                     if stat_key is not None:
@@ -1482,9 +1473,7 @@ class ResultsPage(QFrame):
                     # 보유 부적 한 줄 편집 UI 구성
                     self._connected_function: Callable[[], None] = connected_function
                     self._remove_function = remove_function
-                    self._templates: list[TalismanTemplate] = list(
-                        BUILTIN_TALISMAN_TEMPLATES
-                    )
+                    self._templates: list[TalismanSpec] = list(TALISMAN_SPECS)
 
                     layout: QHBoxLayout = QHBoxLayout(self)
                     layout.setContentsMargins(0, 0, 0, 0)
@@ -1540,7 +1529,7 @@ class ResultsPage(QFrame):
                         is_valid = False
                         self.level_input.set_valid(False)
 
-                    template: TalismanTemplate = self._templates[
+                    template: TalismanSpec = self._templates[
                         self.template_combobox.currentIndex()
                     ]
                     owned_talisman: OwnedTalisman = OwnedTalisman(
@@ -1718,7 +1707,7 @@ class ResultsPage(QFrame):
             # 저장된 전체 스탯을 입력 위젯 초기 문자열로 변환
             calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
             values: dict[StatKey, str] = {}
-            for stat_key in CALCULATOR_STAT_SPECS.keys():
+            for stat_key in STAT_SPECS.keys():
                 values[stat_key] = f"{calculator_input.overall_stats[stat_key.value]:g}"
 
             return values
@@ -1729,7 +1718,7 @@ class ResultsPage(QFrame):
             # 저장된 변화량 입력을 위젯 초기 문자열로 변환
             calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
             values: dict[StatKey, str] = {}
-            for stat_key in CALCULATOR_STAT_SPECS.keys():
+            for stat_key in STAT_SPECS.keys():
                 values[stat_key] = (
                     f"{calculator_input.custom_stat_changes[stat_key.value]:g}"
                 )
@@ -1783,11 +1772,11 @@ class ResultsPage(QFrame):
             )
             self.title_inputs.load(
                 calculator_input.owned_titles,
-                calculator_input.equipped.equipped_title_id,
+                calculator_input.equipped_state.equipped_title_id,
             )
             self.talisman_inputs.load(
                 calculator_input.owned_talismans,
-                calculator_input.equipped.equipped_talisman_ids,
+                calculator_input.equipped_state.equipped_talisman_ids,
             )
 
         def _read_distribution_state(self) -> tuple[bool, DistributionState]:
@@ -1848,7 +1837,7 @@ class ResultsPage(QFrame):
             DistributionState,
             DanjeonState,
             list[OwnedTitle],
-            EquippedOptimizationState,
+            EquippedState,
             list[OwnedTalisman],
         ]:
             """현재 최적화 입력 상태 전체 복원"""
@@ -1875,7 +1864,7 @@ class ResultsPage(QFrame):
                 self.talisman_inputs.build_state()
             )
 
-            equipped_state: EquippedOptimizationState = EquippedOptimizationState(
+            equipped_state: EquippedState = EquippedState(
                 equipped_title_id=equipped_title_id,
                 equipped_talisman_ids=equipped_talisman_ids,
             )
@@ -1996,7 +1985,7 @@ class ResultsPage(QFrame):
             calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
             calculator_input.custom_stat_changes = {
                 stat_key.value: custom_changes.get(stat_key, 0.0)
-                for stat_key in CALCULATOR_STAT_SPECS.keys()
+                for stat_key in STAT_SPECS.keys()
             }
             if persist:
                 save_data()
@@ -2006,7 +1995,7 @@ class ResultsPage(QFrame):
             distribution_state: DistributionState,
             danjeon_state: DanjeonState,
             owned_titles: list[OwnedTitle],
-            equipped_state: EquippedOptimizationState,
+            equipped_state: EquippedState,
             owned_talismans: list[OwnedTalisman],
             persist: bool = True,
         ) -> None:
@@ -2016,7 +2005,7 @@ class ResultsPage(QFrame):
             calculator_input.distribution = distribution_state
             calculator_input.danjeon = danjeon_state
             calculator_input.owned_titles = owned_titles
-            calculator_input.equipped = equipped_state
+            calculator_input.equipped_state = equipped_state
             calculator_input.owned_talismans = owned_talismans
             if persist:
                 save_data()
@@ -2033,7 +2022,7 @@ class ResultsPage(QFrame):
             distribution_state: DistributionState
             danjeon_state: DanjeonState
             owned_titles: list[OwnedTitle]
-            equipped_state: EquippedOptimizationState
+            equipped_state: EquippedState
             owned_talismans: list[OwnedTalisman]
             (
                 optimization_valid,

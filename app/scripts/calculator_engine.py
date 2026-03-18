@@ -6,18 +6,18 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from app.scripts.calculator_models import (
-    BUILTIN_TALISMAN_TEMPLATES,
     REALM_TIER_SPECS,
     TALISMAN_GRADE_OFFSETS,
+    TALISMAN_SPECS,
     CalculatorPresetInput,
     DanjeonState,
     DistributionState,
-    EquippedOptimizationState,
+    EquippedState,
     OwnedTalisman,
     OwnedTitle,
     PowerMetric,
+    RealmSpec,
     RealmTier,
-    RealmTierSpec,
     StatKey,
 )
 from app.scripts.macro_models import EquippedSkillRef, LinkUseType
@@ -943,7 +943,7 @@ def _find_talisman_template(
 ) -> tuple[StatKey, int] | None:
     """보유 부적의 스탯 대상과 등급 보정값 조회"""
 
-    for template in BUILTIN_TALISMAN_TEMPLATES:
+    for template in TALISMAN_SPECS:
         if template.template_id != owned_talisman.template_id:
             continue
 
@@ -976,8 +976,6 @@ def _build_owned_talisman_stat_map(
             continue
 
         # 장착 시 즉시 더할 수 있는 최종 스탯값 형태로 고정 저장
-        stat_key: StatKey
-        grade_offset: int
         stat_key, grade_offset = talisman_spec
         stat_value: float = float((grade_offset * 10) + owned_talisman.level)
         talisman_stat_map[owned_talisman.owned_id] = (stat_key, stat_value)
@@ -1098,11 +1096,11 @@ def build_current_selected_contribution(
         calculator_input.danjeon
     )
     title_contribution: CalculatorContribution = build_title_contribution(
-        calculator_input.equipped.equipped_title_id,
+        calculator_input.equipped_state.equipped_title_id,
         owned_title_map,
     )
     talisman_contribution: CalculatorContribution = build_talisman_contribution(
-        calculator_input.equipped.equipped_talisman_ids,
+        calculator_input.equipped_state.equipped_talisman_ids,
         talisman_stat_map,
     )
     return _merge_selection_contributions(
@@ -2025,7 +2023,7 @@ def evaluate_next_realm_delta(
     if next_realm is None:
         return None
 
-    next_realm_spec: RealmTierSpec = REALM_TIER_SPECS[next_realm]
+    next_realm_spec: RealmSpec = REALM_TIER_SPECS[next_realm]
     if level < next_realm_spec.min_level:
         return None
 
@@ -2654,7 +2652,7 @@ def optimize_current_selection(
     title_candidates: list[str | None] = _build_title_candidates(calculator_input)
     talisman_candidates: list[list[str]] = _build_talisman_candidates(calculator_input)
 
-    # 최적화 1회 동안 불변인 보유 칭호/부적 조회 구조 사전 계산
+    # 보유 칭호/부적 사전 계산
     owned_title_map: dict[str, OwnedTitle] = _build_owned_title_map(
         calculator_input.owned_titles
     )
@@ -2662,42 +2660,34 @@ def optimize_current_selection(
         _build_owned_talisman_stat_map(calculator_input.owned_talismans)
     )
 
-    # 기여 모델 사전 계산
-    distribution_entries: list[tuple[DistributionState, CalculatorContribution]] = []
-    for distribution_state in distribution_candidates:
-        distribution_contribution: CalculatorContribution = (
-            build_distribution_contribution(distribution_state)
-        )
-        distribution_entries.append((distribution_state, distribution_contribution))
-
-    danjeon_entries: list[tuple[DanjeonState, CalculatorContribution]] = []
-    for danjeon_state in danjeon_candidates:
-        danjeon_contribution: CalculatorContribution = build_danjeon_contribution(
-            danjeon_state
-        )
-        danjeon_entries.append((danjeon_state, danjeon_contribution))
-
-    title_entries: list[tuple[str | None, CalculatorContribution]] = []
-    for equipped_title_id in title_candidates:
-        title_contribution: CalculatorContribution = build_title_contribution(
+    # 합산 스탯 사전 계산
+    distribution_entries: list[tuple[DistributionState, CalculatorContribution]] = [
+        (distribution_state, build_distribution_contribution(distribution_state))
+        for distribution_state in distribution_candidates
+    ]
+    danjeon_entries: list[tuple[DanjeonState, CalculatorContribution]] = [
+        (danjeon_state, build_danjeon_contribution(danjeon_state))
+        for danjeon_state in danjeon_candidates
+    ]
+    title_entries: list[tuple[str | None, CalculatorContribution]] = [
+        (
             equipped_title_id,
-            owned_title_map,
+            build_title_contribution(equipped_title_id, owned_title_map),
         )
-        title_entries.append((equipped_title_id, title_contribution))
-
-    talisman_entries: list[tuple[list[str], CalculatorContribution]] = []
-    for equipped_talisman_ids in talisman_candidates:
-        talisman_contribution: CalculatorContribution = build_talisman_contribution(
+        for equipped_title_id in title_candidates
+    ]
+    talisman_entries: list[tuple[list[str], CalculatorContribution]] = [
+        (
             equipped_talisman_ids,
-            talisman_stat_map,
+            build_talisman_contribution(equipped_talisman_ids, talisman_stat_map),
         )
-        talisman_entries.append((equipped_talisman_ids, talisman_contribution))
+        for equipped_talisman_ids in talisman_candidates
+    ]
 
-    # 기준 스킬속도 타임라인 재사용용 캐시 초기 상태 구성
-    baseline_skill_speed: float = float(
-        context.baseline_stats.values[StatKey.SKILL_SPEED_PERCENT]
+    # 스킬속도 기준 타임라인 캐시 구성
+    baseline_speed_cache_key: float = round(
+        context.baseline_stats.values[StatKey.SKILL_SPEED_PERCENT], 2
     )
-    baseline_speed_cache_key: float = round(baseline_skill_speed, 2)
     timeline_cache: dict[float, CalculatorTimelineEvaluationArtifacts] = {
         baseline_speed_cache_key: context.timeline_artifacts
     }

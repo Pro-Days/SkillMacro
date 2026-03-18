@@ -34,7 +34,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.scripts.app_state import app_state
-from app.scripts.calculator_models import get_calculator_stat_label
+from app.scripts.calculator_models import get_stat_label
 from app.scripts.config import config
 from app.scripts.custom_classes import CustomFont, CustomLineEdit, CustomShadowEffect
 from app.scripts.registry.key_registry import KeyRegistry
@@ -1202,7 +1202,7 @@ class PopupManager:
 
             elif isinstance(effect, BuffEffect):
                 buff_effect: BuffEffect = effect
-                stat_label: str = get_calculator_stat_label(buff_effect.stat)
+                stat_label: str = get_stat_label(buff_effect.stat)
 
                 text = (
                     f"{self._format_number(buff_effect.time)}초: "
@@ -1237,7 +1237,7 @@ class PopupManager:
 
             elif isinstance(effect, BuffEffect):
                 buff_effect: BuffEffect = effect
-                stat_label: str = get_calculator_stat_label(buff_effect.stat)
+                stat_label: str = get_stat_label(buff_effect.stat)
                 summaries.append(
                     f"{self._format_number(buff_effect.time)}초 {stat_label} {self._format_number(buff_effect.value)}"
                 )
@@ -1896,7 +1896,5 @@ class ScrollGridSelectContent(QFrame):
         """스크롤 버튼 기준 호버 카드 구성"""
 
         # 스크롤 ID 자체를 공용 레벨 저장 키로 직접 사용
-        level: int = app_state.macro.current_preset.info.get_scroll_level(
-            scroll_def.id
-        )
+        level: int = app_state.macro.current_preset.info.get_scroll_level(scroll_def.id)
         return self.popup_manager.build_scroll_hover_card(scroll_def, level)
