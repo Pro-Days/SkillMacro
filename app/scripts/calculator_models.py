@@ -468,7 +468,7 @@ OVERALL_STAT_GRID_ROWS: tuple[tuple[StatKey | None, StatKey | None], ...] = (
 )
 
 
-# 저장 및 순회 시 사용할 전체 스탯 순서 고정
+# 전체 스탯 순서 고정
 OVERALL_STAT_ORDER: tuple[StatKey, ...] = tuple(
     stat_key
     for row in OVERALL_STAT_GRID_ROWS
@@ -477,7 +477,7 @@ OVERALL_STAT_ORDER: tuple[StatKey, ...] = tuple(
 )
 
 
-# 계산기 스탯 표시 스펙 고정
+# 계산기 스탯 표시 스펙
 STAT_SPECS: dict[StatKey, str] = {
     StatKey.ATTACK: "공격력",
     StatKey.ATTACK_PERCENT: "공격력(%)",

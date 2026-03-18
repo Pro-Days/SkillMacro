@@ -76,9 +76,9 @@ if TYPE_CHECKING:
         CalculatorBaseState,
         CalculatorBaseValidation,
         CalculatorEvaluationContext,
-        CalculatorGraphAnalysis,
-        CalculatorGraphAttack,
-        CalculatorGraphReport,
+        GraphAnalysis,
+        GraphDamageEvent,
+        GraphReport,
         LevelUpEvaluation,
         OptimizationResult,
         RealmAdvanceEvaluation,
@@ -299,7 +299,7 @@ class GraphPage(QFrame):
         calculator_input: CalculatorPresetInput = (
             app_state.macro.current_preset.info.calculator
         )
-        graph_report: CalculatorGraphReport = simulate_random_from_calculator(
+        graph_report: GraphReport = simulate_random_from_calculator(
             server_spec=app_state.macro.current_server,
             preset=app_state.macro.current_preset,
             skills_info=app_state.macro.current_preset.usage_settings,
@@ -309,11 +309,11 @@ class GraphPage(QFrame):
         powers: list[float] = [
             graph_report.metrics[power_metric] for power_metric in DISPLAY_POWER_METRICS
         ]
-        analysis: list[CalculatorGraphAnalysis] = list(graph_report.analysis)
-        deterministic_attacks: list[CalculatorGraphAttack] = list(
+        analysis: list[GraphAnalysis] = list(graph_report.analysis)
+        deterministic_attacks: list[GraphDamageEvent] = list(
             graph_report.deterministic_boss_attacks
         )
-        results: list[list[CalculatorGraphAttack]] = [
+        results: list[list[GraphDamageEvent]] = [
             list(result_row) for result_row in graph_report.random_boss_attacks
         ]
         str_powers: list[str] = [str(int(power)) for power in powers]
@@ -356,7 +356,7 @@ class GraphPage(QFrame):
         def __init__(
             self,
             parent: QFrame,
-            results: list[list[CalculatorGraphAttack]],
+            results: list[list[GraphDamageEvent]],
         ) -> None:
             super().__init__(parent)
 
@@ -376,7 +376,7 @@ class GraphPage(QFrame):
         def __init__(
             self,
             parent: QFrame,
-            deterministic_attacks: list[CalculatorGraphAttack],
+            deterministic_attacks: list[GraphDamageEvent],
         ) -> None:
             super().__init__(parent)
 
@@ -401,7 +401,7 @@ class GraphPage(QFrame):
         def __init__(
             self,
             parent: QFrame,
-            results: list[list[CalculatorGraphAttack]],
+            results: list[list[GraphDamageEvent]],
         ) -> None:
             super().__init__(parent)
 
@@ -421,7 +421,7 @@ class GraphPage(QFrame):
         def __init__(
             self,
             parent: QFrame,
-            results: list[list[CalculatorGraphAttack]],
+            results: list[list[GraphDamageEvent]],
         ) -> None:
             super().__init__(parent)
 
@@ -441,7 +441,7 @@ class GraphPage(QFrame):
         def __init__(
             self,
             parent: QFrame,
-            deterministic_attacks: list[CalculatorGraphAttack],
+            deterministic_attacks: list[GraphDamageEvent],
         ) -> None:
             super().__init__(parent)
 
@@ -2505,7 +2505,7 @@ class AnalysisDetails(QFrame):
     def __init__(
         self,
         mainframe: QWidget,
-        analysis: list[CalculatorGraphAnalysis],
+        analysis: list[GraphAnalysis],
     ) -> None:
         super().__init__(mainframe)
 
@@ -2542,7 +2542,7 @@ class AnalysisDetails(QFrame):
         def __init__(
             self,
             parent: QFrame,
-            analysis: CalculatorGraphAnalysis,
+            analysis: GraphAnalysis,
             statistics: tuple[str, ...],
             color: str,
         ) -> None:

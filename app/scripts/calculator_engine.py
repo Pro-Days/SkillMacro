@@ -6,13 +6,12 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from app.scripts.calculator_models import (
+    OVERALL_STAT_ORDER,
     REALM_TIER_SPECS,
-    TALISMAN_GRADE_OFFSETS,
     TALISMAN_SPECS,
     CalculatorPresetInput,
     DanjeonState,
     DistributionState,
-    EquippedState,
     OwnedTalisman,
     OwnedTitle,
     PowerMetric,
@@ -34,67 +33,6 @@ if TYPE_CHECKING:
     from app.scripts.registry.server_registry import ServerSpec
 
 
-# 스탯 표시 순서 고정
-DISPLAY_STAT_KEYS: tuple[StatKey, ...] = (
-    StatKey.ATTACK,
-    StatKey.ATTACK_PERCENT,
-    StatKey.HP,
-    StatKey.HP_PERCENT,
-    StatKey.STR,
-    StatKey.STR_PERCENT,
-    StatKey.DEXTERITY,
-    StatKey.DEXTERITY_PERCENT,
-    StatKey.VITALITY,
-    StatKey.VITALITY_PERCENT,
-    StatKey.LUCK,
-    StatKey.LUCK_PERCENT,
-    StatKey.SKILL_DAMAGE_PERCENT,
-    StatKey.FINAL_ATTACK_PERCENT,
-    StatKey.CRIT_RATE_PERCENT,
-    StatKey.CRIT_DAMAGE_PERCENT,
-    StatKey.EXP_PERCENT,
-    StatKey.BOSS_ATTACK_PERCENT,
-    StatKey.DROP_RATE_PERCENT,
-    StatKey.DODGE_PERCENT,
-    StatKey.POTION_HEAL_PERCENT,
-    StatKey.RESIST_PERCENT,
-    StatKey.SKILL_SPEED_PERCENT,
-)
-
-
-# 절댓값 표시 스탯 집합 고정
-DISPLAY_ABSOLUTE_STAT_KEYS: tuple[StatKey, ...] = (
-    StatKey.ATTACK,
-    StatKey.HP,
-    StatKey.STR,
-    StatKey.DEXTERITY,
-    StatKey.VITALITY,
-    StatKey.LUCK,
-)
-
-
-# 퍼센트 표시 스탯 집합 고정
-DISPLAY_PERCENT_STAT_KEYS: tuple[StatKey, ...] = (
-    StatKey.ATTACK_PERCENT,
-    StatKey.HP_PERCENT,
-    StatKey.STR_PERCENT,
-    StatKey.DEXTERITY_PERCENT,
-    StatKey.VITALITY_PERCENT,
-    StatKey.LUCK_PERCENT,
-    StatKey.FINAL_ATTACK_PERCENT,
-    StatKey.CRIT_DAMAGE_PERCENT,
-    StatKey.BOSS_ATTACK_PERCENT,
-    StatKey.DODGE_PERCENT,
-    StatKey.RESIST_PERCENT,
-    StatKey.SKILL_SPEED_PERCENT,
-    StatKey.SKILL_DAMAGE_PERCENT,
-    StatKey.CRIT_RATE_PERCENT,
-    StatKey.EXP_PERCENT,
-    StatKey.DROP_RATE_PERCENT,
-    StatKey.POTION_HEAL_PERCENT,
-)
-
-
 # 전투력 표시 순서 고정
 DISPLAY_POWER_METRICS: tuple[PowerMetric, ...] = (
     PowerMetric.BOSS_DAMAGE,
@@ -105,7 +43,7 @@ DISPLAY_POWER_METRICS: tuple[PowerMetric, ...] = (
 )
 
 
-# 전투력 한글 라벨 고정
+# 전투력 한글 라벨
 POWER_METRIC_LABELS: dict[PowerMetric, str] = {
     PowerMetric.BOSS_DAMAGE: "보스 데미지",
     PowerMetric.NORMAL_DAMAGE: "일반 데미지",
@@ -115,14 +53,14 @@ POWER_METRIC_LABELS: dict[PowerMetric, str] = {
 }
 
 
-# 계산기 고정 타임라인 길이 상수
-CALCULATOR_TIMELINE_SECONDS: float = 60.0
-CALCULATOR_TIMELINE_MILLISECONDS: int = 60000
+# 타임라인 길이 상수
+TIMELINE_SECONDS: float = 60.0
+TIMELINE_MILLISECONDS: int = 60000
 
 
 @dataclass(frozen=True, slots=True)
-class CalculatorBuffWindow:
-    """계산기용 버프 활성 구간"""
+class BuffWindow:
+    """버프 활성 구간"""
 
     stat_key: StatKey
     start_time: float
@@ -131,8 +69,8 @@ class CalculatorBuffWindow:
 
 
 @dataclass(frozen=True, slots=True)
-class CalculatorHitEvent:
-    """계산기용 단일 타격 이벤트"""
+class HitEvent:
+    """단일 타격 이벤트"""
 
     skill_id: str
     time: float
@@ -141,43 +79,47 @@ class CalculatorHitEvent:
 
 
 @dataclass(frozen=True, slots=True)
-class CalculatorTimeline:
-    """계산기용 60초 타임라인"""
+class Timeline:
+    """타임라인: 타격 이벤트, 버프 활성 구간 정보"""
 
-    hit_events: tuple[CalculatorHitEvent, ...]
-    buff_windows: tuple[CalculatorBuffWindow, ...]
+    hit_events: tuple[HitEvent, ...]
+    buff_windows: tuple[BuffWindow, ...]
 
 
 @dataclass(frozen=True, slots=True)
-class CalculatorTimelineSegment:
-    """계산기용 비타격 전투력 평가 구간"""
+class TimelineSegment:
+    """전투력 평가를 위한 타임라인 세그먼트: 활성 버프 구간"""
 
     start_time: float
     end_time: float
     duration: float
-    active_buffs: tuple[CalculatorBuffWindow, ...]
+    active_buffs: tuple[BuffWindow, ...]
 
 
 @dataclass(frozen=True, slots=True)
-class CalculatorTimelineEvaluationArtifacts:
-    """타임라인 평가용 사전 계산 결과"""
+class TimelineEvaluationArtifacts:
+    """타임라인 사전 계산 결과"""
 
-    timeline: CalculatorTimeline
-    active_buffs_by_hit: tuple[tuple[CalculatorBuffWindow, ...], ...]
-    timeline_segments: tuple[CalculatorTimelineSegment, ...]
+    timeline: Timeline
+
+    # 각 HitEvent 마다 활성화된 버프 구간들의 튜플 목록
+    # 동일한 HitEvent 를 구분하기 위해 dict를 사용하지 않음.
+    active_buffs_by_hit: tuple[tuple[BuffWindow, ...], ...]
+
+    timeline_segments: tuple[TimelineSegment, ...]
 
 
 @dataclass(frozen=True, slots=True)
-class CalculatorSkillUse:
-    """계산기용 스킬 사용 이벤트"""
+class SkillUseEvent:
+    """스킬 사용 이벤트"""
 
     skill_id: str
     time: float
 
 
 @dataclass(frozen=True, slots=True)
-class CalculatorScheduledBuff:
-    """계산기용 버프 이벤트"""
+class BuffEvent:
+    """버프 이벤트"""
 
     skill_id: str
     stat_key: StatKey
@@ -187,8 +129,8 @@ class CalculatorScheduledBuff:
 
 
 @dataclass(frozen=True, slots=True)
-class CalculatorDamageEvent:
-    """계산기용 최종 피해 이벤트"""
+class DamageEvent:
+    """최종 데미지 이벤트"""
 
     skill_id: str
     time: float
@@ -196,7 +138,7 @@ class CalculatorDamageEvent:
 
 
 @dataclass(frozen=True, slots=True)
-class CalculatorGraphAttack:
+class GraphDamageEvent:
     """그래프 출력용 단일 피해 이벤트"""
 
     # 그래프 범례와 스킬 기여도 계산에 사용할 스킬 식별자
@@ -208,8 +150,8 @@ class CalculatorGraphAttack:
 
 
 @dataclass(frozen=True, slots=True)
-class CalculatorGraphAnalysis:
-    """그래프 분석 카드 1행 데이터"""
+class GraphAnalysis:
+    """그래프 분석 카드 행 데이터"""
 
     # 분석 카드 제목
     title: str
@@ -238,27 +180,32 @@ class CalculatorGraphAnalysis:
 
 
 @dataclass(frozen=True, slots=True)
-class CalculatorGraphReport:
+class GraphReport:
     """그래프/요약 화면 공용 리포트"""
 
-    # 5종 전투력 원본 수치 맵
+    # 5종 전투력 수치
     metrics: dict[PowerMetric, float]
-    # 그래프 상단 분석 카드 데이터
-    analysis: tuple[CalculatorGraphAnalysis, ...] = ()
+    # 그래프 분석 카드 데이터
+    analysis: tuple[GraphAnalysis, ...] = ()
+
     # 보스 기준 결정론 타격 이벤트 목록
-    deterministic_boss_attacks: tuple[CalculatorGraphAttack, ...] = ()
+    deterministic_boss_attacks: tuple[GraphDamageEvent, ...] = ()
+
     # 보스 기준 확률론 타격 이벤트 목록
-    random_boss_attacks: tuple[tuple[CalculatorGraphAttack, ...], ...] = ()
+    random_boss_attacks: tuple[tuple[GraphDamageEvent, ...], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
-class CalculatorResolvedStats:
+class ResolvedStats:
     """
     계산기 공식 계산에 사용할 최종 스탯
-    전체 스탯과 변화량을 기반으로 2차 효과 제거한 원시 베이스와 최종 표시값이 모두 포함된 스탯 맵
+
     """
 
+    # 최종 스탯 맵: 2차 효과, 스탯%가 모두 적용된 스탯량. 모든 스탯 종류가 포함됨.
     values: dict[StatKey, float]
+
+    # 2차 효과 적용 전 원시 베이스 스탯
     base_attack_source: float
     base_hp_source: float
     base_attack_percent_source: float
@@ -268,6 +215,8 @@ class CalculatorResolvedStats:
     base_exp_source: float
     base_dodge_source: float
     base_potion_heal_source: float
+
+    # 스탯% 적용 전 원시 스탯량
     raw_strength: float
     raw_dexterity: float
     raw_vitality: float
@@ -275,7 +224,7 @@ class CalculatorResolvedStats:
 
 
 @dataclass(frozen=True, slots=True)
-class CalculatorPowerSummary:
+class PowerSummary:
     """계산기 전투력 요약"""
 
     metrics: dict[PowerMetric, float]
@@ -283,18 +232,18 @@ class CalculatorPowerSummary:
 
 @dataclass(frozen=True, slots=True)
 class CalculatorEvaluationContext:
-    """효율 계산 기준 컨텍스트"""
+    """평가 기준이 되는 초기 상태 컨텍스트"""
 
-    timeline_artifacts: CalculatorTimelineEvaluationArtifacts
-    baseline_stats: CalculatorResolvedStats
-    baseline_summary: CalculatorPowerSummary
+    timeline_artifacts: TimelineEvaluationArtifacts
+    baseline_stats: ResolvedStats
+    baseline_summary: PowerSummary
 
 
 @dataclass(frozen=True, slots=True)
 class LevelUpEvaluation:
     """
     레벨업 효율 계산 결과
-    단일 레벨업으로 얻는 체력 +10과 스탯 포인트 5개를 최적으로 분배했을 때의 스탯 분배와 전투력 변화량
+    1 레벨업으로 얻는 `체력 +5과 스탯 포인트 5개`를 최적으로 분배했을 때의 스탯 분배와 전투력 변화량
     """
 
     stat_distribution: dict[StatKey, int]
@@ -324,13 +273,14 @@ class ScrollUpgradeEvaluation:
 
 
 @dataclass(frozen=True, slots=True)
-class CalculatorContribution:
+class Contribution:
     """현재 선택 기여 합산 결과"""
 
     raw_strength: float = 0.0
     raw_dexterity: float = 0.0
     raw_vitality: float = 0.0
     raw_luck: float = 0.0
+
     base_attack_source: float = 0.0
     base_hp_source: float = 0.0
     base_attack_percent_source: float = 0.0
@@ -340,6 +290,7 @@ class CalculatorContribution:
     base_exp_source: float = 0.0
     base_dodge_source: float = 0.0
     base_potion_heal_source: float = 0.0
+
     direct_values: dict[StatKey, float] = field(default_factory=dict)
 
 
@@ -348,8 +299,8 @@ class CalculatorBaseState:
     """기준 베이스 스탯 분리 결과"""
 
     base_overall_stats: dict[str, float]
-    resolved_base: CalculatorResolvedStats
-    contribution: CalculatorContribution
+    resolved_base: ResolvedStats
+    contribution: Contribution
 
 
 @dataclass(frozen=True, slots=True)
@@ -404,7 +355,7 @@ def _build_stat_map(overall_stats: dict[str, float]) -> dict[StatKey, float]:
     """문자열 키 기반 저장값을 enum 키 맵으로 변환"""
 
     mapped: dict[StatKey, float] = {}
-    for stat_key in DISPLAY_STAT_KEYS:
+    for stat_key in OVERALL_STAT_ORDER:
         mapped[stat_key] = float(overall_stats[stat_key.value])
 
     return mapped
@@ -430,7 +381,7 @@ def _apply_changes(
 def resolve_calculator_stats(
     overall_stats: dict[str, float],
     stat_changes: dict[StatKey, float] | None = None,
-) -> CalculatorResolvedStats:
+) -> ResolvedStats:
     """전체 스탯과 변화량 기준 계산기 최종 스탯 계산"""
 
     # 입력된 전체 스탯을 enum 키 기반 스탯 맵으로 정규화
@@ -542,7 +493,7 @@ def resolve_calculator_stats(
         changed_stats[StatKey.SKILL_SPEED_PERCENT]
     )
 
-    return CalculatorResolvedStats(
+    return ResolvedStats(
         values=resolved_values,
         base_attack_source=base_attack_source,
         base_hp_source=base_hp_source,
@@ -561,8 +512,8 @@ def resolve_calculator_stats(
 
 
 def calculate_power_deltas(
-    baseline_summary: CalculatorPowerSummary,
-    target_summary: CalculatorPowerSummary,
+    baseline_summary: PowerSummary,
+    target_summary: PowerSummary,
 ) -> dict[PowerMetric, float]:
     """기준 대비 전투력 변화량 계산"""
 
@@ -590,10 +541,10 @@ def _add_direct_contribution(
 
 
 def _add_stat_contribution(
-    contribution: CalculatorContribution,
+    contribution: Contribution,
     stat_key: StatKey,
     value: float,
-) -> CalculatorContribution:
+) -> Contribution:
     """단일 스탯 기여를 기여 모델에 반영"""
 
     # 직접 누적 가능한 표시 스탯 사본 구성
@@ -603,7 +554,7 @@ def _add_stat_contribution(
     }
 
     if stat_key == StatKey.STR:
-        return CalculatorContribution(
+        return Contribution(
             raw_strength=contribution.raw_strength + value,
             raw_dexterity=contribution.raw_dexterity,
             raw_vitality=contribution.raw_vitality,
@@ -621,7 +572,7 @@ def _add_stat_contribution(
         )
 
     if stat_key == StatKey.DEXTERITY:
-        return CalculatorContribution(
+        return Contribution(
             raw_strength=contribution.raw_strength,
             raw_dexterity=contribution.raw_dexterity + value,
             raw_vitality=contribution.raw_vitality,
@@ -639,7 +590,7 @@ def _add_stat_contribution(
         )
 
     if stat_key == StatKey.VITALITY:
-        return CalculatorContribution(
+        return Contribution(
             raw_strength=contribution.raw_strength,
             raw_dexterity=contribution.raw_dexterity,
             raw_vitality=contribution.raw_vitality + value,
@@ -657,7 +608,7 @@ def _add_stat_contribution(
         )
 
     if stat_key == StatKey.LUCK:
-        return CalculatorContribution(
+        return Contribution(
             raw_strength=contribution.raw_strength,
             raw_dexterity=contribution.raw_dexterity,
             raw_vitality=contribution.raw_vitality,
@@ -675,7 +626,7 @@ def _add_stat_contribution(
         )
 
     if stat_key == StatKey.ATTACK:
-        return CalculatorContribution(
+        return Contribution(
             raw_strength=contribution.raw_strength,
             raw_dexterity=contribution.raw_dexterity,
             raw_vitality=contribution.raw_vitality,
@@ -693,7 +644,7 @@ def _add_stat_contribution(
         )
 
     if stat_key == StatKey.HP:
-        return CalculatorContribution(
+        return Contribution(
             raw_strength=contribution.raw_strength,
             raw_dexterity=contribution.raw_dexterity,
             raw_vitality=contribution.raw_vitality,
@@ -711,7 +662,7 @@ def _add_stat_contribution(
         )
 
     if stat_key == StatKey.ATTACK_PERCENT:
-        return CalculatorContribution(
+        return Contribution(
             raw_strength=contribution.raw_strength,
             raw_dexterity=contribution.raw_dexterity,
             raw_vitality=contribution.raw_vitality,
@@ -729,7 +680,7 @@ def _add_stat_contribution(
         )
 
     if stat_key == StatKey.CRIT_RATE_PERCENT:
-        return CalculatorContribution(
+        return Contribution(
             raw_strength=contribution.raw_strength,
             raw_dexterity=contribution.raw_dexterity,
             raw_vitality=contribution.raw_vitality,
@@ -747,7 +698,7 @@ def _add_stat_contribution(
         )
 
     if stat_key == StatKey.CRIT_DAMAGE_PERCENT:
-        return CalculatorContribution(
+        return Contribution(
             raw_strength=contribution.raw_strength,
             raw_dexterity=contribution.raw_dexterity,
             raw_vitality=contribution.raw_vitality,
@@ -765,7 +716,7 @@ def _add_stat_contribution(
         )
 
     if stat_key == StatKey.DROP_RATE_PERCENT:
-        return CalculatorContribution(
+        return Contribution(
             raw_strength=contribution.raw_strength,
             raw_dexterity=contribution.raw_dexterity,
             raw_vitality=contribution.raw_vitality,
@@ -783,7 +734,7 @@ def _add_stat_contribution(
         )
 
     if stat_key == StatKey.EXP_PERCENT:
-        return CalculatorContribution(
+        return Contribution(
             raw_strength=contribution.raw_strength,
             raw_dexterity=contribution.raw_dexterity,
             raw_vitality=contribution.raw_vitality,
@@ -801,7 +752,7 @@ def _add_stat_contribution(
         )
 
     if stat_key == StatKey.DODGE_PERCENT:
-        return CalculatorContribution(
+        return Contribution(
             raw_strength=contribution.raw_strength,
             raw_dexterity=contribution.raw_dexterity,
             raw_vitality=contribution.raw_vitality,
@@ -819,7 +770,7 @@ def _add_stat_contribution(
         )
 
     if stat_key == StatKey.POTION_HEAL_PERCENT:
-        return CalculatorContribution(
+        return Contribution(
             raw_strength=contribution.raw_strength,
             raw_dexterity=contribution.raw_dexterity,
             raw_vitality=contribution.raw_vitality,
@@ -837,7 +788,7 @@ def _add_stat_contribution(
         )
 
     _add_direct_contribution(next_direct_values, stat_key, value)
-    return CalculatorContribution(
+    return Contribution(
         raw_strength=contribution.raw_strength,
         raw_dexterity=contribution.raw_dexterity,
         raw_vitality=contribution.raw_vitality,
@@ -857,10 +808,10 @@ def _add_stat_contribution(
 
 def build_distribution_contribution(
     distribution: DistributionState,
-) -> CalculatorContribution:
+) -> Contribution:
     """현재 스탯 분배 기여 계산"""
 
-    contribution: CalculatorContribution = CalculatorContribution()
+    contribution: Contribution = Contribution()
     contribution = _add_stat_contribution(
         contribution,
         StatKey.STR,
@@ -884,10 +835,10 @@ def build_distribution_contribution(
     return contribution
 
 
-def build_danjeon_contribution(danjeon: DanjeonState) -> CalculatorContribution:
+def build_danjeon_contribution(danjeon: DanjeonState) -> Contribution:
     """현재 단전 기여 계산"""
 
-    contribution: CalculatorContribution = CalculatorContribution()
+    contribution: Contribution = Contribution()
     contribution = _add_stat_contribution(
         contribution,
         StatKey.HP_PERCENT,
@@ -919,16 +870,16 @@ def build_danjeon_contribution(danjeon: DanjeonState) -> CalculatorContribution:
 def build_title_contribution(
     equipped_title_id: str | None,
     owned_title_map: dict[str, OwnedTitle],
-) -> CalculatorContribution:
+) -> Contribution:
     """현재 장착 칭호 기여 계산"""
 
     if equipped_title_id is None:
-        return CalculatorContribution()
+        return Contribution()
 
     # 사전 계산된 칭호 조회 맵 기반 즉시 조회
     equipped_title: OwnedTitle = owned_title_map[equipped_title_id]
 
-    contribution: CalculatorContribution = CalculatorContribution()
+    contribution: Contribution = Contribution()
     for stat_key_text, value in equipped_title.stats.items():
         contribution = _add_stat_contribution(
             contribution,
@@ -986,10 +937,10 @@ def _build_owned_talisman_stat_map(
 def build_talisman_contribution(
     equipped_talisman_ids: list[str],
     talisman_stat_map: dict[str, tuple[StatKey, float]],
-) -> CalculatorContribution:
+) -> Contribution:
     """현재 장착 부적 기여 계산"""
 
-    contribution: CalculatorContribution = CalculatorContribution()
+    contribution: Contribution = Contribution()
     for equipped_id in equipped_talisman_ids:
         stat_key: StatKey
         stat_value: float
@@ -1000,16 +951,16 @@ def build_talisman_contribution(
 
 
 def _merge_selection_contributions(
-    distribution_contribution: CalculatorContribution,
-    danjeon_contribution: CalculatorContribution,
-    title_contribution: CalculatorContribution,
-    talisman_contribution: CalculatorContribution,
-) -> CalculatorContribution:
+    distribution_contribution: Contribution,
+    danjeon_contribution: Contribution,
+    title_contribution: Contribution,
+    talisman_contribution: Contribution,
+) -> Contribution:
     """고정 4축 선택 기여 병합"""
 
     # 스탯 합산 맵 구성
     direct_values: dict[StatKey, float] = {}
-    contribution: CalculatorContribution
+    contribution: Contribution
     for contribution in (
         distribution_contribution,
         danjeon_contribution,
@@ -1023,7 +974,7 @@ def _merge_selection_contributions(
             direct_values[stat_key] = current_value + value
 
     # 원시/베이스 수치 필드 직접 합산 기반 단일 결과 객체 구성
-    merged_contribution: CalculatorContribution = CalculatorContribution(
+    merged_contribution: Contribution = Contribution(
         raw_strength=distribution_contribution.raw_strength
         + danjeon_contribution.raw_strength
         + title_contribution.raw_strength
@@ -1085,21 +1036,21 @@ def build_current_selected_contribution(
     calculator_input: CalculatorPresetInput,
     owned_title_map: dict[str, OwnedTitle],
     talisman_stat_map: dict[str, tuple[StatKey, float]],
-) -> CalculatorContribution:
+) -> Contribution:
     """현재 선택 상태 전체 기여 계산"""
 
     # 현재 스탯 분배/단전/칭호/부적 기여를 하나의 모델로 병합
-    distribution_contribution: CalculatorContribution = build_distribution_contribution(
+    distribution_contribution: Contribution = build_distribution_contribution(
         calculator_input.distribution
     )
-    danjeon_contribution: CalculatorContribution = build_danjeon_contribution(
+    danjeon_contribution: Contribution = build_danjeon_contribution(
         calculator_input.danjeon
     )
-    title_contribution: CalculatorContribution = build_title_contribution(
+    title_contribution: Contribution = build_title_contribution(
         calculator_input.equipped_state.equipped_title_id,
         owned_title_map,
     )
-    talisman_contribution: CalculatorContribution = build_talisman_contribution(
+    talisman_contribution: Contribution = build_talisman_contribution(
         calculator_input.equipped_state.equipped_talisman_ids,
         talisman_stat_map,
     )
@@ -1112,12 +1063,12 @@ def build_current_selected_contribution(
 
 
 def _merge_buff_windows(
-    buff_windows: list[CalculatorBuffWindow],
-) -> tuple[CalculatorBuffWindow, ...]:
+    buff_windows: list[BuffWindow],
+) -> tuple[BuffWindow, ...]:
     """동일 스탯/값 버프 구간 병합"""
 
     # 동일 스탯/값 버프 구간끼리 그룹화
-    grouped: dict[tuple[StatKey, float], list[CalculatorBuffWindow]] = {}
+    grouped: dict[tuple[StatKey, float], list[BuffWindow]] = {}
     for buff_window in buff_windows:
         group_key: tuple[StatKey, float] = (buff_window.stat_key, buff_window.value)
 
@@ -1127,18 +1078,18 @@ def _merge_buff_windows(
         grouped[group_key].append(buff_window)
 
     # 그룹별로 구간 병합 후 전체 구간 리스트에 추가
-    merged_windows: list[CalculatorBuffWindow] = []
+    merged_windows: list[BuffWindow] = []
     for group_key, group_windows in grouped.items():
-        sorted_windows: list[CalculatorBuffWindow] = sorted(
+        sorted_windows: list[BuffWindow] = sorted(
             group_windows,
             key=lambda item: item.start_time,
         )
-        current_window: CalculatorBuffWindow = sorted_windows[0]
+        current_window: BuffWindow = sorted_windows[0]
 
         for target_window in sorted_windows[1:]:
             # 현재 구간과 겹치는 구간은 병합
             if target_window.start_time <= current_window.end_time:
-                current_window = CalculatorBuffWindow(
+                current_window = BuffWindow(
                     stat_key=current_window.stat_key,
                     start_time=current_window.start_time,
                     end_time=max(current_window.end_time, target_window.end_time),
@@ -1152,7 +1103,7 @@ def _merge_buff_windows(
 
         merged_windows.append(current_window)
 
-    ordered_windows: tuple[CalculatorBuffWindow, ...] = tuple(
+    ordered_windows: tuple[BuffWindow, ...] = tuple(
         sorted(merged_windows, key=lambda item: item.start_time)
     )
     return ordered_windows
@@ -1271,7 +1222,7 @@ def build_skill_use_sequence(
     skills_info: dict[str, "SkillUsageSetting"],
     delay_ms: int,
     cooltime_reduction: float,
-) -> tuple[CalculatorSkillUse, ...]:
+) -> tuple[SkillUseEvent, ...]:
     """입력 상태 기준 60초 스킬 사용 순서 구성"""
 
     # 실제 배치된 스킬이 없으면 빈 사용 기록 반환
@@ -1319,9 +1270,9 @@ def build_skill_use_sequence(
 
     # 60초 범위 내 실제 스킬 사용 시점 기록
     task_list: list[EquippedSkillRef] = []
-    used_skills: list[CalculatorSkillUse] = []
+    used_skills: list[SkillUseEvent] = []
     elapsed_time_ms: int = 0
-    while elapsed_time_ms < CALCULATOR_TIMELINE_MILLISECONDS:
+    while elapsed_time_ms < TIMELINE_MILLISECONDS:
         if not task_list:
             _update_prepared_skills(
                 placed_refs=placed_refs,
@@ -1343,7 +1294,7 @@ def build_skill_use_sequence(
             skill_ref: EquippedSkillRef = task_list.pop(0)
             skill_id: str = preset.skills.get_placed_skill_id(skill_ref)
             used_skills.append(
-                CalculatorSkillUse(
+                SkillUseEvent(
                     skill_id=skill_id,
                     time=round(elapsed_time_ms * 0.001, 2),
                 )
@@ -1375,20 +1326,20 @@ def build_simulation_events(
     skills_info: dict[str, "SkillUsageSetting"],
     delay_ms: int,
     cooltime_reduction: float,
-) -> tuple[tuple[CalculatorHitEvent, ...], tuple[CalculatorScheduledBuff, ...]]:
+) -> tuple[tuple[HitEvent, ...], tuple[BuffEvent, ...]]:
     """공유 스케줄러 기준 공격/버프 이벤트 구성"""
 
     # 평타 간격과 배치 스킬 사용 기록을 각각 이벤트로 확장
     basic_attack_skill_id: str = get_builtin_skill_id(server_spec.id, "평타")
     basic_attack_interval_ms: int = int((100 - cooltime_reduction) * 10)
-    hit_events: list[CalculatorHitEvent] = []
+    hit_events: list[HitEvent] = []
     for current_time_ms in range(
         0,
-        CALCULATOR_TIMELINE_MILLISECONDS,
+        TIMELINE_MILLISECONDS,
         basic_attack_interval_ms,
     ):
         hit_events.append(
-            CalculatorHitEvent(
+            HitEvent(
                 skill_id=basic_attack_skill_id,
                 time=round(current_time_ms * 0.001, 2),
                 multiplier=1.0,
@@ -1396,7 +1347,7 @@ def build_simulation_events(
             )
         )
 
-    skill_uses: tuple[CalculatorSkillUse, ...] = build_skill_use_sequence(
+    skill_uses: tuple[SkillUseEvent, ...] = build_skill_use_sequence(
         server_spec=server_spec,
         preset=preset,
         skills_info=skills_info,
@@ -1415,13 +1366,13 @@ def build_simulation_events(
     )
 
     # 사용 시점과 효과 테이블을 조합해 최종 이벤트 생성
-    buff_events: list[CalculatorScheduledBuff] = []
+    buff_events: list[BuffEvent] = []
     for skill_use in skill_uses:
         damage_effects: list[DamageEffect] = damage_effects_map[skill_use.skill_id]
         buff_effects: list[BuffEffect] = buff_effects_map[skill_use.skill_id]
         for damage_effect in damage_effects:
             hit_events.append(
-                CalculatorHitEvent(
+                HitEvent(
                     skill_id=skill_use.skill_id,
                     time=round(skill_use.time + damage_effect.time, 2),
                     multiplier=damage_effect.damage,
@@ -1431,7 +1382,7 @@ def build_simulation_events(
 
         for buff_effect in buff_effects:
             buff_events.append(
-                CalculatorScheduledBuff(
+                BuffEvent(
                     skill_id=skill_use.skill_id,
                     stat_key=StatKey(str(buff_effect.stat)),
                     start_time=round(skill_use.time + buff_effect.time, 2),
@@ -1444,10 +1395,10 @@ def build_simulation_events(
             )
 
     # 시각화/평가 일관성을 위한 시간순 정렬
-    ordered_hit_events: tuple[CalculatorHitEvent, ...] = tuple(
+    ordered_hit_events: tuple[HitEvent, ...] = tuple(
         sorted(hit_events, key=lambda item: item.time)
     )
-    ordered_buff_events: tuple[CalculatorScheduledBuff, ...] = tuple(
+    ordered_buff_events: tuple[BuffEvent, ...] = tuple(
         sorted(buff_events, key=lambda item: item.start_time)
     )
     return ordered_hit_events, ordered_buff_events
@@ -1459,12 +1410,12 @@ def build_calculator_timeline(
     skills_info: dict[str, "SkillUsageSetting"],
     delay_ms: int,
     cooltime_reduction: float,
-) -> CalculatorTimeline:
+) -> Timeline:
     """메인 화면 스킬 상태 기준 계산기용 60초 타임라인 생성"""
 
     # 공유 스케줄러가 생성한 이벤트를 계산기 타임라인으로 정규화
-    hit_events: tuple[CalculatorHitEvent, ...]
-    buff_events: tuple[CalculatorScheduledBuff, ...]
+    hit_events: tuple[HitEvent, ...]
+    buff_events: tuple[BuffEvent, ...]
     hit_events, buff_events = build_simulation_events(
         server_spec=server_spec,
         preset=preset,
@@ -1472,10 +1423,10 @@ def build_calculator_timeline(
         delay_ms=delay_ms,
         cooltime_reduction=cooltime_reduction,
     )
-    converted_buff_windows: list[CalculatorBuffWindow] = []
+    converted_buff_windows: list[BuffWindow] = []
     for buff_event in buff_events:
         converted_buff_windows.append(
-            CalculatorBuffWindow(
+            BuffWindow(
                 stat_key=buff_event.stat_key,
                 start_time=buff_event.start_time,
                 end_time=buff_event.end_time,
@@ -1483,10 +1434,10 @@ def build_calculator_timeline(
             )
         )
 
-    merged_buff_windows: tuple[CalculatorBuffWindow, ...] = _merge_buff_windows(
+    merged_buff_windows: tuple[BuffWindow, ...] = _merge_buff_windows(
         converted_buff_windows
     )
-    timeline: CalculatorTimeline = CalculatorTimeline(
+    timeline: Timeline = Timeline(
         hit_events=hit_events,
         buff_windows=merged_buff_windows,
     )
@@ -1494,8 +1445,8 @@ def build_calculator_timeline(
 
 
 def _apply_active_buffs(
-    resolved_stats: CalculatorResolvedStats,
-    active_buffs: tuple[CalculatorBuffWindow, ...],
+    resolved_stats: ResolvedStats,
+    active_buffs: tuple[BuffWindow, ...],
 ) -> dict[StatKey, float]:
     """현재 시점 활성 버프 반영 스탯 구성"""
 
@@ -1508,12 +1459,12 @@ def _apply_active_buffs(
 
 
 def _collect_active_buffs(
-    buff_windows: tuple[CalculatorBuffWindow, ...],
+    buff_windows: tuple[BuffWindow, ...],
     target_time: float,
-) -> tuple[CalculatorBuffWindow, ...]:
+) -> tuple[BuffWindow, ...]:
     """특정 시점 활성 버프 목록 수집"""
 
-    active_buffs: tuple[CalculatorBuffWindow, ...] = tuple(
+    active_buffs: tuple[BuffWindow, ...] = tuple(
         buff_window
         for buff_window in buff_windows
         if buff_window.start_time <= target_time <= buff_window.end_time
@@ -1522,45 +1473,45 @@ def _collect_active_buffs(
 
 
 def _build_timeline_evaluation_artifacts(
-    timeline: CalculatorTimeline,
-) -> CalculatorTimelineEvaluationArtifacts:
+    timeline: Timeline,
+) -> TimelineEvaluationArtifacts:
     """타임라인 평가 반복용 활성 버프 스냅샷 구성"""
 
     # 타격 이벤트 순서 기준 활성 버프 튜플 1회 계산
-    active_buffs_by_hit: list[tuple[CalculatorBuffWindow, ...]] = []
-    hit_event: CalculatorHitEvent
+    active_buffs_by_hit: list[tuple[BuffWindow, ...]] = []
+    hit_event: HitEvent
     for hit_event in timeline.hit_events:
-        active_buffs: tuple[CalculatorBuffWindow, ...] = _collect_active_buffs(
+        active_buffs: tuple[BuffWindow, ...] = _collect_active_buffs(
             timeline.buff_windows,
             hit_event.time,
         )
         active_buffs_by_hit.append(active_buffs)
 
     # 데미지가 아닌 전투력 평가용 시간 경계와 활성 버프 구간 계산
-    boundary_values: set[float] = {0.0, CALCULATOR_TIMELINE_SECONDS}
-    buff_window: CalculatorBuffWindow
+    boundary_values: set[float] = {0.0, TIMELINE_SECONDS}
+    buff_window: BuffWindow
     for buff_window in timeline.buff_windows:
         clamped_start_time: float = max(
             0.0,
-            min(buff_window.start_time, CALCULATOR_TIMELINE_SECONDS),
+            min(buff_window.start_time, TIMELINE_SECONDS),
         )
         clamped_end_time: float = max(
             0.0,
-            min(buff_window.end_time, CALCULATOR_TIMELINE_SECONDS),
+            min(buff_window.end_time, TIMELINE_SECONDS),
         )
         boundary_values.add(clamped_start_time)
         boundary_values.add(clamped_end_time)
 
     # 반열린 구간 기준 비타격 전투력 평가 세그먼트 구성
     ordered_boundaries: tuple[float, ...] = tuple(sorted(boundary_values))
-    timeline_segments: list[CalculatorTimelineSegment] = []
+    timeline_segments: list[TimelineSegment] = []
     boundary_index: int
     for boundary_index in range(len(ordered_boundaries) - 1):
         start_time: float = ordered_boundaries[boundary_index]
         end_time: float = ordered_boundaries[boundary_index + 1]
 
         # 세그먼트 시작 시점 활성 버프 수집
-        segment_active_buffs: tuple[CalculatorBuffWindow, ...] = tuple(
+        segment_active_buffs: tuple[BuffWindow, ...] = tuple(
             current_buff_window
             for current_buff_window in timeline.buff_windows
             if (
@@ -1570,7 +1521,7 @@ def _build_timeline_evaluation_artifacts(
             )
         )
         timeline_segments.append(
-            CalculatorTimelineSegment(
+            TimelineSegment(
                 start_time=start_time,
                 end_time=end_time,
                 duration=end_time - start_time,
@@ -1579,19 +1530,17 @@ def _build_timeline_evaluation_artifacts(
         )
 
     # 동일 타임라인 재평가 시 재사용할 불변 구조로 고정
-    artifacts: CalculatorTimelineEvaluationArtifacts = (
-        CalculatorTimelineEvaluationArtifacts(
-            timeline=timeline,
-            active_buffs_by_hit=tuple(active_buffs_by_hit),
-            timeline_segments=tuple(timeline_segments),
-        )
+    artifacts: TimelineEvaluationArtifacts = TimelineEvaluationArtifacts(
+        timeline=timeline,
+        active_buffs_by_hit=tuple(active_buffs_by_hit),
+        timeline_segments=tuple(timeline_segments),
     )
     return artifacts
 
 
 def _calculate_hit_damage(
     resolved_stats: dict[StatKey, float],
-    hit_event: CalculatorHitEvent,
+    hit_event: HitEvent,
     is_boss: bool,
 ) -> float:
     """단일 타격 데미지 계산"""
@@ -1619,7 +1568,7 @@ def _calculate_hit_damage(
 
 def _calculate_random_hit_damage(
     resolved_stats: dict[StatKey, float],
-    hit_event: CalculatorHitEvent,
+    hit_event: HitEvent,
     is_boss: bool,
     rng: random.Random,
 ) -> float:
@@ -1651,19 +1600,19 @@ def _calculate_random_hit_damage(
 
 
 def build_damage_events(
-    timeline: CalculatorTimeline,
-    resolved_stats: CalculatorResolvedStats,
+    timeline: Timeline,
+    resolved_stats: ResolvedStats,
     is_boss: bool,
     deterministic: bool,
     random_seed: float | None = None,
-) -> list[CalculatorDamageEvent]:
+) -> list[DamageEvent]:
     """타임라인과 스탯 기준 최종 피해 이벤트 목록 구성"""
 
-    artifacts: CalculatorTimelineEvaluationArtifacts = (
-        _build_timeline_evaluation_artifacts(timeline)
+    artifacts: TimelineEvaluationArtifacts = _build_timeline_evaluation_artifacts(
+        timeline
     )
-    damage_events: list[CalculatorDamageEvent] = []
-    hit_event: CalculatorHitEvent
+    damage_events: list[DamageEvent] = []
+    hit_event: HitEvent
     buffed_stats: dict[StatKey, float]
     for hit_event, buffed_stats in _iterate_buffed_hit_events(
         artifacts,
@@ -1687,7 +1636,7 @@ def build_damage_events(
             )
 
         damage_events.append(
-            CalculatorDamageEvent(
+            DamageEvent(
                 skill_id=hit_event.skill_id,
                 time=hit_event.time,
                 damage=damage,
@@ -1698,17 +1647,15 @@ def build_damage_events(
 
 
 def _iterate_buffed_hit_events(
-    artifacts: CalculatorTimelineEvaluationArtifacts,
-    resolved_stats: CalculatorResolvedStats,
-) -> Iterator[tuple[CalculatorHitEvent, dict[StatKey, float]]]:
+    artifacts: TimelineEvaluationArtifacts,
+    resolved_stats: ResolvedStats,
+) -> Iterator[tuple[HitEvent, dict[StatKey, float]]]:
     """타임라인 아티팩트 기준 버프 반영 타격 순회"""
 
     hit_index: int
-    hit_event: CalculatorHitEvent
+    hit_event: HitEvent
     for hit_index, hit_event in enumerate(artifacts.timeline.hit_events):
-        active_buffs: tuple[CalculatorBuffWindow, ...] = artifacts.active_buffs_by_hit[
-            hit_index
-        ]
+        active_buffs: tuple[BuffWindow, ...] = artifacts.active_buffs_by_hit[hit_index]
         buffed_stats: dict[StatKey, float] = _apply_active_buffs(
             resolved_stats, active_buffs
         )
@@ -1716,16 +1663,16 @@ def _iterate_buffed_hit_events(
 
 
 def evaluate_calculator_power(
-    artifacts: CalculatorTimelineEvaluationArtifacts,
-    resolved_stats: CalculatorResolvedStats,
-) -> CalculatorPowerSummary:
+    artifacts: TimelineEvaluationArtifacts,
+    resolved_stats: ResolvedStats,
+) -> PowerSummary:
     """사전 계산 타임라인 아티팩트 기준 5종 전투력 계산"""
 
     # 타격별 활성 버프 스냅샷 재사용 기반 총데미지 누적
     total_boss_damage: float = 0.0
     total_normal_damage: float = 0.0
 
-    hit_event: CalculatorHitEvent
+    hit_event: HitEvent
     buffed_stats: dict[StatKey, float]
     for hit_event, buffed_stats in _iterate_buffed_hit_events(
         artifacts,
@@ -1745,7 +1692,7 @@ def evaluate_calculator_power(
     # 세그먼트별 비타격 전투력 배수 시간가중 평균 누적
     weighted_boss_multiplier_sum: float = 0.0
     weighted_normal_multiplier_sum: float = 0.0
-    timeline_segment: CalculatorTimelineSegment
+    timeline_segment: TimelineSegment
     for timeline_segment in artifacts.timeline_segments:
         segment_stats: dict[StatKey, float] = _apply_active_buffs(
             resolved_stats,
@@ -1774,11 +1721,9 @@ def evaluate_calculator_power(
         weighted_normal_multiplier_sum += normal_multiplier * timeline_segment.duration
 
     # 60초 기준 평균 배수로 최종 전투력 계산
-    averaged_boss_multiplier: float = (
-        weighted_boss_multiplier_sum / CALCULATOR_TIMELINE_SECONDS
-    )
+    averaged_boss_multiplier: float = weighted_boss_multiplier_sum / TIMELINE_SECONDS
     averaged_normal_multiplier: float = (
-        weighted_normal_multiplier_sum / CALCULATOR_TIMELINE_SECONDS
+        weighted_normal_multiplier_sum / TIMELINE_SECONDS
     )
     boss_power: float = total_boss_damage * averaged_boss_multiplier
     normal_power: float = total_normal_damage * averaged_normal_multiplier
@@ -1793,7 +1738,7 @@ def evaluate_calculator_power(
         PowerMetric.OFFICIAL: official_power,
     }
 
-    return CalculatorPowerSummary(metrics=metrics)
+    return PowerSummary(metrics=metrics)
 
 
 def build_calculator_context(
@@ -1806,24 +1751,24 @@ def build_calculator_context(
     """현재 계산기 입력 기준 평가 컨텍스트 구성"""
 
     # 현재 전체 스탯 기준 최종 계산 스탯 구성
-    baseline_stats: CalculatorResolvedStats = resolve_calculator_stats(
+    baseline_stats: ResolvedStats = resolve_calculator_stats(
         overall_stats=overall_stats
     )
 
     # 현재 스킬속도 기준 타임라인 구성
-    timeline: CalculatorTimeline = build_calculator_timeline(
+    timeline: Timeline = build_calculator_timeline(
         server_spec=server_spec,
         preset=preset,
         skills_info=skills_info,
         delay_ms=delay_ms,
         cooltime_reduction=baseline_stats.values[StatKey.SKILL_SPEED_PERCENT],
     )
-    timeline_artifacts: CalculatorTimelineEvaluationArtifacts = (
+    timeline_artifacts: TimelineEvaluationArtifacts = (
         _build_timeline_evaluation_artifacts(timeline)
     )
 
     # 기준 타임라인 아티팩트와 기준 스탯으로 기준 전투력 계산
-    baseline_summary: CalculatorPowerSummary = evaluate_calculator_power(
+    baseline_summary: PowerSummary = evaluate_calculator_power(
         artifacts=timeline_artifacts,
         resolved_stats=baseline_stats,
     )
@@ -1839,17 +1784,17 @@ def evaluate_stat_changes(
     context: CalculatorEvaluationContext,
     overall_stats: dict[str, float],
     stat_changes: dict[StatKey, float],
-) -> CalculatorPowerSummary:
+) -> PowerSummary:
     """전체 스탯 변화량 반영 후 전투력 계산"""
 
     # 변화량을 반영한 최종 스탯 재계산
-    resolved_stats: CalculatorResolvedStats = resolve_calculator_stats(
+    resolved_stats: ResolvedStats = resolve_calculator_stats(
         overall_stats=overall_stats,
         stat_changes=stat_changes,
     )
 
     # 기준 타임라인 아티팩트 재사용 기반 전투력 재평가
-    summary: CalculatorPowerSummary = evaluate_calculator_power(
+    summary: PowerSummary = evaluate_calculator_power(
         artifacts=context.timeline_artifacts,
         resolved_stats=resolved_stats,
     )
@@ -1867,7 +1812,7 @@ def evaluate_single_stat_delta(
 
     # 단일 스탯 변화량 맵 구성
     stat_changes: dict[StatKey, float] = {stat_key: amount}
-    target_summary: CalculatorPowerSummary = evaluate_stat_changes(
+    target_summary: PowerSummary = evaluate_stat_changes(
         context=context,
         overall_stats=overall_stats,
         stat_changes=stat_changes,
@@ -1884,7 +1829,7 @@ def evaluate_arbitrary_stat_delta(
     """여러 스탯 변화량 기준 전투력 차이 계산"""
 
     # 다중 스탯 변화량 전투력 계산
-    target_summary: CalculatorPowerSummary = evaluate_stat_changes(
+    target_summary: PowerSummary = evaluate_stat_changes(
         context=context,
         overall_stats=overall_stats,
         stat_changes=stat_changes,
@@ -1966,7 +1911,7 @@ def evaluate_level_up_delta(
             for vitality in range(6 - strength - dexterity):
                 luck: int = 5 - strength - dexterity - vitality
                 stat_changes: dict[StatKey, float] = {
-                    StatKey.HP: 10.0,
+                    StatKey.HP: 5.0,
                     StatKey.STR: float(strength),
                     StatKey.DEXTERITY: float(dexterity),
                     StatKey.VITALITY: float(vitality),
@@ -2122,7 +2067,7 @@ def evaluate_scroll_upgrade_deltas(
 
 
 def _get_direct_contribution_value(
-    contribution: CalculatorContribution,
+    contribution: Contribution,
     stat_key: StatKey,
 ) -> float:
     """직접 반영 스탯 기여 조회"""
@@ -2213,14 +2158,14 @@ def build_base_state(
     """현재 선택 기여를 제거한 기준 베이스 스탯 계산"""
 
     # 현재 전체 스탯을 내부 원시 구성요소로 해석
-    resolved_stats: CalculatorResolvedStats = resolve_calculator_stats(overall_stats)
+    resolved_stats: ResolvedStats = resolve_calculator_stats(overall_stats)
     owned_title_map: dict[str, OwnedTitle] = _build_owned_title_map(
         calculator_input.owned_titles
     )
     talisman_stat_map: dict[str, tuple[StatKey, float]] = (
         _build_owned_talisman_stat_map(calculator_input.owned_talismans)
     )
-    contribution: CalculatorContribution = build_current_selected_contribution(
+    contribution: Contribution = build_current_selected_contribution(
         calculator_input,
         owned_title_map,
         talisman_stat_map,
@@ -2353,7 +2298,7 @@ def validate_base_state(
 
     # 기준 베이스 스탯 분리 후 음수 구성요소 검증
     base_state: CalculatorBaseState = build_base_state(overall_stats, calculator_input)
-    resolved_base: CalculatorResolvedStats = base_state.resolved_base
+    resolved_base: ResolvedStats = base_state.resolved_base
 
     invalid_values: tuple[float, ...] = (
         resolved_base.raw_strength,
@@ -2381,12 +2326,12 @@ def validate_base_state(
 
 def _build_overall_stats_from_base_and_contribution(
     base_state: CalculatorBaseState,
-    contribution: CalculatorContribution,
+    contribution: Contribution,
 ) -> dict[str, float]:
     """기준 베이스와 후보 기여로 최종 전체 스탯 재구성"""
 
     # 기준 베이스 스탯을 내부 원시 구성요소로 재해석
-    resolved_base: CalculatorResolvedStats = base_state.resolved_base
+    resolved_base: ResolvedStats = base_state.resolved_base
 
     # 직접 퍼센트 스탯과 원시 구성요소에 후보 기여 합산
     direct_values: dict[StatKey, float] = {
@@ -2661,22 +2606,22 @@ def optimize_current_selection(
     )
 
     # 합산 스탯 사전 계산
-    distribution_entries: list[tuple[DistributionState, CalculatorContribution]] = [
+    distribution_entries: list[tuple[DistributionState, Contribution]] = [
         (distribution_state, build_distribution_contribution(distribution_state))
         for distribution_state in distribution_candidates
     ]
-    danjeon_entries: list[tuple[DanjeonState, CalculatorContribution]] = [
+    danjeon_entries: list[tuple[DanjeonState, Contribution]] = [
         (danjeon_state, build_danjeon_contribution(danjeon_state))
         for danjeon_state in danjeon_candidates
     ]
-    title_entries: list[tuple[str | None, CalculatorContribution]] = [
+    title_entries: list[tuple[str | None, Contribution]] = [
         (
             equipped_title_id,
             build_title_contribution(equipped_title_id, owned_title_map),
         )
         for equipped_title_id in title_candidates
     ]
-    talisman_entries: list[tuple[list[str], CalculatorContribution]] = [
+    talisman_entries: list[tuple[list[str], Contribution]] = [
         (
             equipped_talisman_ids,
             build_talisman_contribution(equipped_talisman_ids, talisman_stat_map),
@@ -2688,7 +2633,7 @@ def optimize_current_selection(
     baseline_speed_cache_key: float = round(
         context.baseline_stats.values[StatKey.SKILL_SPEED_PERCENT], 2
     )
-    timeline_cache: dict[float, CalculatorTimelineEvaluationArtifacts] = {
+    timeline_cache: dict[float, TimelineEvaluationArtifacts] = {
         baseline_speed_cache_key: context.timeline_artifacts
     }
 
@@ -2700,7 +2645,7 @@ def optimize_current_selection(
             for equipped_title_id, title_contribution in title_entries:
                 for equipped_talisman_ids, talisman_contribution in talisman_entries:
                     # 후보 파트별 기여 직접 병합 기반 최종 스탯 구성
-                    candidate_contribution: CalculatorContribution = (
+                    candidate_contribution: Contribution = (
                         _merge_selection_contributions(
                             distribution_contribution,
                             danjeon_contribution,
@@ -2716,8 +2661,8 @@ def optimize_current_selection(
                     )
 
                     # 후보 최종 스탯 및 스킬속도 기준 타임라인 캐시 키 정규화
-                    optimized_resolved_stats: CalculatorResolvedStats = (
-                        resolve_calculator_stats(overall_stats=optimized_overall_stats)
+                    optimized_resolved_stats: ResolvedStats = resolve_calculator_stats(
+                        overall_stats=optimized_overall_stats
                     )
                     candidate_skill_speed: float = float(
                         optimized_resolved_stats.values[StatKey.SKILL_SPEED_PERCENT]
@@ -2725,11 +2670,11 @@ def optimize_current_selection(
                     speed_cache_key: float = round(candidate_skill_speed, 2)
 
                     # 동일 스킬속도 구간 타임라인 재활용 및 최초 1회만 재계산
-                    cached_timeline_artifacts: (
-                        CalculatorTimelineEvaluationArtifacts | None
-                    ) = timeline_cache.get(speed_cache_key)
+                    cached_timeline_artifacts: TimelineEvaluationArtifacts | None = (
+                        timeline_cache.get(speed_cache_key)
+                    )
                     if cached_timeline_artifacts is None:
-                        cached_timeline: CalculatorTimeline = build_calculator_timeline(
+                        cached_timeline: Timeline = build_calculator_timeline(
                             server_spec=server_spec,
                             preset=preset,
                             skills_info=skills_info,
@@ -2742,11 +2687,9 @@ def optimize_current_selection(
                         timeline_cache[speed_cache_key] = cached_timeline_artifacts
 
                     # 캐시된 타임라인 활성 버프 스냅샷과 후보 스탯 기준 전투력 재평가
-                    optimized_summary: CalculatorPowerSummary = (
-                        evaluate_calculator_power(
-                            artifacts=cached_timeline_artifacts,
-                            resolved_stats=optimized_resolved_stats,
-                        )
+                    optimized_summary: PowerSummary = evaluate_calculator_power(
+                        artifacts=cached_timeline_artifacts,
+                        resolved_stats=optimized_resolved_stats,
                     )
                     deltas: dict[PowerMetric, float] = calculate_power_deltas(
                         context.baseline_summary,

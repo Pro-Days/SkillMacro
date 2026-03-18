@@ -7,7 +7,7 @@ from PySide6.QtCore import QPoint, QPointF, Qt
 from PySide6.QtGui import QBrush, QPainter
 from PySide6.QtWidgets import QLabel, QWidget
 
-from app.scripts.calculator_engine import CalculatorGraphAttack
+from app.scripts.calculator_engine import GraphDamageEvent
 from app.scripts.custom_classes import CustomFont
 from app.scripts.registry.skill_registry import get_builtin_skill_id, parse_skill_id
 
@@ -18,9 +18,7 @@ from app.scripts.registry.skill_registry import get_builtin_skill_id, parse_skil
 class DpmDistributionCanvas(pg.PlotWidget):
     """DPM 분포"""
 
-    def __init__(
-        self, parent: QWidget, results: list[list[CalculatorGraphAttack]]
-    ) -> None:
+    def __init__(self, parent: QWidget, results: list[list[GraphDamageEvent]]) -> None:
         super().__init__(parent=parent)
 
         # 데이터 저장
@@ -395,7 +393,7 @@ class SkillDpsRatioCanvas(pg.PlotWidget):
     def __init__(
         self,
         parent: QWidget,
-        data: list[CalculatorGraphAttack],
+        data: list[GraphDamageEvent],
         skill_ids: list[str],
         server_id: str,
     ) -> None:
@@ -626,7 +624,7 @@ class DMGCanvas(pg.PlotWidget):
     def __init__(
         self,
         parent: QWidget,
-        results: list[list[CalculatorGraphAttack]],
+        results: list[list[GraphDamageEvent]],
         title: str,
     ) -> None:
         super().__init__(parent)
@@ -905,7 +903,7 @@ class SkillContributionCanvas(pg.PlotWidget):
     def __init__(
         self,
         parent: QWidget,
-        deterministic_attacks: list[CalculatorGraphAttack],
+        deterministic_attacks: list[GraphDamageEvent],
         skill_ids: list[str],
         server_id: str,
     ) -> None:
