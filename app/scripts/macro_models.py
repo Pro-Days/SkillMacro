@@ -153,7 +153,6 @@ class MacroSkills:
         return scroll_def.skills[skill_ref.line_index]
 
 
-
 @dataclass(slots=True)
 class MacroSettings:
     """매크로 설정 데이터 모델"""
@@ -390,6 +389,7 @@ class MacroPreset:
 
     # 모델 기본값
     DEFAULT_NAME: ClassVar[str] = "스킬 매크로"
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> MacroPreset:
         """딕셔너리로부터 MacroPreset 생성"""

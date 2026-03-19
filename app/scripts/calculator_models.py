@@ -309,11 +309,152 @@ class EquippedState:
 
 
 @dataclass(slots=True)
+class BaseStats:
+    """계산기 기준 원시 스탯 맵"""
+
+    values: dict[str, float] = field(default_factory=dict)
+
+    @classmethod
+    def create_default(cls) -> "BaseStats":
+        """기본 베이스 스탯 생성"""
+
+        return cls(values={stat_key.value: 0.0 for stat_key in OVERALL_STAT_ORDER})
+
+    @classmethod
+    def from_dict(cls, data: dict[str, float]) -> "BaseStats":
+        """저장 데이터로부터 베이스 스탯 복원"""
+
+        return cls(
+            values={
+                stat_key.value: data[stat_key.value] for stat_key in OVERALL_STAT_ORDER
+            }
+        )
+
+    def to_dict(self) -> dict[str, float]:
+        """베이스 스탯 직렬화"""
+
+        return {key: value for key, value in self.values.items()}
+
+    @classmethod
+    def from_stat_map(cls, data: dict[StatKey, float]) -> "BaseStats":
+        """enum 키 기반 스탯 맵으로부터 베이스 스탯 구성"""
+
+        return cls(
+            values={
+                stat_key.value: data.get(stat_key, 0.0)
+                for stat_key in OVERALL_STAT_ORDER
+            }
+        )
+
+    def to_stat_map(self) -> dict[StatKey, float]:
+        """enum 키 기반 베이스 스탯 맵 반환"""
+
+        return {
+            stat_key: self.values[stat_key.value] for stat_key in OVERALL_STAT_ORDER
+        }
+
+    def with_changes(
+        self,
+        changes: dict[StatKey, float] | None,
+        is_add: bool = True,
+    ) -> "BaseStats":
+        """조정이 반영된 새 베이스 스탯 반환"""
+
+        next_values: dict[StatKey, float] = self.to_stat_map()
+
+        if changes is None:
+            return self
+
+        for stat_key, value in changes.items():
+            next_values[stat_key] = next_values[stat_key] + (
+                value * (1.0 if is_add else -1.0)
+            )
+
+        return type(self).from_stat_map(next_values)
+
+    def resolve(
+        self,
+        stat_changes: dict[StatKey, float] | None = None,
+    ) -> "FinalStats":
+        """베이스 스탯을 최종 스탯으로 변환"""
+
+        changed_stats: dict[StatKey, float] = self.with_changes(
+            stat_changes
+        ).to_stat_map()
+
+        # 스탯% 적용
+        final_strength: float = changed_stats[StatKey.STR] * (
+            1.0 + (changed_stats[StatKey.STR_PERCENT] * 0.01)
+        )
+        final_dexterity: float = changed_stats[StatKey.DEXTERITY] * (
+            1.0 + (changed_stats[StatKey.DEXTERITY_PERCENT] * 0.01)
+        )
+        final_vitality: float = changed_stats[StatKey.VITALITY] * (
+            1.0 + (changed_stats[StatKey.VITALITY_PERCENT] * 0.01)
+        )
+        final_luck: float = float(changed_stats[StatKey.LUCK]) * (
+            1.0 + (float(changed_stats[StatKey.LUCK_PERCENT]) * 0.01)
+        )
+
+        resolved_values: dict[StatKey, float] = changed_stats.copy()
+
+        resolved_values[StatKey.STR] = final_strength
+        resolved_values[StatKey.DEXTERITY] = final_dexterity
+        resolved_values[StatKey.VITALITY] = final_vitality
+        resolved_values[StatKey.LUCK] = final_luck
+
+        resolved_values[StatKey.ATTACK_PERCENT] = changed_stats[
+            StatKey.ATTACK_PERCENT
+        ] + (final_dexterity * 0.3)
+
+        resolved_values[StatKey.ATTACK] = (
+            changed_stats[StatKey.ATTACK] + final_strength
+        ) * (1.0 + (resolved_values[StatKey.ATTACK_PERCENT] * 0.01))
+
+        resolved_values[StatKey.HP] = (
+            changed_stats[StatKey.HP] + (final_vitality * 5.0)
+        ) * (1.0 + (changed_stats[StatKey.HP_PERCENT] * 0.01))
+
+        resolved_values[StatKey.CRIT_RATE_PERCENT] = changed_stats[
+            StatKey.CRIT_RATE_PERCENT
+        ] + (final_dexterity * 0.05)
+
+        resolved_values[StatKey.CRIT_DAMAGE_PERCENT] = changed_stats[
+            StatKey.CRIT_DAMAGE_PERCENT
+        ] + (final_strength * 0.1)
+
+        resolved_values[StatKey.DROP_RATE_PERCENT] = changed_stats[
+            StatKey.DROP_RATE_PERCENT
+        ] + (final_luck * 0.2)
+
+        resolved_values[StatKey.EXP_PERCENT] = changed_stats[StatKey.EXP_PERCENT] + (
+            final_luck * 0.2
+        )
+
+        resolved_values[StatKey.DODGE_PERCENT] = changed_stats[
+            StatKey.DODGE_PERCENT
+        ] + (final_vitality * 0.03)
+
+        resolved_values[StatKey.POTION_HEAL_PERCENT] = changed_stats[
+            StatKey.POTION_HEAL_PERCENT
+        ] + (final_vitality * 0.5)
+
+        return FinalStats(values=resolved_values)
+
+
+@dataclass(frozen=True, slots=True)
+class FinalStats:
+    """2차 효과가 적용된 최종 스탯"""
+
+    values: dict[StatKey, float]
+
+
+@dataclass(slots=True)
 class CalculatorPresetInput:
     """계산기 입력 데이터 묶음"""
 
-    # 전체 스탯과 정보 저장
-    overall_stats: dict[str, float] = field(default_factory=dict)
+    # 기준 원시 스탯과 정보 저장
+    base_stats: BaseStats = field(default_factory=BaseStats.create_default)
     level: int = 0
     realm_tier: RealmTier = RealmTier.THIRD_RATE
     selected_metric: PowerMetric = PowerMetric.BOSS_DAMAGE
@@ -332,15 +473,11 @@ class CalculatorPresetInput:
     def create_default(cls) -> "CalculatorPresetInput":
         """기본 계산기 입력 상태 생성"""
 
-        # 전체 스탯 입력창 초기 렌더링용 0값 맵 구성
-        overall_stats: dict[str, float] = {
-            stat_key.value: 0.0 for stat_key in OVERALL_STAT_ORDER
-        }
         custom_stat_changes: dict[str, float] = {
             stat_key.value: 0.0 for stat_key in OVERALL_STAT_ORDER
         }
         return cls(
-            overall_stats=overall_stats,
+            base_stats=BaseStats.create_default(),
             custom_stat_changes=custom_stat_changes,
         )
 
@@ -348,15 +485,12 @@ class CalculatorPresetInput:
     def from_dict(cls, data: dict[str, object]) -> "CalculatorPresetInput":
         """저장 데이터로부터 계산기 입력 상태 복원"""
 
-        # 전체 스탯 키 복원
-        raw_stats: object = data["overall_stats"]
-        if not isinstance(raw_stats, dict):
-            raise TypeError("overall_stats must be a dict")
+        # 베이스 스탯 키 복원
+        raw_base_stats: object = data["base_stats"]
+        if not isinstance(raw_base_stats, dict):
+            raise TypeError("base_stats must be a dict")
 
-        overall_stats: dict[str, float] = {
-            stat_key.value: float(raw_stats[stat_key.value])
-            for stat_key in OVERALL_STAT_ORDER
-        }
+        base_stats: BaseStats = BaseStats.from_dict(raw_base_stats)
 
         # 스탯 변화 복원
         custom_stat_changes_raw: object = data["custom_stat_changes"]
@@ -407,15 +541,15 @@ class CalculatorPresetInput:
             owned_talismans.append(OwnedTalisman.from_dict(item))
 
         # 장착 상태
-        equipped_data: object = data["equipped"]
+        equipped_data: object = data["equipped_state"]
         if not isinstance(equipped_data, dict):
-            raise TypeError("equipped must be a dict")
+            raise TypeError("equipped_state must be a dict")
         equipped_state: EquippedState = EquippedState.from_dict(equipped_data)
 
         level: int = int(data["level"])  # type: ignore
 
         return cls(
-            overall_stats=overall_stats,
+            base_stats=base_stats,
             level=level,
             realm_tier=realm_tier,
             selected_metric=selected_metric,
@@ -431,9 +565,7 @@ class CalculatorPresetInput:
         """계산기 입력 상태 직렬화"""
 
         data: dict[str, object] = {
-            "overall_stats": {
-                key: float(value) for key, value in self.overall_stats.items()
-            },
+            "base_stats": self.base_stats.to_dict(),
             "level": self.level,
             "realm_tier": self.realm_tier.value,
             "selected_metric": self.selected_metric.value,

@@ -42,6 +42,7 @@ from app.scripts.calculator_models import (
     REALM_TIER_SPECS,
     STAT_SPECS,
     TALISMAN_SPECS,
+    BaseStats,
     DanjeonState,
     DistributionState,
     EquippedState,
@@ -304,7 +305,7 @@ class GraphPage(QFrame):
             preset=app_state.macro.current_preset,
             skills_info=app_state.macro.current_preset.usage_settings,
             delay_ms=app_state.macro.current_delay,
-            overall_stats=calculator_input.overall_stats,
+            base_stats=calculator_input.base_stats,
         )
         powers: list[float] = [
             graph_report.metrics[power_metric] for power_metric in DISPLAY_POWER_METRICS
@@ -522,7 +523,7 @@ class ResultsPage(QFrame):
         server_spec: "ServerSpec",
         preset: "MacroPreset",
         delay_ms: int,
-        overall_stats: dict[str, float],
+        base_stats: BaseStats,
         level: int,
         selected_metric: "PowerMetric",
         current_realm: "RealmTier",
@@ -548,7 +549,7 @@ class ResultsPage(QFrame):
         for stat_key, stat_spec in STAT_SPECS.items():
             deltas: dict[PowerMetric, float] = evaluate_single_stat_delta(
                 context=context,
-                overall_stats=overall_stats,
+                base_stats=base_stats,
                 stat_key=stat_key,
                 amount=1.0,
             )
@@ -568,7 +569,7 @@ class ResultsPage(QFrame):
         # 레벨 1업 효율 출력 행 구성
         level_up: LevelUpEvaluation = evaluate_level_up_delta(
             context=context,
-            overall_stats=overall_stats,
+            base_stats=base_stats,
             target_metric=selected_metric,
         )
         level_distribution_text: str = (
@@ -585,7 +586,7 @@ class ResultsPage(QFrame):
         # 다음 경지 효율 출력 행 구성
         realm_result: RealmAdvanceEvaluation | None = evaluate_next_realm_delta(
             context=context,
-            overall_stats=overall_stats,
+            base_stats=base_stats,
             current_realm=current_realm,
             level=level,
             target_metric=selected_metric,
@@ -613,7 +614,7 @@ class ResultsPage(QFrame):
             preset=preset,
             skills_info=preset.usage_settings,
             delay_ms=delay_ms,
-            overall_stats=overall_stats,
+            base_stats=base_stats,
         )
         for scroll_result in scroll_results:
             scroll_rows.append(
@@ -630,14 +631,14 @@ class ResultsPage(QFrame):
 
         # 사용자 지정 변화량 결과 행 공용 구성
         custom_rows: list[tuple[str, str]] = cls._build_custom_delta_rows(
-            overall_stats=overall_stats,
+            base_stats=base_stats,
             calculator_input=calculator_input,
             context=context,
         )
 
         # 기준 상태 분리 결과 행 구성
         validation: CalculatorBaseValidation = validate_base_state(
-            overall_stats=overall_stats,
+            base_stats=base_stats,
             calculator_input=calculator_input,
         )
         if not validation.is_valid:
@@ -653,7 +654,7 @@ class ResultsPage(QFrame):
             )
 
         base_state: CalculatorBaseState = build_base_state(
-            overall_stats=overall_stats,
+            base_stats=base_stats,
             calculator_input=calculator_input,
         )
         base_state_rows: list[tuple[str, str]] = [
@@ -661,14 +662,12 @@ class ResultsPage(QFrame):
             (
                 "기준 공격력",
                 cls._format_current_power(
-                    base_state.base_overall_stats[StatKey.ATTACK.value]
+                    base_state.final_stats.values[StatKey.ATTACK]
                 ),
             ),
             (
                 "기준 체력",
-                cls._format_current_power(
-                    base_state.base_overall_stats[StatKey.HP.value]
-                ),
+                cls._format_current_power(base_state.final_stats.values[StatKey.HP]),
             ),
         ]
 
@@ -679,7 +678,7 @@ class ResultsPage(QFrame):
             skills_info=preset.usage_settings,
             delay_ms=delay_ms,
             context=context,
-            overall_stats=overall_stats,
+            base_stats=base_stats,
             calculator_input=calculator_input,
             target_metric=selected_metric,
         )
@@ -751,7 +750,7 @@ class ResultsPage(QFrame):
     @classmethod
     def _build_custom_delta_rows(
         cls,
-        overall_stats: dict[str, float],
+        base_stats: BaseStats,
         calculator_input: CalculatorPresetInput,
         context: "CalculatorEvaluationContext",
     ) -> list[tuple[str, str]]:
@@ -769,7 +768,7 @@ class ResultsPage(QFrame):
         # 사용자 지정 변화량 기준 5종 전투력 변화량 계산
         custom_deltas: dict[PowerMetric, float] = evaluate_arbitrary_stat_delta(
             context=context,
-            overall_stats=overall_stats,
+            base_stats=base_stats,
             stat_changes=custom_changes,
         )
         custom_rows: list[tuple[str, str]] = []
@@ -838,7 +837,7 @@ class ResultsPage(QFrame):
             self.stats_inputs = self.OverallStatInputs(
                 self,
                 self.on_base_input_changed,
-                self._get_initial_overall_stats(),
+                self._get_initial_base_stats(),
             )
 
             # 스크롤 레벨 입력 UI 구성
@@ -936,7 +935,7 @@ class ResultsPage(QFrame):
 
             stats_valid: bool
             level_valid: bool
-            stats_valid, _ = self._read_overall_stats()
+            stats_valid, _ = self._read_base_stats()
             level_valid, _ = self._read_level()
             scroll_valid: bool = self._read_scroll_levels(save_levels=False)
             return stats_valid and level_valid and scroll_valid
@@ -957,7 +956,7 @@ class ResultsPage(QFrame):
 
             for stat_key in STAT_SPECS.keys():
                 self.stats_inputs.inputs[stat_key].setText(
-                    f"{calculator_input.overall_stats[stat_key.value]:g}"
+                    f"{calculator_input.base_stats.values[stat_key.value]:g}"
                 )
                 self.custom_delta_inputs.inputs[stat_key].setText(
                     f"{calculator_input.custom_stat_changes[stat_key.value]:g}"
@@ -1701,14 +1700,16 @@ class ResultsPage(QFrame):
 
             return self._get_preset().info.calculator.realm_tier
 
-        def _get_initial_overall_stats(self) -> dict[StatKey, str]:
-            """저장된 전체 스탯 입력 문자열 맵 반환"""
+        def _get_initial_base_stats(self) -> dict[StatKey, str]:
+            """저장된 베이스 스탯 입력 문자열 맵 반환"""
 
-            # 저장된 전체 스탯을 입력 위젯 초기 문자열로 변환
+            # 저장된 베이스 스탯을 입력 위젯 초기 문자열로 변환
             calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
             values: dict[StatKey, str] = {}
             for stat_key in STAT_SPECS.keys():
-                values[stat_key] = f"{calculator_input.overall_stats[stat_key.value]:g}"
+                values[stat_key] = (
+                    f"{calculator_input.base_stats.values[stat_key.value]:g}"
+                )
 
             return values
 
@@ -1880,8 +1881,8 @@ class ResultsPage(QFrame):
                 owned_talismans,
             )
 
-        def _read_overall_stats(self) -> tuple[bool, dict[str, float]]:
-            """전체 스탯 입력 복원 및 검증"""
+        def _read_base_stats(self) -> tuple[bool, BaseStats]:
+            """베이스 스탯 입력 복원 및 검증"""
 
             # 모든 입력칸을 순회하며 실수 입력 복원
             parsed_stats: dict[str, float] = {}
@@ -1898,7 +1899,7 @@ class ResultsPage(QFrame):
 
                 parsed_stats[stat_key.value] = value
 
-            return is_valid, parsed_stats
+            return is_valid, BaseStats(values=parsed_stats)
 
         def _read_custom_stat_changes(self) -> tuple[bool, dict[StatKey, float]]:
             """사용자 지정 스탯 변화량 복원 및 검증"""
@@ -1958,7 +1959,7 @@ class ResultsPage(QFrame):
 
         def _save_base_inputs(
             self,
-            overall_stats: dict[str, float],
+            base_stats: BaseStats,
             level: int,
             persist: bool = True,
         ) -> None:
@@ -1966,7 +1967,7 @@ class ResultsPage(QFrame):
 
             # 계산기 입력 블록에 현재 기준 입력 반영
             calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
-            calculator_input.overall_stats = overall_stats
+            calculator_input.base_stats = base_stats
             calculator_input.level = level
             calculator_input.realm_tier = self.realm_options[
                 self.realm_combobox.currentIndex()
@@ -2051,8 +2052,8 @@ class ResultsPage(QFrame):
                 return
 
             stats_valid: bool
-            overall_stats: dict[str, float]
-            stats_valid, overall_stats = self._read_overall_stats()
+            base_stats: BaseStats
+            stats_valid, base_stats = self._read_base_stats()
 
             level_valid: bool
             level: int
@@ -2064,7 +2065,7 @@ class ResultsPage(QFrame):
                 return
 
             self._save_base_inputs(
-                overall_stats=overall_stats,
+                base_stats=base_stats,
                 level=level,
                 persist=True,
             )
@@ -2213,7 +2214,7 @@ class ResultsPage(QFrame):
             # 저장된 계산기 입력 상태 직접 조회
             preset: MacroPreset = self._get_preset()
             calculator_input: CalculatorPresetInput = preset.info.calculator
-            overall_stats: dict[str, float] = calculator_input.overall_stats.copy()
+            base_stats: BaseStats = calculator_input.base_stats
             level: int = calculator_input.level
             selected_metric: PowerMetric = calculator_input.selected_metric
 
@@ -2237,13 +2238,13 @@ class ResultsPage(QFrame):
                 preset=preset,
                 skills_info=preset.usage_settings,
                 delay_ms=app_state.macro.current_delay,
-                overall_stats=overall_stats,
+                base_stats=base_stats,
             )
             output_rows: ResultsPage.OutputRows = ResultsPage._build_output_rows(
                 server_spec=app_state.macro.current_server,
                 preset=preset,
                 delay_ms=app_state.macro.current_delay,
-                overall_stats=overall_stats,
+                base_stats=base_stats,
                 calculator_input=calculator_input,
                 level=level,
                 selected_metric=selected_metric,

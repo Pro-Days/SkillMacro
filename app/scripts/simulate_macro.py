@@ -13,7 +13,7 @@ from app.scripts.calculator_engine import (
     build_calculator_context,
     build_damage_events,
 )
-from app.scripts.calculator_models import PowerMetric
+from app.scripts.calculator_models import BaseStats, PowerMetric
 from app.scripts.macro_models import SkillUsageSetting
 
 if TYPE_CHECKING:
@@ -26,7 +26,7 @@ def simulate_random_from_calculator(
     preset: "MacroPreset",
     skills_info: dict[str, SkillUsageSetting],
     delay_ms: int,
-    overall_stats: dict[str, float],
+    base_stats: BaseStats,
 ) -> GraphReport:
     """계산기 입력 기준 그래프용 시뮬레이션 결과 구성"""
 
@@ -36,19 +36,19 @@ def simulate_random_from_calculator(
         preset=preset,
         skills_info=skills_info,
         delay_ms=delay_ms,
-        overall_stats=overall_stats,
+        base_stats=base_stats,
     )
 
     # 결정론 기준 보스/일반 공격 이벤트 생성
     deterministic_boss_events: list[DamageEvent] = build_damage_events(
         timeline=context.timeline_artifacts.timeline,
-        resolved_stats=context.baseline_stats,
+        resolved_stats=context.baseline_final_stats,
         is_boss=True,
         deterministic=True,
     )
     deterministic_normal_events: list[DamageEvent] = build_damage_events(
         timeline=context.timeline_artifacts.timeline,
-        resolved_stats=context.baseline_stats,
+        resolved_stats=context.baseline_final_stats,
         is_boss=False,
         deterministic=True,
     )
@@ -71,14 +71,14 @@ def simulate_random_from_calculator(
         normal_seed: float = random.random()
         boss_events: list[DamageEvent] = build_damage_events(
             timeline=context.timeline_artifacts.timeline,
-            resolved_stats=context.baseline_stats,
+            resolved_stats=context.baseline_final_stats,
             is_boss=True,
             deterministic=False,
             random_seed=boss_seed,
         )
         normal_events: list[DamageEvent] = build_damage_events(
             timeline=context.timeline_artifacts.timeline,
-            resolved_stats=context.baseline_stats,
+            resolved_stats=context.baseline_final_stats,
             is_boss=False,
             deterministic=False,
             random_seed=normal_seed,
