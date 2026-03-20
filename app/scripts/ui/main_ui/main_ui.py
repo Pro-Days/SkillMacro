@@ -624,7 +624,9 @@ class Tab(QFrame):
         # 현재 스크롤이 더 이상 제공하지 않는 스킬은 연계 목록에서 제거
         for link_skill in self.preset.link_skills:
             filtered_skill_ids: list[str] = [
-                skill_id for skill_id in link_skill.skills if skill_id in available_skill_ids
+                skill_id
+                for skill_id in link_skill.skills
+                if skill_id in available_skill_ids
             ]
 
             if not filtered_skill_ids:
@@ -809,7 +811,9 @@ class SkillPreview(QFrame):
         # 고정 슬롯 아이콘만 교체하여 호버 카드 바인딩 유지
         for slot_index, skill in enumerate(self.skills):
             skill_id: str = self._preview_skill_ids[slot_index]
-            skill.setPixmap(resource_registry.get_skill_pixmap(skill_id=skill_id or None))
+            skill.setPixmap(
+                resource_registry.get_skill_pixmap(skill_id=skill_id or None)
+            )
 
     def _build_preview_hover_card(self, slot_index: int) -> HoverCardData | None:
         """프리뷰 슬롯 기준 호버 카드 구성"""
@@ -934,7 +938,12 @@ class AvailableSkillPanel(QFrame):
             )
             self.scroll_button.setIconSize(QSize(48, 48))
             self.scroll_button.setStyleSheet(
-                "QPushButton { border: 0px; background-color: transparent; }"
+                """
+                QPushButton {
+                    border: 0px;
+                    background-color: transparent;
+                }
+                """
             )
 
             for line_index, button in enumerate(self.skill_buttons):
@@ -950,8 +959,19 @@ class AvailableSkillPanel(QFrame):
                     QIcon(resource_registry.get_skill_pixmap(skill_id or None))
                 )
                 button.setIconSize(QSize(48, 48))
+                # 제공 스킬 아이콘 버튼 기본 테두리 및 포커스 라인 제거
                 button.setStyleSheet(
-                    "QPushButton { border: 0px; background-color: transparent; }"
+                    """
+                    QPushButton {
+                        border: 0px;
+                        background-color: transparent;
+                        outline: none;
+                    }
+                    QPushButton:focus {
+                        border: 0px;
+                        outline: none;
+                    }
+                    """
                 )
 
         def _build_scroll_hover_card(self) -> HoverCardData | None:
@@ -1142,7 +1162,13 @@ class PlacedSkillPanel(QFrame):
                 )
                 button.setIconSize(QSize(48, 48))
                 button.setStyleSheet(
-                    "QPushButton { border: 0px; background-color: transparent; }"
+                    """
+                    QPushButton {
+                        border: 0px;
+                        background-color: transparent;
+                        outline: none;
+                    }
+                    """
                 )
 
             self.set_key(

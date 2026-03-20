@@ -1552,7 +1552,7 @@ class LinkSkillSettings(QFrame):
                     slot_frame.setStyleSheet(
                         """
                         QFrame {
-                            background-color: #F8F9FA;
+                            background-color: transparent;
                             border: 0px solid;
                             border-radius: 2px;
                         }
@@ -2147,6 +2147,16 @@ class LinkSkillEditor(QFrame):
                 "하나의 스킬이 너무 많이 사용되면 연계가 정상적으로 작동하지 않을 수 있습니다."
             )
             self.skill.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.skill.setStyleSheet(
+                """
+                QPushButton {
+                    background-color: transparent;
+                    border: 0px;
+                    border-radius: 10px;
+                    outline: none;
+                }
+                """
+            )
 
             # 연계 편집 스킬 버튼에 공용 호버 카드 연결
             self.popup_manager.bind_hover_card(

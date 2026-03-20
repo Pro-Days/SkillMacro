@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum, auto
-from functools import partial
 from html import escape
 from typing import TYPE_CHECKING, Literal
 from webbrowser import open_new
@@ -124,6 +123,7 @@ class PopupOptions:
 
     placement: PopupPlacement = PopupPlacement.BELOW
     margin: int = 3
+    x_offset: int = 0
 
 
 @dataclass(frozen=True)
@@ -732,6 +732,8 @@ class PopupHost(QWidget):
         else:  # PopupPlacement.RIGHT
             x = anchor_rect.right() + options.margin
             y = anchor_rect.top() + (anchor_rect.height() - h) // 2
+
+        x += options.x_offset
 
         # 팝업 위치 설정 및 표시
         self.move(x, y)
@@ -1677,7 +1679,7 @@ class PopupManager:
         self._popup_controller.show_content(
             anchor=anchor,
             content=content,
-            options=PopupOptions(placement=PopupPlacement.BELOW),
+            options=PopupOptions(placement=PopupPlacement.BELOW, x_offset=40),
         )
 
 
@@ -1734,8 +1736,11 @@ class SkillGridSelectContent(QFrame):
             btn.setIconSize(QSize(icon_size, icon_size))
             btn.setStyleSheet(
                 """
-                QPushButton { background-color: white; border-radius: 10px; border: 1px solid #dddddd; }
-                QPushButton:hover { background-color: #eeeeee; }
+                QPushButton {
+                    background-color: transparent;
+                    border-radius: 10px;
+                    border: 0px;
+                }
                 """
             )
             btn.clicked.connect(lambda _, sid=skill_id: self.selected.emit(sid))
@@ -1833,20 +1838,14 @@ class ScrollGridSelectContent(QFrame):
                 else Qt.CursorShape.PointingHandCursor
             )
 
-            border_color: str = "#2563EB" if is_selected else "#DDDDDD"
-            border_width: int = 2 if is_selected else 1
-            background_color: str = "#F2F2F2" if is_occupied else "#FFFFFF"
-            hover_background_color: str = "#F2F2F2" if is_occupied else "#EEEEEE"
             btn.setStyleSheet(
-                f"""
-                QPushButton {{
-                    background-color: {background_color};
+                """
+                QPushButton {
+                    background-color: transparent;
                     border-radius: 10px;
-                    border: {border_width}px solid {border_color};
-                }}
-                QPushButton:hover {{
-                    background-color: {hover_background_color};
-                }}
+                    border: 0px;
+                    outline: none;
+                }
                 """
             )
             btn.clicked.connect(
