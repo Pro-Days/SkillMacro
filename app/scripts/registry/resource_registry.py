@@ -1,10 +1,18 @@
 from __future__ import annotations
 
-import hashlib
 import os
 from dataclasses import dataclass, field
 
-from PySide6.QtGui import QColor, QFontDatabase, QPainter, QPixmap
+from PySide6.QtCore import QRect, Qt
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QFontDatabase,
+    QFontMetrics,
+    QPainter,
+    QPen,
+    QPixmap,
+)
 
 
 def convert_resource_path(relative_path: str) -> str:
@@ -39,6 +47,8 @@ class ResourceRegistry:
 
     # 폰트 디렉토리 등록
     font_path: str = convert_resource_path("resources\\font\\NotoSansKR-Regular.ttf")
+    # 텍스트 아이콘 렌더링용 폰트 패밀리
+    _font_family: str = ""
 
     def __new__(cls) -> ResourceRegistry:
         if cls._instance is None:
@@ -57,11 +67,18 @@ class ResourceRegistry:
 
         # 빈 스킬 아이콘 로드
         self._SKILL_PIXMAP_CACHE[""] = QPixmap(
-            convert_resource_path(f"resources\\image\\emptySkill.png")
+            convert_resource_path("resources\\image\\emptySkill.png")
         )
 
         # 폰트 등록
-        QFontDatabase.addApplicationFont(self.font_path)
+        font_id: int = QFontDatabase.addApplicationFont(self.font_path)
+        if font_id == -1:
+            return
+
+        # 텍스트 아이콘 렌더링에 사용할 패밀리 보관
+        font_families: list[str] = QFontDatabase.applicationFontFamilies(font_id)
+        if font_families:
+            self._font_family = font_families[0]
 
     def get_skill_pixmap(self, skill_id: str | None = None) -> QPixmap:
         """스킬 이미지 반환"""
@@ -75,19 +92,11 @@ class ResourceRegistry:
         if skill_id in self._SKILL_PIXMAP_CACHE:
             return self._SKILL_PIXMAP_CACHE[skill_id]
 
-        # 스킬 이미지가 없으면 기본 스킬 아이콘을 고유 색상으로 채운 이미지 반환
-        image_path: str = convert_resource_path("resources\\image\\skill_attack.png")
+        # 스킬 이름 기반 텍스트 아이콘 생성
+        skill_name: str = self._extract_icon_label(skill_id)
+        colored: QPixmap = self._build_labeled_pixmap(label=skill_name)
 
-        # 적용할 이미지 불러오기
-        base_pixmap: QPixmap = QPixmap(image_path)
-
-        # 고유 색상 생성
-        color: QColor = self._get_unique_skill_color(skill_id)
-
-        # 색 채우기
-        colored: QPixmap = self._fill_transparent_pixels(base_pixmap, color)
-
-        # 캐시에 저장
+        # 생성된 아이콘 캐시 반영
         self._SKILL_PIXMAP_CACHE[skill_id] = colored
 
         return colored
@@ -103,48 +112,154 @@ class ResourceRegistry:
         if scroll_id in self._SCROLL_PIXMAP_CACHE:
             return self._SCROLL_PIXMAP_CACHE[scroll_id]
 
-        image_path: str = convert_resource_path("resources\\image\\skill_buff.png")
-        base_pixmap: QPixmap = QPixmap(image_path)
-        color: QColor = self._get_unique_skill_color(scroll_id)
-        colored: QPixmap = self._fill_transparent_pixels(base_pixmap, color)
+        # 스크롤 이름 기반 텍스트 아이콘 생성
+        scroll_name: str = self._extract_icon_label(scroll_id)
+        colored: QPixmap = self._build_labeled_pixmap(label=scroll_name)
 
+        # 생성된 아이콘 캐시 반영
         self._SCROLL_PIXMAP_CACHE[scroll_id] = colored
 
         return colored
 
-    def _get_unique_skill_color(self, skill_id: str) -> QColor:
-        """스킬 ID로 고유한 색상 생성"""
+    def _build_labeled_pixmap(
+        self,
+        label: str,
+    ) -> QPixmap:
+        """이름 텍스트가 포함된 아이콘 생성"""
 
-        # 해시 생성
-        digest: bytes = hashlib.sha256(skill_id.encode("utf-8")).digest()
+        # 배경 이미지 없는 투명 캔버스 생성
+        result: QPixmap = QPixmap(640, 640)
+        result.fill(Qt.GlobalColor.transparent)
 
-        # 적당한 HSV 값 생성
-        hue: int = int.from_bytes(digest[:2]) % 360
-        sat: int = 192 + (digest[2] % 64)  # 192..255
-        val: int = 192 + (digest[3] % 64)  # 192..255
+        # 여러 글자 이름의 가독성 확보
+        display_label: str = self._format_icon_label(label)
+        text_rect: QRect = self._build_icon_text_rect(result)
+        text_flags: int = int(Qt.AlignmentFlag.AlignCenter.value) | int(
+            Qt.TextFlag.TextWordWrap.value
+        )
+        font: QFont = self._build_icon_font(display_label, text_rect, text_flags)
+        shadow_offset: int = max(
+            2,
+            int(result.width() * 0.012),
+        )
 
-        return QColor.fromHsv(hue, sat, val, 255)
+        # 외곽선과 본문 텍스트 순차 렌더링
+        painter: QPainter = QPainter(result)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
 
-    def _fill_transparent_pixels(self, pixmap: QPixmap, fill_color: QColor) -> QPixmap:
-        """
-        투명 영역을 빠르게 채운 픽스맵 반환
-        """
+        # 아이콘 외곽 회색 테두리 렌더링
+        border_width: int = max(6, int(result.width() * 0.012))
+        border_pen: QPen = QPen(QColor(150, 150, 150, 220))
+        border_pen.setWidth(border_width)
+        painter.setPen(border_pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRoundedRect(
+            result.rect().adjusted(
+                border_width,
+                border_width,
+                -border_width,
+                -border_width,
+            ),
+            48,
+            48,
+        )
 
-        # 불투명한 채우기 색상 생성
-        opaque_fill = QColor(fill_color)
-        opaque_fill.setAlpha(255)
+        # 텍스트 외곽선과 본문 렌더링
+        painter.setFont(font)
+        painter.setPen(QColor(0, 0, 0, 220))
+        for offset_x in (-shadow_offset, 0, shadow_offset):
+            for offset_y in (-shadow_offset, 0, shadow_offset):
+                if offset_x == 0 and offset_y == 0:
+                    continue
 
-        # 새 픽스맵 생성 및 채우기
-        result = QPixmap(pixmap.size())
-        result.setDevicePixelRatio(pixmap.devicePixelRatio())
-        result.fill(opaque_fill)
+                outline_rect: QRect = text_rect.translated(offset_x, offset_y)
+                painter.drawText(outline_rect, text_flags, display_label)
 
-        # 원본 픽스맵 그리기
-        painter = QPainter(result)
-        painter.drawPixmap(0, 0, pixmap)
+        # 본문 텍스트 색상 고정
+        painter.setPen(QColor(255, 255, 255))
+        painter.drawText(text_rect, text_flags, display_label)
         painter.end()
 
         return result
 
+    def _build_icon_text_rect(self, pixmap: QPixmap) -> QRect:
+        """아이콘 텍스트 배치 영역 계산"""
+
+        # 아이콘 외곽선과 겹치지 않는 내부 여백 계산
+        horizontal_padding: int = max(
+            18,
+            int(pixmap.width() * 0.04),
+        )
+        vertical_padding: int = max(
+            20,
+            int(pixmap.height() * 0.05),
+        )
+
+        return pixmap.rect().adjusted(
+            horizontal_padding,
+            vertical_padding,
+            -horizontal_padding,
+            -vertical_padding,
+        )
+
+    def _build_icon_font(self, label: str, text_rect: QRect, text_flags: int) -> QFont:
+        """아이콘 영역에 맞는 폰트 계산"""
+
+        # 가능한 가장 큰 폰트 크기부터 순차 탐색
+        point_size: int = 260
+        while point_size >= 72:
+            font: QFont = QFont()
+            font.setBold(True)
+            font.setPointSize(point_size)
+            if self._font_family:
+                font.setFamily(self._font_family)
+
+            # 현재 폰트가 아이콘 내부에 들어가는지 측정
+            metrics: QFontMetrics = QFontMetrics(font)
+            bounding_rect: QRect = metrics.boundingRect(text_rect, text_flags, label)
+            if (
+                bounding_rect.width() <= text_rect.width()
+                and bounding_rect.height() <= text_rect.height()
+            ):
+                return font
+
+            point_size -= 6
+
+        # 최소 크기 폰트 반환
+        minimum_font: QFont = QFont()
+        minimum_font.setBold(True)
+        minimum_font.setPointSize(72)
+        if self._font_family:
+            minimum_font.setFamily(self._font_family)
+
+        return minimum_font
+
+    def _format_icon_label(self, label: str) -> str:
+        """긴 이름을 아이콘 내부 다중 줄 텍스트로 정리"""
+
+        # 공백이 포함된 이름은 Qt 줄바꿈 처리 유지
+        if " " in label:
+            return label
+
+        # 짧은 이름은 한 줄 유지
+        if len(label) <= 4:
+            return label
+
+        # 글자 수에 따라 2~3줄로 균등 분할
+        line_count: int = 2 if len(label) <= 8 else 3
+        chunk_size: int = (len(label) + line_count - 1) // line_count
+        lines: list[str] = []
+        for start in range(0, len(label), chunk_size):
+            line: str = label[start : start + chunk_size]
+            lines.append(line)
+
+        return "\n".join(lines)
+
+    def _extract_icon_label(self, resource_id: str) -> str:
+        """리소스 ID의 마지막 이름 구간 추출"""
+
+        # 서버 접두부를 제외한 마지막 이름만 아이콘 문자열로 사용
+        return resource_id.rsplit(":", maxsplit=1)[-1]
 
 resource_registry = ResourceRegistry()

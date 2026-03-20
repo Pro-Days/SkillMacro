@@ -1,9 +1,9 @@
 {
   "한월 RPG": {
     "skills": [
-      "builtin:한월 RPG:스킬1",
-      "builtin:한월 RPG:스킬2",
-      "builtin:한월 RPG:스킬3",
+      "builtin:한월 RPG:월절",
+      "builtin:한월 RPG:월섬",
+      "builtin:한월 RPG:단섬",
       "builtin:한월 RPG:스킬4",
       "builtin:한월 RPG:스킬5",
       "builtin:한월 RPG:스킬6",
@@ -19,14 +19,14 @@
     ],
     "scrolls": [
       {
-        "scroll_id": "builtin:한월 RPG:스크롤1",
-        "name": "스크롤1",
-        "skills": ["builtin:한월 RPG:스킬1", "builtin:한월 RPG:스킬2"]
+        "scroll_id": "builtin:한월 RPG:월섬검법",
+        "name": "월섬검법",
+        "skills": ["builtin:한월 RPG:월절", "builtin:한월 RPG:월섬"]
       },
       {
-        "scroll_id": "builtin:한월 RPG:스크롤2",
-        "name": "스크롤2",
-        "skills": ["builtin:한월 RPG:스킬3", "builtin:한월 RPG:스킬4"]
+        "scroll_id": "builtin:한월 RPG:단섬검법",
+        "name": "단섬검법",
+        "skills": ["builtin:한월 RPG:단섬", "builtin:한월 RPG:스킬4"]
       },
       {
         "scroll_id": "builtin:한월 RPG:스크롤3",
@@ -55,9 +55,9 @@
       }
     ],
     "skill_details": {
-      "builtin:한월 RPG:스킬1": {
-        "name": "스킬1",
-        "cooltime": 4.0,
+      "builtin:한월 RPG:월절": {
+        "name": "월절",
+        "cooltime": 6.0,
         "levels": {
           "1": [
             {
@@ -68,9 +68,9 @@
           ]
         }
       },
-      "builtin:한월 RPG:스킬2": {
-        "name": "스킬2",
-        "cooltime": 5.0,
+      "builtin:한월 RPG:월섬": {
+        "name": "월섬",
+        "cooltime": 6.0,
         "levels": {
           "1": [
             {
@@ -81,9 +81,9 @@
           ]
         }
       },
-      "builtin:한월 RPG:스킬3": {
-        "name": "스킬3",
-        "cooltime": 10.0,
+      "builtin:한월 RPG:단섬": {
+        "name": "단섬",
+        "cooltime": 6.0,
         "levels": {
           "1": [
             {
