@@ -243,11 +243,11 @@ class ResourceRegistry:
             return label
 
         # 짧은 이름은 한 줄 유지
-        if len(label) <= 4:
+        if len(label) <= 3:
             return label
 
         # 글자 수에 따라 2~3줄로 균등 분할
-        line_count: int = 2 if len(label) <= 8 else 3
+        line_count: int = 2 if len(label) <= 6 else 3
         chunk_size: int = (len(label) + line_count - 1) // line_count
         lines: list[str] = []
         for start in range(0, len(label), chunk_size):
@@ -261,5 +261,6 @@ class ResourceRegistry:
 
         # 서버 접두부를 제외한 마지막 이름만 아이콘 문자열로 사용
         return resource_id.rsplit(":", maxsplit=1)[-1]
+
 
 resource_registry = ResourceRegistry()
