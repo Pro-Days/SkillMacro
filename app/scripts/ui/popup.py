@@ -1698,6 +1698,9 @@ class SkillGridSelectContent(QFrame):
     ) -> None:
         super().__init__()
 
+        # 스킬 선택 팝업 루트 식별자 지정
+        self.setObjectName("skillScrollSelectPopup")
+
         self.popup_manager: PopupManager = popup_manager
         columns: int = 5
         margin: int = 8
@@ -1705,6 +1708,16 @@ class SkillGridSelectContent(QFrame):
         icon_size: int = 40
         button_size: int = 44
         max_visible_rows: int = 6
+
+        self.setStyleSheet(
+            """
+            QFrame#skillScrollSelectPopup {
+                background-color: white;
+                border: 1px solid gray;
+                border-radius: 10px;
+            }
+            """
+        )
 
         # 전체 컨테이너
         root = QVBoxLayout(self)
@@ -1792,6 +1805,9 @@ class ScrollGridSelectContent(QFrame):
     ) -> None:
         super().__init__()
 
+        # 스크롤 선택 팝업 루트 식별자 지정
+        self.setObjectName("skillScrollSelectPopup")
+
         self.popup_manager: PopupManager = popup_manager
         columns: int = 5
         margin: int = 8
@@ -1804,6 +1820,16 @@ class ScrollGridSelectContent(QFrame):
             for scroll_id in equipped_scroll_ids
             if scroll_id and scroll_id != current_scroll_id
         }
+
+        self.setStyleSheet(
+            """
+            QFrame#skillScrollSelectPopup {
+                background-color: white;
+                border: 1px solid gray;
+                border-radius: 10px;
+            }
+            """
+        )
 
         root: QVBoxLayout = QVBoxLayout(self)
         root.setContentsMargins(margin, margin, margin, margin)

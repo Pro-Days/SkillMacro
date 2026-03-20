@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 
 from app.scripts.app_state import app_state
 from app.scripts.config import config
-from app.scripts.custom_classes import CustomComboBox, CustomFont, SkillImage
+from app.scripts.custom_classes import CustomFont, SkillImage
 from app.scripts.macro_models import (
     LinkKeyType,
     LinkSkill,
@@ -870,49 +870,24 @@ class SkillSettings(QFrame):
         self._solo_swap_btns: list[QPushButton] = []
         self._priority_btns: list[QPushButton] = []
 
-        # 스크롤 선택 컨트롤 구성
-        self._scroll_selector_title: QLabel = QLabel("설정할 스크롤")
-        self._scroll_selector_title.setFont(CustomFont(12))
-        self._scroll_selector_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._scroll_selector_title.setStyleSheet(
-            "QLabel { border: 0px; background-color: transparent; }"
-        )
-
-        self._scroll_selector: CustomComboBox = CustomComboBox(
-            parent=self,
-            items=[],
-            connected_function=self.on_scroll_changed,
-            point_size=11,
-        )
-        self._scroll_selector.setFixedWidth(220)
-
-        selector_layout: QVBoxLayout = QVBoxLayout()
-        selector_layout.addWidget(
-            self._scroll_selector_title,
-            0,
-            Qt.AlignmentFlag.AlignCenter,
-        )
-        selector_layout.addWidget(
-            self._scroll_selector,
-            0,
-            Qt.AlignmentFlag.AlignCenter,
-        )
-        selector_layout.setContentsMargins(0, 0, 0, 0)
-        selector_layout.setSpacing(8)
-
-        selector_frame: QFrame = QFrame()
-        selector_frame.setLayout(selector_layout)
-
         # 선택된 스크롤 요약 카드 구성
         self._selected_scroll_icon: QLabel = QLabel()
         self._selected_scroll_icon.setFixedSize(40, 40)
         self._selected_scroll_icon.setScaledContents(True)
+        self._selected_scroll_icon.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents,
+            True,
+        )
         self._selected_scroll_icon.setStyleSheet(
             "QLabel { background-color: transparent; border: 0px; }"
         )
 
         self._selected_scroll_name: QLabel = QLabel("")
         self._selected_scroll_name.setFont(CustomFont(14))
+        self._selected_scroll_name.setAttribute(
+            Qt.WidgetAttribute.WA_TransparentForMouseEvents,
+            True,
+        )
         self._selected_scroll_name.setStyleSheet(
             "QLabel { background-color: transparent; border: 0px; }"
         )
@@ -923,23 +898,28 @@ class SkillSettings(QFrame):
         selected_scroll_layout.setContentsMargins(12, 10, 12, 10)
         selected_scroll_layout.setSpacing(10)
 
-        self._selected_scroll_frame: QFrame = QFrame()
-        self._selected_scroll_frame.setLayout(selected_scroll_layout)
-        self._selected_scroll_frame.setStyleSheet(
-            "QFrame { background-color: #F4F8FD; border: 1px solid #CADEFC; border-radius: 10px; }"
+        self._selected_scroll_button: QPushButton = QPushButton()
+        self._selected_scroll_button.setLayout(selected_scroll_layout)
+        self._selected_scroll_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._selected_scroll_button.setFixedHeight(62)
+        self._selected_scroll_button.clicked.connect(self.on_scroll_select_clicked)
+        self._selected_scroll_button.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #F4F8FD;
+                border: 1px solid #CADEFC;
+                border-radius: 10px;
+                text-align: left;
+            }
+            QPushButton:hover {
+                background-color: #E9F2FD;
+            }
+            """
         )
 
         # 선택 스크롤 카드 전역 호버 카드 연결
         self.popup_manager.bind_hover_card(
-            self._selected_scroll_frame,
-            self._build_selected_scroll_hover_card,
-        )
-        self.popup_manager.bind_hover_card(
-            self._selected_scroll_icon,
-            self._build_selected_scroll_hover_card,
-        )
-        self.popup_manager.bind_hover_card(
-            self._selected_scroll_name,
+            self._selected_scroll_button,
             self._build_selected_scroll_hover_card,
         )
 
@@ -956,8 +936,7 @@ class SkillSettings(QFrame):
 
         layout: QVBoxLayout = QVBoxLayout()
         layout.addWidget(self.title, 0, Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(selector_frame)
-        layout.addWidget(self._selected_scroll_frame)
+        layout.addWidget(self._selected_scroll_button)
         layout.addWidget(grid_frame)
         layout.setContentsMargins(10, 20, 10, 10)
         layout.setSpacing(20)
@@ -1025,8 +1004,8 @@ class SkillSettings(QFrame):
 
             self._grid_layout.addWidget(label, 0, i, Qt.AlignmentFlag.AlignCenter)
 
-    def _sync_scroll_selector(self, scroll_defs: list["ScrollDef"]) -> None:
-        """현재 서버 스크롤 목록과 콤보박스 항목 동기화"""
+    def _sync_scroll_ids(self, scroll_defs: list["ScrollDef"]) -> None:
+        """현재 서버 스크롤 ID 목록 동기화"""
 
         # 스크롤 ID 목록 비교용 캐시 구성
         scroll_ids: list[str] = [scroll_def.id for scroll_def in scroll_defs]
@@ -1034,13 +1013,6 @@ class SkillSettings(QFrame):
             return
 
         self._scroll_ids = scroll_ids
-
-        # 스크롤명 목록으로 선택지 재구성
-        scroll_names: list[str] = [scroll_def.name for scroll_def in scroll_defs]
-        self._scroll_selector.blockSignals(True)
-        self._scroll_selector.clear()
-        self._scroll_selector.addItems(scroll_names)
-        self._scroll_selector.blockSignals(False)
 
     def _sync_selected_scroll(self, scroll_defs: list["ScrollDef"]) -> None:
         """현재 선택 스크롤 상태 보정"""
@@ -1054,12 +1026,6 @@ class SkillSettings(QFrame):
         available_scroll_ids: set[str] = {scroll_def.id for scroll_def in scroll_defs}
         if self._selected_scroll_id not in available_scroll_ids:
             self._selected_scroll_id = scroll_defs[0].id
-
-        # 콤보박스 표시도 내부 선택값과 동기화
-        selected_index: int = self._scroll_ids.index(self._selected_scroll_id)
-        self._scroll_selector.blockSignals(True)
-        self._scroll_selector.setCurrentIndex(selected_index)
-        self._scroll_selector.blockSignals(False)
 
     def _update_selected_scroll_card(self, scroll_def: "ScrollDef") -> None:
         """선택된 스크롤 요약 카드 갱신"""
@@ -1202,7 +1168,7 @@ class SkillSettings(QFrame):
         scroll_defs: list["ScrollDef"] = (
             server_spec.skill_registry.get_all_scroll_defs()
         )
-        self._sync_scroll_selector(scroll_defs)
+        self._sync_scroll_ids(scroll_defs)
         self._sync_selected_scroll(scroll_defs)
         if not self._selected_scroll_id:
             self._clear_rows()
@@ -1283,16 +1249,33 @@ class SkillSettings(QFrame):
         )
         return self.popup_manager.build_skill_hover_card(skill_id, level)
 
-    def on_scroll_changed(self, index: int) -> None:
-        """스크롤 선택 변경"""
+    def on_scroll_select_clicked(self) -> None:
+        """스크롤 선택 팝업 표시"""
 
-        # 유효한 선택 인덱스만 반영
-        if index < 0 or index >= len(self._scroll_ids):
+        # 동일 팝업이 열려 있으면 토글 종료
+        if self.popup_manager.is_popup_active(PopupKind.SCROLL_SELECT):
+            self.popup_manager.close_popup()
             return
 
-        # 선택한 스크롤 ID를 저장하고 해당 스크롤 설정 화면으로 즉시 갱신
-        self._selected_scroll_id = self._scroll_ids[index]
-        self.update_from_preset(self._get_preset())
+        # 현재 서버의 전체 스크롤 목록 준비
+        server_spec: "ServerSpec" = app_state.macro.current_server
+        scroll_defs: list["ScrollDef"] = (
+            server_spec.skill_registry.get_all_scroll_defs()
+        )
+
+        # 팝업 선택 결과를 현재 선택 스크롤에 반영
+        def apply(scroll_id: str) -> None:
+            self._selected_scroll_id = scroll_id
+            self.update_from_preset(self._get_preset())
+
+        self.popup_manager.close_popup()
+        self.popup_manager.make_scroll_select_popup(
+            self._selected_scroll_button,
+            scroll_defs,
+            [],
+            self._selected_scroll_id,
+            apply,
+        )
 
     def change_skill_usage(self, skill_idx: int) -> None:
         """사용 여부 변경"""
