@@ -450,7 +450,7 @@ class Tab(QFrame):
         self.preset_index: int = preset_index
         self.popup_manager: PopupManager = popup_manager
 
-        self.preview: SkillPreview = SkillPreview()
+        self.preview: SkillPreview = SkillPreview(self.popup_manager)
         self.available_skills: AvailableSkillPanel = AvailableSkillPanel(
             self.popup_manager
         )
@@ -742,9 +742,12 @@ class Tab(QFrame):
 class SkillPreview(QFrame):
     """다음 실행 스킬 프리뷰"""
 
-    def __init__(self) -> None:
+    PREVIEW_SLOT_COUNT: int = 6
+
+    def __init__(self, popup_manager: PopupManager) -> None:
         super().__init__()
 
+        self.popup_manager: PopupManager = popup_manager
         self.setStyleSheet(
             """
             QFrame {
@@ -758,6 +761,7 @@ class SkillPreview(QFrame):
         self.setMinimumWidth(200)
 
         self.skills: list[SkillImage] = []
+        self._preview_skill_ids: list[str] = [""] * self.PREVIEW_SLOT_COUNT
         self.previous_task_list: tuple[EquippedSkillRef, ...] = ()
 
         self.skills_layout: QHBoxLayout = QHBoxLayout()
@@ -765,6 +769,20 @@ class SkillPreview(QFrame):
         self.skills_layout.setSpacing(6)
         self.skills_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setLayout(self.skills_layout)
+
+        # 호버 카드 재사용을 위해 고정 개수 프리뷰 슬롯 구성
+        for slot_index in range(self.PREVIEW_SLOT_COUNT):
+            skill: SkillImage = SkillImage(
+                parent=self,
+                pixmap=resource_registry.get_skill_pixmap(skill_id=None),
+                size=44,
+            )
+            self.popup_manager.bind_hover_card(
+                skill,
+                lambda index=slot_index: self._build_preview_hover_card(index),
+            )
+            self.skills.append(skill)
+            self.skills_layout.addWidget(skill)
 
     def update_preview(self) -> None:
         """프리뷰 갱신"""
@@ -778,24 +796,35 @@ class SkillPreview(QFrame):
 
         self.previous_task_list = task_list
 
-        for icon in self.skills:
-            icon.deleteLater()
-            self.skills_layout.removeWidget(icon)
-
-        self.skills.clear()
-
-        for skill_ref in task_list[:6]:
+        # 현재 프리뷰 순서를 슬롯별 스킬 ID 배열로 변환
+        preview_skill_ids: list[str] = [""] * self.PREVIEW_SLOT_COUNT
+        for slot_index, skill_ref in enumerate(task_list[: self.PREVIEW_SLOT_COUNT]):
             skill_id: str = app_state.macro.current_preset.skills.get_placed_skill_id(
                 skill_ref
             )
+            preview_skill_ids[slot_index] = skill_id
 
-            skill: SkillImage = SkillImage(
-                parent=self,
-                pixmap=resource_registry.get_skill_pixmap(skill_id=skill_id),
-                size=44,
-            )
-            self.skills.append(skill)
-            self.skills_layout.addWidget(skill)
+        self._preview_skill_ids = preview_skill_ids
+
+        # 고정 슬롯 아이콘만 교체하여 호버 카드 바인딩 유지
+        for slot_index, skill in enumerate(self.skills):
+            skill_id: str = self._preview_skill_ids[slot_index]
+            skill.setPixmap(resource_registry.get_skill_pixmap(skill_id=skill_id or None))
+
+    def _build_preview_hover_card(self, slot_index: int) -> HoverCardData | None:
+        """프리뷰 슬롯 기준 호버 카드 구성"""
+
+        # 비어 있는 프리뷰 슬롯은 호버 카드 미표시
+        skill_id: str = self._preview_skill_ids[slot_index]
+        if not skill_id:
+            return None
+
+        # 현재 프리셋 레벨 기준으로 동일한 스킬 상세 구성
+        level: int = app_state.macro.current_preset.info.get_skill_level(
+            app_state.macro.current_server,
+            skill_id,
+        )
+        return self.popup_manager.build_skill_hover_card(skill_id, level)
 
 
 class AvailableSkillPanel(QFrame):

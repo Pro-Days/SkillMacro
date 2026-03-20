@@ -46,6 +46,7 @@ if TYPE_CHECKING:
     from app.scripts.registry.server_registry import ServerSpec
     from app.scripts.registry.skill_registry import ScrollDef
     from app.scripts.ui.main_window import MainWindow
+    from app.scripts.ui.popup import HoverCardData
 
 
 def get_current_scroll_skill_ids(preset: MacroPreset) -> list[str]:
@@ -928,6 +929,20 @@ class SkillSettings(QFrame):
             "QFrame { background-color: #F4F8FD; border: 1px solid #CADEFC; border-radius: 10px; }"
         )
 
+        # 선택 스크롤 카드 전역 호버 카드 연결
+        self.popup_manager.bind_hover_card(
+            self._selected_scroll_frame,
+            self._build_selected_scroll_hover_card,
+        )
+        self.popup_manager.bind_hover_card(
+            self._selected_scroll_icon,
+            self._build_selected_scroll_hover_card,
+        )
+        self.popup_manager.bind_hover_card(
+            self._selected_scroll_name,
+            self._build_selected_scroll_hover_card,
+        )
+
         # 스킬 설정 표 레이아웃 구성
         self._grid_layout: QGridLayout = QGridLayout()
         self._grid_layout.setContentsMargins(0, 0, 0, 0)
@@ -1107,6 +1122,21 @@ class SkillSettings(QFrame):
 
             skill_info_frame: QFrame = QFrame()
             skill_info_frame.setLayout(skill_info_layout)
+
+            # 스킬 정보 영역 전역 호버 카드 연결
+            self.popup_manager.bind_hover_card(
+                skill_info_frame,
+                lambda sid=skill_id: self._build_skill_hover_card(sid),
+            )
+            self.popup_manager.bind_hover_card(
+                skill_image,
+                lambda sid=skill_id: self._build_skill_hover_card(sid),
+            )
+            self.popup_manager.bind_hover_card(
+                skill_name_label,
+                lambda sid=skill_id: self._build_skill_hover_card(sid),
+            )
+
             self._grid_layout.addWidget(
                 skill_info_frame, idx + 1, 0, Qt.AlignmentFlag.AlignLeft
             )
@@ -1224,6 +1254,34 @@ class SkillSettings(QFrame):
             # 우선순위 숫자 텍스트 반영
             p: int = int(setting.priority)
             self._priority_btns[idx].setText("-" if p == 0 else str(p))
+
+    def _build_selected_scroll_hover_card(self) -> HoverCardData | None:
+        """선택된 스크롤 카드 기준 호버 카드 구성"""
+
+        # 선택 스크롤이 없는 초기 상태는 카드 미표시
+        if not self._selected_scroll_id:
+            return None
+
+        # 현재 선택 스크롤과 저장 레벨 기준으로 카드 내용 구성
+        scroll_def: "ScrollDef" = (
+            app_state.macro.current_server.skill_registry.get_scroll(
+                self._selected_scroll_id
+            )
+        )
+        preset: MacroPreset = self._get_preset()
+        level: int = preset.info.get_scroll_level(self._selected_scroll_id)
+        return self.popup_manager.build_scroll_hover_card(scroll_def, level)
+
+    def _build_skill_hover_card(self, skill_id: str) -> HoverCardData:
+        """스킬 행 기준 호버 카드 구성"""
+
+        # 현재 프리셋 저장 레벨 기준으로 동일한 스킬 상세 구성
+        preset: MacroPreset = self._get_preset()
+        level: int = preset.info.get_skill_level(
+            app_state.macro.current_server,
+            skill_id,
+        )
+        return self.popup_manager.build_skill_hover_card(skill_id, level)
 
     def on_scroll_changed(self, index: int) -> None:
         """스크롤 선택 변경"""
@@ -1371,7 +1429,13 @@ class LinkSkillSettings(QFrame):
                 w.deleteLater()
 
         for i, data in enumerate(preset.link_skills):
-            link_skill = self.LinkSkillWidget(data, i, self.edit, self.remove)
+            link_skill: LinkSkillSettings.LinkSkillWidget = self.LinkSkillWidget(
+                data,
+                i,
+                self.popup_manager,
+                self.edit,
+                self.remove,
+            )
             self._list_layout.addWidget(link_skill)
 
         QTimer.singleShot(0, self.contentResized.emit)
@@ -1430,11 +1494,13 @@ class LinkSkillSettings(QFrame):
             self,
             data: LinkSkill,
             idx: int,
+            popup_manager: PopupManager,
             edit_func: Callable[[int], None],
             remove_func: Callable[[int], None],
         ) -> None:
             super().__init__()
 
+            self.popup_manager: PopupManager = popup_manager
             self.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Minimum)
             self.setMaximumWidth(270)
 
@@ -1480,6 +1546,7 @@ class LinkSkillSettings(QFrame):
                 skill_layout.addLayout(skill_row)
 
                 for i in range(r * 7, min((r + 1) * 7, skill_count)):
+                    skill_id: str = data.skills[i]
                     slot_frame = QFrame()
                     slot_frame.setFixedSize(icon_size, icon_size)
                     slot_frame.setStyleSheet(
@@ -1495,10 +1562,21 @@ class LinkSkillSettings(QFrame):
                     slot_layout.setContentsMargins(0, 0, 0, 0)
 
                     pixmap: QPixmap = resource_registry.get_skill_pixmap(
-                        skill_id=data.skills[i],
+                        skill_id=skill_id,
                     )
 
                     skill = SkillImage(parent=slot_frame, pixmap=pixmap, size=icon_size)
+
+                    # 연계 목록 아이콘 영역 전체에 공용 호버 카드 연결
+                    self.popup_manager.bind_hover_card(
+                        slot_frame,
+                        lambda sid=skill_id: self._build_skill_hover_card(sid),
+                    )
+                    self.popup_manager.bind_hover_card(
+                        skill,
+                        lambda sid=skill_id: self._build_skill_hover_card(sid),
+                    )
+
                     slot_layout.addWidget(skill, alignment=Qt.AlignmentFlag.AlignCenter)
 
                     skill_row.addWidget(slot_frame)
@@ -1632,6 +1710,16 @@ class LinkSkillSettings(QFrame):
             """
             )
             btn_container.addWidget(remove_btn)
+
+        def _build_skill_hover_card(self, skill_id: str) -> HoverCardData:
+            """연계 목록 아이콘 기준 호버 카드 구성"""
+
+            # 현재 프리셋 레벨 기준으로 동일한 스킬 상세 구성
+            level: int = app_state.macro.current_preset.info.get_skill_level(
+                app_state.macro.current_server,
+                skill_id,
+            )
+            return self.popup_manager.build_skill_hover_card(skill_id, level)
 
 
 class LinkSkillEditor(QFrame):
@@ -1792,9 +1880,10 @@ class LinkSkillEditor(QFrame):
         self._skill_item_widgets = []
 
         for idx, name in enumerate(self.data.skills):
-            skill_widget = self.SkillItem(
+            skill_widget: LinkSkillEditor.SkillItem = self.SkillItem(
                 index=idx,
                 name=name,
+                popup_manager=self.popup_manager,
             )
             skill_widget.changeRequested.connect(self._open_skill_select_popup)
             skill_widget.removeRequested.connect(self._remove_skill_and_refresh)
@@ -2039,16 +2128,17 @@ class LinkSkillEditor(QFrame):
             self,
             index: int,
             name: str,
+            popup_manager: PopupManager,
         ) -> None:
             super().__init__()
 
             self.index: int = int(index)
-
-            skill_id: str = name
+            self.popup_manager: PopupManager = popup_manager
+            self.skill_id: str = name
 
             self.skill = QPushButton()
             self.skill.clicked.connect(self._emit_change)
-            self.skill.setIcon(QIcon(resource_registry.get_skill_pixmap(skill_id)))
+            self.skill.setIcon(QIcon(resource_registry.get_skill_pixmap(self.skill_id)))
             # skill.setIconSize(QSize(50, 50))
             self.skill.setIconSize(QSize(36, 36))
             self.skill.setFixedSize(44, 44)
@@ -2057,6 +2147,12 @@ class LinkSkillEditor(QFrame):
                 "하나의 스킬이 너무 많이 사용되면 연계가 정상적으로 작동하지 않을 수 있습니다."
             )
             self.skill.setCursor(Qt.CursorShape.PointingHandCursor)
+
+            # 연계 편집 스킬 버튼에 공용 호버 카드 연결
+            self.popup_manager.bind_hover_card(
+                self.skill,
+                self._build_skill_hover_card,
+            )
 
             self.remove = QPushButton()
             self.remove.clicked.connect(self._emit_remove)
@@ -2086,6 +2182,16 @@ class LinkSkillEditor(QFrame):
 
         def _emit_remove(self) -> None:
             self.removeRequested.emit(self.index)
+
+        def _build_skill_hover_card(self) -> HoverCardData:
+            """연계 편집 버튼 기준 호버 카드 구성"""
+
+            # 현재 프리셋 레벨 기준으로 동일한 스킬 상세 구성
+            level: int = app_state.macro.current_preset.info.get_skill_level(
+                app_state.macro.current_server,
+                self.skill_id,
+            )
+            return self.popup_manager.build_skill_hover_card(self.skill_id, level)
 
     class SettingItem(QFrame):
         def __init__(

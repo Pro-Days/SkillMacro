@@ -64,7 +64,7 @@ from app.scripts.registry.resource_registry import (
     resource_registry,
 )
 from app.scripts.simulate_macro import simulate_random_from_calculator
-from app.scripts.ui.popup import NoticeKind
+from app.scripts.ui.popup import NoticeKind, PopupManager
 from app.scripts.ui.sim_ui.graph import (
     DMGCanvas,
     DpmDistributionCanvas,
@@ -94,6 +94,7 @@ if TYPE_CHECKING:
     from app.scripts.macro_models import MacroPreset
     from app.scripts.registry.server_registry import ServerSpec
     from app.scripts.ui.main_window import MainWindow
+    from app.scripts.ui.popup import HoverCardData
 
 
 class SimUI:
@@ -102,6 +103,7 @@ class SimUI:
         # parent: page2
         self.parent: QFrame = parent
         self.master: MainWindow = master
+        self.popup_manager: PopupManager = self.master.get_popup_manager()
 
         self.nav: Navigation = Navigation(
             self.parent, self.change_layout, self.master.change_layout
@@ -150,7 +152,7 @@ class SimUI:
         # 페이지 레이아웃 설정
         self.stacked_layout = QStackedLayout(self.main_frame)
 
-        self.input_page = InputPage(self.main_frame)
+        self.input_page = InputPage(self.main_frame, self.popup_manager)
         self.graph_page = GraphPage(self.main_frame)
         self.results_page = ResultsPage(self.main_frame)
 
@@ -230,6 +232,7 @@ class InputPage(QFrame):
     def __init__(
         self,
         parent: QFrame,
+        popup_manager: PopupManager,
     ) -> None:
         super().__init__(parent)
 
@@ -238,7 +241,10 @@ class InputPage(QFrame):
 
         # 계산기 입력 화면 구성
         self.input_title: Title = Title(parent=self, text="계산기 입력")
-        self.editor: ResultsPage.Efficiency = ResultsPage.Efficiency(self)
+        self.editor: ResultsPage.Efficiency = ResultsPage.Efficiency(
+            self,
+            popup_manager,
+        )
 
         layout = QVBoxLayout(self)
         layout.addWidget(self.input_title)
@@ -782,6 +788,7 @@ class ResultsPage(QFrame):
         def __init__(
             self,
             parent: QFrame,
+            popup_manager: PopupManager,
         ) -> None:
             super().__init__(parent)
 
@@ -796,6 +803,7 @@ class ResultsPage(QFrame):
 
             # 저장 상태 로드 중 이벤트 억제 플래그 구성
             self._is_loading_state: bool = False
+            self.popup_manager: PopupManager = popup_manager
 
             # 전투력 선택지와 경지 선택지 순서 고정
             self.metric_options: list[PowerMetric] = list(DISPLAY_POWER_METRICS)
@@ -843,6 +851,7 @@ class ResultsPage(QFrame):
                 self,
                 SkillInputs.build_entries(),
                 self.on_base_input_changed,
+                self.popup_manager,
             )
 
             # 최적화 기준 입력 UI 구성
@@ -2290,6 +2299,7 @@ class SkillInputs(QFrame):
         mainframe: QWidget,
         entries: list["SkillInputs.Entry"],
         connected_function: Callable[[], None],
+        popup_manager: PopupManager,
     ) -> None:
         super().__init__(mainframe)
 
@@ -2302,6 +2312,7 @@ class SkillInputs(QFrame):
         # 아이템을 저장할 리스트
         self.entries: list[SkillInputs.Entry] = entries
         self.inputs: list[CustomLineEdit] = []
+        self.popup_manager: PopupManager = popup_manager
 
         # column 수 설정
         cols: int = 7
@@ -2310,6 +2321,7 @@ class SkillInputs(QFrame):
                 self,
                 entry,
                 connected_function,
+                self.popup_manager,
             )
 
             # 위치 계산
@@ -2338,9 +2350,12 @@ class SkillInputs(QFrame):
             parent: QWidget,
             entry: "SkillInputs.Entry",
             connected_function: Callable[[], None],
+            popup_manager: PopupManager,
         ) -> None:
             super().__init__(parent)
 
+            self.entry: SkillInputs.Entry = entry
+            self.popup_manager: PopupManager = popup_manager
             if config.ui.debug_colors:
                 self.setStyleSheet(
                     "QFrame { background-color: orange; border: 0px solid; }"
@@ -2374,6 +2389,12 @@ class SkillInputs(QFrame):
                 icon_size,
             )
 
+            # 계산기 스크롤 레벨 아이콘에 공용 호버 카드 연결
+            self.popup_manager.bind_hover_card(
+                image,
+                self._build_scroll_hover_card,
+            )
+
             # 탭 순서를 설정하기 위해 외부에서 접근 가능하도록 설정
             self.input: CustomLineEdit = level_input.input
 
@@ -2388,6 +2409,20 @@ class SkillInputs(QFrame):
 
             # layout 설정
             self.setLayout(grid)
+
+        def _build_scroll_hover_card(self) -> HoverCardData:
+            """계산기 스크롤 아이콘 기준 호버 카드 구성"""
+
+            # 현재 서버 스크롤 정의와 저장 레벨 기준으로 카드 내용 구성
+            scroll_def: "ScrollDef" = (
+                app_state.macro.current_server.skill_registry.get_scroll(
+                    self.entry.scroll_id
+                )
+            )
+            level: int = app_state.macro.current_preset.info.get_scroll_level(
+                self.entry.scroll_id
+            )
+            return self.popup_manager.build_scroll_hover_card(scroll_def, level)
 
 
 class PowerLabels(QFrame):
