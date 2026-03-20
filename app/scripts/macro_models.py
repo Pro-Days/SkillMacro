@@ -219,6 +219,7 @@ class SkillUsageSetting:
 
     use_skill: bool = True
     use_alone: bool = False
+    use_solo_swap: bool = False
     priority: int = 0
 
     @classmethod
@@ -228,6 +229,7 @@ class SkillUsageSetting:
         return cls(
             use_skill=data["use_skill"],
             use_alone=data["use_alone"],
+            use_solo_swap=data["use_solo_swap"],
             priority=data["priority"],
         )
 
@@ -237,13 +239,20 @@ class SkillUsageSetting:
         return {
             "use_skill": self.use_skill,
             "use_alone": self.use_alone,
+            "use_solo_swap": self.use_solo_swap,
             "priority": self.priority,
         }
 
-    def to_tuple(self) -> tuple[bool, bool, int]:
+    def to_tuple(self) -> tuple[bool, bool, bool, int]:
         """튜플로 변환"""
 
-        return (self.use_skill, self.use_alone, self.priority)
+        # UI와 계산 로직에서 재사용할 수 있는 순서형 값 구성
+        return (
+            self.use_skill,
+            self.use_alone,
+            self.use_solo_swap,
+            self.priority,
+        )
 
 
 class LinkUseType(str, Enum):
@@ -457,6 +466,7 @@ class MacroPreset:
                 skill_id: SkillUsageSetting(
                     use_skill=True,
                     use_alone=False,
+                    use_solo_swap=False,
                     priority=0,
                 )
                 for skill_id in skills_all.copy()

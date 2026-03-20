@@ -1,6 +1,6 @@
 # <img src = "app/resources/image/icon.ico" width=24 height=24> 데이즈 스킬매크로 <img src = "app/resources/image/icon.ico" width=24 height=24>
 <img src = "docs/main.png">
-투다이스 서버에서의 사냥을 편리하게 만들기 위한 스킬매크로입니다.
+투다이스 서버에서의 사냥을 편리하게 만들기 위한 스킬매크로입니다. **현재 개발 중인 프로그램입니다.**
 
 ## 목차
 1. [주의사항](#주의사항)

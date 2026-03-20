@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 
 from app.scripts.app_state import app_state
 from app.scripts.config import config
-from app.scripts.custom_classes import CustomFont, SkillImage
+from app.scripts.custom_classes import CustomComboBox, CustomFont, SkillImage
 from app.scripts.macro_models import (
     LinkKeyType,
     LinkSkill,
@@ -44,6 +44,7 @@ if TYPE_CHECKING:
     from typing import Literal
 
     from app.scripts.registry.server_registry import ServerSpec
+    from app.scripts.registry.skill_registry import ScrollDef
     from app.scripts.ui.main_window import MainWindow
 
 
@@ -843,7 +844,7 @@ class SkillSettings(QFrame):
         self,
         popup_manager: PopupManager,
         on_data_changed: Callable[[], None],
-    ):
+    ) -> None:
         super().__init__()
 
         self.popup_manager: PopupManager = popup_manager
@@ -851,7 +852,7 @@ class SkillSettings(QFrame):
 
         self.title = Title("스킬 사용설정")
 
-        self._check_btn_style = """
+        self._check_btn_style: str = """
             QPushButton {
                 background-color: transparent; border-radius: 8px;
             }
@@ -860,39 +861,118 @@ class SkillSettings(QFrame):
             }
         """
 
+        self._scroll_ids: list[str] = []
+        self._selected_scroll_id: str = ""
         self._skill_ids: list[str] = []
         self._usage_btns: list[QPushButton] = []
         self._sole_btns: list[QPushButton] = []
+        self._solo_swap_btns: list[QPushButton] = []
         self._priority_btns: list[QPushButton] = []
 
-        self._grid_layout = QGridLayout()
+        # 스크롤 선택 컨트롤 구성
+        self._scroll_selector_title: QLabel = QLabel("설정할 스크롤")
+        self._scroll_selector_title.setFont(CustomFont(12))
+        self._scroll_selector_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._scroll_selector_title.setStyleSheet(
+            "QLabel { border: 0px; background-color: transparent; }"
+        )
+
+        self._scroll_selector: CustomComboBox = CustomComboBox(
+            parent=self,
+            items=[],
+            connected_function=self.on_scroll_changed,
+            point_size=11,
+        )
+        self._scroll_selector.setFixedWidth(220)
+
+        selector_layout: QVBoxLayout = QVBoxLayout()
+        selector_layout.addWidget(
+            self._scroll_selector_title,
+            0,
+            Qt.AlignmentFlag.AlignCenter,
+        )
+        selector_layout.addWidget(
+            self._scroll_selector,
+            0,
+            Qt.AlignmentFlag.AlignCenter,
+        )
+        selector_layout.setContentsMargins(0, 0, 0, 0)
+        selector_layout.setSpacing(8)
+
+        selector_frame: QFrame = QFrame()
+        selector_frame.setLayout(selector_layout)
+
+        # 선택된 스크롤 요약 카드 구성
+        self._selected_scroll_icon: QLabel = QLabel()
+        self._selected_scroll_icon.setFixedSize(40, 40)
+        self._selected_scroll_icon.setScaledContents(True)
+        self._selected_scroll_icon.setStyleSheet(
+            "QLabel { background-color: transparent; border: 0px; }"
+        )
+
+        self._selected_scroll_name: QLabel = QLabel("")
+        self._selected_scroll_name.setFont(CustomFont(14))
+        self._selected_scroll_name.setStyleSheet(
+            "QLabel { background-color: transparent; border: 0px; }"
+        )
+
+        selected_scroll_layout: QHBoxLayout = QHBoxLayout()
+        selected_scroll_layout.addWidget(self._selected_scroll_icon)
+        selected_scroll_layout.addWidget(self._selected_scroll_name)
+        selected_scroll_layout.setContentsMargins(12, 10, 12, 10)
+        selected_scroll_layout.setSpacing(10)
+
+        self._selected_scroll_frame: QFrame = QFrame()
+        self._selected_scroll_frame.setLayout(selected_scroll_layout)
+        self._selected_scroll_frame.setStyleSheet(
+            "QFrame { background-color: #F4F8FD; border: 1px solid #CADEFC; border-radius: 10px; }"
+        )
+
+        # 스킬 설정 표 레이아웃 구성
+        self._grid_layout: QGridLayout = QGridLayout()
         self._grid_layout.setContentsMargins(0, 0, 0, 0)
-        self._grid_layout.setHorizontalSpacing(0)
+        self._grid_layout.setHorizontalSpacing(8)
         self._grid_layout.setVerticalSpacing(15)
 
-        grid_frame = QFrame()
+        grid_frame: QFrame = QFrame()
         grid_frame.setLayout(self._grid_layout)
 
         self._build_header()
 
-        layout = QVBoxLayout()
+        layout: QVBoxLayout = QVBoxLayout()
         layout.addWidget(self.title, 0, Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(selector_frame)
+        layout.addWidget(self._selected_scroll_frame)
         layout.addWidget(grid_frame)
         layout.setContentsMargins(10, 20, 10, 10)
-        layout.setSpacing(30)
+        layout.setSpacing(20)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setLayout(layout)
 
         self.update_from_preset(self._get_preset())
 
     def _get_preset(self) -> "MacroPreset":
-        return app_state.macro.presets[app_state.macro.current_preset_index]
+        """현재 프리셋 반환"""
+
+        # 현재 선택 프리셋 직접 조회
+        preset: MacroPreset = app_state.macro.presets[
+            app_state.macro.current_preset_index
+        ]
+        return preset
 
     def _build_header(self) -> None:
         """헤더 행 생성"""
 
-        titles: list[str] = ["사용\n여부", "단독\n사용", "우선\n순위"]
+        # 스킬명 열과 옵션 열 헤더 구성
+        titles: list[str] = [
+            "스킬",
+            "사용\n여부",
+            "단독\n사용",
+            "우선\n순위",
+            "단독\n스왑",
+        ]
         tooltips: list[str] = [
+            "선택한 스크롤에 포함된 두 개의 스킬입니다.",
             (
                 "매크로가 작동 중일 때 자동으로 스킬을 사용할지 결정합니다.\n"
                 "이동기같이 자신이 직접 사용해야 하는 스킬만 사용을 해제하시는 것을 추천드립니다.\n"
@@ -909,22 +989,77 @@ class SkillSettings(QFrame):
                 "버프스킬의 우선순위를 높이는 것을 추천합니다.\n"
                 "연계스킬은 우선순위가 적용되지 않습니다."
             ),
+            (
+                "스킬을 사용하기 위해 바로 스왑할지 결정합니다.\n"
+                "사용하려는 스킬이 다른 줄에 있고 이 옵션이 활성화되어 있다면 즉시 스왑합니다.\n"
+                "연계스킬에는 적용되지 않습니다."
+            ),
         ]
 
-        for i in range(3):
-            label = QLabel(titles[i])
+        # 각 열 설명 라벨 배치
+        for i, title in enumerate(titles):
+            label: QLabel = QLabel(title)
             label.setToolTip(tooltips[i])
             label.setStyleSheet("QLabel { border: 0px; border-radius: 0px; }")
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             label.setFont(CustomFont(12))
-            label.setFixedSize(40, 40)
-            self._grid_layout.addWidget(label, 0, i + 1, Qt.AlignmentFlag.AlignCenter)
+            if i == 0:
+                label.setFixedSize(100, 40)
+            else:
+                label.setFixedSize(40, 40)
+
+            self._grid_layout.addWidget(label, 0, i, Qt.AlignmentFlag.AlignCenter)
+
+    def _sync_scroll_selector(self, scroll_defs: list["ScrollDef"]) -> None:
+        """현재 서버 스크롤 목록과 콤보박스 항목 동기화"""
+
+        # 스크롤 ID 목록 비교용 캐시 구성
+        scroll_ids: list[str] = [scroll_def.id for scroll_def in scroll_defs]
+        if scroll_ids == self._scroll_ids:
+            return
+
+        self._scroll_ids = scroll_ids
+
+        # 스크롤명 목록으로 선택지 재구성
+        scroll_names: list[str] = [scroll_def.name for scroll_def in scroll_defs]
+        self._scroll_selector.blockSignals(True)
+        self._scroll_selector.clear()
+        self._scroll_selector.addItems(scroll_names)
+        self._scroll_selector.blockSignals(False)
+
+    def _sync_selected_scroll(self, scroll_defs: list["ScrollDef"]) -> None:
+        """현재 선택 스크롤 상태 보정"""
+
+        # 스크롤이 없는 서버라면 선택 상태 초기화
+        if not scroll_defs:
+            self._selected_scroll_id = ""
+            return
+
+        # 기존 선택이 유효하지 않으면 첫 번째 스크롤 선택
+        available_scroll_ids: set[str] = {scroll_def.id for scroll_def in scroll_defs}
+        if self._selected_scroll_id not in available_scroll_ids:
+            self._selected_scroll_id = scroll_defs[0].id
+
+        # 콤보박스 표시도 내부 선택값과 동기화
+        selected_index: int = self._scroll_ids.index(self._selected_scroll_id)
+        self._scroll_selector.blockSignals(True)
+        self._scroll_selector.setCurrentIndex(selected_index)
+        self._scroll_selector.blockSignals(False)
+
+    def _update_selected_scroll_card(self, scroll_def: "ScrollDef") -> None:
+        """선택된 스크롤 요약 카드 갱신"""
+
+        # 선택된 스크롤 아이콘과 이름 동기화
+        scroll_pixmap: QPixmap = resource_registry.get_scroll_pixmap(scroll_def.id)
+        self._selected_scroll_icon.setPixmap(scroll_pixmap)
+        self._selected_scroll_name.setText(scroll_def.name)
 
     def _clear_rows(self) -> None:
         """기존 행들 제거"""
 
+        # 기존 스킬 행 위젯 정리
         for r in range(1, self._grid_layout.rowCount() + 1):
-            for c in range(0, 4):
+            for c in range(0, 5):
                 item: QLayoutItem | None = self._grid_layout.itemAtPosition(r, c)
                 if item is None:
                     continue
@@ -939,6 +1074,7 @@ class SkillSettings(QFrame):
         self._skill_ids = []
         self._usage_btns = []
         self._sole_btns = []
+        self._solo_swap_btns = []
         self._priority_btns = []
 
     def _ensure_rows(self, skill_ids: list[str]) -> None:
@@ -951,16 +1087,32 @@ class SkillSettings(QFrame):
         self._skill_ids = skill_ids.copy()
 
         for idx, skill_id in enumerate(self._skill_ids):
-            # 스킬 아이콘
-            # todo: 스킬 이름을 표시하도록 변경
+            # 스킬 아이콘과 이름 표시 행 구성
             pixmap: QPixmap = resource_registry.get_skill_pixmap(skill_id=skill_id)
+            skill_name: str = app_state.macro.current_server.skill_registry.get(
+                skill_id
+            ).name
             skill_image: SkillImage = SkillImage(parent=self, pixmap=pixmap, size=30)
-            self._grid_layout.addWidget(
-                skill_image, idx + 1, 0, Qt.AlignmentFlag.AlignCenter
+            skill_name_label: QLabel = QLabel(skill_name)
+            skill_name_label.setFont(CustomFont(12))
+            skill_name_label.setStyleSheet(
+                "QLabel { background-color: transparent; border: 0px; }"
             )
 
-            # 스킬 사용 여부
-            usage_btn = QPushButton()
+            skill_info_layout: QHBoxLayout = QHBoxLayout()
+            skill_info_layout.addWidget(skill_image)
+            skill_info_layout.addWidget(skill_name_label)
+            skill_info_layout.setContentsMargins(0, 0, 0, 0)
+            skill_info_layout.setSpacing(8)
+
+            skill_info_frame: QFrame = QFrame()
+            skill_info_frame.setLayout(skill_info_layout)
+            self._grid_layout.addWidget(
+                skill_info_frame, idx + 1, 0, Qt.AlignmentFlag.AlignLeft
+            )
+
+            # 스킬 사용 여부 버튼 구성
+            usage_btn: QPushButton = QPushButton()
             usage_btn.setStyleSheet(self._check_btn_style)
             usage_btn.setIconSize(QSize(40, 40))
             usage_btn.setFixedSize(30, 30)
@@ -973,8 +1125,8 @@ class SkillSettings(QFrame):
             )
             self._usage_btns.append(usage_btn)
 
-            # 스킬 단독 사용 여부
-            sole_btn = QPushButton()
+            # 스킬 단독 사용 여부 버튼 구성
+            sole_btn: QPushButton = QPushButton()
             sole_btn.setStyleSheet(self._check_btn_style)
             sole_btn.setIconSize(QSize(40, 40))
             sole_btn.setFixedSize(30, 30)
@@ -985,8 +1137,8 @@ class SkillSettings(QFrame):
             )
             self._sole_btns.append(sole_btn)
 
-            # 스킬 우선순위
-            priority_btn = QPushButton("-")
+            # 스킬 우선순위 버튼 구성
+            priority_btn: QPushButton = QPushButton("-")
             priority_btn.setFont(CustomFont(12))
             priority_btn.setFixedWidth(40)
             priority_btn.clicked.connect(
@@ -998,39 +1150,96 @@ class SkillSettings(QFrame):
             )
             self._priority_btns.append(priority_btn)
 
+            # 스킬 단독 스왑 여부 버튼 구성
+            solo_swap_btn: QPushButton = QPushButton()
+            solo_swap_btn.setStyleSheet(self._check_btn_style)
+            solo_swap_btn.setIconSize(QSize(40, 40))
+            solo_swap_btn.setFixedSize(30, 30)
+            solo_swap_btn.clicked.connect(
+                partial(lambda x: self.change_use_solo_swap(x), idx)
+            )
+            solo_swap_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            self._grid_layout.addWidget(
+                solo_swap_btn, idx + 1, 4, Qt.AlignmentFlag.AlignCenter
+            )
+            self._solo_swap_btns.append(solo_swap_btn)
+
     def update_from_preset(self, preset: "MacroPreset") -> None:
         """프리셋으로부터 위젯 상태를 업데이트"""
 
-        skill_ids: list[str] = get_current_scroll_skill_ids(preset)
+        # 서버 전체 스크롤 목록과 현재 선택 상태 동기화
+        server_spec: "ServerSpec" = app_state.macro.current_server
+        scroll_defs: list["ScrollDef"] = (
+            server_spec.skill_registry.get_all_scroll_defs()
+        )
+        self._sync_scroll_selector(scroll_defs)
+        self._sync_selected_scroll(scroll_defs)
+        if not self._selected_scroll_id:
+            self._clear_rows()
+            self._selected_scroll_icon.clear()
+            self._selected_scroll_name.setText("")
+            return
+
+        # 선택된 스크롤 카드와 대상 스킬 행 재구성
+        scroll_def: "ScrollDef" = (
+            app_state.macro.current_server.skill_registry.get_scroll(
+                self._selected_scroll_id
+            )
+        )
+        self._update_selected_scroll_card(scroll_def)
+
+        skill_ids: list[str] = list(scroll_def.skills)
         self._ensure_rows(skill_ids)
 
         for idx, skill_id in enumerate(self._skill_ids):
             setting: SkillUsageSetting = preset.usage_settings[skill_id]
 
-            usage_icon = QIcon(
+            # 토글 버튼 아이콘 상태 반영
+            usage_icon: QIcon = QIcon(
                 QPixmap(
                     convert_resource_path(
                         f"resources\\image\\check{bool(setting.use_skill)}.png"
                     )
                 )
             )
-            sole_icon = QIcon(
+            sole_icon: QIcon = QIcon(
                 QPixmap(
                     convert_resource_path(
                         f"resources\\image\\check{bool(setting.use_alone)}.png"
                     )
                 )
             )
+            solo_swap_icon: QIcon = QIcon(
+                QPixmap(
+                    convert_resource_path(
+                        f"resources\\image\\check{bool(setting.use_solo_swap)}.png"
+                    )
+                )
+            )
 
             self._usage_btns[idx].setIcon(usage_icon)
             self._sole_btns[idx].setIcon(sole_icon)
+            self._solo_swap_btns[idx].setIcon(solo_swap_icon)
 
-            p = int(setting.priority)
+            # 우선순위 숫자 텍스트 반영
+            p: int = int(setting.priority)
             self._priority_btns[idx].setText("-" if p == 0 else str(p))
+
+    def on_scroll_changed(self, index: int) -> None:
+        """스크롤 선택 변경"""
+
+        # 유효한 선택 인덱스만 반영
+        if index < 0 or index >= len(self._scroll_ids):
+            return
+
+        # 선택한 스크롤 ID를 저장하고 해당 스크롤 설정 화면으로 즉시 갱신
+        self._selected_scroll_id = self._scroll_ids[index]
+        self.update_from_preset(self._get_preset())
 
     def change_skill_usage(self, skill_idx: int) -> None:
         """사용 여부 변경"""
 
+        # 현재 선택된 스킬의 사용 여부 토글
         preset: MacroPreset = self._get_preset()
         skill_id: str = self._skill_ids[skill_idx]
 
@@ -1043,6 +1252,7 @@ class SkillSettings(QFrame):
     def change_use_sole(self, skill_idx: int) -> None:
         """단독 사용 변경"""
 
+        # 현재 선택된 스킬의 단독 사용 여부 토글
         preset: MacroPreset = self._get_preset()
         skill_id: str = self._skill_ids[skill_idx]
 
@@ -1052,9 +1262,23 @@ class SkillSettings(QFrame):
         self.update_from_preset(preset)
         self._on_data_changed()
 
+    def change_use_solo_swap(self, skill_idx: int) -> None:
+        """단독 스왑 변경"""
+
+        # 현재 선택된 스킬의 단독 스왑 여부 토글
+        preset: MacroPreset = self._get_preset()
+        skill_id: str = self._skill_ids[skill_idx]
+
+        setting: SkillUsageSetting = preset.usage_settings[skill_id]
+
+        setting.use_solo_swap = not setting.use_solo_swap
+        self.update_from_preset(preset)
+        self._on_data_changed()
+
     def change_priority(self, skill_idx: int) -> None:
         """스킬 우선순위 변경"""
 
+        # 현재 선택된 스킬과 배치 상태 조회
         preset: MacroPreset = self._get_preset()
         skill_id: str = self._skill_ids[skill_idx]
         placed_skill_ids: list[str] = preset.skills.get_placed_skill_ids()
@@ -1064,7 +1288,7 @@ class SkillSettings(QFrame):
 
         setting: SkillUsageSetting = preset.usage_settings[skill_id]
 
-        current = int(setting.priority)
+        current: int = int(setting.priority)
 
         # 우선순위가 0이었다면: 가장 높은 우선순위(숫자 최대 + 1)
         if current == 0:
