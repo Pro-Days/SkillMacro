@@ -74,9 +74,9 @@ from app.scripts.ui.sim_ui.graph import (
 
 if TYPE_CHECKING:
     from app.scripts.calculator_engine import (
-        CalculatorBaseState,
-        CalculatorBaseValidation,
-        CalculatorEvaluationContext,
+        BaseState,
+        BaseValidation,
+        EvaluationContext,
         GraphAnalysis,
         GraphDamageEvent,
         GraphReport,
@@ -528,7 +528,7 @@ class ResultsPage(QFrame):
         selected_metric: "PowerMetric",
         current_realm: "RealmTier",
         calculator_input: CalculatorPresetInput,
-        context: "CalculatorEvaluationContext",
+        context: "EvaluationContext",
     ) -> "ResultsPage.OutputRows":
         """공용 계산기 결과 행 구성"""
 
@@ -546,18 +546,14 @@ class ResultsPage(QFrame):
 
         # 스탯 1당 효율 출력 행 구성
         stat_rows: list[tuple[str, str]] = []
-        for stat_key, stat_spec in STAT_SPECS.items():
+        for stat_key, stat_label in STAT_SPECS.items():
             deltas: dict[PowerMetric, float] = evaluate_single_stat_delta(
                 context=context,
                 base_stats=base_stats,
                 stat_key=stat_key,
                 amount=1.0,
             )
-            label: str = stat_spec.label
-            if stat_spec.is_percent:
-                label = f"{label}(%) +1"
-            else:
-                label = f"{label} +1"
+            label: str = f"{stat_label} +1"
 
             stat_rows.append((label, cls._format_delta(deltas[selected_metric])))
 
@@ -637,7 +633,7 @@ class ResultsPage(QFrame):
         )
 
         # 기준 상태 분리 결과 행 구성
-        validation: CalculatorBaseValidation = validate_base_state(
+        validation: BaseValidation = validate_base_state(
             base_stats=base_stats,
             calculator_input=calculator_input,
         )
@@ -653,7 +649,7 @@ class ResultsPage(QFrame):
                 optimization_result=[("상태", "불가")],
             )
 
-        base_state: CalculatorBaseState = build_base_state(
+        base_state: BaseState = build_base_state(
             base_stats=base_stats,
             calculator_input=calculator_input,
         )
@@ -689,7 +685,7 @@ class ResultsPage(QFrame):
             if optimization_result.candidate.equipped_title_id is not None:
                 for owned_title in calculator_input.owned_titles:
                     if (
-                        owned_title.title_id
+                        owned_title.name
                         == optimization_result.candidate.equipped_title_id
                     ):
                         title_text = owned_title.name
@@ -698,10 +694,10 @@ class ResultsPage(QFrame):
             talisman_name_map: dict[str, str] = {}
             for owned_talisman in calculator_input.owned_talismans:
                 for template in TALISMAN_SPECS:
-                    if template.template_id != owned_talisman.template_id:
+                    if template.name != owned_talisman.name:
                         continue
 
-                    talisman_name_map[owned_talisman.owned_id] = (
+                    talisman_name_map[owned_talisman.name] = (
                         f"{template.name} Lv.{owned_talisman.level}"
                     )
                     break
@@ -752,7 +748,7 @@ class ResultsPage(QFrame):
         cls,
         base_stats: BaseStats,
         calculator_input: CalculatorPresetInput,
-        context: "CalculatorEvaluationContext",
+        context: "EvaluationContext",
     ) -> list[tuple[str, str]]:
         """사용자 지정 변화량 결과 행 공용 구성"""
 
@@ -2233,7 +2229,7 @@ class ResultsPage(QFrame):
                 return
 
             # 저장된 기준 입력 기준 전투력 컨텍스트 재구성
-            context: CalculatorEvaluationContext = build_calculator_context(
+            context: EvaluationContext = build_calculator_context(
                 server_spec=app_state.macro.current_server,
                 preset=preset,
                 skills_info=preset.usage_settings,

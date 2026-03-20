@@ -3,6 +3,7 @@ from __future__ import annotations
 import random
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from itertools import combinations
 from typing import TYPE_CHECKING
 
 from app.scripts.calculator_models import (
@@ -204,7 +205,7 @@ class PowerSummary:
 
 
 @dataclass(frozen=True, slots=True)
-class CalculatorEvaluationContext:
+class EvaluationContext:
     """평가 기준이 되는 초기 상태 컨텍스트"""
 
     timeline_artifacts: TimelineEvaluationArtifacts
@@ -278,7 +279,7 @@ class Contribution:
 
 
 @dataclass(frozen=True, slots=True)
-class CalculatorBaseState:
+class BaseState:
     """기준 베이스 스탯 분리 결과"""
 
     base_stats: BaseStats
@@ -287,7 +288,7 @@ class CalculatorBaseState:
 
 
 @dataclass(frozen=True, slots=True)
-class CalculatorBaseValidation:
+class BaseValidation:
     """기준 베이스 스탯 검증 결과"""
 
     is_valid: bool
@@ -375,50 +376,6 @@ def build_title_contribution(
     return contribution
 
 
-def _find_talisman_template(
-    owned_talisman: OwnedTalisman,
-) -> tuple[StatKey, int] | None:
-    """보유 부적의 스탯 대상과 등급 보정값 조회"""
-
-    for spec in TALISMAN_SPECS:
-        if spec.name != owned_talisman.name:
-            continue
-
-        return spec.stat_key, spec.level_stats
-
-    return None
-
-
-def _build_owned_title_map(owned_titles: list[OwnedTitle]) -> dict[str, OwnedTitle]:
-    """보유 칭호 ID 기준 조회 맵 구성"""
-
-    owned_title_map: dict[str, OwnedTitle] = {
-        owned_title.title_id: owned_title for owned_title in owned_titles
-    }
-    return owned_title_map
-
-
-def _build_owned_talisman_stat_map(
-    owned_talismans: list[OwnedTalisman],
-) -> dict[str, tuple[StatKey, float]]:
-    """보유 부적 ID 기준 최종 스탯값 조회 맵 구성"""
-
-    talisman_stat_map: dict[str, tuple[StatKey, float]] = {}
-    for owned_talisman in owned_talismans:
-        talisman_spec: tuple[StatKey, int] | None = _find_talisman_template(
-            owned_talisman
-        )
-        if talisman_spec is None:
-            continue
-
-        # 장착 시 즉시 더할 수 있는 최종 스탯값 형태로 고정 저장
-        stat_key, grade_offset = talisman_spec
-        stat_value: float = float((grade_offset * 10) + owned_talisman.level)
-        talisman_stat_map[owned_talisman.owned_id] = (stat_key, stat_value)
-
-    return talisman_stat_map
-
-
 def build_talisman_contribution(
     equipped_talisman_ids: list[str],
     talisman_stat_map: dict[str, tuple[StatKey, float]],
@@ -427,12 +384,53 @@ def build_talisman_contribution(
 
     contribution: Contribution = Contribution()
     for equipped_id in equipped_talisman_ids:
+        if equipped_id is None:
+            continue
+
         stat_key: StatKey
         stat_value: float
         stat_key, stat_value = talisman_stat_map[equipped_id]
         contribution = contribution.add(stat_key, stat_value)
 
     return contribution
+
+
+def _build_owned_title_map(owned_titles: list[OwnedTitle]) -> dict[str, OwnedTitle]:
+    """보유 칭호 ID 기준 조회 맵 구성"""
+
+    owned_title_map: dict[str, OwnedTitle] = {
+        owned_title.name: owned_title for owned_title in owned_titles
+    }
+    return owned_title_map
+
+
+def _build_owned_talisman_stat_map(
+    owned_talismans: list[OwnedTalisman],
+) -> dict[str, tuple[StatKey, float]]:
+    """보유 부적 ID 기준 최종 스탯값 조회 맵 구성"""
+    # TODO: 같은 종류의 부적 중 최고 레벨을 선택하도록 변경 필요?
+
+    talisman_stat_map: dict[str, tuple[StatKey, float]] = {}
+
+    for owned_talisman in owned_talismans:
+        talisman_spec: tuple[StatKey, dict[int, float]] | None = None
+
+        for spec in TALISMAN_SPECS:
+            if spec.name == owned_talisman.name:
+                talisman_spec = spec.stat_key, spec.level_stats
+                break
+
+        if talisman_spec is None:
+            continue
+
+        stat_key, level_stats = talisman_spec
+
+        talisman_stat_map[owned_talisman.name] = (
+            stat_key,
+            level_stats[owned_talisman.level],
+        )
+
+    return talisman_stat_map
 
 
 def build_current_selected_contribution(
@@ -1149,7 +1147,7 @@ def build_calculator_context(
     skills_info: dict[str, "SkillUsageSetting"],
     delay_ms: int,
     base_stats: BaseStats,
-) -> CalculatorEvaluationContext:
+) -> EvaluationContext:
     """현재 계산기 입력 기준 평가 컨텍스트 구성"""
 
     baseline_final_stats: FinalStats = base_stats.resolve()
@@ -1172,7 +1170,7 @@ def build_calculator_context(
         resolved_stats=baseline_final_stats,
     )
 
-    return CalculatorEvaluationContext(
+    return EvaluationContext(
         timeline_artifacts=timeline_artifacts,
         baseline_base_stats=base_stats,
         baseline_final_stats=baseline_final_stats,
@@ -1181,7 +1179,7 @@ def build_calculator_context(
 
 
 def evaluate_stat_changes(
-    context: CalculatorEvaluationContext,
+    context: EvaluationContext,
     base_stats: BaseStats,
     stat_changes: dict[StatKey, float],
 ) -> PowerSummary:
@@ -1199,7 +1197,7 @@ def evaluate_stat_changes(
 
 
 def evaluate_single_stat_delta(
-    context: CalculatorEvaluationContext,
+    context: EvaluationContext,
     base_stats: BaseStats,
     stat_key: StatKey,
     amount: float,
@@ -1218,7 +1216,7 @@ def evaluate_single_stat_delta(
 
 
 def evaluate_arbitrary_stat_delta(
-    context: CalculatorEvaluationContext,
+    context: EvaluationContext,
     base_stats: BaseStats,
     stat_changes: dict[StatKey, float],
 ) -> dict[PowerMetric, float]:
@@ -1284,7 +1282,7 @@ def build_skill_effect_maps(
 
 
 def evaluate_level_up_delta(
-    context: CalculatorEvaluationContext,
+    context: EvaluationContext,
     base_stats: BaseStats,
     target_metric: PowerMetric,
 ) -> LevelUpEvaluation:
@@ -1351,7 +1349,7 @@ def _get_next_realm(current_realm: RealmTier) -> RealmTier | None:
 
 
 def evaluate_next_realm_delta(
-    context: CalculatorEvaluationContext,
+    context: EvaluationContext,
     base_stats: BaseStats,
     current_realm: RealmTier,
     level: int,
@@ -1418,7 +1416,7 @@ def evaluate_scroll_upgrade_deltas(
     """각 스크롤 1레벨 상승 시 전투력 차이 계산"""
 
     # 현재 레벨 기준 기준 전투력 컨텍스트 구성
-    baseline_context: CalculatorEvaluationContext = build_calculator_context(
+    baseline_context: EvaluationContext = build_calculator_context(
         server_spec=server_spec,
         preset=preset,
         skills_info=skills_info,
@@ -1436,7 +1434,7 @@ def evaluate_scroll_upgrade_deltas(
         # 현재 프리셋 레벨을 일시적으로 올려 상승 후 전투력 계산
         preset.info.set_scroll_level(scroll_def.id, current_level + 1)
         try:
-            upgraded_context: CalculatorEvaluationContext = build_calculator_context(
+            upgraded_context: EvaluationContext = build_calculator_context(
                 server_spec=server_spec,
                 preset=preset,
                 skills_info=skills_info,
@@ -1465,7 +1463,7 @@ def evaluate_scroll_upgrade_deltas(
 def build_base_state(
     base_stats: BaseStats,
     calculator_input: CalculatorPresetInput,
-) -> CalculatorBaseState:
+) -> BaseState:
     """현재 선택 기여를 제거한 기준 베이스 스탯 계산"""
 
     owned_title_map: dict[str, OwnedTitle] = _build_owned_title_map(
@@ -1474,6 +1472,7 @@ def build_base_state(
     talisman_stat_map: dict[str, tuple[StatKey, float]] = (
         _build_owned_talisman_stat_map(calculator_input.owned_talismans)
     )
+
     contribution: Contribution = build_current_selected_contribution(
         calculator_input,
         owned_title_map,
@@ -1481,7 +1480,7 @@ def build_base_state(
     )
     base_without_selection: BaseStats = contribution.apply_to(base_stats, is_add=False)
 
-    return CalculatorBaseState(
+    return BaseState(
         base_stats=base_without_selection,
         final_stats=base_without_selection.resolve(),
         contribution=contribution,
@@ -1491,7 +1490,7 @@ def build_base_state(
 def validate_base_state(
     base_stats: BaseStats,
     calculator_input: CalculatorPresetInput,
-) -> CalculatorBaseValidation:
+) -> BaseValidation:
     """현재 선택 기여 제거 가능 여부 검증"""
 
     # 포인트 제한 검증
@@ -1502,7 +1501,7 @@ def validate_base_state(
         + calculator_input.distribution.luck
     )
     if distribution_sum > calculator_input.level * 5:
-        return CalculatorBaseValidation(
+        return BaseValidation(
             is_valid=False,
             message="스탯 분배 포인트가 레벨 기준 최대치를 초과합니다.",
         )
@@ -1514,23 +1513,23 @@ def validate_base_state(
     )
     realm_cap: int = REALM_TIER_SPECS[calculator_input.realm_tier].danjeon_points
     if danjeon_sum > realm_cap:
-        return CalculatorBaseValidation(
+        return BaseValidation(
             is_valid=False,
             message="단전 포인트가 현재 경지 최대치를 초과합니다.",
         )
 
-    base_state: CalculatorBaseState = build_base_state(base_stats, calculator_input)
+    base_state: BaseState = build_base_state(base_stats, calculator_input)
     if any(value < 0.0 for value in base_state.base_stats.values.values()):
-        return CalculatorBaseValidation(
+        return BaseValidation(
             is_valid=False,
             message="현재 선택 기여를 제거하면 음수 베이스 스탯이 발생합니다.",
         )
 
-    return CalculatorBaseValidation(is_valid=True, message="정상")
+    return BaseValidation(is_valid=True, message="정상")
 
 
 def _build_base_stats_from_base_and_contribution(
-    base_state: CalculatorBaseState,
+    base_state: BaseState,
     contribution: Contribution,
 ) -> BaseStats:
     """기준 베이스와 후보 기여로 최종 베이스 스탯 재구성"""
@@ -1653,7 +1652,7 @@ def _build_title_candidates(
     if not calculator_input.owned_titles:
         return [None]
 
-    title_ids: list[str | None] = [None]
+    title_ids: list[str | None] = []
     for owned_title in calculator_input.owned_titles:
         title_ids.append(owned_title.name)
 
@@ -1664,38 +1663,31 @@ def _build_talisman_candidates(
     calculator_input: CalculatorPresetInput,
 ) -> list[list[str]]:
     """부적 조합 후보 목록 생성"""
+    # TODO: 칭호/부적을 Class로 저장해서 후보 생성 시 Class 기반으로 비교하도록 개선
+    # TODO: 같은 종류의 부적은 더 높은 레벨을 선택해서 저장한 후, combinations 빌트인 함수로 조합 만들도록
 
     owned_talismans: list[OwnedTalisman] = calculator_input.owned_talismans
     if not owned_talismans:
         return [[]]
 
-    owned_template_map: dict[str, str] = {
-        owned_talisman.owned_id: owned_talisman.template_id
-        for owned_talisman in owned_talismans
-    }
-    owned_ids: list[str] = [
-        owned_talisman.owned_id for owned_talisman in owned_talismans
-    ]
-    target_size: int = min(3, len(owned_ids))
+    owned_names: list[str] = [owned_talisman.name for owned_talisman in owned_talismans]
+    target_size = 3
+
     candidates: list[list[str]] = []
 
     def build_combinations(start_index: int, selected_ids: list[str]) -> None:
         """현재 보유 부적 조합 구성"""
 
         if len(selected_ids) == target_size:
-            candidates.append(selected_ids.copy())
+            candidates.append(selected_ids)
             return
 
-        for current_index in range(start_index, len(owned_ids)):
-            owned_id: str = owned_ids[current_index]
-            template_id: str = owned_template_map[owned_id]
-            if any(
-                owned_template_map[selected_id] == template_id
-                for selected_id in selected_ids
-            ):
+        for current_index in range(start_index, len(owned_names)):
+            owned_name: str = owned_names[current_index]
+            if owned_name in selected_ids:
                 continue
 
-            selected_ids.append(owned_id)
+            selected_ids.append(owned_name)
             build_combinations(current_index + 1, selected_ids)
             selected_ids.pop()
 
@@ -1711,7 +1703,7 @@ def optimize_current_selection(
     preset: "MacroPreset",
     skills_info: dict[str, "SkillUsageSetting"],
     delay_ms: int,
-    context: CalculatorEvaluationContext,
+    context: EvaluationContext,
     base_stats: BaseStats,
     calculator_input: CalculatorPresetInput,
     target_metric: PowerMetric,
@@ -1719,14 +1711,14 @@ def optimize_current_selection(
     """현재 선택 조합 최적화"""
 
     # 기준 베이스 분리 검증 실패 시 최적화 중단
-    validation: CalculatorBaseValidation = validate_base_state(
+    validation: BaseValidation = validate_base_state(
         base_stats=base_stats,
         calculator_input=calculator_input,
     )
     if not validation.is_valid:
         return None
 
-    base_state: CalculatorBaseState = build_base_state(
+    base_state: BaseState = build_base_state(
         base_stats=base_stats,
         calculator_input=calculator_input,
     )
@@ -1736,6 +1728,8 @@ def optimize_current_selection(
         calculator_input
     )
     danjeon_candidates: list[DanjeonState] = _build_danjeon_candidates(calculator_input)
+
+    # TODO: 칭호/부적을 Class로 저장해서 후보 생성 시 Class 기반으로 비교하도록 개선
     title_candidates: list[str | None] = _build_title_candidates(calculator_input)
     talisman_candidates: list[list[str]] = _build_talisman_candidates(calculator_input)
 

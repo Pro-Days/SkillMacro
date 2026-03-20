@@ -268,9 +268,7 @@ class EquippedState:
     """현재 장착 선택 상태"""
 
     equipped_title_id: str | None = None
-    equipped_talisman_ids: tuple[str | None, str | None, str | None] = field(
-        default_factory=lambda: (None, None, None)
-    )
+    equipped_talisman_ids: list[str] = field(default_factory=lambda: [])
 
     @classmethod
     def from_dict(cls, data: dict[str, object]) -> "EquippedState":
@@ -279,14 +277,8 @@ class EquippedState:
         raw_ids: object = data["equipped_talisman_ids"]
         if not isinstance(raw_ids, list):
             raise TypeError("equipped_talisman_ids must be a list")
-        if len(raw_ids) != 3:
-            raise ValueError("equipped_talisman_ids must have length 3")
 
-        equipped_talisman_ids: tuple[str | None, str | None, str | None] = (
-            str(raw_ids[0]) if raw_ids[0] is not None else None,
-            str(raw_ids[1]) if raw_ids[1] is not None else None,
-            str(raw_ids[2]) if raw_ids[2] is not None else None,
-        )
+        equipped_talisman_ids: list[str] = [str(item) for item in raw_ids]
 
         raw_title_id: object = data["equipped_title_id"]
         equipped_title_id: str | None = None

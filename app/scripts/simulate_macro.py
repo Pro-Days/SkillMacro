@@ -5,8 +5,8 @@ from typing import TYPE_CHECKING
 
 from app.scripts.calculator_engine import (
     DISPLAY_POWER_METRICS,
-    CalculatorEvaluationContext,
     DamageEvent,
+    EvaluationContext,
     GraphAnalysis,
     GraphDamageEvent,
     GraphReport,
@@ -31,7 +31,7 @@ def simulate_random_from_calculator(
     """계산기 입력 기준 그래프용 시뮬레이션 결과 구성"""
 
     # 계산기 기준 타임라인과 5종 전투력 요약 구성
-    context: CalculatorEvaluationContext = build_calculator_context(
+    context: EvaluationContext = build_calculator_context(
         server_spec=server_spec,
         preset=preset,
         skills_info=skills_info,
