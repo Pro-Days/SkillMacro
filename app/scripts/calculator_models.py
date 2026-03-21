@@ -356,10 +356,12 @@ class CalculatorPresetInput:
     def create_default(cls) -> "CalculatorPresetInput":
         """기본 계산기 입력 상태 생성"""
 
-        # 전체 스탯 입력창 초기 렌더링용 0값 맵 구성
+        # 전체 스탯 입력창 초기 렌더링용 기본값 맵 구성
         overall_stats: dict[str, float] = {
             stat_key.value: 0.0 for stat_key in OVERALL_STAT_ORDER
         }
+        # 기본 치명타 총 배율 기준값 반영
+        overall_stats[StatKey.CRIT_DAMAGE_PERCENT.value] = 100.0
         custom_stat_changes: dict[str, float] = {
             stat_key.value: 0.0 for stat_key in OVERALL_STAT_ORDER
         }

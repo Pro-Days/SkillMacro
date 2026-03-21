@@ -1709,7 +1709,7 @@ def _calculate_random_hit_damage(
     crit_rate: float = min(float(resolved_stats[StatKey.CRIT_RATE_PERCENT]), 100.0)
     crit_damage: float = float(resolved_stats[StatKey.CRIT_DAMAGE_PERCENT])
     if rng.random() < (crit_rate * 0.01):
-        damage *= 1.0 + (crit_damage * 0.01)
+        damage *= crit_damage * 0.01
 
     # 평타가 아닌 스킬 타격에만 스킬 피해량 보정 적용
     if hit_event.is_skill:
