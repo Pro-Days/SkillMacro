@@ -1677,7 +1677,7 @@ def _calculate_hit_damage(
     crit_rate: float = min(float(resolved_stats[StatKey.CRIT_RATE_PERCENT]), 100.0)
     crit_damage: float = float(resolved_stats[StatKey.CRIT_DAMAGE_PERCENT])
     damage: float = attack_power * hit_event.multiplier
-    damage *= 1.0 + (crit_rate * crit_damage * 0.0001)
+    damage *= 1.0 + (crit_rate * (crit_damage - 100.0) * 0.0001)
 
     # 평타가 아닌 스킬 타격에만 스킬 피해량 보정 적용
     if hit_event.is_skill:
@@ -1911,10 +1911,30 @@ def evaluate_stat_changes(
 ) -> CalculatorPowerSummary:
     """전체 스탯 변화량 반영 후 전투력 계산"""
 
-    # 변화량을 반영한 최종 스탯 재계산
-    resolved_stats: CalculatorResolvedStats = resolve_calculator_stats(
-        overall_stats=overall_stats,
-        stat_changes=stat_changes,
+    # 현재 계산기 기준 스탯을 변화 적용 전 베이스로 고정
+    base_state: CalculatorBaseState = CalculatorBaseState(
+        base_overall_stats=overall_stats.copy(),
+        resolved_base=context.baseline_stats,
+        contribution=CalculatorContribution(),
+    )
+
+    # 변화량 입력을 2차 효과 포함 기여 모델로 누적 변환
+    stat_change_contribution: CalculatorContribution = CalculatorContribution()
+    stat_key: StatKey
+    change_amount: float
+    for stat_key, change_amount in stat_changes.items():
+        stat_change_contribution = _add_stat_contribution(
+            stat_change_contribution,
+            stat_key,
+            float(change_amount),
+        )
+
+    # 원시 베이스와 변화 기여를 조합해 최종 스탯 재구성
+    resolved_stats: CalculatorResolvedStats = (
+        _build_resolved_stats_from_base_and_contribution(
+            base_state,
+            stat_change_contribution,
+        )
     )
 
     # 기준 타임라인 아티팩트 재사용 기반 전투력 재평가
