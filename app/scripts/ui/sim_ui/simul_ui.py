@@ -40,14 +40,11 @@ from app.scripts.calculator_engine import (
 from app.scripts.calculator_models import (
     BUILTIN_TALISMAN_TEMPLATES,
     CALCULATOR_STAT_SPECS,
-    OPTIMIZATION_MINIMUM_MAIN_STAT_GRID_ROWS,
-    OPTIMIZATION_MINIMUM_MAIN_STAT_ORDER,
     OVERALL_STAT_GRID_ROWS,
     REALM_TIER_SPECS,
     DanjeonState,
     DistributionState,
     EquippedOptimizationState,
-    MinimumFinalStatConditionState,
     OwnedTalisman,
     OwnedTitle,
     StatKey,
@@ -688,22 +685,7 @@ class ResultsPage(QFrame):
             target_metric=selected_metric,
         )
         if optimization_result is None:
-            # 활성화된 최소 조건 존재 여부 확인
-            has_active_minimum_final_stats: bool = any(
-                float(calculator_input.minimum_final_stats.values[stat_key.value]) > 0.0
-                for stat_key in OPTIMIZATION_MINIMUM_MAIN_STAT_ORDER
-            )
-
-            # 최소 조건 사용 여부에 따라 실패 사유 구분
-            if has_active_minimum_final_stats:
-                optimization_rows = [
-                    ("상태", "불가"),
-                    ("사유", "최소 결과 스탯 조건을 만족하는 조합이 없습니다."),
-                ]
-
-            else:
-                optimization_rows = [("상태", "불가")]
-
+            optimization_rows: list[tuple[str, str]] = [("상태", "불가")]
         else:
             title_text: str = "없음"
             if optimization_result.candidate.equipped_title_id is not None:
@@ -858,7 +840,6 @@ class ResultsPage(QFrame):
                 self,
                 self.on_base_input_changed,
                 self._get_initial_overall_stats(),
-                OVERALL_STAT_GRID_ROWS,
             )
 
             # 스크롤 레벨 입력 UI 구성
@@ -897,16 +878,6 @@ class ResultsPage(QFrame):
                 self,
                 self.on_optimization_input_changed,
             )
-            self.minimum_final_stats_title: QLabel = QLabel(
-                "결과 스탯 최소 조건", self
-            )
-            self.minimum_final_stats_title.setFont(CustomFont(11))
-            self.minimum_final_stats_inputs = self.OverallStatInputs(
-                self,
-                self.on_optimization_input_changed,
-                self._get_initial_minimum_final_stats(),
-                OPTIMIZATION_MINIMUM_MAIN_STAT_GRID_ROWS,
-            )
 
             # 사용자 지정 변화량 입력 UI 구성
             self.custom_delta_title: QLabel = QLabel("사용자 지정 스탯 변화량", self)
@@ -915,7 +886,6 @@ class ResultsPage(QFrame):
                 self,
                 self.on_custom_delta_changed,
                 self._build_empty_stat_map(),
-                OVERALL_STAT_GRID_ROWS,
             )
 
             # 상단 기준 입력 행 구성
@@ -935,8 +905,6 @@ class ResultsPage(QFrame):
             optimization_section_layout.setContentsMargins(0, 0, 0, 0)
             optimization_section_layout.setSpacing(10)
             optimization_section_layout.addWidget(self.optimization_title)
-            optimization_section_layout.addWidget(self.minimum_final_stats_title)
-            optimization_section_layout.addWidget(self.minimum_final_stats_inputs)
             optimization_section_layout.addWidget(self.distribution_title)
             optimization_section_layout.addWidget(self.distribution_inputs)
             optimization_section_layout.addWidget(self.danjeon_title)
@@ -1010,7 +978,6 @@ class ResultsPage(QFrame):
                 parent: QWidget,
                 connected_function: Callable[[], None],
                 initial_values: dict[StatKey, str],
-                stat_grid_rows: tuple[tuple[StatKey | None, StatKey | None], ...],
             ) -> None:
                 super().__init__(parent)
 
@@ -1018,8 +985,7 @@ class ResultsPage(QFrame):
                 self.inputs: dict[StatKey, CustomLineEdit] = {}
                 grid_layout: QGridLayout = QGridLayout(self)
 
-                # 전달된 스탯 행 순서 기준 입력칸 배치
-                for row_index, stat_row in enumerate(stat_grid_rows):
+                for row_index, stat_row in enumerate(OVERALL_STAT_GRID_ROWS):
                     for column_index, stat_key in enumerate(stat_row):
                         if stat_key is None:
                             continue
@@ -1770,19 +1736,6 @@ class ResultsPage(QFrame):
 
             return values
 
-        def _get_initial_minimum_final_stats(self) -> dict[StatKey, str]:
-            """저장된 최소 최종 스탯 입력 문자열 맵 반환"""
-
-            # 저장된 최소 조건 입력을 위젯 초기 문자열로 변환
-            calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
-            values: dict[StatKey, str] = {}
-            for stat_key in OPTIMIZATION_MINIMUM_MAIN_STAT_ORDER:
-                values[stat_key] = (
-                    f"{calculator_input.minimum_final_stats.values[stat_key.value]:g}"
-                )
-
-            return values
-
         def _get_selected_metric(self) -> PowerMetric:
             """현재 선택 전투력 종류 반환"""
 
@@ -1795,12 +1748,6 @@ class ResultsPage(QFrame):
             """저장된 최적화 입력 상태 로드"""
 
             calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
-            for stat_key in OPTIMIZATION_MINIMUM_MAIN_STAT_ORDER:
-                # 저장된 최소 조건 값을 전용 입력칸에 동기화
-                self.minimum_final_stats_inputs.inputs[stat_key].setText(
-                    f"{calculator_input.minimum_final_stats.values[stat_key.value]:g}"
-                )
-
             self.distribution_inputs.inputs["strength"].setText(
                 str(calculator_input.distribution.strength)
             )
@@ -1894,37 +1841,6 @@ class ResultsPage(QFrame):
             )
             return is_valid, danjeon_state
 
-        def _read_minimum_final_stat_state(
-            self,
-        ) -> tuple[bool, MinimumFinalStatConditionState]:
-            """현재 최소 최종 스탯 조건 복원"""
-
-            # 모든 최소 조건 입력칸을 순회하며 비음수 실수 입력 복원
-            values: dict[str, float] = {}
-            is_valid: bool = True
-            for stat_key in OPTIMIZATION_MINIMUM_MAIN_STAT_ORDER:
-                input_widget: CustomLineEdit = self.minimum_final_stats_inputs.inputs[
-                    stat_key
-                ]
-                try:
-                    value: float = float(input_widget.text())
-                    if value < 0.0:
-                        raise ValueError
-
-                    input_widget.set_valid(True)
-
-                except ValueError:
-                    value = 0.0
-                    is_valid = False
-                    input_widget.set_valid(False)
-
-                values[stat_key.value] = value
-
-            minimum_final_stats: MinimumFinalStatConditionState = (
-                MinimumFinalStatConditionState(values=values)
-            )
-            return is_valid, minimum_final_stats
-
         def _read_optimization_state(
             self,
         ) -> tuple[
@@ -1933,7 +1849,6 @@ class ResultsPage(QFrame):
             DanjeonState,
             list[OwnedTitle],
             EquippedOptimizationState,
-            MinimumFinalStatConditionState,
             list[OwnedTalisman],
         ]:
             """현재 최적화 입력 상태 전체 복원"""
@@ -1953,12 +1868,6 @@ class ResultsPage(QFrame):
                 self.title_inputs.build_state()
             )
 
-            minimum_final_stats_valid: bool
-            minimum_final_stats: MinimumFinalStatConditionState
-            minimum_final_stats_valid, minimum_final_stats = (
-                self._read_minimum_final_stat_state()
-            )
-
             talisman_valid: bool
             owned_talismans: list[OwnedTalisman]
             equipped_talisman_ids: list[str]
@@ -1971,11 +1880,7 @@ class ResultsPage(QFrame):
                 equipped_talisman_ids=equipped_talisman_ids,
             )
             is_valid: bool = (
-                distribution_valid
-                and danjeon_valid
-                and title_valid
-                and minimum_final_stats_valid
-                and talisman_valid
+                distribution_valid and danjeon_valid and title_valid and talisman_valid
             )
             return (
                 is_valid,
@@ -1983,7 +1888,6 @@ class ResultsPage(QFrame):
                 danjeon_state,
                 owned_titles,
                 equipped_state,
-                minimum_final_stats,
                 owned_talismans,
             )
 
@@ -2103,7 +2007,6 @@ class ResultsPage(QFrame):
             danjeon_state: DanjeonState,
             owned_titles: list[OwnedTitle],
             equipped_state: EquippedOptimizationState,
-            minimum_final_stats: MinimumFinalStatConditionState,
             owned_talismans: list[OwnedTalisman],
             persist: bool = True,
         ) -> None:
@@ -2114,7 +2017,6 @@ class ResultsPage(QFrame):
             calculator_input.danjeon = danjeon_state
             calculator_input.owned_titles = owned_titles
             calculator_input.equipped = equipped_state
-            calculator_input.minimum_final_stats = minimum_final_stats
             calculator_input.owned_talismans = owned_talismans
             if persist:
                 save_data()
@@ -2132,7 +2034,6 @@ class ResultsPage(QFrame):
             danjeon_state: DanjeonState
             owned_titles: list[OwnedTitle]
             equipped_state: EquippedOptimizationState
-            minimum_final_stats: MinimumFinalStatConditionState
             owned_talismans: list[OwnedTalisman]
             (
                 optimization_valid,
@@ -2140,7 +2041,6 @@ class ResultsPage(QFrame):
                 danjeon_state,
                 owned_titles,
                 equipped_state,
-                minimum_final_stats,
                 owned_talismans,
             ) = self._read_optimization_state()
             if not optimization_valid:
@@ -2151,7 +2051,6 @@ class ResultsPage(QFrame):
                 danjeon_state=danjeon_state,
                 owned_titles=owned_titles,
                 equipped_state=equipped_state,
-                minimum_final_stats=minimum_final_stats,
                 owned_talismans=owned_talismans,
                 persist=True,
             )

@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
 
 from app.scripts.registry.resource_registry import convert_resource_path
 
@@ -332,47 +331,6 @@ class EquippedOptimizationState:
 
 
 @dataclass(slots=True)
-class MinimumFinalStatConditionState:
-    """최적화 결과 최소 최종 스탯 조건"""
-
-    values: dict[str, float] = field(default_factory=dict)
-
-    @classmethod
-    def create_default(cls) -> "MinimumFinalStatConditionState":
-        """기본 최소 최종 스탯 조건 생성"""
-
-        # 최소 조건 미사용 기본값 맵 구성
-        values: dict[str, float] = {
-            stat_key.value: 0.0 for stat_key in OPTIMIZATION_MINIMUM_MAIN_STAT_ORDER
-        }
-        return cls(values=values)
-
-    @classmethod
-    def from_dict(
-        cls,
-        data: dict[str, float | int],
-    ) -> "MinimumFinalStatConditionState":
-        """저장 데이터로부터 최소 최종 스탯 조건 복원"""
-
-        # 현재 저장 스키마 기준 최소 조건 키를 모두 직접 복원
-        values: dict[str, float] = {
-            stat_key.value: float(data[stat_key.value])
-            for stat_key in OPTIMIZATION_MINIMUM_MAIN_STAT_ORDER
-        }
-        return cls(values=values)
-
-    def to_dict(self) -> dict[str, float]:
-        """최소 최종 스탯 조건 직렬화"""
-
-        # 저장 키 순서를 유지한 최소 조건 맵 구성
-        data: dict[str, float] = {
-            stat_key.value: float(self.values[stat_key.value])
-            for stat_key in OPTIMIZATION_MINIMUM_MAIN_STAT_ORDER
-        }
-        return data
-
-
-@dataclass(slots=True)
 class CalculatorPresetInput:
     """계산기 입력 데이터 묶음"""
 
@@ -392,9 +350,6 @@ class CalculatorPresetInput:
     equipped: EquippedOptimizationState = field(
         default_factory=EquippedOptimizationState
     )
-    minimum_final_stats: MinimumFinalStatConditionState = field(
-        default_factory=MinimumFinalStatConditionState.create_default
-    )
     custom_stat_changes: dict[str, float] = field(default_factory=dict)
 
     @classmethod
@@ -408,12 +363,8 @@ class CalculatorPresetInput:
         custom_stat_changes: dict[str, float] = {
             stat_key.value: 0.0 for stat_key in OVERALL_STAT_ORDER
         }
-        minimum_final_stats: MinimumFinalStatConditionState = (
-            MinimumFinalStatConditionState.create_default()
-        )
         return cls(
             overall_stats=overall_stats,
-            minimum_final_stats=minimum_final_stats,
             custom_stat_changes=custom_stat_changes,
         )
 
@@ -422,7 +373,7 @@ class CalculatorPresetInput:
         """저장 데이터로부터 계산기 입력 상태 복원"""
 
         # 현재 저장 스키마 기준 전체 스탯 키를 모두 직접 복원
-        raw_stats: Any = data["overall_stats"]
+        raw_stats: object = data["overall_stats"]
         if not isinstance(raw_stats, dict):
             raise TypeError("overall_stats must be a dict")
 
@@ -430,7 +381,7 @@ class CalculatorPresetInput:
             stat_key.value: float(raw_stats[stat_key.value])
             for stat_key in OVERALL_STAT_ORDER
         }
-        custom_stat_changes_raw: Any = data["custom_stat_changes"]
+        custom_stat_changes_raw: object = data["custom_stat_changes"]
         if not isinstance(custom_stat_changes_raw, dict):
             raise TypeError("custom_stat_changes must be a dict")
 
@@ -442,19 +393,19 @@ class CalculatorPresetInput:
         # 경지/분배/보유 목록 구조 직접 복원
         realm_tier: RealmTier = RealmTier(str(data["realm_tier"]))
         selected_metric: PowerMetric = PowerMetric(str(data["selected_metric"]))
-        distribution_data: Any = data["distribution"]
+        distribution_data: object = data["distribution"]
         if not isinstance(distribution_data, dict):
             raise TypeError("distribution must be a dict")
 
         distribution: DistributionState = DistributionState.from_dict(distribution_data)
 
-        danjeon_data: Any = data["danjeon"]
+        danjeon_data: object = data["danjeon"]
         if not isinstance(danjeon_data, dict):
             raise TypeError("danjeon must be a dict")
 
         danjeon: DanjeonState = DanjeonState.from_dict(danjeon_data)
 
-        owned_titles_raw: Any = data["owned_titles"]
+        owned_titles_raw: object = data["owned_titles"]
         if not isinstance(owned_titles_raw, list):
             raise TypeError("owned_titles must be a list")
 
@@ -465,7 +416,7 @@ class CalculatorPresetInput:
 
             owned_titles.append(OwnedTitle.from_dict(item))
 
-        owned_talismans_raw: Any = data["owned_talismans"]
+        owned_talismans_raw: object = data["owned_talismans"]
         if not isinstance(owned_talismans_raw, list):
             raise TypeError("owned_talismans must be a list")
 
@@ -476,20 +427,12 @@ class CalculatorPresetInput:
 
             owned_talismans.append(OwnedTalisman.from_dict(item))
 
-        equipped_data: Any = data["equipped"]
+        equipped_data: object = data["equipped"]
         if not isinstance(equipped_data, dict):
             raise TypeError("equipped must be a dict")
 
         equipped: EquippedOptimizationState = EquippedOptimizationState.from_dict(
             equipped_data
-        )
-        minimum_final_stats_data: Any = data["minimum_final_stats"]
-        if not isinstance(minimum_final_stats_data, dict):
-            raise TypeError("minimum_final_stats must be a dict")
-
-        # 최소 최종 스탯 조건 저장 구조 직접 복원
-        minimum_final_stats: MinimumFinalStatConditionState = (
-            MinimumFinalStatConditionState.from_dict(minimum_final_stats_data)
         )
 
         level: int = int(data["level"])  # type: ignore
@@ -503,7 +446,6 @@ class CalculatorPresetInput:
             owned_titles=owned_titles,
             owned_talismans=owned_talismans,
             equipped=equipped,
-            minimum_final_stats=minimum_final_stats,
             custom_stat_changes=custom_stat_changes,
         )
 
@@ -524,7 +466,6 @@ class CalculatorPresetInput:
                 talisman.to_dict() for talisman in self.owned_talismans
             ],
             "equipped": self.equipped.to_dict(),
-            "minimum_final_stats": self.minimum_final_stats.to_dict(),
             "custom_stat_changes": {
                 key: float(value) for key, value in self.custom_stat_changes.items()
             },
@@ -555,39 +496,6 @@ OVERALL_STAT_ORDER: tuple[StatKey, ...] = tuple(
     for row in OVERALL_STAT_GRID_ROWS
     for stat_key in row
     if stat_key is not None
-)
-
-
-# 최적화 최소 조건 입력 대상 메인 스탯 순서 고정
-OPTIMIZATION_MINIMUM_MAIN_STAT_ORDER: tuple[StatKey, ...] = (
-    StatKey.ATTACK,
-    StatKey.HP,
-    StatKey.SKILL_DAMAGE_PERCENT,
-    StatKey.FINAL_ATTACK_PERCENT,
-    StatKey.CRIT_RATE_PERCENT,
-    StatKey.CRIT_DAMAGE_PERCENT,
-    StatKey.EXP_PERCENT,
-    StatKey.BOSS_ATTACK_PERCENT,
-    StatKey.DROP_RATE_PERCENT,
-    StatKey.DODGE_PERCENT,
-    StatKey.POTION_HEAL_PERCENT,
-    StatKey.RESIST_PERCENT,
-    StatKey.SKILL_SPEED_PERCENT,
-)
-
-
-# 최적화 최소 조건 2열 UI 배치 순서 고정
-OPTIMIZATION_MINIMUM_MAIN_STAT_GRID_ROWS: tuple[
-    tuple[StatKey | None, StatKey | None],
-    ...,
-] = (
-    (StatKey.ATTACK, StatKey.HP),
-    (StatKey.SKILL_DAMAGE_PERCENT, StatKey.FINAL_ATTACK_PERCENT),
-    (StatKey.CRIT_RATE_PERCENT, StatKey.CRIT_DAMAGE_PERCENT),
-    (StatKey.EXP_PERCENT, StatKey.BOSS_ATTACK_PERCENT),
-    (StatKey.DROP_RATE_PERCENT, StatKey.DODGE_PERCENT),
-    (StatKey.POTION_HEAL_PERCENT, StatKey.RESIST_PERCENT),
-    (StatKey.SKILL_SPEED_PERCENT, None),
 )
 
 
