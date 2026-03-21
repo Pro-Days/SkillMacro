@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, TypeVar
 
 from app.scripts.calculator_models import (
     BUILTIN_TALISMAN_TEMPLATES,
+    OPTIMIZATION_MINIMUM_MAIN_STAT_ORDER,
     REALM_TIER_SPECS,
     TALISMAN_GRADE_OFFSETS,
     CalculatorPresetInput,
@@ -3523,7 +3524,29 @@ def _search_best_optimization_result(
                     )
                 )
 
-                # 후보 최종 스탯 및 스킬속도 기준 타임라인 캐시 키 정규화
+                # 최종 스탯 최소 조건 미달 후보 즉시 제외
+                meets_minimum_final_stats: bool = True
+                stat_key: StatKey
+                for stat_key in OPTIMIZATION_MINIMUM_MAIN_STAT_ORDER:
+                    minimum_value: float = float(
+                        search_context.calculator_input.minimum_final_stats.values[
+                            stat_key.value
+                        ]
+                    )
+                    if minimum_value <= 0.0:
+                        continue
+
+                    resolved_value: float = float(
+                        optimized_resolved_stats.values[stat_key]
+                    )
+                    if resolved_value < minimum_value:
+                        meets_minimum_final_stats = False
+                        break
+
+                if not meets_minimum_final_stats:
+                    continue
+
+                # 최소 조건을 통과한 후보만 후속 평가 진행
                 candidate_skill_speed: float = float(
                     optimized_resolved_stats.values[StatKey.SKILL_SPEED_PERCENT]
                 )
