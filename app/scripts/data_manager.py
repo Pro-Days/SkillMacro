@@ -13,7 +13,7 @@ data_version = 1
 local_appdata: str = os.environ.get("LOCALAPPDATA", default="")
 
 data_path: str = os.path.join(local_appdata, "ProDays", "SkillMacro")
-file_dir: str = os.path.join(data_path, "macros.json")
+file_dir: str = os.path.join(data_path, "macros_calculator_temp.json")
 
 
 def load_data(num: int = -1) -> None:
