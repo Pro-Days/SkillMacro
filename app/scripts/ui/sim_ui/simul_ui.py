@@ -1070,6 +1070,9 @@ class ResultsPage(QFrame):
                 connected_function: Callable[[], None],
             ) -> None:
                 super().__init__(parent)
+                self.setStyleSheet(
+                    "QFrame { background-color: transparent; border: 0px solid; }"
+                )
 
                 # 현재 스탯 분배 입력 행 구성
                 self.inputs: dict[str, CustomLineEdit] = {}
@@ -1110,6 +1113,9 @@ class ResultsPage(QFrame):
                 connected_function: Callable[[], None],
             ) -> None:
                 super().__init__(parent)
+                self.setStyleSheet(
+                    "QFrame { background-color: transparent; border: 0px solid; }"
+                )
 
                 # 현재 단전 입력 행 구성
                 self.inputs: dict[str, CustomLineEdit] = {}
@@ -1155,6 +1161,9 @@ class ResultsPage(QFrame):
                     value: float = 0.0,
                 ) -> None:
                     super().__init__(parent)
+                    self.setStyleSheet(
+                        "QFrame { background-color: transparent; border: 0px solid; }"
+                    )
 
                     # 스탯 선택/수치/삭제 버튼 구성
                     self._connected_function: Callable[[], None] = connected_function
@@ -1266,6 +1275,7 @@ class ResultsPage(QFrame):
                     root_layout.addWidget(self.name_input_widget)
 
                     self.stats_container: QWidget = QWidget(self)
+                    self.stats_container.setStyleSheet("background-color: transparent;")
                     self.stats_layout: QVBoxLayout = QVBoxLayout(self.stats_container)
                     self.stats_layout.setContentsMargins(0, 0, 0, 0)
                     self.stats_layout.setSpacing(6)
@@ -1358,6 +1368,9 @@ class ResultsPage(QFrame):
                 connected_function: Callable[[], None],
             ) -> None:
                 super().__init__(parent)
+                self.setStyleSheet(
+                    "QFrame { background-color: transparent; border: 0px solid; }"
+                )
 
                 # 보유 칭호 목록 및 현재 장착 선택 UI 구성
                 self._connected_function: Callable[[], None] = connected_function
@@ -1383,6 +1396,7 @@ class ResultsPage(QFrame):
                 root_layout.addLayout(equipped_layout)
 
                 self.cards_container: QWidget = QWidget(self)
+                self.cards_container.setStyleSheet("background-color: transparent;")
                 self.cards_layout: QVBoxLayout = QVBoxLayout(self.cards_container)
                 self.cards_layout.setContentsMargins(0, 0, 0, 0)
                 self.cards_layout.setSpacing(8)
@@ -1499,6 +1513,9 @@ class ResultsPage(QFrame):
                     data: OwnedTalisman | None = None,
                 ) -> None:
                     super().__init__(parent)
+                    self.setStyleSheet(
+                        "QFrame { background-color: transparent; border: 0px solid; }"
+                    )
 
                     # 보유 부적 한 줄 편집 UI 구성
                     self._connected_function: Callable[[], None] = connected_function
@@ -1573,6 +1590,9 @@ class ResultsPage(QFrame):
                 connected_function: Callable[[], None],
             ) -> None:
                 super().__init__(parent)
+                self.setStyleSheet(
+                    "QFrame { background-color: transparent; border: 0px solid; }"
+                )
 
                 # 보유 부적 목록 및 현재 장착 선택 UI 구성
                 self._connected_function: Callable[[], None] = connected_function
@@ -1597,6 +1617,7 @@ class ResultsPage(QFrame):
                     root_layout.addLayout(equipped_layout)
 
                 self.rows_container: QWidget = QWidget(self)
+                self.rows_container.setStyleSheet("background-color: transparent;")
                 self.rows_layout: QVBoxLayout = QVBoxLayout(self.rows_container)
                 self.rows_layout.setContentsMargins(0, 0, 0, 0)
                 self.rows_layout.setSpacing(6)
