@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QFont, QPixmap
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPixmap
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -129,12 +129,16 @@ class CustomComboBox(QComboBox):
     ) -> None:
         super().__init__(parent)
 
-        bg_color = "#f0f0f0"
-        border_color = "#D9D9D9"
+        bg_color: str = "#f0f0f0"
+        border_color: str = "#D9D9D9"
+        arrow_path: str = convert_resource_path(
+            "resources\\image\\down_arrow.png"
+        ).replace("\\", "/")
 
         style_sheet: str = f"""
         QComboBox {{
             background-color: {bg_color};
+            color: #111111;
             border: 1px solid {border_color};
             border-radius: 4px;
         }}
@@ -145,12 +149,16 @@ class CustomComboBox(QComboBox):
             border-left-style: solid;
         }}
         QComboBox::down-arrow {{
-            image: url({convert_resource_path("resources\\image\\down_arrow.png").replace("\\", "/")});
+            image: url("{arrow_path}");
             width: 16px;
             height: 16px;
         }}
         QComboBox QAbstractItemView {{
+            background-color: {bg_color};
+            color: #111111;
             border: 1px solid {border_color};
+            selection-background-color: #D9D9D9;
+            selection-color: #111111;
         }}"""
 
         self.setFont(CustomFont(point_size))
@@ -256,6 +264,19 @@ class KVComboInput(QFrame):
         # 콤보박스
         self.combobox = CustomComboBox(self, items, connected_function)
 
+        # 가장 긴 항목 문자열 기준 최소 폭 계산
+        content_metrics: QFontMetrics = QFontMetrics(self.combobox.font())
+        longest_item_width: int = 0
+        for item_text in items:
+            item_width: int = content_metrics.horizontalAdvance(item_text)
+            if item_width > longest_item_width:
+                longest_item_width = item_width
+
+        # 드롭다운 버튼과 좌우 여백까지 포함한 콤보박스 최소 폭 반영
+        minimum_combobox_width: int = longest_item_width + 44
+        self.combobox.setMinimumWidth(minimum_combobox_width)
+        self.setMinimumWidth(minimum_combobox_width)
+
         layout.addWidget(self.label)
         layout.addWidget(self.combobox)
         self.setLayout(layout)
@@ -353,7 +374,7 @@ class SectionCard(QFrame):
         accent_bar.setFixedSize(4, 16)
         accent_bar.setStyleSheet(
             f"QFrame {{ background-color: {self._ACCENT_COLOR};"
-            "border: 0px; border-radius: 2px; }}"
+            "border: 0px; border-radius: 2px; }"
         )
 
         # 제목 레이블
