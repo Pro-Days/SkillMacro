@@ -456,7 +456,9 @@ def build_task_list(show_info: bool = False) -> float:
         for skill_ref in placed_refs
         if skill_ref not in app_state.macro.prepared_skills
     ]
-    return max(0.0, min(remaining_times) + 0.1) if remaining_times else 0.0
+
+    # 약간의 여유 시간을 추가하여 실제 준비 시점과의 오차 완화 (추후 설정 가능하게 개선 예정)
+    return max(0.0, min(remaining_times) + 0.2) if remaining_times else 0.0
 
 
 def build_preview_task_list() -> tuple[EquippedSkillRef, ...]:

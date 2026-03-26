@@ -64,7 +64,7 @@ class MacroSpecs:
         label="딜레이", default=300, min=50, max=1000
     )
     COOLTIME_REDUCTION: ClassVar[SettingSpec] = SettingSpec(
-        label="스킬속도", default=0, min=0, max=50
+        label="스킬속도(%)", default=0, min=0, max=90
     )
 
     DEFAULT_START_KEY: ClassVar[KeySpec] = KeyRegistry.get("f9")

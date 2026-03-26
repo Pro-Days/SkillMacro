@@ -315,10 +315,10 @@ class GeneralSettings(QFrame):
 
         # 쿨타임 감소
         self.cooltime_setting = self.SettingItem(
-            title="쿨타임 감소",
+            title=config.specs.COOLTIME_REDUCTION.label,
             tooltip=(
-                "캐릭터의 쿨타임 감소 스탯입니다.\n"
-                "입력 가능한 쿨타임 감소 스탯의 범위는 0~50입니다."
+                f"캐릭터의 {config.specs.COOLTIME_REDUCTION.label} 스탯입니다.\n"
+                f"입력 가능한 범위는 {config.specs.COOLTIME_REDUCTION.min}~{config.specs.COOLTIME_REDUCTION.max}입니다."
             ),
             btn0_text=f"기본: {config.specs.COOLTIME_REDUCTION.default}",
             btn0_enabled=True,
@@ -403,7 +403,7 @@ class GeneralSettings(QFrame):
         self.delay_setting.set_buttons_enabled(not use_custom_delay, use_custom_delay)
 
         # 쿨타임 감소
-        custom_cooltime_reduction: int = preset.settings.custom_cooltime_reduction
+        custom_cooltime_reduction: float = preset.settings.custom_cooltime_reduction
         use_custom_cooltime_reduction: bool = (
             preset.settings.use_custom_cooltime_reduction
         )
@@ -538,7 +538,7 @@ class GeneralSettings(QFrame):
     def on_user_cooltime_clicked(self) -> None:
         """유저 쿨타임 감소 클릭시 실행"""
 
-        def apply(cooltime_value: int) -> None:
+        def apply(cooltime_value: float) -> None:
             """적용 함수"""
 
             if (
@@ -547,7 +547,7 @@ class GeneralSettings(QFrame):
             ):
                 return
 
-            app_state.macro.current_preset.settings.custom_cooltime_reduction = int(
+            app_state.macro.current_preset.settings.custom_cooltime_reduction = (
                 cooltime_value
             )
             self.update_from_preset(app_state.macro.current_preset)

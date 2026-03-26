@@ -23,6 +23,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QCursor, QGuiApplication, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
+    QComboBox,
     QDialog,
     QFrame,
     QGridLayout,
@@ -40,10 +41,14 @@ from app.scripts.calculator_models import get_stat_label
 from app.scripts.config import config
 from app.scripts.custom_classes import CustomFont, CustomLineEdit, CustomShadowEffect
 from app.scripts.custom_skill_models import (
+    BuffEffectPayload,
     CustomScrollDefinition,
     CustomSkillDefinition,
     CustomSkillImport,
     CustomSkillImportError,
+    DamageEffectPayload,
+    HealEffectPayload,
+    SkillEffectType,
 )
 from app.scripts.data_manager import custom_skills_file_dir, save_custom_skills
 from app.scripts.macro_models import SkillUsageSetting
@@ -943,7 +948,7 @@ class NoticeController:
 
             case NoticeKind.COOLTIME_INPUT_ERROR:
                 return NoticeData(
-                    f"쿨타임은 {config.specs.COOLTIME_REDUCTION.min}~{config.specs.COOLTIME_REDUCTION.max}까지의 수를 입력해야 합니다."
+                    f"{config.specs.COOLTIME_REDUCTION.label}은(는) {config.specs.COOLTIME_REDUCTION.min}~{config.specs.COOLTIME_REDUCTION.max}까지의 수를 입력해야 합니다."
                 )
 
             case NoticeKind.REQUIRE_UPDATE:
@@ -1387,7 +1392,7 @@ class PopupManager:
     def make_cooltime_popup(
         self,
         anchor: QWidget,
-        on_selected: Callable[[int], None],
+        on_selected: Callable[[float], None],
     ) -> None:
         """쿨타임 감소 입력 팝업"""
 
@@ -1398,7 +1403,7 @@ class PopupManager:
             self.close_popup()
 
             try:
-                value = int(raw)
+                value = round(float(raw), 2)
 
             except Exception:
                 self.show_notice(NoticeKind.COOLTIME_INPUT_ERROR)
@@ -2068,7 +2073,7 @@ class CustomSkillAddDialog(QDialog):
 
         is_edit: bool = existing_scroll is not None
         self.setWindowTitle("스크롤 수정" if is_edit else "스크롤 추가")
-        self.setFixedWidth(380)
+        self.setFixedSize(400, 520)
 
         # 기존 값 준비
         scroll_name_init: str = existing_scroll.name if existing_scroll else ""
@@ -2080,8 +2085,24 @@ class CustomSkillAddDialog(QDialog):
         skill2_name_init: str = skill2_def.name if skill2_def else ""
         skill1_ct_init: str = str(skill1_def.cooltime) if skill1_def else ""
         skill2_ct_init: str = str(skill2_def.cooltime) if skill2_def else ""
+        skill1_levels_init = skill1_def.levels if skill1_def else {}
+        skill2_levels_init = skill2_def.levels if skill2_def else {}
 
-        root: QVBoxLayout = QVBoxLayout(self)
+        # ── 전체 컨텐츠를 QScrollArea로 감쌈 ──
+        outer: QVBoxLayout = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        main_scroll: QScrollArea = QScrollArea(self)
+        main_scroll.setWidgetResizable(True)
+        main_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        main_scroll.setStyleSheet("QScrollArea { border: none; }")
+        outer.addWidget(main_scroll)
+
+        content_widget: QWidget = QWidget()
+        main_scroll.setWidget(content_widget)
+
+        root: QVBoxLayout = QVBoxLayout(content_widget)
         root.setContentsMargins(20, 20, 20, 20)
         root.setSpacing(14)
 
@@ -2093,32 +2114,43 @@ class CustomSkillAddDialog(QDialog):
         root.addWidget(scroll_card)
 
         # ── 스킬 1 카드 ──
-        skill1_card, (self._skill1_name_input, self._skill1_ct_input) = self._make_card(
-            "스킬 1",
-            [("이름", skill1_name_init), ("쿨타임 (초)", skill1_ct_init)],
+        (
+            skill1_card,
+            self._skill1_name_input,
+            self._skill1_ct_input,
+            self._skill1_level_inputs,
+        ) = self._make_skill_card(
+            "스킬 1", skill1_name_init, skill1_ct_init, 1, skill1_levels_init
         )
         root.addWidget(skill1_card)
 
-        # ── 스킬 2 카드 ──
-        skill2_card, (self._skill2_name_input, self._skill2_ct_input) = self._make_card(
-            "스킬 2",
-            [("이름", skill2_name_init), ("쿨타임 (초)", skill2_ct_init)],
+        # ── 스킬 2 카드 (7강 미만은 데미지 0 고정) ──
+        (
+            skill2_card,
+            self._skill2_name_input,
+            self._skill2_ct_input,
+            self._skill2_level_inputs,
+        ) = self._make_skill_card(
+            "스킬 2", skill2_name_init, skill2_ct_init, 7, skill2_levels_init
         )
         root.addWidget(skill2_card)
+        root.addStretch()
 
-        # ── 에러 라벨 ──
+        # ── 에러 라벨 (스크롤 영역 밖, 하단 고정) ──
         self._error_label: QLabel = QLabel(self)
         self._error_label.setFont(CustomFont(10))
         self._error_label.setStyleSheet(
             "QLabel { color: #E53935; border: none; background: transparent; }"
         )
         self._error_label.setWordWrap(True)
+        self._error_label.setContentsMargins(20, 0, 20, 0)
         self._error_label.hide()
-        root.addWidget(self._error_label)
+        outer.addWidget(self._error_label)
 
-        # ── 버튼 행 ──
+        # ── 버튼 행 (스크롤 영역 밖, 하단 고정) ──
         btn_row: QHBoxLayout = QHBoxLayout()
         btn_row.setSpacing(8)
+        btn_row.setContentsMargins(20, 8, 20, 16)
 
         cancel_btn: QPushButton = QPushButton("취소", self)
         cancel_btn.setFont(CustomFont(11))
@@ -2131,6 +2163,7 @@ class CustomSkillAddDialog(QDialog):
                 border: 1px solid #D0D5DD;
                 border-radius: 6px;
                 color: #555555;
+                text-align: center;
             }
             QPushButton:hover { background-color: #E4E4E8; }
         """
@@ -2148,6 +2181,7 @@ class CustomSkillAddDialog(QDialog):
                 border: none;
                 border-radius: 6px;
                 color: white;
+                text-align: center;
             }
             QPushButton:hover { background-color: #3A7BC8; }
         """
@@ -2156,7 +2190,7 @@ class CustomSkillAddDialog(QDialog):
 
         btn_row.addWidget(cancel_btn)
         btn_row.addWidget(confirm_btn)
-        root.addLayout(btn_row)
+        outer.addLayout(btn_row)
 
     def _make_card(
         self, title: str, fields: list[tuple[str, str]]
@@ -2199,6 +2233,219 @@ class CustomSkillAddDialog(QDialog):
             inputs.append(inp)
 
         return card, inputs
+
+    def _make_skill_card(
+        self,
+        title: str,
+        name_init: str,
+        ct_init: str,
+        level_start: int,
+        existing_levels: dict | None = None,
+    ) -> tuple[QFrame, CustomLineEdit, CustomLineEdit, dict[int, tuple]]:
+        """스킬 카드 + 레벨별 효과 입력 (기본 숨김) 생성."""
+        card: QFrame = QFrame(self)
+        card.setObjectName("card")
+        card.setStyleSheet(self._CARD_STYLE)
+
+        layout: QVBoxLayout = QVBoxLayout(card)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(10)
+
+        title_lbl: QLabel = QLabel(title, card)
+        title_lbl.setFont(CustomFont(11))
+        title_lbl.setStyleSheet(self._SECTION_TITLE_STYLE)
+        layout.addWidget(title_lbl)
+
+        def _make_row(label_text: str, init_value: str) -> CustomLineEdit:
+            row: QHBoxLayout = QHBoxLayout()
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(10)
+            lbl: QLabel = QLabel(label_text, card)
+            lbl.setFont(CustomFont(10))
+            lbl.setFixedWidth(74)
+            lbl.setStyleSheet(self._LABEL_STYLE)
+            inp: CustomLineEdit = CustomLineEdit(
+                card, text=init_value, point_size=11, border_radius=6
+            )
+            inp.setFixedHeight(32)
+            inp.setStyleSheet(self._INPUT_STYLE)
+            inp.set_valid(True)
+            row.addWidget(lbl)
+            row.addWidget(inp)
+            layout.addLayout(row)
+            return inp
+
+        name_input: CustomLineEdit = _make_row("이름", name_init)
+        ct_input: CustomLineEdit = _make_row("쿨타임 (초)", ct_init)
+
+        # ── 레벨별 효과 토글 버튼 ──
+        toggle_btn: QPushButton = QPushButton("레벨별 효과 설정 ▼", card)
+        toggle_btn.setFont(CustomFont(10))
+        toggle_btn.setFixedHeight(26)
+        toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        toggle_btn.setStyleSheet(
+            """
+            QPushButton {
+                background-color: transparent;
+                border: 1px solid #D0D5DD;
+                border-radius: 4px;
+                color: #666666;
+                text-align: left;
+                padding-left: 6px;
+            }
+            QPushButton:hover { background-color: #EFEFEF; }
+        """
+        )
+        layout.addWidget(toggle_btn)
+
+        # ── 레벨 입력 영역 (기본 숨김) ──
+        level_widget: QWidget = QWidget(card)
+        level_widget.setStyleSheet("background: transparent;")
+        level_widget.setVisible(False)
+        level_layout: QVBoxLayout = QVBoxLayout(level_widget)
+        level_layout.setContentsMargins(0, 2, 0, 2)
+        level_layout.setSpacing(3)
+
+        _COMBO_STYLE = """
+            QComboBox {
+                background-color: #FFFFFF;
+                border: 1px solid #D0D5DD;
+                border-radius: 4px;
+                font-size: 9pt;
+                padding-left: 4px;
+            }
+        """
+
+        # level_inputs: {level: (combo, amount_input, stat_input, duration_input)}
+        level_inputs: dict[int, tuple] = {}
+
+        for lvl in range(level_start, self.max_skill_level + 1):
+            row: QHBoxLayout = QHBoxLayout()
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(5)
+
+            lv_lbl: QLabel = QLabel(f"Lv.{lvl}", level_widget)
+            lv_lbl.setFont(CustomFont(9))
+            lv_lbl.setFixedWidth(30)
+            lv_lbl.setStyleSheet(self._LABEL_STYLE)
+
+            type_combo: QComboBox = QComboBox(level_widget)
+            type_combo.addItems(["데미지", "힐", "버프"])
+            type_combo.setFont(CustomFont(9))
+            type_combo.setFixedHeight(24)
+            type_combo.setFixedWidth(58)
+            type_combo.setStyleSheet(_COMBO_STYLE)
+
+            amount_inp: CustomLineEdit = CustomLineEdit(
+                level_widget, text="0", point_size=9, border_radius=4
+            )
+            amount_inp.setFixedHeight(24)
+            amount_inp.setFixedWidth(56)
+            amount_inp.setStyleSheet(self._INPUT_STYLE)
+            amount_inp.set_valid(True)
+
+            stat_inp: CustomLineEdit = CustomLineEdit(
+                level_widget, text="", point_size=9, border_radius=4
+            )
+            stat_inp.setPlaceholderText("스탯명")
+            stat_inp.setFixedHeight(24)
+            stat_inp.setFixedWidth(50)
+            stat_inp.setStyleSheet(self._INPUT_STYLE)
+            stat_inp.set_valid(True)
+            stat_inp.setVisible(False)
+
+            duration_inp: CustomLineEdit = CustomLineEdit(
+                level_widget, text="0", point_size=9, border_radius=4
+            )
+            duration_inp.setPlaceholderText("지속(초)")
+            duration_inp.setFixedHeight(24)
+            duration_inp.setFixedWidth(52)
+            duration_inp.setStyleSheet(self._INPUT_STYLE)
+            duration_inp.set_valid(True)
+            duration_inp.setVisible(False)
+
+            # 기존 레벨 데이터 로드
+            if existing_levels and lvl in existing_levels:
+                effects = existing_levels[lvl]
+                if effects:
+                    effect = effects[0]
+                    if effect.type == SkillEffectType.HEAL:
+                        type_combo.setCurrentIndex(1)
+                        amount_inp.setText(str(effect.heal))  # type: ignore[union-attr]
+                    elif effect.type == SkillEffectType.BUFF:
+                        type_combo.setCurrentIndex(2)
+                        amount_inp.setText(str(effect.value))  # type: ignore[union-attr]
+                        stat_inp.setText(effect.stat)  # type: ignore[union-attr]
+                        duration_inp.setText(str(effect.duration))  # type: ignore[union-attr]
+                        stat_inp.setVisible(True)
+                        duration_inp.setVisible(True)
+                    else:
+                        amount_inp.setText(str(effect.damage))  # type: ignore[union-attr]
+
+            def _on_type_change(
+                idx: int,
+                si: CustomLineEdit = stat_inp,
+                di: CustomLineEdit = duration_inp,
+            ) -> None:
+                is_buff = idx == 2
+                si.setVisible(is_buff)
+                di.setVisible(is_buff)
+
+            type_combo.currentIndexChanged.connect(_on_type_change)
+
+            row.addWidget(lv_lbl)
+            row.addWidget(type_combo)
+            row.addWidget(amount_inp)
+            row.addWidget(stat_inp)
+            row.addWidget(duration_inp)
+            row.addStretch()
+            level_layout.addLayout(row)
+            level_inputs[lvl] = (type_combo, amount_inp, stat_inp, duration_inp)
+
+        layout.addWidget(level_widget)
+
+        def _toggle_levels() -> None:
+            visible: bool = not level_widget.isVisible()
+            level_widget.setVisible(visible)
+            toggle_btn.setText(
+                "레벨별 효과 설정 ▲" if visible else "레벨별 효과 설정 ▼"
+            )
+
+        toggle_btn.clicked.connect(_toggle_levels)
+
+        return card, name_input, ct_input, level_inputs
+
+    def _build_levels(self, level_inputs: dict[int, tuple], level_start: int) -> dict:
+        """레벨 입력 위젯에서 levels dict 생성. level_start 미만은 데미지 0 고정."""
+        levels: dict = {}
+        for lvl in range(1, level_start):
+            levels[str(lvl)] = [{"time": 0.0, "type": "damage", "damage": 0.0}]
+        for lvl, (combo, amount_inp, stat_inp, duration_inp) in level_inputs.items():
+            type_idx: int = combo.currentIndex()
+            try:
+                amount: float = float(amount_inp.text().strip() or "0")
+            except ValueError:
+                amount = 0.0
+            if type_idx == 1:  # 힐
+                levels[str(lvl)] = [{"time": 0.0, "type": "heal", "heal": amount}]
+            elif type_idx == 2:  # 버프
+                stat: str = stat_inp.text().strip()
+                try:
+                    duration: float = float(duration_inp.text().strip() or "0")
+                except ValueError:
+                    duration = 0.0
+                levels[str(lvl)] = [
+                    {
+                        "time": 0.0,
+                        "type": "buff",
+                        "stat": stat,
+                        "value": amount,
+                        "duration": duration,
+                    }
+                ]
+            else:  # 데미지
+                levels[str(lvl)] = [{"time": 0.0, "type": "damage", "damage": amount}]
+        return levels
 
     def _on_confirm(self) -> None:
         scroll_name: str = self._scroll_name_input.text().strip()
@@ -2255,10 +2502,8 @@ class CustomSkillAddDialog(QDialog):
             skill1_id = f"custom:{self.server_id}:{scroll_name}:{skill1_name}"
             skill2_id = f"custom:{self.server_id}:{scroll_name}:{skill2_name}"
 
-        levels_template: dict = {
-            str(lvl): [{"time": 0.0, "type": "damage", "damage": 0.0}]
-            for lvl in range(1, self.max_skill_level + 1)
-        }
+        skill1_levels: dict = self._build_levels(self._skill1_level_inputs, 1)
+        skill2_levels: dict = self._build_levels(self._skill2_level_inputs, 7)
 
         raw: dict = {
             "skills": [skill1_id, skill2_id],
@@ -2273,12 +2518,12 @@ class CustomSkillAddDialog(QDialog):
                 skill1_id: {
                     "name": skill1_name,
                     "cooltime": skill1_ct,
-                    "levels": levels_template,
+                    "levels": skill1_levels,
                 },
                 skill2_id: {
                     "name": skill2_name,
                     "cooltime": skill2_ct,
-                    "levels": levels_template,
+                    "levels": skill2_levels,
                 },
             },
         }

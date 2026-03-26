@@ -165,7 +165,7 @@ class MacroSettings:
     use_custom_delay: bool = False
 
     # 쿨타임 감소
-    custom_cooltime_reduction: int = config.specs.COOLTIME_REDUCTION.default
+    custom_cooltime_reduction: float = config.specs.COOLTIME_REDUCTION.default
     use_custom_cooltime_reduction: bool = False
 
     # 시작키

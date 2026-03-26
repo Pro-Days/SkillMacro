@@ -45,7 +45,7 @@ class MacroState:
         return config.specs.DELAY.default
 
     @property
-    def current_cooltime_reduction(self) -> int:
+    def current_cooltime_reduction(self) -> float:
         """실제로 사용되는 쿨타임 감소 값을 반환"""
         if self.current_preset.settings.use_custom_cooltime_reduction:
             return self.current_preset.settings.custom_cooltime_reduction

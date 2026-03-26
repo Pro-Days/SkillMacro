@@ -167,7 +167,7 @@ class ResourceRegistry:
 
         # 텍스트 외곽선과 본문 렌더링
         painter.setFont(font)
-        painter.setPen(QColor(0, 0, 0, 220))
+        painter.setPen(QColor(255, 255, 255, 220))
         for offset_x in (-shadow_offset, 0, shadow_offset):
             for offset_y in (-shadow_offset, 0, shadow_offset):
                 if offset_x == 0 and offset_y == 0:
@@ -177,7 +177,7 @@ class ResourceRegistry:
                 painter.drawText(outline_rect, text_flags, display_label)
 
         # 본문 텍스트 색상 고정
-        painter.setPen(QColor(255, 255, 255))
+        painter.setPen(QColor(0, 0, 0))
         painter.drawText(text_rect, text_flags, display_label)
         painter.end()
 
