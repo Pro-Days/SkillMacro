@@ -38,7 +38,7 @@ from app.scripts.calculator_engine import (
     validate_base_state,
 )
 from app.scripts.calculator_models import (
-    OVERALL_STAT_GRID_ROWS,
+    OVERALL_STAT_ORDER,
     REALM_TIER_SPECS,
     STAT_SPECS,
     TALISMAN_SPECS,
@@ -985,6 +985,8 @@ class ResultsPage(QFrame):
             self._is_loading_state = False
 
         class OverallStatInputs(QFrame):
+            COLUMN_COUNT: int = 4
+
             def __init__(
                 self,
                 parent: QWidget,
@@ -1000,26 +1002,30 @@ class ResultsPage(QFrame):
                 self.inputs: dict[StatKey, CustomLineEdit] = {}
                 grid_layout: QGridLayout = QGridLayout(self)
 
-                for row_index, stat_row in enumerate(OVERALL_STAT_GRID_ROWS):
-                    for column_index, stat_key in enumerate(stat_row):
-                        if stat_key is None:
-                            continue
+                # 4열 기준 전체 스탯 표시 순서 평탄화
+                stat_keys: list[StatKey] = list(OVERALL_STAT_ORDER)
+                for item_index, stat_key in enumerate(stat_keys):
 
-                        # 이미지 표기와 동일한 라벨 구성
-                        stat_spec: str = STAT_SPECS[stat_key]
-                        label: str = stat_spec
+                    # 4열 그리드 좌표 계산
+                    row_index: int = item_index // self.COLUMN_COUNT
+                    column_index: int = item_index % self.COLUMN_COUNT
 
-                        item_widget: KVInput = KVInput(
-                            self,
-                            label,
-                            initial_values[stat_key],
-                            connected_function,
-                            max_width=120,
-                        )
-                        self.inputs[stat_key] = item_widget.input
-                        grid_layout.addWidget(item_widget, row_index, column_index)
+                    # 이미지 표기와 동일한 라벨 구성
+                    stat_spec: str = STAT_SPECS[stat_key]
+                    label: str = stat_spec
 
-                # 2열 배치 간격 고정
+                    # 스탯 입력 위젯 생성 및 위치 배치
+                    item_widget: KVInput = KVInput(
+                        self,
+                        label,
+                        initial_values[stat_key],
+                        connected_function,
+                        max_width=120,
+                    )
+                    self.inputs[stat_key] = item_widget.input
+                    grid_layout.addWidget(item_widget, row_index, column_index)
+
+                # 4열 배치 간격 고정
                 grid_layout.setVerticalSpacing(8)
                 grid_layout.setHorizontalSpacing(20)
                 self.setLayout(grid_layout)
