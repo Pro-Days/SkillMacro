@@ -186,6 +186,11 @@ class MainWindow(QWidget):
         # 사이드바에서 데이터 변경 시 저장은 MainUI 파이프라인(=tab_widget.dataChanged)로 위임
         self.sidebar.dataChanged.connect(self.main_ui.tab_widget.dataChanged.emit)
 
+        # 커스텀 스크롤 삭제 시 메인 UI 전체 갱신
+        self.sidebar.scrollDeleted.connect(
+            self.main_ui.tab_widget.get_current_tab().update_from_preset
+        )
+
         # 시뮬레이션 UI
         self.sim_ui: SimUI = SimUI(self, self.page2)
 

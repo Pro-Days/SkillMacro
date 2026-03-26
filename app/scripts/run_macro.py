@@ -145,8 +145,9 @@ def running_macro_thread(run_id: int) -> None:
 
     while app_state.macro.is_running and app_state.macro.run_id == run_id:
         # taskList에 사용 가능한 스킬 추가
+        wait_seconds: float = 0.0
         if not app_state.macro.task_list:
-            build_task_list(show_info=DEBUG_PRINT_INFO)
+            wait_seconds = build_task_list(show_info=DEBUG_PRINT_INFO)
 
         # 스킬 사용하고 사용 여부 리턴
         is_used_skill: bool = use_skill(run_id=app_state.macro.run_id)
@@ -159,7 +160,7 @@ def running_macro_thread(run_id: int) -> None:
             app_state.macro.is_running = False
 
         if not is_used_skill:
-            time.sleep(1 * config.macro.SLEEP_COEFFICIENT_UNIT)
+            time.sleep(wait_seconds * config.macro.SLEEP_COEFFICIENT_UNIT)
 
 
 def clicking_mouse_thread(run_id: int) -> None:
@@ -395,8 +396,8 @@ def _pop_next_regular_task(
     return first_usable_skill_ref
 
 
-def build_task_list(show_info: bool = False) -> None:
-    """task_list에 사용할 스킬 추가"""
+def build_task_list(show_info: bool = False) -> float:
+    """task_list에 사용할 스킬 추가. task_list가 비어있으면 다음 스킬 준비까지 남은 시간(초)을 반환, 아니면 0.0 반환"""
 
     placed_refs: list[EquippedSkillRef] = (
         app_state.macro.current_preset.skills.get_placed_skill_refs(
@@ -445,6 +446,17 @@ def build_task_list(show_info: bool = False) -> None:
 
     if DEBUG_PRINT_INFO and show_info:
         print_macro_info(brief=False)
+
+    if app_state.macro.task_list:
+        return 0.0
+
+    # 모든 스킬이 쿨타임 중인 경우, 가장 빨리 준비되는 스킬까지 남은 시간 반환
+    remaining_times: list[float] = [
+        cooltimes[skill_ref] - (now - app_state.macro.skill_cooltime_timers[skill_ref])
+        for skill_ref in placed_refs
+        if skill_ref not in app_state.macro.prepared_skills
+    ]
+    return max(0.0, min(remaining_times) + 0.1) if remaining_times else 0.0
 
 
 def build_preview_task_list() -> tuple[EquippedSkillRef, ...]:

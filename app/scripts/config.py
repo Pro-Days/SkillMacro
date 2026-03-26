@@ -54,16 +54,17 @@ class SettingSpec:
     min: int
     max: int
 
+
 @dataclass(frozen=True)
 class MacroSpecs:
     """모든 매크로 설정의 기준들을 모아둔 클래스"""
 
     # 기타 설정
     DELAY: ClassVar[SettingSpec] = SettingSpec(
-        label="딜레이", default=150, min=50, max=1000
+        label="딜레이", default=300, min=50, max=1000
     )
     COOLTIME_REDUCTION: ClassVar[SettingSpec] = SettingSpec(
-        label="쿨타임 감소", default=0, min=0, max=50
+        label="스킬속도", default=0, min=0, max=50
     )
 
     DEFAULT_START_KEY: ClassVar[KeySpec] = KeyRegistry.get("f9")

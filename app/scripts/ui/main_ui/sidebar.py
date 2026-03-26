@@ -73,6 +73,7 @@ class Sidebar(QFrame):
     """좌측 사이드바 클래스"""
 
     dataChanged = Signal()
+    scrollDeleted = Signal()
 
     def __init__(
         self,
@@ -121,6 +122,12 @@ class Sidebar(QFrame):
 
         # 연계스킬 목록 내용 변화(추가/삭제/갱신) 시 사이드바 높이 동기화
         self.link_skill_settings.contentResized.connect(self.adjust_stack_height)
+
+        # 스킬 사용설정 스크롤 변경 시 사이드바 높이 동기화
+        self.skill_settings.contentResized.connect(self.adjust_stack_height)
+
+        # 커스텀 스크롤 삭제 시 메인 UI 갱신 시그널 전파
+        self.skill_settings.scrollDeleted.connect(self.scrollDeleted.emit)
 
         # 네비게이션 버튼
         self.nav_button = NavigationButtons(self.change_page, self.master.change_layout)
@@ -855,6 +862,9 @@ class GeneralSettings(QFrame):
 class SkillSettings(QFrame):
     """사이드바 타입 2 - 스킬 사용설정"""
 
+    contentResized = Signal()
+    scrollDeleted = Signal()
+
     def __init__(
         self,
         popup_manager: PopupManager,
@@ -1326,6 +1336,7 @@ class SkillSettings(QFrame):
         def apply(scroll_id: str) -> None:
             self._selected_scroll_id = scroll_id
             self.update_from_preset(self._get_preset())
+            self.contentResized.emit()
 
         self.popup_manager.close_popup()
         self.popup_manager.make_scroll_select_popup(
@@ -1418,11 +1429,41 @@ class SkillSettings(QFrame):
     def _on_delete_custom_scroll(self) -> None:
         """커스텀 스크롤 삭제"""
 
-        remove_custom_scroll(
-            app_state.macro.current_server.id, self._selected_scroll_id
-        )
+        scroll_id: str = self._selected_scroll_id
+        server_spec = app_state.macro.current_server
+        scroll_def = server_spec.skill_registry.get_scroll(scroll_id)
+        deleted_skill_ids: set[str] = set(scroll_def.skills)
+
+        remove_custom_scroll(server_spec.id, scroll_id)
+
+        # 모든 프리셋에서 삭제된 스크롤/스킬 관련 데이터 정리
+        for preset in app_state.macro.presets:
+            # 장착 스크롤 슬롯에서 제거
+            for i, sid in enumerate(preset.skills.equipped_scrolls):
+                if sid == scroll_id:
+                    preset.skills.equipped_scrolls[i] = ""
+
+            # 하단 배치 슬롯에서 제거
+            for i, sid in enumerate(preset.skills.placed_skills):
+                if sid in deleted_skill_ids:
+                    preset.skills.placed_skills[i] = ""
+
+            # 사용설정에서 제거
+            for skill_id in deleted_skill_ids:
+                preset.usage_settings.pop(skill_id, None)
+
+            # 해당 스킬을 포함하는 연계스킬 제거
+            preset.link_skills = [
+                ls
+                for ls in preset.link_skills
+                if not deleted_skill_ids.intersection(ls.skills)
+            ]
+
         self._selected_scroll_id = ""
         self.update_from_preset(self._get_preset())
+        self._on_data_changed()
+        self.scrollDeleted.emit()
+        self.contentResized.emit()
 
     def change_skill_usage(self, skill_idx: int) -> None:
         """사용 여부 변경"""
