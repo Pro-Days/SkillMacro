@@ -29,6 +29,7 @@ from app.scripts.calculator_engine import (
     POWER_METRIC_LABELS,
     build_base_state,
     build_calculator_context,
+    build_internal_base_stats,
     evaluate_arbitrary_stat_delta,
     evaluate_level_up_delta,
     evaluate_next_realm_delta,
@@ -574,7 +575,6 @@ class ResultsPage(QFrame):
         for stat_key, stat_label in STAT_SPECS.items():
             deltas: dict[PowerMetric, float] = evaluate_single_stat_delta(
                 context=context,
-                base_stats=base_stats,
                 stat_key=stat_key,
                 amount=1.0,
             )
@@ -590,7 +590,6 @@ class ResultsPage(QFrame):
         # 레벨 1업 효율 출력 행 구성
         level_up: LevelUpEvaluation = evaluate_level_up_delta(
             context=context,
-            base_stats=base_stats,
             target_metric=selected_metric,
         )
         level_distribution_text: str = (
@@ -607,7 +606,6 @@ class ResultsPage(QFrame):
         # 다음 경지 효율 출력 행 구성
         realm_result: RealmAdvanceEvaluation | None = evaluate_next_realm_delta(
             context=context,
-            base_stats=base_stats,
             current_realm=current_realm,
             level=level,
             target_metric=selected_metric,
@@ -652,7 +650,6 @@ class ResultsPage(QFrame):
 
         # 사용자 지정 변화량 결과 행 공용 구성
         custom_rows: list[tuple[str, str]] = cls._build_custom_delta_rows(
-            base_stats=base_stats,
             calculator_input=calculator_input,
             context=context,
         )
@@ -771,7 +768,6 @@ class ResultsPage(QFrame):
     @classmethod
     def _build_custom_delta_rows(
         cls,
-        base_stats: BaseStats,
         calculator_input: CalculatorPresetInput,
         context: "EvaluationContext",
     ) -> list[tuple[str, str]]:
@@ -789,7 +785,6 @@ class ResultsPage(QFrame):
         # 사용자 지정 변화량 기준 5종 전투력 변화량 계산
         custom_deltas: dict[PowerMetric, float] = evaluate_arbitrary_stat_delta(
             context=context,
-            base_stats=base_stats,
             stat_changes=custom_changes,
         )
         custom_rows: list[tuple[str, str]] = []
@@ -970,10 +965,10 @@ class ResultsPage(QFrame):
                 self.realm_options.index(calculator_input.realm_tier)
             )
 
+            # 저장된 원시 베이스 스탯의 최종 표시값 복원 블록
+            display_base_stats: dict[StatKey, str] = self._get_initial_base_stats()
             for stat_key in STAT_SPECS.keys():
-                self.stats_inputs.inputs[stat_key].setText(
-                    f"{calculator_input.base_stats.values[stat_key.value]:g}"
-                )
+                self.stats_inputs.inputs[stat_key].setText(display_base_stats[stat_key])
                 self.custom_delta_inputs.inputs[stat_key].setText(
                     f"{calculator_input.custom_stat_changes[stat_key.value]:g}"
                 )
@@ -2236,13 +2231,14 @@ class ResultsPage(QFrame):
         def _get_initial_base_stats(self) -> dict[StatKey, str]:
             """저장된 베이스 스탯 입력 문자열 맵 반환"""
 
-            # 저장된 베이스 스탯을 입력 위젯 초기 문자열로 변환
+            # 저장된 원시 베이스 스탯의 최종 표시값 복원 블록
             calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
+            resolved_values: dict[StatKey, float] = (
+                calculator_input.base_stats.resolve().values
+            )
             values: dict[StatKey, str] = {}
             for stat_key in STAT_SPECS.keys():
-                values[stat_key] = (
-                    f"{calculator_input.base_stats.values[stat_key.value]:g}"
-                )
+                values[stat_key] = f"{resolved_values[stat_key]:g}"
 
             return values
 
@@ -2417,7 +2413,7 @@ class ResultsPage(QFrame):
         def _read_base_stats(self) -> tuple[bool, BaseStats]:
             """베이스 스탯 입력 복원 및 검증"""
 
-            # 모든 입력칸을 순회하며 실수 입력 복원
+            # 모든 입력칸을 순회하며 최종 표시 스탯 복원 블록
             parsed_stats: dict[str, float] = {}
             is_valid: bool = True
             for stat_key, input_widget in self.stats_inputs.inputs.items():
@@ -2432,7 +2428,9 @@ class ResultsPage(QFrame):
 
                 parsed_stats[stat_key.value] = value
 
-            return is_valid, BaseStats(values=parsed_stats)
+            # 최종 표시 스탯의 원시 베이스 스탯 환산 블록
+            resolved_input: BaseStats = BaseStats(values=parsed_stats)
+            return is_valid, build_internal_base_stats(resolved_input)
 
         def _read_custom_stat_changes(self) -> tuple[bool, dict[StatKey, float]]:
             """사용자 지정 스탯 변화량 복원 및 검증"""
