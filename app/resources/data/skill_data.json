@@ -37,6 +37,104 @@
               "type": "damage",
               "damage": 3.72
             }
+          ],
+          "2": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.72
+            }
+          ],
+          "3": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.72
+            }
+          ],
+          "4": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.72
+            }
+          ],
+          "5": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.72
+            }
+          ],
+          "6": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.72
+            }
+          ],
+          "7": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.72
+            }
+          ],
+          "8": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.72
+            }
+          ],
+          "9": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.72
+            }
+          ],
+          "10": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.72
+            }
+          ],
+          "11": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.72
+            }
+          ],
+          "12": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.72
+            }
+          ],
+          "13": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.72
+            }
+          ],
+          "14": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.72
+            }
+          ],
+          "15": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.72
+            }
           ]
         }
       },
@@ -45,6 +143,104 @@
         "cooltime": 9.0,
         "levels": {
           "1": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 4.22
+            }
+          ],
+          "2": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 4.22
+            }
+          ],
+          "3": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 4.22
+            }
+          ],
+          "4": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 4.22
+            }
+          ],
+          "5": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 4.22
+            }
+          ],
+          "6": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 4.22
+            }
+          ],
+          "7": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 4.22
+            }
+          ],
+          "8": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 4.22
+            }
+          ],
+          "9": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 4.22
+            }
+          ],
+          "10": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 4.22
+            }
+          ],
+          "11": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 4.22
+            }
+          ],
+          "12": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 4.22
+            }
+          ],
+          "13": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 4.22
+            }
+          ],
+          "14": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 4.22
+            }
+          ],
+          "15": [
             {
               "time": 0.0,
               "type": "damage",
@@ -63,6 +259,104 @@
               "type": "damage",
               "damage": 3.63
             }
+          ],
+          "2": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.63
+            }
+          ],
+          "3": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.63
+            }
+          ],
+          "4": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.63
+            }
+          ],
+          "5": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.63
+            }
+          ],
+          "6": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.63
+            }
+          ],
+          "7": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.63
+            }
+          ],
+          "8": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.63
+            }
+          ],
+          "9": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.63
+            }
+          ],
+          "10": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.63
+            }
+          ],
+          "11": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.63
+            }
+          ],
+          "12": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.63
+            }
+          ],
+          "13": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.63
+            }
+          ],
+          "14": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.63
+            }
+          ],
+          "15": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.63
+            }
           ]
         }
       },
@@ -71,6 +365,104 @@
         "cooltime": 10.0,
         "levels": {
           "1": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.93
+            }
+          ],
+          "2": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.93
+            }
+          ],
+          "3": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.93
+            }
+          ],
+          "4": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.93
+            }
+          ],
+          "5": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.93
+            }
+          ],
+          "6": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.93
+            }
+          ],
+          "7": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.93
+            }
+          ],
+          "8": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.93
+            }
+          ],
+          "9": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.93
+            }
+          ],
+          "10": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.93
+            }
+          ],
+          "11": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.93
+            }
+          ],
+          "12": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.93
+            }
+          ],
+          "13": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.93
+            }
+          ],
+          "14": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.93
+            }
+          ],
+          "15": [
             {
               "time": 0.0,
               "type": "damage",
@@ -99,6 +491,244 @@
               "type": "damage",
               "damage": 1.62
             }
+          ],
+          "2": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 1.62
+            },
+            {
+              "time": 0.05,
+              "type": "damage",
+              "damage": 1.62
+            },
+            {
+              "time": 0.1,
+              "type": "damage",
+              "damage": 1.62
+            }
+          ],
+          "3": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 1.62
+            },
+            {
+              "time": 0.05,
+              "type": "damage",
+              "damage": 1.62
+            },
+            {
+              "time": 0.1,
+              "type": "damage",
+              "damage": 1.62
+            }
+          ],
+          "4": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 1.62
+            },
+            {
+              "time": 0.05,
+              "type": "damage",
+              "damage": 1.62
+            },
+            {
+              "time": 0.1,
+              "type": "damage",
+              "damage": 1.62
+            }
+          ],
+          "5": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 1.62
+            },
+            {
+              "time": 0.05,
+              "type": "damage",
+              "damage": 1.62
+            },
+            {
+              "time": 0.1,
+              "type": "damage",
+              "damage": 1.62
+            }
+          ],
+          "6": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 1.62
+            },
+            {
+              "time": 0.05,
+              "type": "damage",
+              "damage": 1.62
+            },
+            {
+              "time": 0.1,
+              "type": "damage",
+              "damage": 1.62
+            }
+          ],
+          "7": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 1.62
+            },
+            {
+              "time": 0.05,
+              "type": "damage",
+              "damage": 1.62
+            },
+            {
+              "time": 0.1,
+              "type": "damage",
+              "damage": 1.62
+            }
+          ],
+          "8": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 1.62
+            },
+            {
+              "time": 0.05,
+              "type": "damage",
+              "damage": 1.62
+            },
+            {
+              "time": 0.1,
+              "type": "damage",
+              "damage": 1.62
+            }
+          ],
+          "9": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 1.62
+            },
+            {
+              "time": 0.05,
+              "type": "damage",
+              "damage": 1.62
+            },
+            {
+              "time": 0.1,
+              "type": "damage",
+              "damage": 1.62
+            }
+          ],
+          "10": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 1.62
+            },
+            {
+              "time": 0.05,
+              "type": "damage",
+              "damage": 1.62
+            },
+            {
+              "time": 0.1,
+              "type": "damage",
+              "damage": 1.62
+            }
+          ],
+          "11": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 1.62
+            },
+            {
+              "time": 0.05,
+              "type": "damage",
+              "damage": 1.62
+            },
+            {
+              "time": 0.1,
+              "type": "damage",
+              "damage": 1.62
+            }
+          ],
+          "12": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 1.62
+            },
+            {
+              "time": 0.05,
+              "type": "damage",
+              "damage": 1.62
+            },
+            {
+              "time": 0.1,
+              "type": "damage",
+              "damage": 1.62
+            }
+          ],
+          "13": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 1.62
+            },
+            {
+              "time": 0.05,
+              "type": "damage",
+              "damage": 1.62
+            },
+            {
+              "time": 0.1,
+              "type": "damage",
+              "damage": 1.62
+            }
+          ],
+          "14": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 1.62
+            },
+            {
+              "time": 0.05,
+              "type": "damage",
+              "damage": 1.62
+            },
+            {
+              "time": 0.1,
+              "type": "damage",
+              "damage": 1.62
+            }
+          ],
+          "15": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 1.62
+            },
+            {
+              "time": 0.05,
+              "type": "damage",
+              "damage": 1.62
+            },
+            {
+              "time": 0.1,
+              "type": "damage",
+              "damage": 1.62
+            }
           ]
         }
       },
@@ -112,6 +742,104 @@
               "type": "damage",
               "damage": 3.76
             }
+          ],
+          "2": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.76
+            }
+          ],
+          "3": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.76
+            }
+          ],
+          "4": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.76
+            }
+          ],
+          "5": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.76
+            }
+          ],
+          "6": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.76
+            }
+          ],
+          "7": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.76
+            }
+          ],
+          "8": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.76
+            }
+          ],
+          "9": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.76
+            }
+          ],
+          "10": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.76
+            }
+          ],
+          "11": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.76
+            }
+          ],
+          "12": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.76
+            }
+          ],
+          "13": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.76
+            }
+          ],
+          "14": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.76
+            }
+          ],
+          "15": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.76
+            }
           ]
         }
       },
@@ -120,6 +848,104 @@
         "cooltime": 0.7,
         "levels": {
           "1": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 1.0
+            }
+          ],
+          "2": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 1.0
+            }
+          ],
+          "3": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 1.0
+            }
+          ],
+          "4": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 1.0
+            }
+          ],
+          "5": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 1.0
+            }
+          ],
+          "6": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 1.0
+            }
+          ],
+          "7": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 1.0
+            }
+          ],
+          "8": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 1.0
+            }
+          ],
+          "9": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 1.0
+            }
+          ],
+          "10": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 1.0
+            }
+          ],
+          "11": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 1.0
+            }
+          ],
+          "12": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 1.0
+            }
+          ],
+          "13": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 1.0
+            }
+          ],
+          "14": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 1.0
+            }
+          ],
+          "15": [
             {
               "time": 0.0,
               "type": "damage",

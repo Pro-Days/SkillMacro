@@ -992,6 +992,9 @@ class ResultsPage(QFrame):
                 initial_values: dict[StatKey, str],
             ) -> None:
                 super().__init__(parent)
+                self.setStyleSheet(
+                    "QFrame { background-color: transparent; border: 0px solid; }"
+                )
 
                 # 전체 스탯 입력칸 맵 구성
                 self.inputs: dict[StatKey, CustomLineEdit] = {}
@@ -2324,6 +2327,8 @@ class SkillInputs(QFrame):
 
         if config.ui.debug_colors:
             self.setStyleSheet("QFrame { background-color: green; border: 0px solid; }")
+        else:
+            self.setStyleSheet("QFrame { background-color: transparent; border: 0px; }")
 
         # 그리드 레이아웃 위젯 생성
         grid_layout: QGridLayout = QGridLayout(self)
@@ -2378,6 +2383,10 @@ class SkillInputs(QFrame):
             if config.ui.debug_colors:
                 self.setStyleSheet(
                     "QFrame { background-color: orange; border: 0px solid; }"
+                )
+            else:
+                self.setStyleSheet(
+                    "QFrame { background-color: transparent; border: 0px; }"
                 )
 
             # 전체 layout 설정

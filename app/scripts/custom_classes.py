@@ -85,6 +85,8 @@ class KVInput(QFrame):
             self.setStyleSheet(
                 "QFrame { background-color: orange; border: 0px solid; }"
             )
+        else:
+            self.setStyleSheet("QFrame { background-color: transparent; border: 0px; }")
 
         # 전체 layout 설정
         layout = QVBoxLayout()
@@ -236,6 +238,8 @@ class KVComboInput(QFrame):
         connected_function: Callable[[], None] | None = None,
     ) -> None:
         super().__init__(parent)
+
+        self.setStyleSheet("QFrame { background-color: transparent; border: 0px; }")
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
