@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import copy
+import json
+import os
 from collections.abc import Callable
 from functools import partial
 from typing import TYPE_CHECKING, Literal
@@ -26,6 +28,12 @@ from PySide6.QtWidgets import (
 from app.scripts.app_state import app_state
 from app.scripts.config import config
 from app.scripts.custom_classes import CustomFont, SkillImage
+from app.scripts.custom_skill_models import CustomScrollDefinition, CustomSkillImport
+from app.scripts.data_manager import (
+    custom_skills_file_dir,
+    data_path,
+    remove_custom_scroll,
+)
 from app.scripts.macro_models import (
     LinkKeyType,
     LinkSkill,
@@ -38,7 +46,13 @@ from app.scripts.registry.resource_registry import (
     convert_resource_path,
     resource_registry,
 )
-from app.scripts.ui.popup import NoticeKind, PopupKind, PopupManager
+from app.scripts.registry.skill_registry import CUSTOM_SKILL_PREFIX, ScrollDef, SkillDef
+from app.scripts.ui.popup import (
+    CustomSkillAddDialog,
+    NoticeKind,
+    PopupKind,
+    PopupManager,
+)
 
 if TYPE_CHECKING:
     from typing import Literal
@@ -923,6 +937,46 @@ class SkillSettings(QFrame):
             self._build_selected_scroll_hover_card,
         )
 
+        # 커스텀 스크롤 수정/삭제 버튼 (커스텀 스크롤 선택 시에만 표시)
+        _custom_btn_style: str = """
+            QPushButton {{
+                background-color: transparent;
+                border: 1px solid {border};
+                border-radius: 5px;
+                color: {color};
+                padding: 2px 10px;
+            }}
+            QPushButton:hover {{ background-color: {hover}; }}
+        """
+        self._edit_scroll_btn: QPushButton = QPushButton("수정")
+        self._edit_scroll_btn.setFont(CustomFont(10))
+        self._edit_scroll_btn.setFixedHeight(26)
+        self._edit_scroll_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._edit_scroll_btn.setStyleSheet(
+            _custom_btn_style.format(border="#AAAAAA", color="#444444", hover="#EEEEEE")
+        )
+        self._edit_scroll_btn.clicked.connect(self._on_edit_custom_scroll)
+
+        self._delete_scroll_btn: QPushButton = QPushButton("삭제")
+        self._delete_scroll_btn.setFont(CustomFont(10))
+        self._delete_scroll_btn.setFixedHeight(26)
+        self._delete_scroll_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._delete_scroll_btn.setStyleSheet(
+            _custom_btn_style.format(border="#E57373", color="#E53935", hover="#FDECEA")
+        )
+        self._delete_scroll_btn.clicked.connect(self._on_delete_custom_scroll)
+
+        custom_actions_row: QHBoxLayout = QHBoxLayout()
+        custom_actions_row.setContentsMargins(0, 0, 0, 0)
+        custom_actions_row.setSpacing(6)
+        custom_actions_row.addStretch()
+        custom_actions_row.addWidget(self._edit_scroll_btn)
+        custom_actions_row.addWidget(self._delete_scroll_btn)
+
+        self._custom_actions_frame: QFrame = QFrame()
+        self._custom_actions_frame.setLayout(custom_actions_row)
+        self._custom_actions_frame.hide()
+
         # 스킬 설정 표 레이아웃 구성
         self._grid_layout: QGridLayout = QGridLayout()
         self._grid_layout.setContentsMargins(0, 0, 0, 0)
@@ -938,6 +992,7 @@ class SkillSettings(QFrame):
         layout.addWidget(self.title, 0, Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._selected_scroll_button)
         layout.addWidget(grid_frame)
+        layout.addWidget(self._custom_actions_frame)
         layout.setContentsMargins(10, 20, 10, 10)
         layout.setSpacing(20)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1034,6 +1089,10 @@ class SkillSettings(QFrame):
         scroll_pixmap: QPixmap = resource_registry.get_scroll_pixmap(scroll_def.id)
         self._selected_scroll_icon.setPixmap(scroll_pixmap)
         self._selected_scroll_name.setText(scroll_def.name)
+
+        # 커스텀 스크롤이면 수정/삭제 버튼 표시
+        is_custom: bool = scroll_def.id.startswith(f"{CUSTOM_SKILL_PREFIX}:")
+        self._custom_actions_frame.setVisible(is_custom)
 
     def _clear_rows(self) -> None:
         """기존 행들 제거"""
@@ -1275,7 +1334,95 @@ class SkillSettings(QFrame):
             [],
             self._selected_scroll_id,
             apply,
+            on_add_skill=self.on_scroll_select_clicked,
         )
+
+    def _on_edit_custom_scroll(self) -> None:
+        """커스텀 스크롤 수정 다이얼로그 열기"""
+
+        server_spec = app_state.macro.current_server
+        scroll_def: ScrollDef = server_spec.skill_registry.get_scroll(
+            self._selected_scroll_id
+        )
+
+        existing_skills: dict = {}
+        if os.path.isfile(custom_skills_file_dir):
+            with open(custom_skills_file_dir, "r", encoding="utf-8") as _f:
+                existing_raw: dict = json.load(_f)
+            if server_spec.id in existing_raw:
+                existing_skills = dict(
+                    CustomSkillImport.from_dict(
+                        existing_raw[server_spec.id]
+                    ).skill_details
+                )
+
+        existing_scroll = CustomScrollDefinition(
+            scroll_id=scroll_def.id,
+            name=scroll_def.name,
+            skills=scroll_def.skills,
+        )
+
+        dialog: CustomSkillAddDialog = CustomSkillAddDialog(
+            server_id=server_spec.id,
+            max_skill_level=server_spec.max_skill_level,
+            existing_scroll=existing_scroll,
+            existing_skills=existing_skills,
+            parent=self._selected_scroll_button,
+        )
+
+        def _on_edited(skill_import: CustomSkillImport) -> None:
+            for sid in skill_import.skills:
+                detail = skill_import.skill_details[sid]
+                server_spec.skill_registry.add_skill_def(
+                    SkillDef.from_detail_dict(sid, server_spec.id, detail.to_dict())
+                )
+            for scroll in skill_import.scrolls:
+                server_spec.skill_registry.add_scroll_def(
+                    ScrollDef(
+                        id=scroll.scroll_id,
+                        server_id=server_spec.id,
+                        name=scroll.name,
+                        skills=scroll.skills,
+                    )
+                )
+
+            existing: dict = {}
+            if os.path.isfile(custom_skills_file_dir):
+                with open(custom_skills_file_dir, "r", encoding="utf-8") as _f:
+                    existing = json.load(_f)
+            server_data: dict = existing.get(
+                server_spec.id, {"skills": [], "scrolls": [], "skill_details": {}}
+            )
+            for sid in skill_import.skills:
+                if sid not in server_data["skills"]:
+                    server_data["skills"].append(sid)
+                server_data["skill_details"][sid] = skill_import.skill_details[
+                    sid
+                ].to_dict()
+            server_data["scrolls"] = [
+                s
+                for s in server_data["scrolls"]
+                if s["scroll_id"] != self._selected_scroll_id
+            ] + [s.to_dict() for s in skill_import.scrolls]
+            existing[server_spec.id] = server_data
+
+            os.makedirs(data_path, exist_ok=True)
+            with open(custom_skills_file_dir, "w", encoding="utf-8") as _f:
+                json.dump(existing, _f, ensure_ascii=False, indent=4)
+
+            self.update_from_preset(self._get_preset())
+
+        dialog.skill_added.connect(_on_edited)
+        dialog.exec()
+
+    def _on_delete_custom_scroll(self) -> None:
+        """커스텀 스크롤 삭제"""
+
+        remove_custom_scroll(
+            app_state.macro.current_server.id, self._selected_scroll_id
+        )
+        self._selected_scroll_id = ""
+        self.update_from_preset(self._get_preset())
 
     def change_skill_usage(self, skill_idx: int) -> None:
         """사용 여부 변경"""
@@ -2373,6 +2520,12 @@ class Title(QLabel):
     def __init__(self, text: str):
         super().__init__(text)
         self.setFont(CustomFont(20))
+        self.setStyleSheet(
+            "border: 0px solid black; border-radius: 10px; background-color: #CADEFC;"
+        )
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.setFixedSize(250, 80)
         self.setStyleSheet(
             "border: 0px solid black; border-radius: 10px; background-color: #CADEFC;"
         )

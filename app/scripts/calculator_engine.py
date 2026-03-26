@@ -301,8 +301,8 @@ class OptimizationCandidate:
 
     distribution: DistributionState
     danjeon: DanjeonState
-    equipped_title_id: str | None
-    equipped_talisman_ids: tuple[str, ...]
+    equipped_title_name: str | None
+    equipped_talisman_names: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -359,16 +359,15 @@ def build_danjeon_contribution(danjeon: DanjeonState) -> Contribution:
 
 
 def build_title_contribution(
-    equipped_title_id: str | None,
+    equipped_title_name: str | None,
     owned_title_map: dict[str, OwnedTitle],
 ) -> Contribution:
     """현재 장착 칭호 기여 계산"""
 
-    if equipped_title_id is None:
+    if equipped_title_name is None:
         return Contribution()
 
-    # 사전 계산된 칭호 조회 맵 기반 즉시 조회
-    equipped_title: OwnedTitle = owned_title_map[equipped_title_id]
+    equipped_title: OwnedTitle = owned_title_map[equipped_title_name]
 
     contribution: Contribution = Contribution()
     for stat_key_text, value in equipped_title.stats.items():
@@ -377,19 +376,19 @@ def build_title_contribution(
 
 
 def build_talisman_contribution(
-    equipped_talisman_ids: list[str],
+    equipped_talisman_names: list[str],
     talisman_stat_map: dict[str, tuple[StatKey, float]],
 ) -> Contribution:
     """현재 장착 부적 기여 계산"""
 
     contribution: Contribution = Contribution()
-    for equipped_id in equipped_talisman_ids:
-        if equipped_id is None:
+    for equipped_name in equipped_talisman_names:
+        if equipped_name is None:
             continue
 
         stat_key: StatKey
         stat_value: float
-        stat_key, stat_value = talisman_stat_map[equipped_id]
+        stat_key, stat_value = talisman_stat_map[equipped_name]
         contribution = contribution.add(stat_key, stat_value)
 
     return contribution
@@ -448,11 +447,11 @@ def build_current_selected_contribution(
         calculator_input.danjeon
     )
     title_contribution: Contribution = build_title_contribution(
-        calculator_input.equipped_state.equipped_title_id,
+        calculator_input.equipped_state.equipped_title_name,
         owned_title_map,
     )
     talisman_contribution: Contribution = build_talisman_contribution(
-        calculator_input.equipped_state.equipped_talisman_ids,
+        calculator_input.equipped_state.equipped_talisman_names,
         talisman_stat_map,
     )
     return distribution_contribution.merge(
@@ -1695,11 +1694,11 @@ def _build_title_candidates(
     if not calculator_input.owned_titles:
         return [None]
 
-    title_ids: list[str | None] = []
+    title_names: list[str | None] = []
     for owned_title in calculator_input.owned_titles:
-        title_ids.append(owned_title.name)
+        title_names.append(owned_title.name)
 
-    return title_ids
+    return title_names
 
 
 def _build_talisman_candidates(
@@ -1718,21 +1717,21 @@ def _build_talisman_candidates(
 
     candidates: list[list[str]] = []
 
-    def build_combinations(start_index: int, selected_ids: list[str]) -> None:
+    def build_combinations(start_index: int, selected_names: list[str]) -> None:
         """현재 보유 부적 조합 구성"""
 
-        if len(selected_ids) == target_size:
-            candidates.append(selected_ids)
+        if len(selected_names) == target_size:
+            candidates.append(selected_names.copy())
             return
 
         for current_index in range(start_index, len(owned_names)):
             owned_name: str = owned_names[current_index]
-            if owned_name in selected_ids:
+            if owned_name in selected_names:
                 continue
 
-            selected_ids.append(owned_name)
-            build_combinations(current_index + 1, selected_ids)
-            selected_ids.pop()
+            selected_names.append(owned_name)
+            build_combinations(current_index + 1, selected_names)
+            selected_names.pop()
 
     build_combinations(0, [])
     if not candidates:
@@ -1795,17 +1794,17 @@ def optimize_current_selection(
     ]
     title_entries: list[tuple[str | None, Contribution]] = [
         (
-            equipped_title_id,
-            build_title_contribution(equipped_title_id, owned_title_map),
+            equipped_title_name,
+            build_title_contribution(equipped_title_name, owned_title_map),
         )
-        for equipped_title_id in title_candidates
+        for equipped_title_name in title_candidates
     ]
     talisman_entries: list[tuple[list[str], Contribution]] = [
         (
-            equipped_talisman_ids,
-            build_talisman_contribution(equipped_talisman_ids, talisman_stat_map),
+            equipped_talisman_names,
+            build_talisman_contribution(equipped_talisman_names, talisman_stat_map),
         )
-        for equipped_talisman_ids in talisman_candidates
+        for equipped_talisman_names in talisman_candidates
     ]
 
     # 스킬속도 기준 타임라인 캐시 구성
@@ -1821,8 +1820,11 @@ def optimize_current_selection(
     best_metric_delta: float | None = None
     for distribution_state, distribution_contribution in distribution_entries:
         for danjeon_state, danjeon_contribution in danjeon_entries:
-            for equipped_title_id, title_contribution in title_entries:
-                for equipped_talisman_ids, talisman_contribution in talisman_entries:
+            for equipped_title_name, title_contribution in title_entries:
+                for (
+                    equipped_talisman_names,
+                    talisman_contribution,
+                ) in talisman_entries:
                     # 후보 파트별 기여 직접 병합 기반 최종 스탯 구성
                     candidate_contribution: Contribution = (
                         distribution_contribution.merge(
@@ -1885,8 +1887,8 @@ def optimize_current_selection(
                         candidate=OptimizationCandidate(
                             distribution=distribution_state,
                             danjeon=danjeon_state,
-                            equipped_title_id=equipped_title_id,
-                            equipped_talisman_ids=tuple(equipped_talisman_ids),
+                            equipped_title_name=equipped_title_name,
+                            equipped_talisman_names=tuple(equipped_talisman_names),
                         ),
                         deltas=deltas,
                         base_stats=optimized_base_stats,

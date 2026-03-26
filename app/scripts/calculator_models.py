@@ -267,35 +267,35 @@ class DanjeonState:
 class EquippedState:
     """현재 장착 선택 상태"""
 
-    equipped_title_id: str | None = None
-    equipped_talisman_ids: list[str] = field(default_factory=lambda: [])
+    equipped_title_name: str | None = None
+    equipped_talisman_names: list[str] = field(default_factory=lambda: [])
 
     @classmethod
     def from_dict(cls, data: dict[str, object]) -> "EquippedState":
         """저장 데이터로부터 현재 장착 상태 복원"""
 
-        raw_ids: object = data["equipped_talisman_ids"]
-        if not isinstance(raw_ids, list):
-            raise TypeError("equipped_talisman_ids must be a list")
+        raw_names: object = data["equipped_talisman_names"]
+        if not isinstance(raw_names, list):
+            raise TypeError("equipped_talisman_names must be a list")
 
-        equipped_talisman_ids: list[str] = [str(item) for item in raw_ids]
+        equipped_talisman_names: list[str] = [str(item) for item in raw_names]
 
-        raw_title_id: object = data["equipped_title_id"]
-        equipped_title_id: str | None = None
-        if raw_title_id is not None:
-            equipped_title_id = str(raw_title_id)
+        raw_title_name: object = data["equipped_title_name"]
+        equipped_title_name: str | None = None
+        if raw_title_name is not None:
+            equipped_title_name = str(raw_title_name)
 
         return cls(
-            equipped_title_id=equipped_title_id,
-            equipped_talisman_ids=equipped_talisman_ids,
+            equipped_title_name=equipped_title_name,
+            equipped_talisman_names=equipped_talisman_names,
         )
 
     def to_dict(self) -> dict[str, object]:
         """현재 장착 상태 직렬화"""
 
         data: dict[str, object] = {
-            "equipped_title_id": self.equipped_title_id,
-            "equipped_talisman_ids": self.equipped_talisman_ids,
+            "equipped_title_name": self.equipped_title_name,
+            "equipped_talisman_names": self.equipped_talisman_names,
         }
         return data
 

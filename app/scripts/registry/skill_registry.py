@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 BUILTIN_SKILL_PREFIX = "builtin"
+CUSTOM_SKILL_PREFIX = "custom"
 
 
 def get_builtin_skill_id(server_id: str, skill_name: str) -> str:
@@ -155,13 +156,31 @@ class ScrollDef:
         )
 
 
-@dataclass(frozen=True)
+@dataclass
 class SkillRegistry:
     """스킬 레지스트리"""
 
     _skills: dict[str, SkillDef]
     _scrolls: dict[str, ScrollDef]
     _skill_to_scroll: dict[str, str]
+
+    def add_skill_def(self, skill_def: SkillDef) -> None:
+        self._skills[skill_def.id] = skill_def
+
+    def add_scroll_def(self, scroll_def: ScrollDef) -> None:
+        self._scrolls[scroll_def.id] = scroll_def
+        for skill_id in scroll_def.skills:
+            self._skill_to_scroll[skill_id] = scroll_def.id
+
+    def remove_skill_def(self, skill_id: str) -> None:
+        self._skills.pop(skill_id, None)
+        self._skill_to_scroll.pop(skill_id, None)
+
+    def remove_scroll_def(self, scroll_id: str) -> None:
+        scroll_def = self._scrolls.pop(scroll_id, None)
+        if scroll_def:
+            for skill_id in scroll_def.skills:
+                self._skill_to_scroll.pop(skill_id, None)
 
     def get_all_skill_ids(self) -> list[str]:
         return list(self._skills.keys())

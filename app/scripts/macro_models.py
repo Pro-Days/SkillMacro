@@ -351,7 +351,8 @@ class PresetInfo:
         """딕셔너리로 변환"""
 
         return {
-            "scroll_levels": self.scroll_levels.copy(),
+            # 기본값(레벨 1)은 저장하지 않음
+            "scroll_levels": {k: v for k, v in self.scroll_levels.items() if v != 1},
             "calculator": self.calculator.to_dict(),
         }
 
@@ -420,11 +421,17 @@ class MacroPreset:
     def to_dict(self) -> dict[str, Any]:
         """딕셔너리로 변환"""
 
+        _default = SkillUsageSetting()
         return {
             "name": self.name,
             "skills": self.skills.to_dict(),
             "settings": self.settings.to_dict(),
-            "usage_settings": {k: v.to_dict() for k, v in self.usage_settings.items()},
+            # 기본값과 동일한 설정은 저장하지 않음
+            "usage_settings": {
+                k: v.to_dict()
+                for k, v in self.usage_settings.items()
+                if v != _default
+            },
             "link_skills": [ls.to_dict() for ls in self.link_skills],
             "info": self.info.to_dict(),
         }

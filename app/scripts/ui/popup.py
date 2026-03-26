@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -21,6 +23,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import QCursor, QGuiApplication, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
+    QDialog,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -36,6 +39,14 @@ from app.scripts.app_state import app_state
 from app.scripts.calculator_models import get_stat_label
 from app.scripts.config import config
 from app.scripts.custom_classes import CustomFont, CustomLineEdit, CustomShadowEffect
+from app.scripts.custom_skill_models import (
+    CustomScrollDefinition,
+    CustomSkillDefinition,
+    CustomSkillImport,
+    CustomSkillImportError,
+)
+from app.scripts.data_manager import custom_skills_file_dir, save_custom_skills
+from app.scripts.macro_models import SkillUsageSetting
 from app.scripts.registry.key_registry import KeyRegistry
 from app.scripts.registry.resource_registry import (
     convert_resource_path,
@@ -1561,6 +1572,7 @@ class PopupManager:
         equipped_scroll_ids: list[str],
         current_scroll_id: str,
         on_selected: Callable[[str], None],
+        on_add_skill: Callable[[], None] | None = None,
     ) -> None:
         """스크롤 선택 팝업"""
 
@@ -1573,11 +1585,81 @@ class PopupManager:
 
         self._active_popup = PopupKind.SCROLL_SELECT
 
+        def _open_add_dialog() -> None:
+            server_spec: ServerSpec = app_state.macro.current_server
+            dialog: CustomSkillAddDialog = CustomSkillAddDialog(
+                server_id=server_spec.id,
+                max_skill_level=server_spec.max_skill_level,
+                parent=anchor,
+            )
+
+            def _on_added(skill_import: CustomSkillImport) -> None:
+                # SkillRegistry에 주입
+                for skill_id in skill_import.skills:
+                    detail = skill_import.skill_details[skill_id]
+                    skill_def: SkillDef = SkillDef.from_detail_dict(
+                        skill_id, server_spec.id, detail.to_dict()
+                    )
+                    server_spec.skill_registry.add_skill_def(skill_def)
+
+                for scroll in skill_import.scrolls:
+                    scroll_def: ScrollDef = ScrollDef(
+                        id=scroll.scroll_id,
+                        server_id=server_spec.id,
+                        name=scroll.name,
+                        skills=scroll.skills,
+                    )
+                    server_spec.skill_registry.add_scroll_def(scroll_def)
+
+                # 기존 custom_skills.json과 병합 저장
+                existing_import: CustomSkillImport | None = None
+                if os.path.isfile(custom_skills_file_dir):
+                    with open(custom_skills_file_dir, "r", encoding="utf-8") as _f:
+                        existing_raw: dict = json.load(_f)
+                    if server_spec.id in existing_raw:
+                        existing_import = CustomSkillImport.from_dict(
+                            existing_raw[server_spec.id]
+                        )
+
+                if existing_import is not None:
+                    merged_skills = tuple(
+                        dict.fromkeys(existing_import.skills + skill_import.skills)
+                    )
+                    merged_scrolls = existing_import.scrolls + skill_import.scrolls
+                    merged_details = {
+                        **existing_import.skill_details,
+                        **skill_import.skill_details,
+                    }
+                    merged = CustomSkillImport(
+                        skills=merged_skills,
+                        scrolls=merged_scrolls,
+                        skill_details=merged_details,
+                    )
+                else:
+                    merged = skill_import
+
+                save_custom_skills(server_spec.id, merged)
+
+                # 현재 세션 인-메모리에 새 스크롤/스킬 기본값 반영
+                for preset in app_state.macro.presets:
+                    for scroll in skill_import.scrolls:
+                        preset.info.scroll_levels.setdefault(scroll.scroll_id, 1)
+                    for skill_id in skill_import.skills:
+                        preset.usage_settings.setdefault(skill_id, SkillUsageSetting())
+
+                self.close_popup()
+                if on_add_skill is not None:
+                    on_add_skill()
+
+            dialog.skill_added.connect(_on_added)
+            dialog.exec()
+
         content: ScrollGridSelectContent = ScrollGridSelectContent(
             popup_manager=self,
             scroll_defs=scroll_defs,
             equipped_scroll_ids=equipped_scroll_ids,
             current_scroll_id=current_scroll_id,
+            on_add_skill=_open_add_dialog,
         )
 
         def _picked(scroll_id: str) -> None:
@@ -1802,6 +1884,7 @@ class ScrollGridSelectContent(QFrame):
         scroll_defs: list[ScrollDef],
         equipped_scroll_ids: list[str],
         current_scroll_id: str,
+        on_add_skill: Callable[[], None] | None = None,
     ) -> None:
         super().__init__()
 
@@ -1894,6 +1977,24 @@ class ScrollGridSelectContent(QFrame):
         container.setLayout(grid)
         scroll_area.setWidget(container)
         root.addWidget(scroll_area)
+
+        if on_add_skill is not None:
+            add_btn: QPushButton = QPushButton("+ 새 스킬 추가", self)
+            add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            add_btn.setStyleSheet(
+                """
+                QPushButton {
+                    background-color: transparent;
+                    border: none;
+                    color: gray;
+                    padding: 2px 0px;
+                }
+                QPushButton:hover { color: black; }
+                """
+            )
+            add_btn.clicked.connect(on_add_skill)
+            root.addWidget(add_btn)
+
         self.setLayout(root)
 
         visible_rows: int = min(
@@ -1923,3 +2024,275 @@ class ScrollGridSelectContent(QFrame):
         # 스크롤 ID 자체를 공용 레벨 저장 키로 직접 사용
         level: int = app_state.macro.current_preset.info.get_scroll_level(scroll_def.id)
         return self.popup_manager.build_scroll_hover_card(scroll_def, level)
+
+
+class CustomSkillAddDialog(QDialog):
+    """커스텀 스크롤/스킬 추가·수정 폼 다이얼로그"""
+
+    skill_added = Signal(CustomSkillImport)
+
+    _CARD_STYLE = """
+        QFrame#card {
+            background-color: #F8F9FA;
+            border: 1px solid #E4E6EA;
+            border-radius: 8px;
+        }
+    """
+    _LABEL_STYLE = "QLabel { color: #666666; border: none; background: transparent; }"
+    _SECTION_TITLE_STYLE = "QLabel { font-weight: bold; color: #333333; border: none; background: transparent; }"
+    _INPUT_STYLE = """
+        QLineEdit[valid=true] {
+            background-color: #FFFFFF;
+            border: 1px solid #D0D5DD;
+            border-radius: 6px;
+        }
+        QLineEdit[valid=false] {
+            background-color: #FFFFFF;
+            border: 1px solid #E53935;
+            border-radius: 6px;
+        }
+    """
+
+    def __init__(
+        self,
+        server_id: str,
+        max_skill_level: int,
+        existing_scroll: CustomScrollDefinition | None = None,
+        existing_skills: dict[str, CustomSkillDefinition] | None = None,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.server_id: str = server_id
+        self.max_skill_level: int = max_skill_level
+        self._existing_scroll = existing_scroll
+
+        is_edit: bool = existing_scroll is not None
+        self.setWindowTitle("스크롤 수정" if is_edit else "스크롤 추가")
+        self.setFixedWidth(380)
+
+        # 기존 값 준비
+        scroll_name_init: str = existing_scroll.name if existing_scroll else ""
+        skill1_id: str = existing_scroll.skills[0] if existing_scroll else ""
+        skill2_id: str = existing_scroll.skills[1] if existing_scroll else ""
+        skill1_def = (existing_skills or {}).get(skill1_id)
+        skill2_def = (existing_skills or {}).get(skill2_id)
+        skill1_name_init: str = skill1_def.name if skill1_def else ""
+        skill2_name_init: str = skill2_def.name if skill2_def else ""
+        skill1_ct_init: str = str(skill1_def.cooltime) if skill1_def else ""
+        skill2_ct_init: str = str(skill2_def.cooltime) if skill2_def else ""
+
+        root: QVBoxLayout = QVBoxLayout(self)
+        root.setContentsMargins(20, 20, 20, 20)
+        root.setSpacing(14)
+
+        # ── 스크롤 카드 ──
+        scroll_card, (self._scroll_name_input,) = self._make_card(
+            "스크롤",
+            [("이름", scroll_name_init)],
+        )
+        root.addWidget(scroll_card)
+
+        # ── 스킬 1 카드 ──
+        skill1_card, (self._skill1_name_input, self._skill1_ct_input) = self._make_card(
+            "스킬 1",
+            [("이름", skill1_name_init), ("쿨타임 (초)", skill1_ct_init)],
+        )
+        root.addWidget(skill1_card)
+
+        # ── 스킬 2 카드 ──
+        skill2_card, (self._skill2_name_input, self._skill2_ct_input) = self._make_card(
+            "스킬 2",
+            [("이름", skill2_name_init), ("쿨타임 (초)", skill2_ct_init)],
+        )
+        root.addWidget(skill2_card)
+
+        # ── 에러 라벨 ──
+        self._error_label: QLabel = QLabel(self)
+        self._error_label.setFont(CustomFont(10))
+        self._error_label.setStyleSheet(
+            "QLabel { color: #E53935; border: none; background: transparent; }"
+        )
+        self._error_label.setWordWrap(True)
+        self._error_label.hide()
+        root.addWidget(self._error_label)
+
+        # ── 버튼 행 ──
+        btn_row: QHBoxLayout = QHBoxLayout()
+        btn_row.setSpacing(8)
+
+        cancel_btn: QPushButton = QPushButton("취소", self)
+        cancel_btn.setFont(CustomFont(11))
+        cancel_btn.setFixedHeight(36)
+        cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        cancel_btn.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #F0F0F2;
+                border: 1px solid #D0D5DD;
+                border-radius: 6px;
+                color: #555555;
+            }
+            QPushButton:hover { background-color: #E4E4E8; }
+        """
+        )
+        cancel_btn.clicked.connect(self.reject)
+
+        confirm_btn: QPushButton = QPushButton("저장" if is_edit else "추가", self)
+        confirm_btn.setFont(CustomFont(11))
+        confirm_btn.setFixedHeight(36)
+        confirm_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        confirm_btn.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #4A90D9;
+                border: none;
+                border-radius: 6px;
+                color: white;
+            }
+            QPushButton:hover { background-color: #3A7BC8; }
+        """
+        )
+        confirm_btn.clicked.connect(self._on_confirm)
+
+        btn_row.addWidget(cancel_btn)
+        btn_row.addWidget(confirm_btn)
+        root.addLayout(btn_row)
+
+    def _make_card(
+        self, title: str, fields: list[tuple[str, str]]
+    ) -> tuple[QFrame, list[CustomLineEdit]]:
+        """제목 + 필드 목록으로 카드 위젯 생성. 입력 위젯 리스트 반환."""
+        card: QFrame = QFrame(self)
+        card.setObjectName("card")
+        card.setStyleSheet(self._CARD_STYLE)
+
+        layout: QVBoxLayout = QVBoxLayout(card)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(10)
+
+        title_lbl: QLabel = QLabel(title, card)
+        title_lbl.setFont(CustomFont(11))
+        title_lbl.setStyleSheet(self._SECTION_TITLE_STYLE)
+        layout.addWidget(title_lbl)
+
+        inputs: list[CustomLineEdit] = []
+        for label_text, init_value in fields:
+            row: QHBoxLayout = QHBoxLayout()
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(10)
+
+            lbl: QLabel = QLabel(label_text, card)
+            lbl.setFont(CustomFont(10))
+            lbl.setFixedWidth(74)
+            lbl.setStyleSheet(self._LABEL_STYLE)
+
+            inp: CustomLineEdit = CustomLineEdit(
+                card, text=init_value, point_size=11, border_radius=6
+            )
+            inp.setFixedHeight(32)
+            inp.setStyleSheet(self._INPUT_STYLE)
+            inp.set_valid(True)
+
+            row.addWidget(lbl)
+            row.addWidget(inp)
+            layout.addLayout(row)
+            inputs.append(inp)
+
+        return card, inputs
+
+    def _on_confirm(self) -> None:
+        scroll_name: str = self._scroll_name_input.text().strip()
+        skill1_name: str = self._skill1_name_input.text().strip()
+        skill1_ct_text: str = self._skill1_ct_input.text().strip()
+        skill2_name: str = self._skill2_name_input.text().strip()
+        skill2_ct_text: str = self._skill2_ct_input.text().strip()
+
+        # 필드 유효성 검사
+        valid: bool = True
+        for inp, value, msg in [
+            (self._scroll_name_input, scroll_name, "스크롤 이름을 입력해주세요."),
+            (self._skill1_name_input, skill1_name, "스킬 1 이름을 입력해주세요."),
+            (self._skill2_name_input, skill2_name, "스킬 2 이름을 입력해주세요."),
+        ]:
+            if not value:
+                inp.set_valid(False)
+                if valid:
+                    self._show_error(msg)
+                valid = False
+            else:
+                inp.set_valid(True)
+
+        skill1_ct: float = 0.0
+        skill2_ct: float = 0.0
+        try:
+            skill1_ct = float(skill1_ct_text)
+            self._skill1_ct_input.set_valid(True)
+        except ValueError:
+            self._skill1_ct_input.set_valid(False)
+            if valid:
+                self._show_error("스킬 1 쿨타임은 숫자여야 합니다.")
+            valid = False
+
+        try:
+            skill2_ct = float(skill2_ct_text)
+            self._skill2_ct_input.set_valid(True)
+        except ValueError:
+            self._skill2_ct_input.set_valid(False)
+            if valid:
+                self._show_error("스킬 2 쿨타임은 숫자여야 합니다.")
+            valid = False
+
+        if not valid:
+            return
+
+        # 수정 모드면 기존 ID 유지, 신규면 이름 기반 ID 생성
+        if self._existing_scroll is not None:
+            scroll_id: str = self._existing_scroll.scroll_id
+            skill1_id: str = self._existing_scroll.skills[0]
+            skill2_id: str = self._existing_scroll.skills[1]
+        else:
+            scroll_id = f"custom:{self.server_id}:{scroll_name}"
+            skill1_id = f"custom:{self.server_id}:{scroll_name}:{skill1_name}"
+            skill2_id = f"custom:{self.server_id}:{scroll_name}:{skill2_name}"
+
+        levels_template: dict = {
+            str(lvl): [{"time": 0.0, "type": "damage", "damage": 0.0}]
+            for lvl in range(1, self.max_skill_level + 1)
+        }
+
+        raw: dict = {
+            "skills": [skill1_id, skill2_id],
+            "scrolls": [
+                {
+                    "scroll_id": scroll_id,
+                    "name": scroll_name,
+                    "skills": [skill1_id, skill2_id],
+                }
+            ],
+            "skill_details": {
+                skill1_id: {
+                    "name": skill1_name,
+                    "cooltime": skill1_ct,
+                    "levels": levels_template,
+                },
+                skill2_id: {
+                    "name": skill2_name,
+                    "cooltime": skill2_ct,
+                    "levels": levels_template,
+                },
+            },
+        }
+
+        try:
+            skill_import: CustomSkillImport = CustomSkillImport.from_dict(raw)
+        except (CustomSkillImportError, KeyError, ValueError) as exc:
+            self._show_error(str(exc))
+            return
+
+        self._error_label.hide()
+        self.skill_added.emit(skill_import)
+        self.accept()
+
+    def _show_error(self, message: str) -> None:
+        self._error_label.setText(message)
+        self._error_label.show()

@@ -93,6 +93,7 @@ if TYPE_CHECKING:
     )
     from app.scripts.macro_models import MacroPreset
     from app.scripts.registry.server_registry import ServerSpec
+    from app.scripts.registry.skill_registry import ScrollDef
     from app.scripts.ui.main_window import MainWindow
     from app.scripts.ui.popup import HoverCardData
 
@@ -688,11 +689,11 @@ class ResultsPage(QFrame):
             optimization_rows: list[tuple[str, str]] = [("상태", "불가")]
         else:
             title_text: str = "없음"
-            if optimization_result.candidate.equipped_title_id is not None:
+            if optimization_result.candidate.equipped_title_name is not None:
                 for owned_title in calculator_input.owned_titles:
                     if (
                         owned_title.name
-                        == optimization_result.candidate.equipped_title_id
+                        == optimization_result.candidate.equipped_title_name
                     ):
                         title_text = owned_title.name
                         break
@@ -709,9 +710,9 @@ class ResultsPage(QFrame):
                     break
 
             talisman_text: str = ", ".join(
-                talisman_name_map[talisman_id]
-                for talisman_id in optimization_result.candidate.equipped_talisman_ids
-                if talisman_id in talisman_name_map
+                talisman_name_map[talisman_name]
+                for talisman_name in optimization_result.candidate.equipped_talisman_names
+                if talisman_name in talisman_name_map
             )
             if not talisman_text:
                 talisman_text = "없음"
@@ -1301,7 +1302,7 @@ class ResultsPage(QFrame):
 
                     self._remove_function(self)
 
-                def to_owned_title(self, title_id: str) -> tuple[bool, OwnedTitle]:
+                def to_owned_title(self) -> tuple[bool, OwnedTitle]:
                     """카드 데이터를 칭호 모델로 변환"""
 
                     is_valid: bool = True
@@ -1320,7 +1321,6 @@ class ResultsPage(QFrame):
 
                     name: str = self.name_input.text().strip()
                     owned_title: OwnedTitle = OwnedTitle(
-                        title_id=title_id,
                         name=name,
                         stats=stats,
                     )
@@ -1363,9 +1363,7 @@ class ResultsPage(QFrame):
                 root_layout.addWidget(self.cards_container)
 
                 self.add_button: QPushButton = QPushButton("칭호 추가", self)
-                self.add_button.clicked.connect(
-                    lambda _checked=False: self.add_card()
-                )
+                self.add_button.clicked.connect(lambda _checked=False: self.add_card())
                 self.add_button.setFont(CustomFont(10))
                 root_layout.addWidget(self.add_button)
                 self.setLayout(root_layout)
@@ -1423,7 +1421,7 @@ class ResultsPage(QFrame):
             def load(
                 self,
                 owned_titles: list[OwnedTitle],
-                equipped_title_id: str | None,
+                equipped_title_name: str | None,
             ) -> None:
                 """저장된 칭호 입력 상태 로드"""
 
@@ -1434,12 +1432,12 @@ class ResultsPage(QFrame):
                     self.add_card(owned_title, emit_change=False)
 
                 self.refresh_equipped_options()
-                if equipped_title_id is None:
+                if equipped_title_name is None:
                     self.equipped_title_combobox.setCurrentIndex(0)
                     return
 
                 for index, owned_title in enumerate(owned_titles, start=1):
-                    if owned_title.title_id == equipped_title_id:
+                    if owned_title.name == equipped_title_name:
                         self.equipped_title_combobox.setCurrentIndex(index)
                         return
 
@@ -1448,20 +1446,19 @@ class ResultsPage(QFrame):
 
                 is_valid: bool = True
                 owned_titles: list[OwnedTitle] = []
-                for index, card in enumerate(self._cards):
-                    title_id: str = f"title_{index}"
+                for card in self._cards:
                     card_valid: bool
                     owned_title: OwnedTitle
-                    card_valid, owned_title = card.to_owned_title(title_id)
+                    card_valid, owned_title = card.to_owned_title()
                     is_valid = is_valid and card_valid
                     owned_titles.append(owned_title)
 
                 equipped_index: int = self.equipped_title_combobox.currentIndex()
-                equipped_title_id: str | None = None
+                equipped_title_name: str | None = None
                 if equipped_index > 0 and equipped_index - 1 < len(owned_titles):
-                    equipped_title_id = owned_titles[equipped_index - 1].title_id
+                    equipped_title_name = owned_titles[equipped_index - 1].name
 
-                return is_valid, owned_titles, equipped_title_id
+                return is_valid, owned_titles, equipped_title_name
 
         class TalismanInputs(QFrame):
             class TalismanRow(QFrame):
@@ -1492,14 +1489,14 @@ class ResultsPage(QFrame):
                     )
                     if data is not None:
                         for index, template in enumerate(self._templates):
-                            if template.template_id == data.template_id:
+                            if template.name == data.name:
                                 self.template_combobox.setCurrentIndex(index)
                                 break
 
                     self.level_input_widget: KVInput = KVInput(
                         self,
                         "레벨",
-                        f"{data.level if data is not None else 1}",
+                        f"{data.level if data is not None else 0}",
                         connected_function,
                         max_width=80,
                     )
@@ -1519,19 +1516,17 @@ class ResultsPage(QFrame):
 
                     self._remove_function(self)
 
-                def to_owned_talisman(
-                    self, owned_id: str
-                ) -> tuple[bool, OwnedTalisman]:
+                def to_owned_talisman(self) -> tuple[bool, OwnedTalisman]:
                     """행 데이터를 보유 부적 모델로 변환"""
 
                     text: str = self.level_input.text()
                     try:
                         level: int = int(text)
-                        is_valid: bool = 1 <= level <= 10
+                        is_valid: bool = 0 <= level <= 14
                         self.level_input.set_valid(is_valid)
 
                     except ValueError:
-                        level = 1
+                        level = 0
                         is_valid = False
                         self.level_input.set_valid(False)
 
@@ -1539,8 +1534,7 @@ class ResultsPage(QFrame):
                         self.template_combobox.currentIndex()
                     ]
                     owned_talisman: OwnedTalisman = OwnedTalisman(
-                        owned_id=owned_id,
-                        template_id=template.template_id,
+                        name=template.name,
                         level=level,
                     )
                     return is_valid, owned_talisman
@@ -1621,10 +1615,8 @@ class ResultsPage(QFrame):
                 """현재 장착 부적 선택 목록 갱신"""
 
                 options: list[str] = ["없음"]
-                for index, row in enumerate(self._rows):
-                    template_name: str = row.template_combobox.currentText()
-                    level_text: str = row.level_input.text()
-                    options.append(f"{template_name} Lv.{level_text} ({index + 1})")
+                for row in self._rows:
+                    options.append(row.template_combobox.currentText())
 
                 for combobox in self.equipped_comboboxes:
                     current_text: str = combobox.currentText()
@@ -1638,7 +1630,7 @@ class ResultsPage(QFrame):
             def load(
                 self,
                 owned_talismans: list[OwnedTalisman],
-                equipped_ids: list[str],
+                equipped_names: list[str],
             ) -> None:
                 """저장된 부적 입력 상태 로드"""
 
@@ -1649,36 +1641,35 @@ class ResultsPage(QFrame):
                     self.add_row(owned_talisman, emit_change=False)
 
                 self.refresh_equipped_options()
-                owned_id_order: list[str] = [
-                    owned_talisman.owned_id for owned_talisman in owned_talismans
+                owned_name_order: list[str] = [
+                    owned_talisman.name for owned_talisman in owned_talismans
                 ]
                 for combobox_index, combobox in enumerate(self.equipped_comboboxes):
-                    if combobox_index >= len(equipped_ids):
+                    if combobox_index >= len(equipped_names):
                         combobox.setCurrentIndex(0)
                         continue
 
-                    equipped_id: str = equipped_ids[combobox_index]
-                    if equipped_id not in owned_id_order:
+                    equipped_name: str = equipped_names[combobox_index]
+                    if equipped_name not in owned_name_order:
                         combobox.setCurrentIndex(0)
                         continue
 
-                    combobox.setCurrentIndex(owned_id_order.index(equipped_id) + 1)
+                    combobox.setCurrentIndex(owned_name_order.index(equipped_name) + 1)
 
             def build_state(self) -> tuple[bool, list[OwnedTalisman], list[str]]:
                 """현재 부적 입력 상태 복원"""
 
                 is_valid: bool = True
                 owned_talismans: list[OwnedTalisman] = []
-                for index, row in enumerate(self._rows):
-                    owned_id: str = f"talisman_{index}"
+                for row in self._rows:
                     row_valid: bool
                     owned_talisman: OwnedTalisman
-                    row_valid, owned_talisman = row.to_owned_talisman(owned_id)
+                    row_valid, owned_talisman = row.to_owned_talisman()
                     is_valid = is_valid and row_valid
                     owned_talismans.append(owned_talisman)
 
-                equipped_ids: list[str] = []
-                seen_ids: set[str] = set()
+                equipped_names: list[str] = []
+                seen_names: set[str] = set()
                 for combobox in self.equipped_comboboxes:
                     selected_index: int = combobox.currentIndex()
                     if selected_index <= 0:
@@ -1688,14 +1679,14 @@ class ResultsPage(QFrame):
                     if target_index >= len(owned_talismans):
                         continue
 
-                    target_owned_id: str = owned_talismans[target_index].owned_id
-                    if target_owned_id in seen_ids:
+                    target_name: str = owned_talismans[target_index].name
+                    if target_name in seen_names:
                         continue
 
-                    seen_ids.add(target_owned_id)
-                    equipped_ids.append(target_owned_id)
+                    seen_names.add(target_name)
+                    equipped_names.append(target_name)
 
-                return is_valid, owned_talismans, equipped_ids
+                return is_valid, owned_talismans, equipped_names
 
         def _get_preset(self) -> "MacroPreset":
             """현재 선택 프리셋 반환"""
@@ -1780,11 +1771,11 @@ class ResultsPage(QFrame):
             )
             self.title_inputs.load(
                 calculator_input.owned_titles,
-                calculator_input.equipped_state.equipped_title_id,
+                calculator_input.equipped_state.equipped_title_name,
             )
             self.talisman_inputs.load(
                 calculator_input.owned_talismans,
-                calculator_input.equipped_state.equipped_talisman_ids,
+                calculator_input.equipped_state.equipped_talisman_names,
             )
 
         def _read_distribution_state(self) -> tuple[bool, DistributionState]:
@@ -1860,21 +1851,21 @@ class ResultsPage(QFrame):
 
             title_valid: bool
             owned_titles: list[OwnedTitle]
-            equipped_title_id: str | None
-            title_valid, owned_titles, equipped_title_id = (
+            equipped_title_name: str | None
+            title_valid, owned_titles, equipped_title_name = (
                 self.title_inputs.build_state()
             )
 
             talisman_valid: bool
             owned_talismans: list[OwnedTalisman]
-            equipped_talisman_ids: list[str]
-            talisman_valid, owned_talismans, equipped_talisman_ids = (
+            equipped_talisman_names: list[str]
+            talisman_valid, owned_talismans, equipped_talisman_names = (
                 self.talisman_inputs.build_state()
             )
 
             equipped_state: EquippedState = EquippedState(
-                equipped_title_id=equipped_title_id,
-                equipped_talisman_ids=equipped_talisman_ids,
+                equipped_title_name=equipped_title_name,
+                equipped_talisman_names=equipped_talisman_names,
             )
             is_valid: bool = (
                 distribution_valid and danjeon_valid and title_valid and talisman_valid

@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+import json
 import os
 
 from app.scripts.app_state import app_state
 from app.scripts.config import config
-from app.scripts.macro_models import MacroPreset, MacroPresetFile, MacroPresetRepository
+from app.scripts.custom_skill_models import CustomSkillImport
+from app.scripts.macro_models import (
+    MacroPreset,
+    MacroPresetFile,
+    MacroPresetRepository,
+    SkillUsageSetting,
+)
 from app.scripts.registry.server_registry import ServerSpec, server_registry
+from app.scripts.registry.skill_registry import ScrollDef, SkillDef
 
 data_version = 1
 
@@ -14,6 +22,83 @@ local_appdata: str = os.environ.get("LOCALAPPDATA", default="")
 
 data_path: str = os.path.join(local_appdata, "ProDays", "SkillMacro")
 file_dir: str = os.path.join(data_path, "macros.json")
+custom_skills_file_dir: str = os.path.join(data_path, "custom_skills.json")
+
+
+def load_custom_skills() -> None:
+    """custom_skills.json 불러와 각 서버 SkillRegistry에 주입"""
+
+    if not os.path.isfile(custom_skills_file_dir):
+        return
+
+    with open(custom_skills_file_dir, "r", encoding="utf-8") as f:
+        raw: dict[str, dict] = json.load(f)
+
+    for server_id, import_data in raw.items():
+        server_spec: ServerSpec = server_registry.get(server_id)
+        skill_import: CustomSkillImport = CustomSkillImport.from_dict(import_data)
+
+        for skill_id in skill_import.skills:
+            skill_def_data: dict = skill_import.skill_details[skill_id].to_dict()
+            skill_def: SkillDef = SkillDef.from_detail_dict(
+                skill_id, server_id, skill_def_data
+            )
+            server_spec.skill_registry.add_skill_def(skill_def)
+
+        for scroll in skill_import.scrolls:
+            scroll_def: ScrollDef = ScrollDef(
+                id=scroll.scroll_id,
+                server_id=server_id,
+                name=scroll.name,
+                skills=scroll.skills,
+            )
+            server_spec.skill_registry.add_scroll_def(scroll_def)
+
+
+def remove_custom_scroll(server_id: str, scroll_id: str) -> None:
+    """custom_skills.json에서 스크롤 및 연결 스킬 제거, SkillRegistry에서도 제거"""
+
+    server_spec: ServerSpec = server_registry.get(server_id)
+    scroll_def: ScrollDef = server_spec.skill_registry.get_scroll(scroll_id)
+
+    for skill_id in scroll_def.skills:
+        server_spec.skill_registry.remove_skill_def(skill_id)
+    server_spec.skill_registry.remove_scroll_def(scroll_id)
+
+    if not os.path.isfile(custom_skills_file_dir):
+        return
+
+    with open(custom_skills_file_dir, "r", encoding="utf-8") as f:
+        existing: dict = json.load(f)
+
+    if server_id not in existing:
+        return
+
+    data: dict = existing[server_id]
+    skill_ids: tuple = scroll_def.skills
+    data["skills"] = [s for s in data["skills"] if s not in skill_ids]
+    data["scrolls"] = [s for s in data["scrolls"] if s["scroll_id"] != scroll_id]
+    for skill_id in skill_ids:
+        data["skill_details"].pop(skill_id, None)
+
+    existing[server_id] = data
+    with open(custom_skills_file_dir, "w", encoding="utf-8") as f:
+        json.dump(existing, f, ensure_ascii=False, indent=4)
+
+
+def save_custom_skills(server_id: str, skill_import: CustomSkillImport) -> None:
+    """custom_skills.json에 서버별 커스텀 스킬 저장"""
+
+    existing: dict[str, dict] = {}
+    if os.path.isfile(custom_skills_file_dir):
+        with open(custom_skills_file_dir, "r", encoding="utf-8") as f:
+            existing = json.load(f)
+
+    existing[server_id] = skill_import.to_dict()
+
+    os.makedirs(data_path, exist_ok=True)
+    with open(custom_skills_file_dir, "w", encoding="utf-8") as f:
+        json.dump(existing, f, ensure_ascii=False, indent=4)
 
 
 def load_data(num: int = -1) -> None:
@@ -23,9 +108,18 @@ def load_data(num: int = -1) -> None:
     """
 
     update_data()
+    load_custom_skills()
 
     repo: MacroPresetRepository = MacroPresetRepository(file_dir)
     preset_file: MacroPresetFile = repo.load()
+
+    # 파일에 저장되지 않은 기본값 항목을 인-메모리로 복원
+    for preset in preset_file.preset:
+        server: ServerSpec = server_registry.get(preset.settings.server_id)
+        for scroll_id in server.skill_registry.get_all_scroll_ids():
+            preset.info.scroll_levels.setdefault(scroll_id, 1)
+        for skill_id in server.skill_registry.get_all_skill_ids():
+            preset.usage_settings.setdefault(skill_id, SkillUsageSetting())
 
     # num이 -1이면 최근 탭, 아니면 해당 탭 번호
     if num == -1:
