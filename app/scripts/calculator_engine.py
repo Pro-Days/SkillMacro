@@ -369,8 +369,12 @@ def build_title_contribution(
     equipped_title: OwnedTitle = owned_title_map[equipped_title_name]
 
     contribution: Contribution = Contribution()
-    for stat_key_text, value in equipped_title.stats.items():
-        contribution = contribution.add(StatKey(stat_key_text), value)
+    for title_stat in equipped_title.stats:
+        if title_stat is None:
+            continue
+
+        contribution = contribution.add(title_stat.stat_key, title_stat.value)
+
     return contribution
 
 

@@ -42,12 +42,14 @@ from app.scripts.calculator_models import (
     REALM_TIER_SPECS,
     STAT_SPECS,
     TALISMAN_SPECS,
+    TITLE_STAT_SLOT_COUNT,
     BaseStats,
     DanjeonState,
     DistributionState,
     EquippedState,
     OwnedTalisman,
     OwnedTitle,
+    OwnedTitleStat,
     StatKey,
 )
 from app.scripts.config import config
@@ -1160,207 +1162,396 @@ class ResultsPage(QFrame):
                     self,
                     parent: QWidget,
                     connected_function: Callable[[], None],
-                    remove_function: Callable[
-                        ["ResultsPage.Efficiency.TitleInputs.TitleStatRow"], None
-                    ],
-                    stat_key: StatKey | None = None,
-                    value: float = 0.0,
+                    slot_index: int,
+                    data: OwnedTitleStat | None = None,
                 ) -> None:
                     super().__init__(parent)
                     self.setStyleSheet(
                         "QFrame { background-color: transparent; border: 0px solid; }"
                     )
 
-                    # 스탯 선택/수치/삭제 버튼 구성
+                    # 스탯 슬롯 콜백 및 옵션 구성
                     self._connected_function: Callable[[], None] = connected_function
-                    self._remove_function = remove_function
-                    self._stat_options: list[StatKey] = list(STAT_SPECS.keys())
+                    self._stat_options: list[StatKey | None] = [None] + list(
+                        STAT_SPECS.keys()
+                    )
 
+                    # 슬롯 라벨과 입력 위젯 배치
                     layout: QHBoxLayout = QHBoxLayout(self)
-                    layout.setContentsMargins(0, 0, 0, 0)
-                    layout.setSpacing(8)
+                    layout.setContentsMargins(0, 0, 12, 0)
+                    layout.setSpacing(4)
 
+                    self.slot_label: QLabel = QLabel(f"스탯 {slot_index}", self)
+                    self.slot_label.setFont(CustomFont(10, bold=True))
+                    self.slot_label.setMinimumWidth(42)
+
+                    # 수치 라벨 제거 및 콤보박스 높이 정렬
+                    self.value_input: CustomLineEdit = CustomLineEdit(
+                        self,
+                        self._connected_function,
+                        "" if data is None else f"{data.value:g}",
+                        point_size=10,
+                    )
+                    self.value_input.setMaximumWidth(100)
+                    self.value_input.setFixedHeight(32)
+
+                    # 콤보박스 초기 인덱스 설정 후 시그널 연결
                     self.stat_combobox = CustomComboBox(
                         self,
-                        list(STAT_SPECS.values()),
-                        self._connected_function,
+                        ["미설정"] + list(STAT_SPECS.values()),
                     )
-                    if stat_key is not None:
+                    self.stat_combobox.setMinimumHeight(32)
+                    if data is not None:
                         self.stat_combobox.setCurrentIndex(
-                            self._stat_options.index(stat_key)
+                            self._stat_options.index(data.stat_key)
                         )
 
-                    self.value_input_widget: KVInput = KVInput(
-                        self,
-                        "수치",
-                        f"{value:g}",
-                        self._connected_function,
-                        max_width=100,
+                    self.stat_combobox.currentIndexChanged.connect(
+                        self._on_stat_changed
                     )
-                    self.value_input: CustomLineEdit = self.value_input_widget.input
 
-                    self.remove_button: StyledButton = StyledButton(
-                        self, "삭제", kind="danger"
-                    )
-                    self.remove_button.clicked.connect(self._on_remove_clicked)
-
+                    layout.addWidget(self.slot_label)
                     layout.addWidget(self.stat_combobox)
-                    layout.addWidget(self.value_input_widget)
-                    layout.addWidget(self.remove_button)
+                    layout.addWidget(self.value_input)
                     self.setLayout(layout)
+                    self._apply_slot_state()
 
-                def _on_remove_clicked(self) -> None:
-                    """스탯 행 삭제 요청"""
+                def _on_stat_changed(self) -> None:
+                    """스탯 슬롯 선택 변경 처리"""
 
-                    self._remove_function(self)
+                    # 슬롯 활성 상태 갱신 후 상위 콜백 전달
+                    self._apply_slot_state()
+                    self._connected_function()
 
-                def get_value(self) -> tuple[bool, StatKey, float]:
+                def _apply_slot_state(self) -> None:
+                    """미설정 슬롯의 입력 상태 반영"""
+
+                    # 미설정 슬롯은 수치 입력 비활성화
+                    is_enabled: bool = (
+                        self._stat_options[self.stat_combobox.currentIndex()]
+                        is not None
+                    )
+                    self.value_input.setEnabled(is_enabled)
+                    if is_enabled:
+                        self.value_input.set_valid(True)
+                        return
+
+                    self.value_input.setText("")
+                    self.value_input.set_valid(True)
+
+                def get_value(self) -> tuple[bool, OwnedTitleStat | None]:
                     """행 데이터 복원"""
 
+                    # 현재 슬롯이 미설정인 경우 None 반환
+                    stat_key: StatKey | None = self._stat_options[
+                        self.stat_combobox.currentIndex()
+                    ]
+                    if stat_key is None:
+                        self.value_input.set_valid(True)
+                        return True, None
+
+                    # 수치 입력 유효성 검증
                     text: str = self.value_input.text()
-                    is_valid: bool = True
                     try:
                         value: float = float(text)
                         self.value_input.set_valid(True)
+                        return True, OwnedTitleStat(stat_key=stat_key, value=value)
 
                     except ValueError:
-                        value = 0.0
-                        is_valid = False
                         self.value_input.set_valid(False)
+                        return False, None
 
-                    stat_key: StatKey = self._stat_options[
-                        self.stat_combobox.currentIndex()
-                    ]
-                    return is_valid, stat_key, value
+            class TitleListItem(QFrame):
+                def __init__(
+                    self,
+                    parent: QWidget,
+                    select_function: Callable[
+                        ["ResultsPage.Efficiency.TitleInputs.TitleCard"], None
+                    ],
+                    equip_function: Callable[
+                        ["ResultsPage.Efficiency.TitleInputs.TitleCard"], None
+                    ],
+                    remove_function: Callable[
+                        ["ResultsPage.Efficiency.TitleInputs.TitleCard"], None
+                    ],
+                    target_card: "ResultsPage.Efficiency.TitleInputs.TitleCard",
+                ) -> None:
+                    super().__init__(parent)
+
+                    # 목록 항목 대상 카드 및 콜백 보관
+                    self._select_function: Callable[
+                        [ResultsPage.Efficiency.TitleInputs.TitleCard], None
+                    ] = select_function
+                    self._equip_function: Callable[
+                        [ResultsPage.Efficiency.TitleInputs.TitleCard], None
+                    ] = equip_function
+                    self._remove_function: Callable[
+                        [ResultsPage.Efficiency.TitleInputs.TitleCard], None
+                    ] = remove_function
+                    self._target_card: ResultsPage.Efficiency.TitleInputs.TitleCard = (
+                        target_card
+                    )
+
+                    # 목록 항목 전체 레이아웃 구성
+                    self.setStyleSheet(
+                        "QFrame { background-color: transparent; border: 0px; }"
+                    )
+                    self.setMinimumHeight(48)
+                    layout: QGridLayout = QGridLayout(self)
+                    layout.setContentsMargins(0, 0, 0, 0)
+                    layout.setSpacing(0)
+
+                    # 칭호 선택 버튼 구성
+                    self.select_button: QPushButton = QPushButton("", self)
+                    self.select_button.setCheckable(True)
+                    self.select_button.setCursor(Qt.CursorShape.PointingHandCursor)
+                    self.select_button.setMinimumHeight(48)
+                    self.select_button.setFont(CustomFont(10, bold=True))
+                    self.select_button.setStyleSheet(
+                        """
+                        QPushButton {
+                            background-color: #FFFFFF;
+                            color: #2C3E50;
+                            border: 1px solid #D9E0EA;
+                            border-radius: 6px;
+                            padding: 0px 124px 0px 12px;
+                            text-align: left;
+                        }
+                        QPushButton:hover {
+                            background-color: #F6FAFF;
+                            border: 1px solid #BFD4EC;
+                        }
+                        QPushButton:checked {
+                            background-color: #E8F2FF;
+                            border: 1px solid #4A90E2;
+                            color: #1F4E79;
+                        }
+                        """
+                    )
+                    self.select_button.clicked.connect(self._on_select_clicked)
+
+                    # 목록 상단 액션 버튼 컨테이너 구성
+                    self.actions_widget: QWidget = QWidget(self)
+                    self.actions_widget.setStyleSheet(
+                        "QWidget { background-color: transparent; border: 0px; }"
+                    )
+                    actions_layout: QHBoxLayout = QHBoxLayout(self.actions_widget)
+                    actions_layout.setContentsMargins(0, 0, 8, 0)
+                    actions_layout.setSpacing(6)
+
+                    # 목록 상단 장착 버튼 구성
+                    self.equip_button: QPushButton = QPushButton("장착 설정", self)
+                    self.equip_button.setFixedHeight(24)
+                    self.equip_button.setMinimumWidth(74)
+                    self.equip_button.setFont(CustomFont(8, bold=True))
+                    self.equip_button.setCursor(Qt.CursorShape.PointingHandCursor)
+                    self.equip_button.clicked.connect(self._on_equip_clicked)
+
+                    # 목록 상단 삭제 버튼 구성
+                    self.remove_button: StyledButton = StyledButton(
+                        self, "삭제", kind="danger", point_size=8
+                    )
+                    self.remove_button.setFixedHeight(24)
+                    self.remove_button.clicked.connect(self._on_remove_clicked)
+
+                    actions_layout.addWidget(self.equip_button)
+                    actions_layout.addWidget(self.remove_button)
+                    self.actions_widget.setLayout(actions_layout)
+
+                    # 칭호 버튼 위 액션 버튼 겹치기 배치
+                    layout.addWidget(self.select_button, 0, 0)
+                    layout.addWidget(
+                        self.actions_widget,
+                        0,
+                        0,
+                        Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight,
+                    )
+                    self.setLayout(layout)
+
+                    # 장착 버튼 기본 상태 반영
+                    self.set_equipped_state(False)
+
+                def _on_select_clicked(self, _checked: bool) -> None:
+                    """목록 항목 선택 전달"""
+
+                    self._select_function(self._target_card)
+
+                def _on_equip_clicked(self) -> None:
+                    """목록 항목 장착 토글 전달"""
+
+                    self._equip_function(self._target_card)
+
+                def _on_remove_clicked(self) -> None:
+                    """목록 항목 삭제 전달"""
+
+                    self._remove_function(self._target_card)
+
+                def set_title_text(self, text: str) -> None:
+                    """목록 버튼 표시명 반영"""
+
+                    self.select_button.setText(text)
+
+                def set_selected_state(self, is_selected: bool) -> None:
+                    """목록 버튼 선택 상태 반영"""
+
+                    self.select_button.setChecked(is_selected)
+
+                def set_equipped_state(self, is_equipped: bool) -> None:
+                    """장착 상태에 맞는 버튼 스타일 반영"""
+
+                    # 장착 상태별 버튼 문구 및 색상 반영
+                    if is_equipped:
+                        self.equip_button.setText("장착 해제")
+                        self.equip_button.setStyleSheet(
+                            """
+                            QPushButton {
+                                background-color: #C97A2B;
+                                color: white;
+                                border: 0px;
+                                border-radius: 4px;
+                                padding: 4px 12px;
+                            }
+                            QPushButton:hover {
+                                background-color: #AD6420;
+                            }
+                            QPushButton:pressed {
+                                background-color: #AD6420;
+                            }
+                            """
+                        )
+                        return
+
+                    self.equip_button.setText("장착 설정")
+                    self.equip_button.setStyleSheet(
+                        """
+                        QPushButton {
+                            background-color: #4A90E2;
+                            color: white;
+                            border: 0px;
+                            border-radius: 4px;
+                            padding: 4px 12px;
+                        }
+                        QPushButton:hover {
+                            background-color: #357ABD;
+                        }
+                        QPushButton:pressed {
+                            background-color: #357ABD;
+                        }
+                        """
+                    )
 
             class TitleCard(QFrame):
                 def __init__(
                     self,
                     parent: QWidget,
                     connected_function: Callable[[], None],
-                    remove_function: Callable[
-                        ["ResultsPage.Efficiency.TitleInputs.TitleCard"], None
-                    ],
                     data: OwnedTitle | None = None,
                 ) -> None:
                     super().__init__(parent)
 
-                    # 칭호 카드 외곽 스타일 — 목록 안에서 각 칭호를 구분
+                    # 우측 편집 카드 외곽 스타일 구성
                     self.setObjectName("TitleCard")
                     self.setStyleSheet(
                         """
                         QFrame#TitleCard {
-                            background-color: #F5F7FA;
-                            border: 1px solid #DDE1E7;
-                            border-radius: 6px;
+                            background-color: #F8FAFC;
+                            border: 1px solid #DDE5EF;
+                            border-radius: 8px;
                         }
                         """
                     )
 
-                    # 칭호 카드 전체 편집 영역 구성
+                    # 편집 카드 콜백 및 슬롯 행 목록 초기화
                     self._connected_function: Callable[[], None] = connected_function
-                    self._remove_function: Callable[
-                        [ResultsPage.Efficiency.TitleInputs.TitleCard], None
-                    ] = remove_function
                     self.stat_rows: list[
                         ResultsPage.Efficiency.TitleInputs.TitleStatRow
                     ] = []
 
+                    # 카드 본문 레이아웃 구성
                     root_layout: QVBoxLayout = QVBoxLayout(self)
-                    root_layout.setContentsMargins(10, 10, 10, 10)
+                    root_layout.setContentsMargins(12, 12, 12, 12)
                     root_layout.setSpacing(8)
 
+                    # 칭호 이름 입력 배치
                     self.name_input_widget: KVInput = KVInput(
                         self,
                         "칭호명",
                         data.name if data is not None else "",
                         connected_function,
-                        max_width=180,
+                        max_width=220,
                     )
                     self.name_input: CustomLineEdit = self.name_input_widget.input
                     root_layout.addWidget(self.name_input_widget)
 
+                    # 스탯 행 컨테이너 배치
                     self.stats_container: QWidget = QWidget(self)
                     self.stats_container.setStyleSheet("background-color: transparent;")
                     self.stats_layout: QVBoxLayout = QVBoxLayout(self.stats_container)
                     self.stats_layout.setContentsMargins(0, 0, 0, 0)
                     self.stats_layout.setSpacing(6)
                     root_layout.addWidget(self.stats_container)
-
-                    self.add_stat_button: StyledButton = StyledButton(
-                        self, "스탯 추가", kind="add"
-                    )
-                    self.add_stat_button.clicked.connect(self._add_empty_stat_row)
-                    root_layout.addWidget(self.add_stat_button)
-
-                    self.remove_button: StyledButton = StyledButton(
-                        self, "칭호 삭제", kind="danger"
-                    )
-                    self.remove_button.clicked.connect(self._on_remove_clicked)
-                    root_layout.addWidget(self.remove_button)
                     self.setLayout(root_layout)
 
-                    if data is not None and data.stats:
-                        for stat_key_text, stat_value in data.stats.items():
-                            self._add_stat_row(
-                                StatKey(stat_key_text), float(stat_value)
-                            )
+                    # 3칸 고정 스탯 슬롯 행 구성
+                    slot_data_list: list[OwnedTitleStat | None]
+                    if data is not None:
+                        slot_data_list = data.stats
 
                     else:
-                        self._add_empty_stat_row()
+                        slot_data_list = [None] * TITLE_STAT_SLOT_COUNT
 
-                def _add_stat_row(self, stat_key: StatKey, value: float) -> None:
-                    """지정된 스탯 행 추가"""
+                    for slot_index, slot_data in enumerate(slot_data_list, start=1):
+                        row = ResultsPage.Efficiency.TitleInputs.TitleStatRow(
+                            self.stats_container,
+                            self._connected_function,
+                            slot_index=slot_index,
+                            data=slot_data,
+                        )
+                        self.stat_rows.append(row)
+                        self.stats_layout.addWidget(row)
 
-                    row = ResultsPage.Efficiency.TitleInputs.TitleStatRow(
-                        self.stats_container,
-                        self._connected_function,
-                        self._remove_stat_row,
-                        stat_key=stat_key,
-                        value=value,
-                    )
-                    self.stat_rows.append(row)
-                    self.stats_layout.addWidget(row)
+                def get_display_name(self, fallback_index: int) -> str:
+                    """목록/요약용 칭호명 반환"""
 
-                def _add_empty_stat_row(self) -> None:
-                    """빈 스탯 행 추가"""
+                    # 빈 이름 입력 시 임시 표시명 반환
+                    name: str = self.name_input.text().strip()
+                    if name:
+                        return name
 
-                    self._add_stat_row(StatKey.ATTACK, 0.0)
-                    self._connected_function()
+                    return f"칭호 {fallback_index}"
 
-                def _remove_stat_row(
-                    self,
-                    target_row: "ResultsPage.Efficiency.TitleInputs.TitleStatRow",
-                ) -> None:
-                    """스탯 행 제거"""
+                def build_preview_stats(self) -> list[str]:
+                    """요약 표시용 스탯 문자열 목록 반환"""
 
-                    self.stats_layout.removeWidget(target_row)
-                    self.stat_rows.remove(target_row)
-                    target_row.deleteLater()
-                    self._connected_function()
+                    # 현재 슬롯 기준 설정된 스탯 문자열 수집
+                    preview_lines: list[str] = []
+                    for stat_row in self.stat_rows:
+                        row_valid: bool
+                        title_stat: OwnedTitleStat | None
+                        row_valid, title_stat = stat_row.get_value()
+                        if not row_valid or title_stat is None:
+                            continue
 
-                def _on_remove_clicked(self) -> None:
-                    """칭호 카드 삭제 요청"""
+                        stat_label: str = STAT_SPECS[title_stat.stat_key]
+                        stat_value_text: str = f"{title_stat.value:+g}"
+                        preview_lines.append(f"{stat_label} {stat_value_text}")
 
-                    self._remove_function(self)
+                    return preview_lines
 
                 def to_owned_title(self) -> tuple[bool, OwnedTitle]:
                     """카드 데이터를 칭호 모델로 변환"""
 
+                    # 3칸 슬롯 유효성 및 직렬화 데이터 구성
                     is_valid: bool = True
-                    stats: dict[str, float] = {}
+                    stats: list[OwnedTitleStat | None] = []
                     for stat_row in self.stat_rows:
                         row_valid: bool
-                        stat_key: StatKey
-                        stat_value: float
-                        row_valid, stat_key, stat_value = stat_row.get_value()
+                        title_stat: OwnedTitleStat | None
+                        row_valid, title_stat = stat_row.get_value()
                         is_valid = is_valid and row_valid
-                        if stat_value == 0.0:
-                            continue
+                        stats.append(title_stat)
 
-                        current_value: float = stats.get(stat_key.value, 0.0)
-                        stats[stat_key.value] = current_value + stat_value
-
+                    # 칭호명과 3칸 슬롯 기반 모델 구성
                     name: str = self.name_input.text().strip()
                     owned_title: OwnedTitle = OwnedTitle(
                         name=name,
@@ -1377,43 +1568,219 @@ class ResultsPage(QFrame):
                 self.setStyleSheet(
                     "QFrame { background-color: transparent; border: 0px solid; }"
                 )
+                self.setMinimumHeight(300)
 
-                # 보유 칭호 목록 및 현재 장착 선택 UI 구성
+                # 칭호 입력 전체 상태 참조 초기화
                 self._connected_function: Callable[[], None] = connected_function
                 self._cards: list[ResultsPage.Efficiency.TitleInputs.TitleCard] = []
+                self._card_items: dict[
+                    ResultsPage.Efficiency.TitleInputs.TitleCard,
+                    ResultsPage.Efficiency.TitleInputs.TitleListItem,
+                ] = {}
+                self._selected_card: (
+                    ResultsPage.Efficiency.TitleInputs.TitleCard | None
+                ) = None
+                self._equipped_card: (
+                    ResultsPage.Efficiency.TitleInputs.TitleCard | None
+                ) = None
 
-                root_layout: QVBoxLayout = QVBoxLayout(self)
+                # 3단 패널 레이아웃 구성
+                root_layout: QHBoxLayout = QHBoxLayout(self)
                 root_layout.setContentsMargins(0, 0, 0, 0)
-                root_layout.setSpacing(8)
+                root_layout.setSpacing(12)
 
-                equipped_layout: QHBoxLayout = QHBoxLayout()
-                equipped_layout.setContentsMargins(0, 0, 0, 0)
-                equipped_layout.setSpacing(8)
-                self.equipped_title_label: QLabel = QLabel("현재 장착 칭호", self)
-                self.equipped_title_label.setFont(CustomFont(11))
-                self.equipped_title_combobox = CustomComboBox(
-                    self,
-                    ["없음"],
-                    connected_function,
+                # 좌측 장착 요약 패널 구성
+                self.equipped_panel: QFrame = QFrame(self)
+                self.equipped_panel.setObjectName("TitleEquippedPanel")
+                self.equipped_panel.setStyleSheet(
+                    """
+                    QFrame#TitleEquippedPanel {
+                        background-color: #FBFCFE;
+                        border: 1px solid #DDE5EF;
+                        border-radius: 8px;
+                    }
+                    """
                 )
-                equipped_layout.addWidget(self.equipped_title_label)
-                equipped_layout.addWidget(self.equipped_title_combobox)
-                equipped_layout.addStretch(1)
-                root_layout.addLayout(equipped_layout)
+                self.equipped_panel.setMinimumWidth(230)
+                equipped_layout: QVBoxLayout = QVBoxLayout(self.equipped_panel)
+                equipped_layout.setContentsMargins(14, 14, 14, 14)
+                equipped_layout.setSpacing(10)
 
-                self.cards_container: QWidget = QWidget(self)
-                self.cards_container.setStyleSheet("background-color: transparent;")
-                self.cards_layout: QVBoxLayout = QVBoxLayout(self.cards_container)
-                self.cards_layout.setContentsMargins(0, 0, 0, 0)
-                self.cards_layout.setSpacing(8)
-                root_layout.addWidget(self.cards_container)
+                equipped_title: QLabel = QLabel("장착된 칭호", self.equipped_panel)
+                equipped_title.setFont(CustomFont(11, bold=True))
+                equipped_layout.addWidget(equipped_title)
+
+                self.equipped_name_label: QLabel = QLabel(
+                    "장착된 칭호 없음", self.equipped_panel
+                )
+                self.equipped_name_label.setFont(CustomFont(12, bold=True))
+                self.equipped_name_label.setStyleSheet(
+                    "QLabel { color: #2C3E50; border: 0px; }"
+                )
+                equipped_layout.addWidget(self.equipped_name_label)
+
+                self.equipped_stats_container: QWidget = QWidget(self.equipped_panel)
+                self.equipped_stats_container.setStyleSheet(
+                    "background-color: transparent;"
+                )
+                self.equipped_stats_layout: QVBoxLayout = QVBoxLayout(
+                    self.equipped_stats_container
+                )
+                self.equipped_stats_layout.setContentsMargins(0, 0, 0, 0)
+                self.equipped_stats_layout.setSpacing(6)
+                equipped_layout.addWidget(self.equipped_stats_container)
+                equipped_layout.addStretch(1)
+
+                self.unequip_button: StyledButton = StyledButton(
+                    self.equipped_panel, "장착 해제", kind="normal"
+                )
+                self.unequip_button.clicked.connect(self._on_unequip_clicked)
+                equipped_layout.addWidget(self.unequip_button)
+
+                # 중앙 목록 패널 구성
+                self.list_panel: QFrame = QFrame(self)
+                self.list_panel.setObjectName("TitleListPanel")
+                self.list_panel.setStyleSheet(
+                    """
+                    QFrame#TitleListPanel {
+                        background-color: #FBFCFE;
+                        border: 1px solid #DDE5EF;
+                        border-radius: 8px;
+                    }
+                    """
+                )
+                self.list_panel.setMinimumWidth(220)
+                list_layout: QVBoxLayout = QVBoxLayout(self.list_panel)
+                list_layout.setContentsMargins(14, 14, 14, 14)
+                list_layout.setSpacing(10)
+
+                list_title: QLabel = QLabel("칭호 목록", self.list_panel)
+                list_title.setFont(CustomFont(11, bold=True))
+                list_layout.addWidget(list_title)
+
+                self.list_scroll_area: QScrollArea = QScrollArea(self.list_panel)
+                self.list_scroll_area.setWidgetResizable(True)
+                self.list_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+                self.list_scroll_area.setMinimumHeight(180)
+                self.list_scroll_area.setStyleSheet(
+                    """
+                    QScrollArea {
+                        background-color: transparent;
+                        border: 0px;
+                    }
+                    """
+                )
+
+                self.list_scroll_content: QWidget = QWidget(self.list_scroll_area)
+                self.list_scroll_content.setStyleSheet("background-color: transparent;")
+                self.title_list_layout: QVBoxLayout = QVBoxLayout(
+                    self.list_scroll_content
+                )
+                self.title_list_layout.setContentsMargins(0, 0, 0, 0)
+                self.title_list_layout.setSpacing(8)
+                self.title_list_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+                self.list_scroll_content.setLayout(self.title_list_layout)
+                self.list_scroll_area.setWidget(self.list_scroll_content)
+                list_layout.addWidget(self.list_scroll_area)
 
                 self.add_button: StyledButton = StyledButton(
-                    self, "칭호 추가", kind="add"
+                    self.list_panel, "칭호 추가", kind="add"
                 )
                 self.add_button.clicked.connect(lambda _checked=False: self.add_card())
-                root_layout.addWidget(self.add_button)
+                list_layout.addWidget(self.add_button)
+
+                # 우측 상세 편집 패널 구성
+                self.detail_panel: QFrame = QFrame(self)
+                self.detail_panel.setObjectName("TitleDetailPanel")
+                self.detail_panel.setStyleSheet(
+                    """
+                    QFrame#TitleDetailPanel {
+                        background-color: #FBFCFE;
+                        border: 1px solid #DDE5EF;
+                        border-radius: 8px;
+                    }
+                    """
+                )
+                self.detail_panel.setMinimumWidth(340)
+                self.detail_panel.setMinimumHeight(300)
+                detail_layout: QVBoxLayout = QVBoxLayout(self.detail_panel)
+                detail_layout.setContentsMargins(14, 14, 14, 14)
+                detail_layout.setSpacing(10)
+
+                detail_title: QLabel = QLabel("선택된 칭호 설정", self.detail_panel)
+                detail_title.setFont(CustomFont(11, bold=True))
+                detail_layout.addWidget(detail_title)
+
+                self.detail_stack_host: QWidget = QWidget(self.detail_panel)
+                self.detail_stack: QStackedLayout = QStackedLayout(
+                    self.detail_stack_host
+                )
+                self.detail_stack_host.setLayout(self.detail_stack)
+
+                self.empty_detail_label: QLabel = QLabel(
+                    "중앙 목록에서 칭호를 선택하세요.", self.detail_stack_host
+                )
+                self.empty_detail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.empty_detail_label.setFont(CustomFont(11))
+                self.empty_detail_label.setStyleSheet(
+                    "QLabel { color: #7A8795; border: 0px; }"
+                )
+                self.detail_stack.addWidget(self.empty_detail_label)
+                detail_layout.addWidget(self.detail_stack_host)
+
+                root_layout.addWidget(self.equipped_panel, 3)
+                root_layout.addWidget(self.list_panel, 3)
+                root_layout.addWidget(self.detail_panel, 4)
                 self.setLayout(root_layout)
+
+                # 초기 비어 있는 장착/상세 상태 반영
+                self.refresh_equipped_options()
+
+            def _notify_change(self) -> None:
+                """상위 입력 변경 콜백 전달"""
+
+                self._connected_function()
+
+            def _on_card_content_changed(self) -> None:
+                """칭호 내용 변경 시 요약/목록 동기화"""
+
+                self.refresh_equipped_options()
+                self._notify_change()
+
+            def _on_unequip_clicked(self) -> None:
+                """좌측 패널 장착 해제 처리"""
+
+                if self._equipped_card is None:
+                    return
+
+                self._equipped_card = None
+                self.refresh_equipped_options()
+                self._notify_change()
+
+            def _toggle_equipped_card(
+                self,
+                target_card: "ResultsPage.Efficiency.TitleInputs.TitleCard",
+            ) -> None:
+                """우측 패널 장착 토글 처리"""
+
+                # 동일 카드 재선택 시 장착 해제 처리
+                if self._equipped_card is target_card:
+                    self._equipped_card = None
+
+                else:
+                    self._equipped_card = target_card
+
+                self.refresh_equipped_options()
+                self._notify_change()
+
+            def select_card(
+                self,
+                target_card: "ResultsPage.Efficiency.TitleInputs.TitleCard",
+            ) -> None:
+                """중앙 목록 기준 선택 카드 전환"""
+
+                self._selected_card = target_card
+                self.refresh_equipped_options()
 
             def add_card(
                 self,
@@ -1422,48 +1789,152 @@ class ResultsPage(QFrame):
             ) -> None:
                 """칭호 카드 추가"""
 
+                # 신규 편집 카드와 목록 항목 동시 생성
                 card = ResultsPage.Efficiency.TitleInputs.TitleCard(
-                    self.cards_container,
-                    self._connected_function,
-                    self.remove_card,
+                    self.detail_stack_host,
+                    self._on_card_content_changed,
                     data=data,
                 )
+                list_item = ResultsPage.Efficiency.TitleInputs.TitleListItem(
+                    self.list_scroll_content,
+                    self.select_card,
+                    self._toggle_equipped_card,
+                    self.remove_card,
+                    card,
+                )
+
+                # 내부 카드/목록 참조 등록
                 self._cards.append(card)
-                self.cards_layout.addWidget(card)
+                self._card_items[card] = list_item
+                self.title_list_layout.addWidget(list_item)
+                self.detail_stack.addWidget(card)
+
+                # 신규 추가 칭호 기본 선택 처리
+                self._selected_card = card
                 self.refresh_equipped_options()
                 if emit_change:
-                    self._connected_function()
+                    self._notify_change()
 
             def remove_card(
                 self,
                 target_card: "ResultsPage.Efficiency.TitleInputs.TitleCard",
+                emit_change: bool = True,
             ) -> None:
                 """칭호 카드 제거"""
 
-                self.cards_layout.removeWidget(target_card)
+                # 제거 전 현재 인덱스 기반 대체 선택 후보 계산
+                target_index: int = self._cards.index(target_card)
+                next_selected_card: (
+                    ResultsPage.Efficiency.TitleInputs.TitleCard | None
+                ) = None
+                if len(self._cards) > 1:
+                    fallback_index: int = min(target_index, len(self._cards) - 2)
+                    next_selected_card = self._cards[fallback_index]
+
+                # 목록 항목과 상세 카드 위젯 제거
+                list_item: ResultsPage.Efficiency.TitleInputs.TitleListItem = (
+                    self._card_items.pop(target_card)
+                )
+                self.title_list_layout.removeWidget(list_item)
+                list_item.deleteLater()
+                self.detail_stack.removeWidget(target_card)
+
+                # 내부 상태 참조에서 대상 카드 제거
                 self._cards.remove(target_card)
                 target_card.deleteLater()
+
+                # 장착/선택 참조 정리
+                if self._equipped_card is target_card:
+                    self._equipped_card = None
+
+                if self._selected_card is target_card:
+                    self._selected_card = next_selected_card
+
                 self.refresh_equipped_options()
-                self._connected_function()
+                if emit_change:
+                    self._notify_change()
 
             def refresh_equipped_options(self) -> None:
-                """현재 장착 선택 목록 갱신"""
+                """목록 선택/장착/요약 패널 동기화"""
 
-                current_text: str = self.equipped_title_combobox.currentText()
-                self.equipped_title_combobox.blockSignals(True)
-                self.equipped_title_combobox.clear()
-                options: list[str] = ["없음"]
-                for index, card in enumerate(self._cards):
-                    title_name: str = card.name_input.text().strip()
-                    if not title_name:
-                        title_name = f"칭호 {index + 1}"
-                    options.append(title_name)
-                self.equipped_title_combobox.addItems(options)
-                if current_text in options:
-                    self.equipped_title_combobox.setCurrentIndex(
-                        options.index(current_text)
+                # 현재 참조 유효성 정리
+                if self._selected_card not in self._cards:
+                    self._selected_card = self._cards[0] if self._cards else None
+
+                if self._equipped_card not in self._cards:
+                    self._equipped_card = None
+
+                # 목록 항목 문구 및 선택 상태 갱신
+                for index, card in enumerate(self._cards, start=1):
+                    display_name: str = card.get_display_name(index)
+                    list_item: ResultsPage.Efficiency.TitleInputs.TitleListItem = (
+                        self._card_items[card]
                     )
-                self.equipped_title_combobox.blockSignals(False)
+                    list_item.set_title_text(display_name)
+                    list_item.set_selected_state(card is self._selected_card)
+                    list_item.set_equipped_state(card is self._equipped_card)
+
+                # 우측 상세 카드 표시 상태 갱신
+                if self._selected_card is None:
+                    self.detail_stack.setCurrentWidget(self.empty_detail_label)
+
+                else:
+                    self.detail_stack.setCurrentWidget(self._selected_card)
+
+                # 좌측 장착 요약 패널 내용 갱신
+                self._refresh_equipped_summary()
+
+            def _refresh_equipped_summary(self) -> None:
+                """좌측 장착 칭호 요약 패널 갱신"""
+
+                # 기존 장착 스탯 라벨 제거
+                while self.equipped_stats_layout.count() > 0:
+                    item: QLayoutItem = self.equipped_stats_layout.takeAt(0)
+                    widget: QWidget | None = item.widget()
+                    if widget is None:
+                        continue
+
+                    widget.deleteLater()
+
+                # 장착 칭호 부재 상태 표시
+                if self._equipped_card is None:
+                    self.equipped_name_label.setText("장착된 칭호 없음")
+                    empty_label: QLabel = QLabel(
+                        "선택된 장착 칭호가 없습니다.", self.equipped_stats_container
+                    )
+                    empty_label.setFont(CustomFont(10))
+                    empty_label.setStyleSheet("QLabel { color: #7A8795; border: 0px; }")
+                    self.equipped_stats_layout.addWidget(empty_label)
+                    self.unequip_button.setEnabled(False)
+                    return
+
+                # 장착 칭호명 및 스탯 요약 반영
+                equipped_index: int = self._cards.index(self._equipped_card) + 1
+                equipped_name: str = self._equipped_card.get_display_name(
+                    equipped_index
+                )
+                self.equipped_name_label.setText(equipped_name)
+                preview_lines: list[str] = self._equipped_card.build_preview_stats()
+                if not preview_lines:
+                    empty_stats_label: QLabel = QLabel(
+                        "적용된 스탯이 없습니다.", self.equipped_stats_container
+                    )
+                    empty_stats_label.setFont(CustomFont(10))
+                    empty_stats_label.setStyleSheet(
+                        "QLabel { color: #7A8795; border: 0px; }"
+                    )
+                    self.equipped_stats_layout.addWidget(empty_stats_label)
+
+                else:
+                    for line in preview_lines:
+                        stat_label: QLabel = QLabel(line, self.equipped_stats_container)
+                        stat_label.setFont(CustomFont(10, bold=True))
+                        stat_label.setStyleSheet(
+                            "QLabel { color: #2C3E50; border: 0px; }"
+                        )
+                        self.equipped_stats_layout.addWidget(stat_label)
+
+                self.unequip_button.setEnabled(True)
 
             def load(
                 self,
@@ -1472,38 +1943,46 @@ class ResultsPage(QFrame):
             ) -> None:
                 """저장된 칭호 입력 상태 로드"""
 
+                # 기존 카드 전부 제거
                 for card in self._cards.copy():
-                    self.remove_card(card)
+                    self.remove_card(card, emit_change=False)
 
+                # 저장된 칭호 카드 순서대로 복원
+                equipped_card: ResultsPage.Efficiency.TitleInputs.TitleCard | None = (
+                    None
+                )
                 for owned_title in owned_titles:
                     self.add_card(owned_title, emit_change=False)
+                    latest_card: ResultsPage.Efficiency.TitleInputs.TitleCard = (
+                        self._cards[-1]
+                    )
+                    if (
+                        equipped_title_name is not None
+                        and owned_title.name == equipped_title_name
+                        and equipped_card is None
+                    ):
+                        equipped_card = latest_card
 
+                # 선택/장착 초기 상태 반영
+                self._selected_card = self._cards[0] if self._cards else None
+                self._equipped_card = equipped_card
                 self.refresh_equipped_options()
-                if equipped_title_name is None:
-                    self.equipped_title_combobox.setCurrentIndex(0)
-                    return
-
-                for index, owned_title in enumerate(owned_titles, start=1):
-                    if owned_title.name == equipped_title_name:
-                        self.equipped_title_combobox.setCurrentIndex(index)
-                        return
 
             def build_state(self) -> tuple[bool, list[OwnedTitle], str | None]:
                 """현재 칭호 입력 상태 복원"""
 
+                # 카드 목록 기준 보유 칭호 직렬화
                 is_valid: bool = True
                 owned_titles: list[OwnedTitle] = []
+                equipped_title_name: str | None = None
                 for card in self._cards:
                     card_valid: bool
                     owned_title: OwnedTitle
                     card_valid, owned_title = card.to_owned_title()
                     is_valid = is_valid and card_valid
                     owned_titles.append(owned_title)
-
-                equipped_index: int = self.equipped_title_combobox.currentIndex()
-                equipped_title_name: str | None = None
-                if equipped_index > 0 and equipped_index - 1 < len(owned_titles):
-                    equipped_title_name = owned_titles[equipped_index - 1].name
+                    if card is self._equipped_card:
+                        equipped_title_name = owned_title.name
 
                 return is_valid, owned_titles, equipped_title_name
 

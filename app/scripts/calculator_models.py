@@ -98,25 +98,67 @@ class RealmSpec:
     danjeon_points: int
 
 
+TITLE_STAT_SLOT_COUNT: int = 3
+
+
+@dataclass(slots=True)
+class OwnedTitleStat:
+    """보유 칭호 스탯 슬롯"""
+
+    stat_key: StatKey
+    value: float
+
+    @classmethod
+    def from_dict(cls, data: dict[str, object]) -> "OwnedTitleStat":
+        """저장 데이터로부터 칭호 스탯 슬롯 복원"""
+
+        # 스탯 키와 수치 직접 복원
+        stat_key: StatKey = StatKey(str(data["stat_key"]))
+        value: float = float(data["value"])  # type: ignore
+        return cls(stat_key=stat_key, value=value)
+
+    def to_dict(self) -> dict[str, object]:
+        """칭호 스탯 슬롯 직렬화"""
+
+        # 직렬화 시 enum 값을 문자열로 고정 저장
+        data: dict[str, object] = {
+            "stat_key": self.stat_key.value,
+            "value": float(self.value),
+        }
+        return data
+
+
 @dataclass(slots=True)
 class OwnedTitle:
     """보유 칭호 정의"""
 
     name: str = ""
-    stats: dict[str, float] = field(default_factory=dict)
+    stats: list[OwnedTitleStat | None] = field(
+        default_factory=lambda: [None] * TITLE_STAT_SLOT_COUNT
+    )
 
     @classmethod
     def from_dict(cls, data: dict[str, object]) -> "OwnedTitle":
         """저장 데이터로부터 보유 칭호 복원"""
 
-        # 동적 스탯 라인 저장 구조 직접 복원
+        # 3칸 고정 스탯 슬롯 구조 직접 복원
         raw_stats: object = data["stats"]
-        if not isinstance(raw_stats, dict):
-            raise TypeError("title stats must be a dict")
+        if not isinstance(raw_stats, list):
+            raise TypeError("title stats must be a list")
 
-        stats: dict[str, float] = {
-            str(key): float(value) for key, value in raw_stats.items()
-        }
+        if len(raw_stats) != TITLE_STAT_SLOT_COUNT:
+            raise ValueError("title stats must have exactly 3 slots")
+
+        stats: list[OwnedTitleStat | None] = []
+        for raw_stat in raw_stats:
+            if raw_stat is None:
+                stats.append(None)
+                continue
+
+            if not isinstance(raw_stat, dict):
+                raise TypeError("title stat slot must be dict or null")
+
+            stats.append(OwnedTitleStat.from_dict(raw_stat))
 
         return cls(
             name=str(data["name"]),
@@ -126,10 +168,15 @@ class OwnedTitle:
     def to_dict(self) -> dict[str, object]:
         """보유 칭호 직렬화"""
 
-        # 값 타입을 float로 고정 저장
-        stats: dict[str, float] = {
-            key: float(value) for key, value in self.stats.items()
-        }
+        # 3칸 고정 슬롯 기준 null 포함 직렬화
+        stats: list[dict[str, object] | None] = []
+        for stat_slot in self.stats:
+            if stat_slot is None:
+                stats.append(None)
+                continue
+
+            stats.append(stat_slot.to_dict())
+
         data: dict[str, object] = {
             "name": self.name,
             "stats": stats,
