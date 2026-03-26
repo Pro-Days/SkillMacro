@@ -2305,9 +2305,9 @@ class NavigationButtons(QFrame):
         ]
 
         # 계산기 버튼은 임시로 비활성화
-        calculator_button: NavigationButtons.NavigationButton = self.buttons[3]
-        calculator_button.setEnabled(False)
-        calculator_button.setCursor(Qt.CursorShape.ArrowCursor)
+        # calculator_button: NavigationButtons.NavigationButton = self.buttons[3]
+        # calculator_button.setEnabled(False)
+        # calculator_button.setCursor(Qt.CursorShape.ArrowCursor)
 
         for idx, button in enumerate(self.buttons):
             layout.addWidget(button)

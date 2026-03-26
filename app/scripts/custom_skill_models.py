@@ -28,6 +28,7 @@ def _require_float(data: dict[str, Any], key: str) -> float:
     raw_value: Any = data[key]
     try:
         value: float = float(raw_value)
+
     except (TypeError, ValueError) as exc:
         raise CustomSkillImportError(f"{key} must be a number") from exc
 
@@ -184,6 +185,7 @@ class CustomSkillDefinition:
                 effect_type_text: str = _require_text(raw_effect, "type")
                 try:
                     effect_type: SkillEffectType = SkillEffectType(effect_type_text)
+
                 except ValueError as exc:
                     raise CustomSkillImportError(
                         f"unsupported skill effect type: {effect_type_text}"
@@ -348,7 +350,9 @@ class CustomSkillImport:
             if not isinstance(raw_scroll, dict):
                 raise CustomSkillImportError("scroll must be a dictionary")
 
-            scroll: CustomScrollDefinition = CustomScrollDefinition.from_dict(raw_scroll)
+            scroll: CustomScrollDefinition = CustomScrollDefinition.from_dict(
+                raw_scroll
+            )
             if scroll.scroll_id in seen_scroll_ids:
                 raise CustomSkillImportError(
                     f"duplicated scroll id is not allowed: {scroll.scroll_id}"

@@ -1363,7 +1363,9 @@ class ResultsPage(QFrame):
                 root_layout.addWidget(self.cards_container)
 
                 self.add_button: QPushButton = QPushButton("칭호 추가", self)
-                self.add_button.clicked.connect(self.add_card)
+                self.add_button.clicked.connect(
+                    lambda _checked=False: self.add_card()
+                )
                 self.add_button.setFont(CustomFont(10))
                 root_layout.addWidget(self.add_button)
                 self.setLayout(root_layout)
