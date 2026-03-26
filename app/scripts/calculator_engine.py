@@ -77,7 +77,6 @@ class HitEvent:
     skill_id: str
     time: float
     multiplier: float
-    is_skill: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -773,19 +772,17 @@ def build_simulation_events(
 
     # 평타 간격과 배치 스킬 사용 기록을 각각 이벤트로 확장
     basic_attack_skill_id: str = get_builtin_skill_id(server_spec.id, "평타")
-    basic_attack_interval_ms: int = int((100 - cooltime_reduction) * 10)
     hit_events: list[HitEvent] = []
     for current_time_ms in range(
         0,
         TIMELINE_MILLISECONDS,
-        basic_attack_interval_ms,
+        1000,
     ):
         hit_events.append(
             HitEvent(
                 skill_id=basic_attack_skill_id,
                 time=round(current_time_ms * 0.001, 2),
                 multiplier=1.0,
-                is_skill=False,
             )
         )
 
@@ -818,7 +815,6 @@ def build_simulation_events(
                     skill_id=skill_use.skill_id,
                     time=round(skill_use.time + damage_effect.time, 2),
                     multiplier=damage_effect.damage,
-                    is_skill=True,
                 )
             )
 
@@ -1001,9 +997,7 @@ def _calculate_hit_damage(
     damage: float = attack_power * hit_event.multiplier
     damage *= 1.0 + (crit_rate * crit_damage * 0.0001)
 
-    # 평타가 아닌 스킬 타격에만 스킬 피해량 보정 적용
-    if hit_event.is_skill:
-        damage *= 1.0 + (float(resolved_stats[StatKey.SKILL_DAMAGE_PERCENT]) * 0.01)
+    damage *= 1.0 + (float(resolved_stats[StatKey.SKILL_DAMAGE_PERCENT]) * 0.01)
 
     return damage
 
@@ -1026,7 +1020,7 @@ def _calculate_random_hit_damage(
 
     # 스킬 계수와 랜덤 최소/최대 데미지 폭 반영
     damage: float = attack_power * hit_event.multiplier
-    damage *= rng.uniform(1.0, 1.2)
+    damage *= rng.uniform(0.95, 1.05)
 
     # 치명타 확률과 치명타 피해량 기반 랜덤 치명타 반영
     crit_rate: float = min(float(resolved_stats[StatKey.CRIT_RATE_PERCENT]), 100.0)
@@ -1034,9 +1028,7 @@ def _calculate_random_hit_damage(
     if rng.random() < (crit_rate * 0.01):
         damage *= 1.0 + (crit_damage * 0.01)
 
-    # 평타가 아닌 스킬 타격에만 스킬 피해량 보정 적용
-    if hit_event.is_skill:
-        damage *= 1.0 + (float(resolved_stats[StatKey.SKILL_DAMAGE_PERCENT]) * 0.01)
+    damage *= 1.0 + (float(resolved_stats[StatKey.SKILL_DAMAGE_PERCENT]) * 0.01)
 
     return damage
 
