@@ -55,8 +55,11 @@ from app.scripts.custom_classes import (
     CustomComboBox,
     CustomFont,
     CustomLineEdit,
+    KVComboInput,
     KVInput,
+    SectionCard,
     SkillImage,
+    StyledButton,
 )
 from app.scripts.data_manager import save_data
 from app.scripts.registry.resource_registry import (
@@ -166,6 +169,19 @@ class SimUI:
         self.main_frame.setLayout(self.stacked_layout)
 
         self.adjust_main_frame_height()
+
+    def on_enter(self) -> None:
+        """메인 화면에서 계산기 화면으로 진입
+
+        내부 페이지를 입력 화면으로 되돌리고
+        메인 화면에서 변경된 스크롤 레벨 등을 입력 위젯에 동기화
+        """
+        if self.stacked_layout.currentIndex() != 0:
+            self.stacked_layout.setCurrentIndex(0)
+            self.update_nav(0)
+            self.adjust_main_frame_height()
+
+        self.input_page.editor.load_from_preset_state()
 
     def change_layout(self, index: int) -> None:
         # 입력값 확인
@@ -810,14 +826,16 @@ class ResultsPage(QFrame):
             self.metric_options: list[PowerMetric] = list(DISPLAY_POWER_METRICS)
             self.realm_options: list[RealmTier] = list(REALM_TIER_SPECS.keys())
 
-            # 계산 기준 입력 UI 구성
-            self.metric_title: QLabel = QLabel("기준 전투력", self)
-            self.metric_title.setFont(CustomFont(12))
-            self.metric_combobox = CustomComboBox(
+            # 기준 입력 위젯 구성 — KVComboInput 으로 KVInput(레벨)과 레이아웃 통일
+            self.metric_input = KVComboInput(
                 self,
+                "기준 전투력",
                 [POWER_METRIC_LABELS[metric] for metric in self.metric_options],
                 self.on_base_input_changed,
             )
+            self.metric_combobox = (
+                self.metric_input.combobox
+            )  # load_from_preset_state 참조용
 
             self.level_input_widget: KVInput = KVInput(
                 self,
@@ -828,17 +846,17 @@ class ResultsPage(QFrame):
             )
             self.level_input: CustomLineEdit = self.level_input_widget.input
 
-            self.realm_title: QLabel = QLabel("경지", self)
-            self.realm_title.setFont(CustomFont(12))
-            self.realm_combobox = CustomComboBox(
+            self.realm_input = KVComboInput(
                 self,
+                "경지",
                 [REALM_TIER_SPECS[realm].label for realm in self.realm_options],
                 self.on_base_input_changed,
             )
+            self.realm_combobox = (
+                self.realm_input.combobox
+            )  # load_from_preset_state 참조용
 
             # 전체 스탯 입력 UI 구성
-            self.stats_title: QLabel = QLabel("전체 스탯", self)
-            self.stats_title.setFont(CustomFont(12))
             self.stats_inputs = self.OverallStatInputs(
                 self,
                 self.on_base_input_changed,
@@ -846,8 +864,6 @@ class ResultsPage(QFrame):
             )
 
             # 스크롤 레벨 입력 UI 구성
-            self.scroll_title: QLabel = QLabel("스크롤 레벨", self)
-            self.scroll_title.setFont(CustomFont(12))
             self.skills = SkillInputs(
                 self,
                 SkillInputs.build_entries(),
@@ -856,77 +872,69 @@ class ResultsPage(QFrame):
             )
 
             # 최적화 기준 입력 UI 구성
-            self.optimization_title: QLabel = QLabel("현재 선택 입력", self)
-            self.optimization_title.setFont(CustomFont(12))
-            self.distribution_title: QLabel = QLabel("스탯 분배", self)
-            self.distribution_title.setFont(CustomFont(11))
             self.distribution_inputs = self.DistributionInputs(
                 self,
                 self.on_optimization_input_changed,
             )
-            self.danjeon_title: QLabel = QLabel("단전", self)
-            self.danjeon_title.setFont(CustomFont(11))
             self.danjeon_inputs = self.DanjeonInputs(
                 self,
                 self.on_optimization_input_changed,
             )
-            self.title_list_title: QLabel = QLabel("칭호 목록", self)
-            self.title_list_title.setFont(CustomFont(11))
             self.title_inputs = self.TitleInputs(
                 self,
                 self.on_optimization_input_changed,
             )
-            self.talisman_title: QLabel = QLabel("부적 목록", self)
-            self.talisman_title.setFont(CustomFont(11))
             self.talisman_inputs = self.TalismanInputs(
                 self,
                 self.on_optimization_input_changed,
             )
 
             # 사용자 지정 변화량 입력 UI 구성
-            self.custom_delta_title: QLabel = QLabel("사용자 지정 스탯 변화량", self)
-            self.custom_delta_title.setFont(CustomFont(12))
             self.custom_delta_inputs = self.OverallStatInputs(
                 self,
                 self.on_custom_delta_changed,
                 self._build_empty_stat_map(),
             )
 
-            # 상단 기준 입력 행 구성
-            metric_layout = QHBoxLayout()
-            metric_layout.addWidget(self.metric_title)
-            metric_layout.addWidget(self.metric_combobox)
-            metric_layout.addSpacing(20)
-            metric_layout.addWidget(self.level_input_widget)
-            metric_layout.addSpacing(20)
-            metric_layout.addWidget(self.realm_title)
-            metric_layout.addWidget(self.realm_combobox)
-            metric_layout.addStretch(1)
+            # 섹션 카드 조립
+            base_card = SectionCard(self, "기준 입력")
+            base_row = QHBoxLayout()
+            base_row.setContentsMargins(0, 0, 0, 0)
+            base_row.setSpacing(20)
+            base_row.addWidget(self.metric_input)
+            base_row.addWidget(self.level_input_widget)
+            base_row.addWidget(self.realm_input)
+            base_row.addStretch(1)
+            base_card.add_layout(base_row)
 
-            # 최적화 섹션 구성
-            optimization_section: QWidget = QWidget(self)
-            optimization_section_layout: QVBoxLayout = QVBoxLayout(optimization_section)
-            optimization_section_layout.setContentsMargins(0, 0, 0, 0)
-            optimization_section_layout.setSpacing(10)
-            optimization_section_layout.addWidget(self.optimization_title)
-            optimization_section_layout.addWidget(self.distribution_title)
-            optimization_section_layout.addWidget(self.distribution_inputs)
-            optimization_section_layout.addWidget(self.danjeon_title)
-            optimization_section_layout.addWidget(self.danjeon_inputs)
-            optimization_section_layout.addWidget(self.title_list_title)
-            optimization_section_layout.addWidget(self.title_inputs)
-            optimization_section_layout.addWidget(self.talisman_title)
-            optimization_section_layout.addWidget(self.talisman_inputs)
+            stats_card = SectionCard(self, "전체 스탯")
+            stats_card.add_widget(self.stats_inputs)
+
+            scroll_card = SectionCard(self, "스크롤 레벨")
+            scroll_card.add_widget(self.skills)
+
+            delta_card = SectionCard(self, "사용자 지정 스탯 변화량")
+            delta_card.add_widget(self.custom_delta_inputs)
+
+            opt_card = SectionCard(self, "현재 선택 입력")
+            opt_card.add_sub_title("스탯 분배")
+            opt_card.add_widget(self.distribution_inputs)
+            opt_card.add_separator()
+            opt_card.add_sub_title("단전")
+            opt_card.add_widget(self.danjeon_inputs)
+            opt_card.add_separator()
+            opt_card.add_sub_title("칭호 목록")
+            opt_card.add_widget(self.title_inputs)
+            opt_card.add_separator()
+            opt_card.add_sub_title("부적 목록")
+            opt_card.add_widget(self.talisman_inputs)
 
             layout = QVBoxLayout(self)
-            layout.addLayout(metric_layout)
-            layout.addWidget(self.stats_title)
-            layout.addWidget(self.stats_inputs)
-            layout.addWidget(self.scroll_title)
-            layout.addWidget(self.skills)
-            layout.addWidget(self.custom_delta_title)
-            layout.addWidget(self.custom_delta_inputs)
-            layout.addWidget(optimization_section)
+            layout.addWidget(base_card)
+            layout.addWidget(stats_card)
+            layout.addWidget(scroll_card)
+            layout.addWidget(delta_card)
+            layout.addWidget(opt_card)
             layout.setSpacing(10)
             layout.setContentsMargins(10, 10, 10, 10)
             self.setLayout(layout)
@@ -1173,9 +1181,10 @@ class ResultsPage(QFrame):
                     )
                     self.value_input: CustomLineEdit = self.value_input_widget.input
 
-                    self.remove_button: QPushButton = QPushButton("삭제", self)
+                    self.remove_button: StyledButton = StyledButton(
+                        self, "삭제", kind="danger"
+                    )
                     self.remove_button.clicked.connect(self._on_remove_clicked)
-                    self.remove_button.setFont(CustomFont(10))
 
                     layout.addWidget(self.stat_combobox)
                     layout.addWidget(self.value_input_widget)
@@ -1218,6 +1227,18 @@ class ResultsPage(QFrame):
                 ) -> None:
                     super().__init__(parent)
 
+                    # 칭호 카드 외곽 스타일 — 목록 안에서 각 칭호를 구분
+                    self.setObjectName("TitleCard")
+                    self.setStyleSheet(
+                        """
+                        QFrame#TitleCard {
+                            background-color: #F5F7FA;
+                            border: 1px solid #DDE1E7;
+                            border-radius: 6px;
+                        }
+                        """
+                    )
+
                     # 칭호 카드 전체 편집 영역 구성
                     self._connected_function: Callable[[], None] = connected_function
                     self._remove_function: Callable[
@@ -1228,7 +1249,7 @@ class ResultsPage(QFrame):
                     ] = []
 
                     root_layout: QVBoxLayout = QVBoxLayout(self)
-                    root_layout.setContentsMargins(8, 8, 8, 8)
+                    root_layout.setContentsMargins(10, 10, 10, 10)
                     root_layout.setSpacing(8)
 
                     self.name_input_widget: KVInput = KVInput(
@@ -1247,14 +1268,16 @@ class ResultsPage(QFrame):
                     self.stats_layout.setSpacing(6)
                     root_layout.addWidget(self.stats_container)
 
-                    self.add_stat_button: QPushButton = QPushButton("스탯 추가", self)
+                    self.add_stat_button: StyledButton = StyledButton(
+                        self, "스탯 추가", kind="add"
+                    )
                     self.add_stat_button.clicked.connect(self._add_empty_stat_row)
-                    self.add_stat_button.setFont(CustomFont(10))
                     root_layout.addWidget(self.add_stat_button)
 
-                    self.remove_button: QPushButton = QPushButton("칭호 삭제", self)
+                    self.remove_button: StyledButton = StyledButton(
+                        self, "칭호 삭제", kind="danger"
+                    )
                     self.remove_button.clicked.connect(self._on_remove_clicked)
-                    self.remove_button.setFont(CustomFont(10))
                     root_layout.addWidget(self.remove_button)
                     self.setLayout(root_layout)
 
@@ -1362,9 +1385,10 @@ class ResultsPage(QFrame):
                 self.cards_layout.setSpacing(8)
                 root_layout.addWidget(self.cards_container)
 
-                self.add_button: QPushButton = QPushButton("칭호 추가", self)
+                self.add_button: StyledButton = StyledButton(
+                    self, "칭호 추가", kind="add"
+                )
                 self.add_button.clicked.connect(lambda _checked=False: self.add_card())
-                self.add_button.setFont(CustomFont(10))
                 root_layout.addWidget(self.add_button)
                 self.setLayout(root_layout)
 
@@ -1502,9 +1526,10 @@ class ResultsPage(QFrame):
                     )
                     self.level_input: CustomLineEdit = self.level_input_widget.input
 
-                    self.remove_button: QPushButton = QPushButton("삭제", self)
+                    self.remove_button: StyledButton = StyledButton(
+                        self, "삭제", kind="danger"
+                    )
                     self.remove_button.clicked.connect(self._on_remove_clicked)
-                    self.remove_button.setFont(CustomFont(10))
 
                     layout.addWidget(self.template_combobox)
                     layout.addWidget(self.level_input_widget)
@@ -1574,9 +1599,10 @@ class ResultsPage(QFrame):
                 self.rows_layout.setSpacing(6)
                 root_layout.addWidget(self.rows_container)
 
-                self.add_button: QPushButton = QPushButton("부적 추가", self)
+                self.add_button: StyledButton = StyledButton(
+                    self, "부적 추가", kind="add"
+                )
                 self.add_button.clicked.connect(self.add_row)
-                self.add_button.setFont(CustomFont(10))
                 root_layout.addWidget(self.add_button)
                 self.setLayout(root_layout)
 

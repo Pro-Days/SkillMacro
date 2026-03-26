@@ -74,6 +74,10 @@ class MainWindow(QWidget):
         # 2: 매크로 공유
         """
 
+        # 계산기 진입 시 입력 화면으로 리셋하고 스크롤 레벨 등 최신 상태 동기화
+        if num == 1:
+            self.sim_ui.on_enter()
+
         self.page_navigator.setCurrentIndex(num)
 
     def keyPressEvent(self, e: QKeyEvent) -> None:  # type: ignore
