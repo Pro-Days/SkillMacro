@@ -36,6 +36,7 @@ from app.scripts.run_macro import get_prepared_link_skill_indices
 if TYPE_CHECKING:
     from app.scripts.macro_models import MacroPreset, SkillUsageSetting
     from app.scripts.registry.server_registry import ServerSpec
+    from app.scripts.registry.skill_registry import ScrollDef
 
 
 # 전투력 표시 순서 고정
@@ -1828,9 +1829,24 @@ def evaluate_scroll_upgrade_deltas(
         base_stats=base_stats,
     )
 
+    # 현재 프리셋 장착 순서 기준 계산 대상 스크롤 목록 구성
+    equipped_scroll_ids: list[str] = []
+    seen_scroll_ids: set[str] = set()
+    scroll_id: str
+    for scroll_id in preset.skills.equipped_scrolls:
+        # 빈 슬롯과 중복 저장 스크롤 제외
+        if not scroll_id or scroll_id in seen_scroll_ids:
+            continue
+
+        equipped_scroll_ids.append(scroll_id)
+        seen_scroll_ids.add(scroll_id)
+
     # 스크롤별 1레벨 상승 효과 계산
     evaluations: list[ScrollUpgradeEvaluation] = []
-    for scroll_def in server_spec.skill_registry.get_all_scroll_defs():
+    scroll_def: "ScrollDef"
+    for scroll_id in equipped_scroll_ids:
+        # 현재 장착 스크롤 정의 조회
+        scroll_def = server_spec.skill_registry.get_scroll(scroll_id)
         current_level: int = preset.info.get_scroll_level(scroll_def.id)
         if current_level >= server_spec.max_skill_level:
             continue

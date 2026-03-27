@@ -1,6 +1,6 @@
 # 데이즈 스킬매크로
 
-![메인 소개 이미지](docs/readme/01-main.png)
+![메인 소개](docs/readme/01-main.png)
 
 한월 RPG용 스킬 매크로 프로그램입니다.  
 현재 프로젝트 상태는 `v3.1.0-beta.2` 기준 베타입니다.
@@ -41,8 +41,9 @@ README에 연결된 이미지는 모두 교체용 플레이스홀더입니다.
 배포 파일을 받았다면 실행 후 바로 사용할 수 있습니다. 실행 시 최신 버전 확인 기능이 동작하며, 새 릴리스가 있으면 안내 팝업이 표시됩니다.
 
 #### 설치 시 주의사항
-![윈도우 디펜더](docs/readme/02-windows-defender.png)
-- 윈도우 디펜더에서 경고가 표시된다면 "추가 정보" -> "그래도 실행"을 선택해야 합니다.
+<img src="docs/readme/02-windows-defender.png" width="256">
+
+- 윈도우 디펜더에서 경고가 표시된다면 "추가 정보" -> "실행"을 선택해야 합니다.
 - 공식 배포 채널 외에서 파일을 받았다면, 해당 파일이 안전한지 반드시 확인한 후 실행해야 합니다.
 
 ### 소스코드 직접 실행
@@ -54,7 +55,7 @@ python SkillMacro.py
 
 ## 화면 구성
 
-![메인 화면 자리](docs/readme/03-main-screen-placeholder.svg)
+![메인 화면](docs/readme/01-main.png)
 
 프로그램은 크게 두 영역으로 나뉩니다.
 
@@ -73,8 +74,6 @@ python SkillMacro.py
 ## 기능 상세
 
 ### 1. 일반 설정
-
-![기본 설정 자리](docs/readme/04-basic-setup-placeholder.svg)
 
 `일반 설정`에서는 현재 프리셋 단위의 기본 동작을 설정합니다.
 
@@ -126,8 +125,6 @@ python SkillMacro.py
 
 ### 3. 스킬 사용설정
 
-![스킬 사용설정 자리](docs/readme/05-skill-settings-placeholder.svg)
-
 `스킬 사용설정`은 선택한 스크롤의 두 스킬에 대한 실행 규칙을 지정하는 화면입니다.
 
 - `사용 여부`
@@ -149,8 +146,6 @@ python SkillMacro.py
 현재 선택된 스크롤이 커스텀 스크롤이면 `수정`, `삭제` 버튼이 추가로 표시됩니다.
 
 ### 4. 연계스킬
-
-![연계스킬 자리](docs/readme/06-link-skill-placeholder.svg)
 
 연계스킬은 여러 스킬을 한번에 다루는 기능입니다.
 
@@ -176,7 +171,7 @@ python SkillMacro.py
 
 ### 5. 커스텀 스크롤 / 스킬 추가
 
-![커스텀 스크롤 자리](docs/readme/09-custom-scroll-placeholder.svg)
+<img src="docs/readme/04-custom-scroll.png" width="200">
 
 기본 목록에 없는 스크롤을 직접 추가할 수 있습니다.
 
@@ -218,7 +213,7 @@ python SkillMacro.py
 
 #### 6-1. 정보 입력
 
-![시뮬레이터 입력 자리](docs/readme/07-simulator-placeholder.svg)
+![정보 입력](docs/readme/05-calc-input.png)
 
 `정보 입력`은 계산의 기준 상태를 정의하는 페이지입니다.
 
@@ -260,6 +255,8 @@ python SkillMacro.py
 
 #### 6-2. 시뮬레이터
 
+![시뮬레이터](docs/readme/06-simulator.png)
+
 `시뮬레이터` 페이지는 현재 프리셋과 정보 입력 상태를 기준으로 전투 흐름을 시각화합니다.
 
 확인 가능한 주요 항목:
@@ -274,7 +271,7 @@ python SkillMacro.py
 
 #### 6-3. 스탯 계산기
 
-![스탯 계산기 자리](docs/readme/08-stat-calc-placeholder.svg)
+![스탯 계산기 자리](docs/readme/07-calc.png)
 
 `스탯 계산기` 페이지는 현재 상태와 추가 변화량을 비교하고, 스텟별 효율과 최적화 결과를 보여줍니다.
 
@@ -311,4 +308,4 @@ python SkillMacro.py
 
 ## 라이선스
 
-이 프로젝트는 [GPL-3.0](LICENSE) 라이선스를 사용합니다.
+본 프로그램은 [GPL-3.0](LICENSE) 라이선스 하에 배포됩니다. 소스 코드의 수정 및 재배포는 자유로우나, 배포 시에는 반드시 전체 소스 코드를 동일한 라이선스로 공개해야 할 의무가 있습니다.
