@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <rect width="1600" height="900" fill="#f5f7fb"/>
+  <rect x="60" y="60" width="1480" height="780" rx="28" fill="#ffffff" stroke="#d5dce8" stroke-width="4"/>
+  <rect x="120" y="120" width="420" height="620" rx="20" fill="#f8fafc"/>
+  <rect x="600" y="120" width="820" height="620" rx="20" fill="#eef4ff"/>
+  <text x="1010" y="360" font-family="Arial, sans-serif" font-size="48" font-weight="700" text-anchor="middle" fill="#2c3e50">SCREENSHOT PLACEHOLDER</text>
+  <text x="1010" y="430" font-family="Arial, sans-serif" font-size="32" text-anchor="middle" fill="#5d6d7e">04 BASIC SETTINGS</text>
+  <text x="1010" y="505" font-family="Arial, sans-serif" font-size="26" text-anchor="middle" fill="#7f8c8d">Replace this file with the general settings screenshot.</text>
+  <text x="1010" y="565" font-family="Arial, sans-serif" font-size="22" text-anchor="middle" fill="#95a5a6">docs/readme/04-basic-setup-placeholder.svg</text>
+</svg>

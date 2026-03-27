@@ -501,6 +501,14 @@ class Tab(QFrame):
             self.noticeRequested.emit(NoticeKind.MACRO_IS_RUNNING)
             return
 
+        # 메인 상단 슬롯 재클릭 시 현재 장착 스크롤 즉시 해제
+        current_scroll_id: str = self.preset.skills.equipped_scrolls[scroll_index]
+        if current_scroll_id:
+            self.apply_scroll(scroll_index, current_scroll_id)
+            self.dataChanged.emit()
+            return
+
+        # 빈 슬롯 클릭 시에만 스크롤 선택 팝업 노출
         self.scrollSelectRequested.emit(scroll_index)
 
     def on_placed_skill_clicked(self, skill_ref: EquippedSkillRef) -> None:
@@ -591,14 +599,17 @@ class Tab(QFrame):
         """스크롤 장착 적용"""
 
         current_scroll_id: str = self.preset.skills.equipped_scrolls[scroll_index]
-        if current_scroll_id == scroll_id:
+        # 동일 스크롤 재선택 시 해당 슬롯 장착 해제 처리
+        target_scroll_id: str = ""
+        if current_scroll_id != scroll_id:
+            target_scroll_id = scroll_id
+
+        # 다른 슬롯 중복 장착 차단
+        if target_scroll_id and target_scroll_id in self.preset.skills.equipped_scrolls:
             return False
 
-        if scroll_id in self.preset.skills.equipped_scrolls:
-            return False
-
+        # 교체 또는 해제 전 기존 스크롤 제공 스킬 정리
         if current_scroll_id:
-            # 교체 전 스크롤이 제공하던 두 스킬만 하단 배치에서 제거
             current_scroll_def: ScrollDef = (
                 app_state.macro.current_server.skill_registry.get_scroll(
                     current_scroll_id
@@ -607,7 +618,8 @@ class Tab(QFrame):
             for skill_id in current_scroll_def.skills:
                 self.clear_skill_if_placed(skill_id)
 
-        self.preset.skills.equipped_scrolls[scroll_index] = scroll_id
+        # 새 장착 결과 반영 및 연계/공유 상태 동기화
+        self.preset.skills.equipped_scrolls[scroll_index] = target_scroll_id
         self._sync_link_skills_to_available_skills()
         self._sync_to_shared_data()
         self.update_from_preset()
@@ -922,7 +934,9 @@ class AvailableSkillPanel(QFrame):
             layout.addWidget(self.scroll_button, alignment=Qt.AlignmentFlag.AlignCenter)
             for button in self.skill_buttons:
                 layout.addWidget(button, alignment=Qt.AlignmentFlag.AlignCenter)
-            layout.setContentsMargins(0, 0, 0, 0)
+
+            # 마지막 제공 스킬 아이콘 하단 보더 표시 여유 확보
+            layout.setContentsMargins(0, 0, 0, 4)
             layout.setSpacing(6)
             self.setLayout(layout)
 

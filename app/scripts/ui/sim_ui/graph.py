@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import math
+from enum import Enum
+from html import escape
 
 import pyqtgraph as pg
 from PySide6.QtCore import QPoint, QPointF, Qt
@@ -620,35 +622,82 @@ class SkillDpsRatioCanvas(pg.PlotWidget):
         self.parent().wheelEvent(event)  # type: ignore
 
 
+class DamageGraphMode(Enum):
+    """피해량 그래프 집계 방식"""
+
+    # 초 단위 구간 피해량 집계 모드
+    PER_SECOND = "per_second"
+    # 시작 시점부터 누적된 피해량 집계 모드
+    CUMULATIVE = "cumulative"
+
+
 class DMGCanvas(pg.PlotWidget):
     def __init__(
         self,
         parent: QWidget,
         results: list[list[GraphDamageEvent]],
         title: str,
+        aggregation_mode: DamageGraphMode,
     ) -> None:
         super().__init__(parent)
 
-        step, count = 1, 60
+        # 그래프 시간축 기본 단위 구성
+        step: int = 1
+        count: int = 60
         times: list[int] = [i * step for i in range(count + 1)]
 
-        dmg_sec_for_results: list[list[float]] = [
-            [0.0]
-            + [
-                sum([j.damage for j in result if i * step <= j.time < (i + 1) * step])
-                for i in range(count)
+        # 집계 모드별 그래프 시계열 계산
+        damage_series_for_results: list[list[float]]
+        if aggregation_mode == DamageGraphMode.PER_SECOND:
+            # 초 단위 구간 피해량 계산
+            damage_series_for_results = [
+                [0.0]
+                + [
+                    sum(
+                        [
+                            event.damage
+                            for event in result
+                            if i * step <= event.time < (i + 1) * step
+                        ]
+                    )
+                    for i in range(count)
+                ]
+                for result in results
             ]
-            for result in results
-        ]
 
+        else:
+            # 각 시점까지의 누적 피해량 계산
+            damage_series_for_results = [
+                [0.0]
+                + [
+                    sum(
+                        [
+                            event.damage
+                            for event in result
+                            if event.time < (i + 1) * step
+                        ]
+                    )
+                    for i in range(count)
+                ]
+                for result in results
+            ]
+
+        # 시뮬레이션별 시계열에서 최대, 평균, 최소 곡선 계산
         self.data: dict[str, list[int] | list[float]] = {
             "time": times,
-            "max": [max([j[i] for j in dmg_sec_for_results]) for i in range(count + 1)],
-            "mean": [
-                sum([j[i] for j in dmg_sec_for_results]) / len(dmg_sec_for_results)
+            "max": [
+                max([series[i] for series in damage_series_for_results])
                 for i in range(count + 1)
             ],
-            "min": [min([j[i] for j in dmg_sec_for_results]) for i in range(count + 1)],
+            "mean": [
+                sum([series[i] for series in damage_series_for_results])
+                / len(damage_series_for_results)
+                for i in range(count + 1)
+            ],
+            "min": [
+                min([series[i] for series in damage_series_for_results])
+                for i in range(count + 1)
+            ],
         }
 
         # 안티 에일리어싱 활성화
@@ -1226,13 +1275,17 @@ class SkillContributionCanvas(pg.PlotWidget):
             self.tooltip_line.show()
 
             # 툴팁 레이블 위치 및 내용 설정
-            self.tooltip_label.setText(
-                f"시간: {time}초\n"
-                + "\n".join(
-                    f"{self.skill_names[i]}: {self.data['data'][i][time]:.2f}%"
-                    for i in range(len(self.data["data"]) - 1, -1, -1)  # 역순으로 표시
+            tooltip_lines: list[str] = [f"시간: {time}초"]
+
+            # 스킬별 기여도 텍스트를 영역 색상과 함께 역순 구성
+            for i in range(len(self.data["data"]) - 1, -1, -1):
+                skill_name: str = escape(self.skill_names[i])
+                skill_color: str = self.colors[i]
+                tooltip_lines.append(
+                    f'<span style="color: {skill_color};">■</span> {skill_name}: {self.data["data"][i][time]:.2f}%'
                 )
-            )
+
+            self.tooltip_label.setText("<br>".join(tooltip_lines))
             global_pos = event.globalPosition().toPoint()
             local_pos = self.mapFromGlobal(global_pos)
             self.tooltip_label.move(local_pos + QPoint(15, 15))

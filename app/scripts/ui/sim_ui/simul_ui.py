@@ -74,6 +74,7 @@ from app.scripts.registry.resource_registry import (
 from app.scripts.simulate_macro import simulate_random_from_calculator
 from app.scripts.ui.popup import NoticeKind, PopupManager
 from app.scripts.ui.sim_ui.graph import (
+    DamageGraphMode,
     DMGCanvas,
     DpmDistributionCanvas,
     SkillContributionCanvas,
@@ -597,7 +598,8 @@ class GraphPage(QFrame):
         results: list[list[GraphDamageEvent]] = [
             list(result_row) for result_row in graph_report.random_boss_attacks
         ]
-        str_powers: list[str] = [str(int(power)) for power in powers]
+        # 전투력 카드 숫자 문자열 천 단위 구분 포맷 적용
+        str_powers: list[str] = [f"{int(power):,}" for power in powers]
         power_titles: list[str] = [
             POWER_METRIC_LABELS[power_metric] for power_metric in DISPLAY_POWER_METRICS
         ]
@@ -690,7 +692,13 @@ class GraphPage(QFrame):
                 "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
             )
 
-            self.graph = DMGCanvas(self, results, "시간 경과에 따른 피해량")
+            # 초 단위 피해량 그래프 구성
+            self.graph = DMGCanvas(
+                self,
+                results,
+                "시간 경과에 따른 피해량",
+                DamageGraphMode.PER_SECOND,
+            )
             self.graph.setFixedHeight(400)
 
             layout = QVBoxLayout(self)
@@ -710,7 +718,13 @@ class GraphPage(QFrame):
                 "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
             )
 
-            self.graph = DMGCanvas(self, results, "누적 피해량")
+            # 누적 피해량 그래프 구성
+            self.graph = DMGCanvas(
+                self,
+                results,
+                "누적 피해량",
+                DamageGraphMode.CUMULATIVE,
+            )
             self.graph.setFixedHeight(400)
 
             layout = QVBoxLayout(self)
@@ -1476,10 +1490,27 @@ class ResultsPage(QFrame):
                     f"{calculator_input.custom_stat_changes[stat_key.value]:g}"
                 )
 
+            # 현재 장착 스크롤 기준 입력칸 재구성
+            self.skills.rebuild_entries(
+                SkillInputs.build_entries(),
+                self.on_base_input_changed,
+            )
+
+            # 저장된 스크롤 레벨 입력값 재반영
             for input_widget, entry in zip(self.skills.inputs, self.skills.entries):
                 input_widget.setText(
                     str(self._get_preset().info.get_scroll_level(entry.scroll_id))
                 )
+
+            # 로드된 입력값 기준 검증 스타일 동기화 블록
+            stats_valid: bool
+            base_stats: BaseStats
+            stats_valid, base_stats = self._read_base_stats()
+            self._read_custom_stat_changes()
+            self._read_level()
+            self._read_scroll_levels(save_levels=False)
+            if stats_valid:
+                self._has_positive_simulation_damage(base_stats)
 
             self._load_optimization_inputs()
             self._is_loading_state = False
@@ -4639,16 +4670,25 @@ class SkillInputs(QFrame):
     def build_entries() -> list["SkillInputs.Entry"]:
         """현재 서버/프리셋 기준 스크롤 레벨 입력 목록 구성"""
 
-        server: ServerSpec = app_state.macro.current_server
         preset: MacroPreset = app_state.macro.current_preset
         entries: list[SkillInputs.Entry] = []
 
-        for scroll_def in server.skill_registry.get_all_scroll_defs():
+        # 현재 프리셋 장착 순서 기준 스크롤 입력 목록 구성
+        scroll_id: str
+        for scroll_id in preset.skills.equipped_scrolls:
+            # 빈 스크롤 슬롯 제외
+            if not scroll_id:
+                continue
+
+            # 장착 스크롤 정의 조회 및 저장 레벨 연결
+            scroll_def: ScrollDef = (
+                app_state.macro.current_server.skill_registry.get_scroll(scroll_id)
+            )
             entries.append(
                 SkillInputs.Entry(
                     title=scroll_def.name,
-                    value=preset.info.get_scroll_level(scroll_def.id),
-                    scroll_id=scroll_def.id,
+                    value=preset.info.get_scroll_level(scroll_id),
+                    scroll_id=scroll_id,
                 )
             )
 
@@ -4669,12 +4709,52 @@ class SkillInputs(QFrame):
             self.setStyleSheet("QFrame { background-color: transparent; border: 0px; }")
 
         # 그리드 레이아웃 위젯 생성
-        grid_layout: QGridLayout = QGridLayout(self)
+        self._grid_layout: QGridLayout = QGridLayout(self)
 
         # 아이템을 저장할 리스트
         self.entries: list[SkillInputs.Entry] = entries
         self.inputs: list[CustomLineEdit] = []
         self.popup_manager: PopupManager = popup_manager
+
+        # 초기 입력 목록 기준 그리드 구성
+        self._rebuild_grid_items(connected_function)
+
+        # 그리드 레이아웃 간격 설정
+        self._grid_layout.setVerticalSpacing(10)
+        self._grid_layout.setHorizontalSpacing(20)
+
+        # 레이아웃 설정
+        self.setLayout(self._grid_layout)
+
+        # 크기 정책: 가로는 부모 크기 최대, 세로는 내용에 맞게 최소
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+    def rebuild_entries(
+        self,
+        entries: list["SkillInputs.Entry"],
+        connected_function: Callable[[], None],
+    ) -> None:
+        """현재 장착 스크롤 기준 입력 위젯 재구성"""
+
+        # 기존 입력 위젯 제거 및 내부 참조 초기화
+        while self._grid_layout.count():
+            child_item: QLayoutItem | None = self._grid_layout.takeAt(0)
+            if child_item is None:
+                continue
+
+            child_widget: QWidget | None = child_item.widget()
+            if child_widget is None:
+                continue
+
+            child_widget.deleteLater()
+
+        # 새 장착 스크롤 입력 목록 반영
+        self.entries = entries
+        self.inputs = []
+        self._rebuild_grid_items(connected_function)
+
+    def _rebuild_grid_items(self, connected_function: Callable[[], None]) -> None:
+        """현재 entries 기준 입력 그리드 구성"""
 
         # column 수 설정
         cols: int = 7
@@ -4691,20 +4771,10 @@ class SkillInputs(QFrame):
             column: int = i % cols
 
             # 그리드에 추가
-            grid_layout.addWidget(item_widget, row, column)
+            self._grid_layout.addWidget(item_widget, row, column)
 
             # 아이템 위젯을 리스트에 저장
             self.inputs.append(item_widget.input)
-
-        # 그리드 레이아웃 간격 설정
-        grid_layout.setVerticalSpacing(10)
-        grid_layout.setHorizontalSpacing(20)
-
-        # 레이아웃 설정
-        self.setLayout(grid_layout)
-
-        # 크기 정책: 가로는 부모 크기 최대, 세로는 내용에 맞게 최소
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
 
     class SkillInput(QFrame):
         def __init__(

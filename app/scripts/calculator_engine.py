@@ -95,6 +95,30 @@ _STAT_ORDER_VALUES: tuple[str, ...] = tuple(sk.value for sk in OVERALL_STAT_ORDE
 _GRADIENT_TOP_K: int = 15
 _GRADIENT_EXACT_THRESHOLD: int = 500
 
+# 보스 전투력 생존 계수 튜닝 상수
+_BOSS_HP_FACTOR_DIVISOR: float = 200.0
+_BOSS_HP_FACTOR_EXPONENT: float = 0.4
+_BOSS_POTION_FACTOR_DIVISOR: float = 25.0
+_BOSS_POTION_FACTOR_EXPONENT: float = 0.5
+_BOSS_DODGE_FACTOR_EXPONENT: float = 1.0
+_BOSS_RESIST_FACTOR_EXPONENT: float = 0.6
+
+
+def _get_boss_potion_base_heal(level: int) -> float:
+    """레벨 구간별 5초 포션 기본 회복량 반환"""
+
+    # 레벨 구간별 포션 기본 회복량 결정 블록
+    if level >= 150:
+        return 180.0
+
+    if level >= 100:
+        return 120.0
+
+    if level >= 50:
+        return 70.0
+
+    return 20.0
+
 
 def _compute_power_gradient(
     timeline_artifacts: TimelineEvaluationArtifacts,
@@ -249,6 +273,7 @@ class TimelineEvaluationArtifacts:
     active_buffs_by_hit: tuple[tuple[BuffWindow, ...], ...]
 
     timeline_segments: tuple[TimelineSegment, ...]
+    level: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -1170,6 +1195,7 @@ def _collect_active_buffs(
 
 def _build_timeline_evaluation_artifacts(
     timeline: Timeline,
+    level: int = 0,
 ) -> TimelineEvaluationArtifacts:
     """타임라인 평가 반복용 활성 버프 스냅샷 구성"""
 
@@ -1230,6 +1256,7 @@ def _build_timeline_evaluation_artifacts(
         timeline=timeline,
         active_buffs_by_hit=tuple(active_buffs_by_hit),
         timeline_segments=tuple(timeline_segments),
+        level=level,
     )
     return artifacts
 
@@ -1304,29 +1331,52 @@ def build_damage_events(
         timeline
     )
     damage_events: list[DamageEvent] = []
+
+    # 결정론 기준 타격 이벤트 순회 및 피해량 누적
+    if deterministic:
+        hit_event: HitEvent
+        buffed_stats: dict[StatKey, float]
+        for hit_event, buffed_stats in _iterate_buffed_hit_events(
+            artifacts,
+            resolved_stats,
+        ):
+            # 기대 치명타 기반 단일 타격 피해량 계산
+            damage: float = _calculate_hit_damage(
+                resolved_stats=buffed_stats,
+                hit_event=hit_event,
+                is_boss=is_boss,
+            )
+
+            # 계산된 타격 이벤트 결과 누적
+            damage_events.append(
+                DamageEvent(
+                    skill_id=hit_event.skill_id,
+                    time=hit_event.time,
+                    damage=damage,
+                )
+            )
+
+        return damage_events
+
+    # 확률론 기준 시뮬레이션 전체에서 재사용할 난수 생성기 구성
+    rng: random.Random = random.Random(random_seed)
+
+    # 확률론 기준 타격 이벤트 순회 및 피해량 누적
     hit_event: HitEvent
     buffed_stats: dict[StatKey, float]
     for hit_event, buffed_stats in _iterate_buffed_hit_events(
         artifacts,
         resolved_stats,
     ):
-        # 결정론/확률론 모드에 따라 최종 타격 피해량 계산
-        damage: float
-        if deterministic:
-            damage = _calculate_hit_damage(
-                resolved_stats=buffed_stats,
-                hit_event=hit_event,
-                is_boss=is_boss,
-            )
+        # 동일 시뮬레이션의 연속 난수 상태를 반영한 단일 타격 피해량 계산
+        damage: float = _calculate_random_hit_damage(
+            resolved_stats=buffed_stats,
+            hit_event=hit_event,
+            is_boss=is_boss,
+            rng=rng,
+        )
 
-        else:
-            damage = _calculate_random_hit_damage(
-                resolved_stats=buffed_stats,
-                hit_event=hit_event,
-                is_boss=is_boss,
-                rng=random.Random(random_seed),
-            )
-
+        # 계산된 타격 이벤트 결과 누적
         damage_events.append(
             DamageEvent(
                 skill_id=hit_event.skill_id,
@@ -1373,6 +1423,7 @@ def evaluate_calculator_power(
     _POTION_HEAL_PERCENT: StatKey = StatKey.POTION_HEAL_PERCENT
     _DROP_RATE_PERCENT: StatKey = StatKey.DROP_RATE_PERCENT
     _EXP_PERCENT: StatKey = StatKey.EXP_PERCENT
+    potion_base_heal: float = _get_boss_potion_base_heal(artifacts.level)
 
     base_values: dict[StatKey, float] = resolved_stats.values
     hit_events: tuple[HitEvent, ...] = artifacts.timeline.hit_events
@@ -1445,15 +1496,29 @@ def evaluate_calculator_power(
         hp_value: float = segment_stats[_HP]
         dodge_value: float = segment_stats[_DODGE_PERCENT]
         resist_value: float = segment_stats[_RESIST_PERCENT]
-        potion_heal_value: float = segment_stats[_POTION_HEAL_PERCENT]
+        potion_heal_percent_value: float = segment_stats[_POTION_HEAL_PERCENT]
         dodge_denominator: float = 1.0 - (dodge_value * 0.01)
         if dodge_denominator < 0.01:
             dodge_denominator = 0.01
 
-        boss_multiplier: float = 1
-        boss_multiplier *= 1.0 / dodge_denominator
-        boss_multiplier *= 1.0 + (resist_value * 0.01)
-        boss_multiplier *= 1.0 + (potion_heal_value * 0.01)
+        # 음수 입력 방지
+        resist_multiplier: float = 1.0 + (resist_value * 0.01)
+        if resist_multiplier < 0.01:
+            resist_multiplier = 0.01
+
+        hp_factor_input: float = 1.0 + (max(hp_value, 0.0) / _BOSS_HP_FACTOR_DIVISOR)
+        potion_heal_value: float = potion_base_heal * (
+            1.0 + (potion_heal_percent_value * 0.01)
+        )
+        potion_factor_input: float = 1.0 + (
+            max(potion_heal_value, 0.0) / _BOSS_POTION_FACTOR_DIVISOR
+        )
+
+        # 체력과 포션의 역할을 분리한 보스 생존 배수 계산 블록
+        boss_multiplier: float = hp_factor_input**_BOSS_HP_FACTOR_EXPONENT
+        boss_multiplier *= potion_factor_input**_BOSS_POTION_FACTOR_EXPONENT
+        boss_multiplier *= (1.0 / dodge_denominator) ** _BOSS_DODGE_FACTOR_EXPONENT
+        boss_multiplier *= resist_multiplier**_BOSS_RESIST_FACTOR_EXPONENT
         weighted_boss_multiplier_sum += boss_multiplier * timeline_segment.duration
 
         # 일반 전투력용 획득 배수 계산
@@ -1505,7 +1570,10 @@ def build_calculator_context(
         cooltime_reduction=baseline_final_stats.values[StatKey.SKILL_SPEED_PERCENT],
     )
     timeline_artifacts: TimelineEvaluationArtifacts = (
-        _build_timeline_evaluation_artifacts(timeline)
+        _build_timeline_evaluation_artifacts(
+            timeline,
+            level=preset.info.calculator.level,
+        )
     )
 
     # 기준 타임라인 아티팩트와 기준 스탯으로 기준 전투력 계산
@@ -2402,7 +2470,8 @@ def _evaluate_distribution_selection(
                 skills_info=skills_info,
                 delay_ms=delay_ms,
                 cooltime_reduction=dist_skill_speed,
-            )
+            ),
+            level=preset.info.calculator.level,
         )
         timeline_cache[dist_speed_key] = dist_timeline
 
@@ -2497,7 +2566,8 @@ def _evaluate_distribution_selection(
                         cooltime_reduction=candidate_skill_speed,
                     )
                     cached_timeline_artifacts = _build_timeline_evaluation_artifacts(
-                        cached_timeline
+                        cached_timeline,
+                        level=preset.info.calculator.level,
                     )
                     timeline_cache[speed_cache_key] = cached_timeline_artifacts
 

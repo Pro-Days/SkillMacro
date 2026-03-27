@@ -411,45 +411,61 @@ class NoticeContent(PopupContent):
     def __init__(self, data: NoticeData) -> None:
         super().__init__(350)
 
-        # 높이 설정
-        # self.setFixedHeight(data.height)
+        # 알림 카드 외곽선을 호스트 컨테이너에서 표현하도록 내부 배경 투명화
+        self.setStyleSheet("background-color: transparent;")
 
-        # 프레임 스타일 설정
-        self.setStyleSheet("background-color: white; border-radius: 10px;")
-        # 그림자 효과 설정
-        self.setGraphicsEffect(CustomShadowEffect(0, 5, 30, 150))
+        # 아이콘 종류에 맞춰 좌측 강조색 결정
+        accent_color: str = "#E5AE45" if data.icon == "warning" else "#F07C7C"
 
-        layout = QHBoxLayout()
+        # 카드 내부 여백과 요소 간 간격 구성
+        layout: QHBoxLayout = QHBoxLayout()
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(10)
         self.setLayout(layout)
 
-        icon = QLabel()
+        # 배경과 구분되는 좌측 강조 바 구성
+        accent_bar: QFrame = QFrame()
+        accent_bar.setFixedWidth(6)
+        accent_bar.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+        accent_bar.setStyleSheet(
+            f"background-color: {accent_color}; border-radius: 3px;"
+        )
+        layout.addWidget(accent_bar)
+
+        # 알림 아이콘 영역 구성
+        icon: QLabel = QLabel()
         icon.setStyleSheet("background-color: transparent;")
         icon.setFixedSize(24, 24)
-        pixmap = QPixmap(convert_resource_path(f"resources\\image\\{data.icon}.png"))
+        pixmap: QPixmap = QPixmap(
+            convert_resource_path(f"resources\\image\\{data.icon}.png")
+        )
         icon.setPixmap(pixmap)
         icon.setScaledContents(True)
-        icon_layout = QVBoxLayout()
+        icon_layout: QVBoxLayout = QVBoxLayout()
         icon_layout.addWidget(icon, alignment=Qt.AlignmentFlag.AlignTop)
         layout.addLayout(icon_layout)
 
-        label = QLabel(data.text)
+        # 알림 본문을 카드 배경과 자연스럽게 이어지도록 투명 라벨 구성
+        label: QLabel = QLabel(data.text)
         label.setWordWrap(True)
         label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         label.setFont(CustomFont(12))
-        label.setStyleSheet("background-color: white; border-radius: 10px;")
+        label.setStyleSheet("background-color: transparent;")
         label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
-        content_layout = QVBoxLayout()
+        # 본문과 추가 액션을 세로로 배치
+        content_layout: QVBoxLayout = QVBoxLayout()
         content_layout.addWidget(label)
         content_layout.setSpacing(10)
         layout.addLayout(content_layout)
 
         if data.extra_action:
+            # 사용자가 즉시 반응할 수 있도록 액션 버튼 구성
+            action_text: str
+            action_callback: Callable
             action_text, action_callback = data.extra_action
 
-            action_button = QPushButton(action_text)
+            action_button: QPushButton = QPushButton(action_text)
             action_button.setFont(CustomFont(12))
             action_button.setStyleSheet(
                 """
@@ -464,28 +480,29 @@ class NoticeContent(PopupContent):
             action_button.setFixedSize(120, 32)
             action_button.clicked.connect(action_callback)
             action_button.setCursor(Qt.CursorShape.PointingHandCursor)
-
             content_layout.addWidget(action_button)
 
-        remove_btn = QPushButton()
+        # 닫기 버튼을 카드 배경 위에 자연스럽게 배치
+        remove_btn: QPushButton = QPushButton()
         remove_btn.setStyleSheet(
             """
             QPushButton {
-                background-color: white; border-radius: 12px;
+                background-color: transparent; border-radius: 12px;
             }
             QPushButton:hover {
-                background-color: #dddddd;
+                background-color: rgba(0, 0, 0, 0.08);
             }
             """
         )
         remove_btn.setFixedSize(24, 24)
         remove_btn.clicked.connect(self.closed.emit)
-        pixmap = QPixmap(convert_resource_path("resources\\image\\x.png"))
+        pixmap: QPixmap = QPixmap(convert_resource_path("resources\\image\\x.png"))
         remove_btn.setIcon(QIcon(pixmap))
         remove_btn.setIconSize(QSize(20, 20))
         remove_btn.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        remove_layout = QVBoxLayout()
+        # 닫기 버튼을 우상단에 고정
+        remove_layout: QVBoxLayout = QVBoxLayout()
         remove_layout.addWidget(remove_btn, alignment=Qt.AlignmentFlag.AlignTop)
         layout.addLayout(remove_layout)
 
@@ -855,6 +872,18 @@ class NoticeHost(PopupHost):
 
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
+
+        # 알림 카드를 메인 배경에서 띄워 보이게 하는 전용 외곽선과 그림자 구성
+        self._container.setStyleSheet(
+            """
+            QFrame#popupContainer {
+                background-color: #FFF9EE;
+                border: 1px solid #E8DABE;
+                border-radius: 10px;
+            }
+            """
+        )
+        self._container.setGraphicsEffect(CustomShadowEffect(0, 10, 34, 185))
 
     def focusOutEvent(self, event) -> None:
         """포커스를 잃어도 닫히지 않도록"""

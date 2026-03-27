@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <rect width="1600" height="900" fill="#f4f7fa"/>
+  <rect x="55" y="55" width="1490" height="790" rx="28" fill="#ffffff" stroke="#d8dee9" stroke-width="4"/>
+  <rect x="110" y="120" width="1380" height="120" rx="18" fill="#eef3ff"/>
+  <rect x="110" y="280" width="1380" height="500" rx="18" fill="#f8fafc"/>
+  <text x="800" y="400" font-family="Arial, sans-serif" font-size="48" font-weight="700" text-anchor="middle" fill="#2c3e50">SCREENSHOT PLACEHOLDER</text>
+  <text x="800" y="470" font-family="Arial, sans-serif" font-size="32" text-anchor="middle" fill="#5d6d7e">05 SKILL SETTINGS</text>
+  <text x="800" y="545" font-family="Arial, sans-serif" font-size="26" text-anchor="middle" fill="#7f8c8d">Replace this file with the per-skill settings screenshot.</text>
+  <text x="800" y="605" font-family="Arial, sans-serif" font-size="22" text-anchor="middle" fill="#95a5a6">docs/readme/05-skill-settings-placeholder.svg</text>
+</svg>

@@ -134,47 +134,55 @@ def simulate_random_from_calculator(
         variance: float = sum(squared_differences) / len(data)
         return variance**0.5
 
+    # 정수형 수치 카드 문자열 포맷 구성
+    def format_card_int(value: float) -> str:
+        return f"{int(value):,}"
+
+    # 소수 1자리 수치 카드 문자열 포맷 구성
+    def format_card_float(value: float) -> str:
+        return f"{value:,.1f}"
+
     # 보스/일반 피해량 분석 카드 데이터 구성
     analysis: tuple[GraphAnalysis, ...] = (
         GraphAnalysis(
             title="초당 보스피해량",
-            value=f"{int(total_boss_damage / 60)}",
-            min=f"{int(min(total_boss_damages) / 60)}",
-            max=f"{int(max(total_boss_damages) / 60)}",
-            std=f"{calculate_std(total_boss_damages) / 60:.1f}",
-            p25=f"{int(calculate_percentile(total_boss_damages, 25) / 60)}",
-            p50=f"{int(calculate_percentile(total_boss_damages, 50) / 60)}",
-            p75=f"{int(calculate_percentile(total_boss_damages, 75) / 60)}",
+            value=format_card_int(total_boss_damage / 60),
+            min=format_card_int(min(total_boss_damages) / 60),
+            max=format_card_int(max(total_boss_damages) / 60),
+            std=format_card_float(calculate_std(total_boss_damages) / 60),
+            p25=format_card_int(calculate_percentile(total_boss_damages, 25) / 60),
+            p50=format_card_int(calculate_percentile(total_boss_damages, 50) / 60),
+            p75=format_card_int(calculate_percentile(total_boss_damages, 75) / 60),
         ),
         GraphAnalysis(
             title="총 보스피해량",
-            value=f"{int(total_boss_damage)}",
-            min=f"{int(min(total_boss_damages))}",
-            max=f"{int(max(total_boss_damages))}",
-            std=f"{calculate_std(total_boss_damages):.1f}",
-            p25=f"{int(calculate_percentile(total_boss_damages, 25))}",
-            p50=f"{int(calculate_percentile(total_boss_damages, 50))}",
-            p75=f"{int(calculate_percentile(total_boss_damages, 75))}",
+            value=format_card_int(total_boss_damage),
+            min=format_card_int(min(total_boss_damages)),
+            max=format_card_int(max(total_boss_damages)),
+            std=format_card_float(calculate_std(total_boss_damages)),
+            p25=format_card_int(calculate_percentile(total_boss_damages, 25)),
+            p50=format_card_int(calculate_percentile(total_boss_damages, 50)),
+            p75=format_card_int(calculate_percentile(total_boss_damages, 75)),
         ),
         GraphAnalysis(
             title="초당 피해량",
-            value=f"{int(total_normal_damage / 60)}",
-            min=f"{int(min(total_normal_damages) / 60)}",
-            max=f"{int(max(total_normal_damages) / 60)}",
-            std=f"{calculate_std(total_normal_damages) / 60:.1f}",
-            p25=f"{int(calculate_percentile(total_normal_damages, 25) / 60)}",
-            p50=f"{int(calculate_percentile(total_normal_damages, 50) / 60)}",
-            p75=f"{int(calculate_percentile(total_normal_damages, 75) / 60)}",
+            value=format_card_int(total_normal_damage / 60),
+            min=format_card_int(min(total_normal_damages) / 60),
+            max=format_card_int(max(total_normal_damages) / 60),
+            std=format_card_float(calculate_std(total_normal_damages) / 60),
+            p25=format_card_int(calculate_percentile(total_normal_damages, 25) / 60),
+            p50=format_card_int(calculate_percentile(total_normal_damages, 50) / 60),
+            p75=format_card_int(calculate_percentile(total_normal_damages, 75) / 60),
         ),
         GraphAnalysis(
             title="총 피해량",
-            value=f"{int(total_normal_damage)}",
-            min=f"{int(min(total_normal_damages))}",
-            max=f"{int(max(total_normal_damages))}",
-            std=f"{calculate_std(total_normal_damages):.1f}",
-            p25=f"{int(calculate_percentile(total_normal_damages, 25))}",
-            p50=f"{int(calculate_percentile(total_normal_damages, 50))}",
-            p75=f"{int(calculate_percentile(total_normal_damages, 75))}",
+            value=format_card_int(total_normal_damage),
+            min=format_card_int(min(total_normal_damages)),
+            max=format_card_int(max(total_normal_damages)),
+            std=format_card_float(calculate_std(total_normal_damages)),
+            p25=format_card_int(calculate_percentile(total_normal_damages, 25)),
+            p50=format_card_int(calculate_percentile(total_normal_damages, 50)),
+            p75=format_card_int(calculate_percentile(total_normal_damages, 75)),
         ),
     )
 

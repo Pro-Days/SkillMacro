@@ -124,7 +124,7 @@ class CustomComboBox(QComboBox):
         self,
         parent: QWidget,
         items: list[str],
-        connected_function: Callable[[int], None] | None = None,
+        connected_function: Callable[[], None] | None = None,
         point_size: int = 10,
     ) -> None:
         super().__init__(parent)

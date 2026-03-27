@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <rect width="1600" height="900" fill="#f4f7fc"/>
+  <rect x="50" y="50" width="1500" height="800" rx="28" fill="#ffffff" stroke="#d6ddea" stroke-width="4"/>
+  <rect x="100" y="100" width="1400" height="90" rx="18" fill="#eef4ff"/>
+  <rect x="100" y="230" width="1400" height="560" rx="18" fill="#f8fafc"/>
+  <text x="800" y="390" font-family="Arial, sans-serif" font-size="48" font-weight="700" text-anchor="middle" fill="#2c3e50">SCREENSHOT PLACEHOLDER</text>
+  <text x="800" y="460" font-family="Arial, sans-serif" font-size="32" text-anchor="middle" fill="#5d6d7e">07 SIMULATOR / INPUT</text>
+  <text x="800" y="535" font-family="Arial, sans-serif" font-size="26" text-anchor="middle" fill="#7f8c8d">Replace this file with the simulator or input page screenshot.</text>
+  <text x="800" y="595" font-family="Arial, sans-serif" font-size="22" text-anchor="middle" fill="#95a5a6">docs/readme/07-simulator-placeholder.svg</text>
+</svg>

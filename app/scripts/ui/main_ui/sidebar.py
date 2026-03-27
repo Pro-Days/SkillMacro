@@ -4,6 +4,7 @@ import copy
 import json
 import os
 from collections.abc import Callable
+from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING, Literal
 
@@ -67,6 +68,73 @@ def get_current_scroll_skill_ids(preset: MacroPreset) -> list[str]:
     """현재 장착 스크롤 기준 제공 스킬 ID 목록 반환"""
 
     return preset.skills.get_available_skill_ids(app_state.macro.current_server)
+
+
+# 스킬 사용설정 옵션 메타데이터 정의
+@dataclass(frozen=True)
+class SkillSettingOptionDef:
+    key: Literal["usage", "sole", "priority", "solo_swap"]
+    title: str
+    tooltip: str
+
+
+# 스킬 카드 위젯 참조 묶음
+@dataclass
+class SkillSettingCardWidgets:
+    skill_id: str
+    frame: QFrame
+    usage_btn: QPushButton
+    sole_btn: QPushButton
+    priority_btn: QPushButton
+    solo_swap_btn: QPushButton
+
+
+# 스킬 사용설정 옵션 정의
+SKILL_SETTING_OPTION_DEFS: tuple[SkillSettingOptionDef, ...] = (
+    SkillSettingOptionDef(
+        key="usage",
+        title="사용 여부",
+        tooltip=(
+            "매크로가 작동 중일 때 자동으로 스킬을 사용할지 결정합니다.\n"
+            "이동기같이 자신이 직접 사용해야 하는 스킬만 사용을 해제하시는 것을 추천드립니다.\n"
+            "연계스킬에는 적용되지 않습니다."
+        ),
+    ),
+    SkillSettingOptionDef(
+        key="sole",
+        title="단독 사용",
+        tooltip=(
+            "연계스킬을 대기할 때 다른 스킬들이 준비되는 것을 기다리지 않고 우선적으로 사용할 지 결정합니다.\n"
+            "연계스킬 내에서 다른 스킬보다 너무 빠르게 준비되는 스킬은 사용을 해제하시는 것을 추천드립니다.\n"
+            "사용여부가 활성화되지 않았다면 단독으로 사용되지 않습니다."
+        ),
+    ),
+    SkillSettingOptionDef(
+        key="priority",
+        title="우선 순위",
+        tooltip=(
+            "매크로가 작동 중일 때 여러 스킬이 준비되었더라도 우선순위가 더 높은(숫자가 낮은) 스킬을 먼저 사용합니다.\n"
+            "우선순위를 설정하지 않은 스킬들은 준비된 시간 순서대로 사용합니다.\n"
+            "버프스킬의 우선순위를 높이는 것을 추천합니다.\n"
+            "연계스킬은 우선순위가 적용되지 않습니다."
+        ),
+    ),
+    SkillSettingOptionDef(
+        key="solo_swap",
+        title="단독 스왑",
+        tooltip=(
+            "스킬을 사용하기 위해 바로 스왑할지 결정합니다.\n"
+            "사용하려는 스킬이 다른 줄에 있고 이 옵션이 활성화되어 있다면 즉시 스왑합니다.\n"
+            "연계스킬에는 적용되지 않습니다."
+        ),
+    ),
+)
+
+
+# 스킬 사용설정 옵션 조회 맵 구성
+SKILL_SETTING_OPTION_MAP: dict[
+    Literal["usage", "sole", "priority", "solo_swap"], SkillSettingOptionDef
+] = {option.key: option for option in SKILL_SETTING_OPTION_DEFS}
 
 
 class Sidebar(QFrame):
@@ -889,10 +957,7 @@ class SkillSettings(QFrame):
         self._scroll_ids: list[str] = []
         self._selected_scroll_id: str = ""
         self._skill_ids: list[str] = []
-        self._usage_btns: list[QPushButton] = []
-        self._sole_btns: list[QPushButton] = []
-        self._solo_swap_btns: list[QPushButton] = []
-        self._priority_btns: list[QPushButton] = []
+        self._skill_cards: list[SkillSettingCardWidgets] = []
 
         # 선택된 스크롤 요약 카드 구성
         self._selected_scroll_icon: QLabel = QLabel()
@@ -912,6 +977,11 @@ class SkillSettings(QFrame):
             Qt.WidgetAttribute.WA_TransparentForMouseEvents,
             True,
         )
+        self._selected_scroll_name.setWordWrap(True)
+        self._selected_scroll_name.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
         self._selected_scroll_name.setStyleSheet(
             "QLabel { background-color: transparent; border: 0px; }"
         )
@@ -919,13 +989,14 @@ class SkillSettings(QFrame):
         selected_scroll_layout: QHBoxLayout = QHBoxLayout()
         selected_scroll_layout.addWidget(self._selected_scroll_icon)
         selected_scroll_layout.addWidget(self._selected_scroll_name)
+        selected_scroll_layout.setStretch(1, 1)
         selected_scroll_layout.setContentsMargins(12, 10, 12, 10)
         selected_scroll_layout.setSpacing(10)
 
         self._selected_scroll_button: QPushButton = QPushButton()
         self._selected_scroll_button.setLayout(selected_scroll_layout)
         self._selected_scroll_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._selected_scroll_button.setFixedHeight(62)
+        self._selected_scroll_button.setMinimumHeight(62)
         self._selected_scroll_button.clicked.connect(self.on_scroll_select_clicked)
         self._selected_scroll_button.setStyleSheet(
             """
@@ -987,21 +1058,20 @@ class SkillSettings(QFrame):
         self._custom_actions_frame.setLayout(custom_actions_row)
         self._custom_actions_frame.hide()
 
-        # 스킬 설정 표 레이아웃 구성
-        self._grid_layout: QGridLayout = QGridLayout()
-        self._grid_layout.setContentsMargins(0, 0, 0, 0)
-        self._grid_layout.setHorizontalSpacing(8)
-        self._grid_layout.setVerticalSpacing(15)
-
-        grid_frame: QFrame = QFrame()
-        grid_frame.setLayout(self._grid_layout)
-
-        self._build_header()
+        # 스킬 카드 목록 레이아웃 구성
+        self._cards_container: QWidget = QWidget()
+        self._cards_container.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
+        self._cards_layout: QVBoxLayout = QVBoxLayout(self._cards_container)
+        self._cards_layout.setContentsMargins(0, 0, 0, 0)
+        self._cards_layout.setSpacing(12)
 
         layout: QVBoxLayout = QVBoxLayout()
         layout.addWidget(self.title, 0, Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._selected_scroll_button)
-        layout.addWidget(grid_frame)
+        layout.addWidget(self._cards_container)
         layout.addWidget(self._custom_actions_frame)
         layout.setContentsMargins(10, 20, 10, 10)
         layout.setSpacing(20)
@@ -1018,56 +1088,6 @@ class SkillSettings(QFrame):
             app_state.macro.current_preset_index
         ]
         return preset
-
-    def _build_header(self) -> None:
-        """헤더 행 생성"""
-
-        # 스킬명 열과 옵션 열 헤더 구성
-        titles: list[str] = [
-            "스킬",
-            "사용\n여부",
-            "단독\n사용",
-            "우선\n순위",
-            "단독\n스왑",
-        ]
-        tooltips: list[str] = [
-            "선택한 스크롤에 포함된 두 개의 스킬입니다.",
-            (
-                "매크로가 작동 중일 때 자동으로 스킬을 사용할지 결정합니다.\n"
-                "이동기같이 자신이 직접 사용해야 하는 스킬만 사용을 해제하시는 것을 추천드립니다.\n"
-                "연계스킬에는 적용되지 않습니다."
-            ),
-            (
-                "연계스킬을 대기할 때 다른 스킬들이 준비되는 것을 기다리지 않고 우선적으로 사용할 지 결정합니다.\n"
-                "연계스킬 내에서 다른 스킬보다 너무 빠르게 준비되는 스킬은 사용을 해제하시는 것을 추천드립니다.\n"
-                "사용여부가 활성화되지 않았다면 단독으로 사용되지 않습니다."
-            ),
-            (
-                "매크로가 작동 중일 때 여러 스킬이 준비되었더라도 우선순위가 더 높은(숫자가 낮은) 스킬을 먼저 사용합니다.\n"
-                "우선순위를 설정하지 않은 스킬들은 준비된 시간 순서대로 사용합니다.\n"
-                "버프스킬의 우선순위를 높이는 것을 추천합니다.\n"
-                "연계스킬은 우선순위가 적용되지 않습니다."
-            ),
-            (
-                "스킬을 사용하기 위해 바로 스왑할지 결정합니다.\n"
-                "사용하려는 스킬이 다른 줄에 있고 이 옵션이 활성화되어 있다면 즉시 스왑합니다.\n"
-                "연계스킬에는 적용되지 않습니다."
-            ),
-        ]
-
-        # 각 열 설명 라벨 배치
-        for i, title in enumerate(titles):
-            label: QLabel = QLabel(title)
-            label.setToolTip(tooltips[i])
-            label.setStyleSheet("QLabel { border: 0px; border-radius: 0px; }")
-            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            label.setFont(CustomFont(12))
-            if i == 0:
-                label.setFixedSize(100, 40)
-            else:
-                label.setFixedSize(40, 40)
-
-            self._grid_layout.addWidget(label, 0, i, Qt.AlignmentFlag.AlignCenter)
 
     def _sync_scroll_ids(self, scroll_defs: list["ScrollDef"]) -> None:
         """현재 서버 스크롤 ID 목록 동기화"""
@@ -1099,6 +1119,7 @@ class SkillSettings(QFrame):
         scroll_pixmap: QPixmap = resource_registry.get_scroll_pixmap(scroll_def.id)
         self._selected_scroll_icon.setPixmap(scroll_pixmap)
         self._selected_scroll_name.setText(scroll_def.name)
+        self._selected_scroll_name.setToolTip(scroll_def.name)
 
         # 커스텀 스크롤이면 수정/삭제 버튼 표시
         is_custom: bool = scroll_def.id.startswith(f"{CUSTOM_SKILL_PREFIX}:")
@@ -1107,25 +1128,62 @@ class SkillSettings(QFrame):
     def _clear_rows(self) -> None:
         """기존 행들 제거"""
 
-        # 기존 스킬 행 위젯 정리
-        for r in range(1, self._grid_layout.rowCount() + 1):
-            for c in range(0, 5):
-                item: QLayoutItem | None = self._grid_layout.itemAtPosition(r, c)
-                if item is None:
-                    continue
-
-                w: QWidget | None = item.widget()
-                if w is None:
-                    continue
-
-                self._grid_layout.removeWidget(w)
-                w.deleteLater()
+        # 기존 스킬 카드 위젯 정리
+        card: SkillSettingCardWidgets
+        for card in self._skill_cards:
+            self._cards_layout.removeWidget(card.frame)
+            card.frame.deleteLater()
 
         self._skill_ids = []
-        self._usage_btns = []
-        self._sole_btns = []
-        self._solo_swap_btns = []
-        self._priority_btns = []
+        self._skill_cards = []
+
+    def _build_option_card(
+        self,
+        title: str,
+        tooltip: str,
+        button: QPushButton,
+    ) -> QFrame:
+        """스킬 설정 옵션 카드 생성"""
+
+        # 옵션 제목 라벨 구성
+        option_title: QLabel = QLabel(title)
+        option_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        option_title.setFont(CustomFont(11))
+        option_title.setWordWrap(True)
+        option_title.setToolTip(tooltip)
+        option_title.setStyleSheet(
+            "QLabel { color: #4B5563; background-color: transparent; border: 0px; }"
+        )
+
+        # 옵션 버튼 정렬 행 구성
+        button_row: QHBoxLayout = QHBoxLayout()
+        button_row.setContentsMargins(0, 0, 0, 0)
+        button_row.setSpacing(0)
+        button_row.addStretch(1)
+        button_row.addWidget(button)
+        button_row.addStretch(1)
+
+        # 옵션 카드 레이아웃 구성
+        option_layout: QVBoxLayout = QVBoxLayout()
+        option_layout.setContentsMargins(8, 8, 8, 8)
+        option_layout.setSpacing(6)
+        option_layout.addWidget(option_title)
+        option_layout.addLayout(button_row)
+
+        # 옵션 카드 프레임 구성
+        option_frame: QFrame = QFrame()
+        option_frame.setToolTip(tooltip)
+        option_frame.setStyleSheet(
+            """
+            QFrame {
+                background-color: #F8FAFD;
+                border: 1px solid #DDE6F1;
+                border-radius: 10px;
+            }
+            """
+        )
+        option_frame.setLayout(option_layout)
+        return option_frame
 
     def _ensure_rows(self, skill_ids: list[str]) -> None:
         """스킬 행 생성"""
@@ -1137,14 +1195,21 @@ class SkillSettings(QFrame):
         self._skill_ids = skill_ids.copy()
 
         for idx, skill_id in enumerate(self._skill_ids):
-            # 스킬 아이콘과 이름 표시 행 구성
+            # 스킬 헤더 영역 구성
             pixmap: QPixmap = resource_registry.get_skill_pixmap(skill_id=skill_id)
             skill_name: str = app_state.macro.current_server.skill_registry.get(
                 skill_id
             ).name
-            skill_image: SkillImage = SkillImage(parent=self, pixmap=pixmap, size=30)
+            skill_image: SkillImage = SkillImage(parent=self, pixmap=pixmap, size=34)
             skill_name_label: QLabel = QLabel(skill_name)
             skill_name_label.setFont(CustomFont(12))
+            skill_name_label.setToolTip(skill_name)
+            skill_name_label.setWordWrap(True)
+            skill_name_label.setMinimumHeight(34)
+            skill_name_label.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Preferred,
+            )
             skill_name_label.setStyleSheet(
                 "QLabel { background-color: transparent; border: 0px; }"
             )
@@ -1157,6 +1222,9 @@ class SkillSettings(QFrame):
 
             skill_info_frame: QFrame = QFrame()
             skill_info_frame.setLayout(skill_info_layout)
+            skill_info_frame.setStyleSheet(
+                "QFrame { background-color: transparent; border: 0px; }"
+            )
 
             # 스킬 정보 영역 전역 호버 카드 연결
             self.popup_manager.bind_hover_card(
@@ -1172,62 +1240,139 @@ class SkillSettings(QFrame):
                 lambda sid=skill_id: self._build_skill_hover_card(sid),
             )
 
-            self._grid_layout.addWidget(
-                skill_info_frame, idx + 1, 0, Qt.AlignmentFlag.AlignLeft
-            )
-
             # 스킬 사용 여부 버튼 구성
             usage_btn: QPushButton = QPushButton()
             usage_btn.setStyleSheet(self._check_btn_style)
             usage_btn.setIconSize(QSize(40, 40))
             usage_btn.setFixedSize(30, 30)
+            usage_btn.setToolTip(SKILL_SETTING_OPTION_MAP["usage"].tooltip)
             usage_btn.clicked.connect(
                 partial(lambda x: self.change_skill_usage(x), idx)
             )
             usage_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            self._grid_layout.addWidget(
-                usage_btn, idx + 1, 1, Qt.AlignmentFlag.AlignCenter
-            )
-            self._usage_btns.append(usage_btn)
 
             # 스킬 단독 사용 여부 버튼 구성
             sole_btn: QPushButton = QPushButton()
             sole_btn.setStyleSheet(self._check_btn_style)
             sole_btn.setIconSize(QSize(40, 40))
             sole_btn.setFixedSize(30, 30)
+            sole_btn.setToolTip(SKILL_SETTING_OPTION_MAP["sole"].tooltip)
             sole_btn.clicked.connect(partial(lambda x: self.change_use_sole(x), idx))
             sole_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            self._grid_layout.addWidget(
-                sole_btn, idx + 1, 2, Qt.AlignmentFlag.AlignCenter
-            )
-            self._sole_btns.append(sole_btn)
 
             # 스킬 우선순위 버튼 구성
             priority_btn: QPushButton = QPushButton("-")
             priority_btn.setFont(CustomFont(12))
-            priority_btn.setFixedWidth(40)
+            priority_btn.setFixedSize(52, 30)
+            priority_btn.setToolTip(SKILL_SETTING_OPTION_MAP["priority"].tooltip)
+            priority_btn.setStyleSheet(
+                """
+                QPushButton {
+                    background-color: #FFFFFF;
+                    border: 1px solid #C7D4E5;
+                    border-radius: 8px;
+                    padding: 2px 8px;
+                }
+                QPushButton:hover {
+                    background-color: #F1F5FA;
+                }
+                """
+            )
             priority_btn.clicked.connect(
                 partial(lambda x: self.change_priority(x), idx)
             )
             priority_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            self._grid_layout.addWidget(
-                priority_btn, idx + 1, 3, Qt.AlignmentFlag.AlignCenter
-            )
-            self._priority_btns.append(priority_btn)
 
             # 스킬 단독 스왑 여부 버튼 구성
             solo_swap_btn: QPushButton = QPushButton()
             solo_swap_btn.setStyleSheet(self._check_btn_style)
             solo_swap_btn.setIconSize(QSize(40, 40))
             solo_swap_btn.setFixedSize(30, 30)
+            solo_swap_btn.setToolTip(SKILL_SETTING_OPTION_MAP["solo_swap"].tooltip)
             solo_swap_btn.clicked.connect(
                 partial(lambda x: self.change_use_solo_swap(x), idx)
             )
             solo_swap_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            self._grid_layout.addWidget(
-                solo_swap_btn, idx + 1, 4, Qt.AlignmentFlag.AlignCenter
+
+            # 스킬 설정 옵션 그리드 구성
+            option_grid: QGridLayout = QGridLayout()
+            option_grid.setContentsMargins(0, 0, 0, 0)
+            option_grid.setHorizontalSpacing(8)
+            option_grid.setVerticalSpacing(8)
+            option_grid.setColumnStretch(0, 1)
+            option_grid.setColumnStretch(1, 1)
+            option_grid.addWidget(
+                self._build_option_card(
+                    SKILL_SETTING_OPTION_MAP["usage"].title,
+                    SKILL_SETTING_OPTION_MAP["usage"].tooltip,
+                    usage_btn,
+                ),
+                0,
+                0,
             )
-            self._solo_swap_btns.append(solo_swap_btn)
+            option_grid.addWidget(
+                self._build_option_card(
+                    SKILL_SETTING_OPTION_MAP["sole"].title,
+                    SKILL_SETTING_OPTION_MAP["sole"].tooltip,
+                    sole_btn,
+                ),
+                0,
+                1,
+            )
+            option_grid.addWidget(
+                self._build_option_card(
+                    SKILL_SETTING_OPTION_MAP["priority"].title,
+                    SKILL_SETTING_OPTION_MAP["priority"].tooltip,
+                    priority_btn,
+                ),
+                1,
+                0,
+            )
+            option_grid.addWidget(
+                self._build_option_card(
+                    SKILL_SETTING_OPTION_MAP["solo_swap"].title,
+                    SKILL_SETTING_OPTION_MAP["solo_swap"].tooltip,
+                    solo_swap_btn,
+                ),
+                1,
+                1,
+            )
+
+            # 스킬 카드 프레임 구성
+            card_layout: QVBoxLayout = QVBoxLayout()
+            card_layout.setContentsMargins(12, 12, 12, 12)
+            card_layout.setSpacing(10)
+            card_layout.addWidget(skill_info_frame)
+            card_layout.addLayout(option_grid)
+
+            card_frame: QFrame = QFrame()
+            card_frame.setStyleSheet(
+                """
+                QFrame {
+                    background-color: #FFFFFF;
+                    border: 1px solid #D7E2F0;
+                    border-radius: 12px;
+                }
+                """
+            )
+            card_frame.setLayout(card_layout)
+            card_frame.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Preferred,
+            )
+
+            # 생성 카드 목록 등록
+            self._cards_layout.addWidget(card_frame)
+            self._skill_cards.append(
+                SkillSettingCardWidgets(
+                    skill_id=skill_id,
+                    frame=card_frame,
+                    usage_btn=usage_btn,
+                    sole_btn=sole_btn,
+                    priority_btn=priority_btn,
+                    solo_swap_btn=solo_swap_btn,
+                )
+            )
 
     def update_from_preset(self, preset: "MacroPreset") -> None:
         """프리셋으로부터 위젯 상태를 업데이트"""
@@ -1256,8 +1401,9 @@ class SkillSettings(QFrame):
         skill_ids: list[str] = list(scroll_def.skills)
         self._ensure_rows(skill_ids)
 
-        for idx, skill_id in enumerate(self._skill_ids):
-            setting: SkillUsageSetting = preset.usage_settings[skill_id]
+        # 카드별 버튼 상태 동기화
+        for card in self._skill_cards:
+            setting: SkillUsageSetting = preset.usage_settings[card.skill_id]
 
             # 토글 버튼 아이콘 상태 반영
             usage_icon: QIcon = QIcon(
@@ -1282,13 +1428,13 @@ class SkillSettings(QFrame):
                 )
             )
 
-            self._usage_btns[idx].setIcon(usage_icon)
-            self._sole_btns[idx].setIcon(sole_icon)
-            self._solo_swap_btns[idx].setIcon(solo_swap_icon)
+            card.usage_btn.setIcon(usage_icon)
+            card.sole_btn.setIcon(sole_icon)
+            card.solo_swap_btn.setIcon(solo_swap_icon)
 
             # 우선순위 숫자 텍스트 반영
             p: int = int(setting.priority)
-            self._priority_btns[idx].setText("-" if p == 0 else str(p))
+            card.priority_btn.setText("-" if p == 0 else str(p))
 
     def _build_selected_scroll_hover_card(self) -> HoverCardData | None:
         """선택된 스크롤 카드 기준 호버 카드 구성"""
