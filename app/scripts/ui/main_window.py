@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from multiprocessing import freeze_support
 from threading import Thread
 from typing import Any
 from webbrowser import open_new
@@ -306,10 +307,16 @@ class CreatorLabel(QPushButton):
 
 
 if __name__ == "__main__":
+    # Windows frozen 멀티프로세싱 재진입 차단 블록
+    freeze_support()
+
+    # 고해상도 스케일 정책 적용 블록
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
-    app = QApplication(sys.argv)
 
-    window = MainWindow()
+    # Qt 애플리케이션 실행 블록
+    app: QApplication = QApplication(sys.argv)
+
+    window: MainWindow = MainWindow()
     sys.exit(app.exec())
