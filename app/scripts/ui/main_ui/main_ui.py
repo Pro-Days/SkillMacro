@@ -599,6 +599,7 @@ class Tab(QFrame):
         """무공비급 장착 적용"""
 
         current_scroll_id: str = self.preset.skills.equipped_scrolls[scroll_index]
+
         # 동일 무공비급 재선택 시 해당 슬롯 장착 해제 처리
         target_scroll_id: str = ""
         if current_scroll_id != scroll_id:
@@ -608,6 +609,9 @@ class Tab(QFrame):
         if target_scroll_id and target_scroll_id in self.preset.skills.equipped_scrolls:
             return False
 
+        # 교체 과정에서 제거된 배치 스킬 목록 수집
+        removed_skill_ids: list[str] = []
+
         # 교체 또는 해제 전 기존 무공비급 제공 스킬 정리
         if current_scroll_id:
             current_scroll_def: ScrollDef = (
@@ -616,13 +620,23 @@ class Tab(QFrame):
                 )
             )
             for skill_id in current_scroll_def.skills:
-                self.clear_skill_if_placed(skill_id)
+                if self.clear_skill_if_placed(
+                    skill_id,
+                    refresh_ui=False,
+                    emit_signal=False,
+                ):
+                    removed_skill_ids.append(skill_id)
 
         # 새 장착 결과 반영 및 연계/공유 상태 동기화
         self.preset.skills.equipped_scrolls[scroll_index] = target_scroll_id
         self._sync_link_skills_to_available_skills()
         self._sync_to_shared_data()
         self.update_from_preset()
+
+        # 교체 중 제거된 스킬 관련 사이드바 갱신 1회 반영
+        if removed_skill_ids:
+            self.skillUnequipped.emit(removed_skill_ids[0])
+
         return True
 
     def _sync_link_skills_to_available_skills(self) -> None:
@@ -654,29 +668,37 @@ class Tab(QFrame):
 
         self.preset.link_skills = filtered_link_skills
 
-    def clear_skill_if_placed(self, skill_id: str) -> None:
+    def clear_skill_if_placed(
+        self,
+        skill_id: str,
+        refresh_ui: bool = True,
+        emit_signal: bool = True,
+    ) -> bool:
         """기존 배치 스킬 제거"""
 
         placed_skill_ids: list[str] = self.preset.skills.get_placed_skill_ids()
         if skill_id not in placed_skill_ids:
-            return
+            return False
 
         # 스킬 ID 기준 배치 위치를 찾아 실제 슬롯과 파생 설정을 함께 정리
         skill_ref_map: dict[str, EquippedSkillRef] = (
             self.preset.skills.get_placed_skill_ref_map(app_state.macro.current_server)
         )
         target_ref: EquippedSkillRef = skill_ref_map[skill_id]
-        self.clear_placed_skill(skill_id)
-        self.set_placed_skill(target_ref, "")
+        self.clear_placed_skill(skill_id, emit_signal=emit_signal)
+        self.set_placed_skill(target_ref, "", refresh_ui=refresh_ui)
+        return True
 
-    def clear_placed_skill(self, skill_id: str) -> None:
+    def clear_placed_skill(self, skill_id: str, emit_signal: bool = True) -> None:
         """배치 해제 파생 설정 정리"""
 
+        # 연계에 포함된 스킬의 수동 설정 복원
         for link in self.preset.link_skills:
             if skill_id in link.skills:
                 link.set_manual()
                 link.clear_key()
 
+        # 우선순위 제거 및 뒤 번호 당기기
         setting: SkillUsageSetting = self.preset.usage_settings[skill_id]
         previous_priority: int = setting.priority
 
@@ -692,20 +714,30 @@ class Tab(QFrame):
                 if usage_setting.priority > previous_priority:
                     usage_setting.priority -= 1
 
-        self.skillUnequipped.emit(skill_id)
+        # 해제 영향 페이지 갱신 시그널 방출
+        if emit_signal:
+            self.skillUnequipped.emit(skill_id)
 
     def select_placed_skill(self, skill_ref: EquippedSkillRef | None) -> None:
         """하단 슬롯 선택"""
 
         self.placed_skills.select(skill_ref)
 
-    def set_placed_skill(self, skill_ref: EquippedSkillRef, skill_id: str) -> None:
+    def set_placed_skill(
+        self,
+        skill_ref: EquippedSkillRef,
+        skill_id: str,
+        refresh_ui: bool = True,
+    ) -> None:
         """하단 슬롯 스킬 적용"""
 
         # 하단 14칸 수동 배치 상태만 실제 저장 필드에 반영
         self.preset.skills.placed_skills[skill_ref.flat_index] = skill_id
         self._sync_to_shared_data()
-        self.update_from_preset()
+
+        # 호출 단위 기준 즉시 UI 반영
+        if refresh_ui:
+            self.update_from_preset()
 
     def get_selected_skill_ref(self) -> EquippedSkillRef | None:
         """선택된 하단 슬롯 반환"""
@@ -748,9 +780,10 @@ class Tab(QFrame):
         return True
 
     def _sync_to_shared_data(self) -> None:
-        """현재 프리셋 저장 인덱스 동기화"""
+        """현재 프리셋 인덱스 메모리 동기화"""
 
-        update_recent_preset(self.preset_index)
+        # 변경 저장 대상 프리셋 인덱스만 메모리에 즉시 반영
+        app_state.macro.current_preset_index = self.preset_index
 
 
 class SkillPreview(QFrame):
