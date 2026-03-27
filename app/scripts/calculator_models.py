@@ -89,6 +89,21 @@ class RealmTier(str, Enum):
     LIFE_AND_DEATH = "life_and_death"
 
 
+class TalismanGrade(str, Enum):
+    """부적 등급 값"""
+
+    # 일반 등급
+    NORMAL = "일반"
+    # 고급 등급
+    ADVANCED = "고급"
+    # 희귀 등급
+    RARE = "희귀"
+    # 영웅 등급
+    HEROIC = "영웅"
+    # 전설 등급
+    LEGENDARY = "전설"
+
+
 @dataclass(frozen=True, slots=True)
 class RealmSpec:
     """경지별 요구 레벨과 단전 포인트"""
@@ -214,6 +229,7 @@ class TalismanSpec:
     """부적 정의"""
 
     name: str
+    grade: TalismanGrade
     stat_key: StatKey
     level_stats: dict[int, float]
 
@@ -744,9 +760,11 @@ def _load_talismans() -> tuple[TalismanSpec, ...]:
         if not isinstance(raw_talisman, dict):
             raise TypeError("talisman item must be a dict")
 
+        # 부적 등급과 스탯 정의 동시 복원
         specs.append(
             TalismanSpec(
                 name=str(raw_talisman["name"]),
+                grade=TalismanGrade(str(raw_talisman["grade"])),
                 stat_key=StatKey(str(raw_talisman["stat_key"])),
                 level_stats={
                     int(level): float(value)

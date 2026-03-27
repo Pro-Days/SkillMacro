@@ -410,7 +410,8 @@ def build_talisman_contribution(
 
     contribution: Contribution = Contribution()
     for equipped_name in equipped_talisman_names:
-        if equipped_name is None:
+        # 빈 슬롯 문자열 및 비어 있는 장착명 제외
+        if not equipped_name:
             continue
 
         stat_key: StatKey

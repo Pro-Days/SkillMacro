@@ -52,6 +52,7 @@ from app.scripts.calculator_models import (
     OwnedTitle,
     OwnedTitleStat,
     StatKey,
+    TalismanGrade,
 )
 from app.scripts.config import config
 from app.scripts.custom_classes import (
@@ -1563,7 +1564,10 @@ class ResultsPage(QFrame):
                 self.setStyleSheet(
                     "QFrame { background-color: transparent; border: 0px solid; }"
                 )
-                self.setMinimumHeight(300)
+                self.setSizePolicy(
+                    QSizePolicy.Policy.Expanding,
+                    QSizePolicy.Policy.Fixed,
+                )
 
                 # 칭호 입력 전체 상태 참조 초기화
                 self._connected_function: Callable[[], None] = connected_function
@@ -1982,68 +1986,699 @@ class ResultsPage(QFrame):
                 return is_valid, owned_titles, equipped_title_name
 
         class TalismanInputs(QFrame):
-            class TalismanRow(QFrame):
+            class EquippedSlotPanel(QFrame):
+                def __init__(
+                    self,
+                    parent: QWidget,
+                    slot_index: int,
+                    equip_function: Callable[[int], None],
+                    unequip_function: Callable[[int], None],
+                ) -> None:
+                    super().__init__(parent)
+
+                    # 슬롯 패널 고정 인덱스 및 콜백 참조 보관
+                    self._slot_index: int = slot_index
+                    self._equip_function: Callable[[int], None] = equip_function
+                    self._unequip_function: Callable[[int], None] = unequip_function
+
+                    # 슬롯 패널 외곽 스타일 구성
+                    self.setObjectName("TalismanEquippedSlotPanel")
+                    self.setStyleSheet(
+                        """
+                        QFrame#TalismanEquippedSlotPanel {
+                            background-color: #FFFFFF;
+                            border: 1px solid #D9E0EA;
+                            border-radius: 6px;
+                        }
+                        """
+                    )
+
+                    # 슬롯 패널 본문 레이아웃 구성
+                    root_layout: QVBoxLayout = QVBoxLayout(self)
+                    root_layout.setContentsMargins(12, 12, 12, 12)
+                    root_layout.setSpacing(8)
+
+                    # 슬롯 번호 안내 라벨 구성
+                    self.slot_title_label: QLabel = QLabel(
+                        f"부적 슬롯 {slot_index + 1}", self
+                    )
+                    self.slot_title_label.setFont(CustomFont(10, bold=True))
+                    self.slot_title_label.setStyleSheet(
+                        "QLabel { color: #5C6B7A; border: 0px; }"
+                    )
+                    root_layout.addWidget(self.slot_title_label)
+
+                    # 장착 부적 이름 표시 라벨 구성
+                    self.name_label: QLabel = QLabel("장착된 부적 없음", self)
+                    self.name_label.setFont(CustomFont(11, bold=True))
+                    self.name_label.setStyleSheet(
+                        "QLabel { color: #2C3E50; border: 0px; }"
+                    )
+                    root_layout.addWidget(self.name_label)
+
+                    # 장착 부적 스탯 요약 라벨 구성
+                    self.stat_label: QLabel = QLabel(
+                        "선택된 장착 부적이 없습니다.", self
+                    )
+                    self.stat_label.setWordWrap(True)
+                    self.stat_label.setFont(CustomFont(10))
+                    self.stat_label.setStyleSheet(
+                        "QLabel { color: #7A8795; border: 0px; }"
+                    )
+                    root_layout.addWidget(self.stat_label)
+
+                    # 슬롯 장착/해제 버튼 행 구성
+                    action_layout: QHBoxLayout = QHBoxLayout()
+                    action_layout.setContentsMargins(0, 0, 0, 0)
+                    action_layout.setSpacing(6)
+
+                    self.equip_button: QPushButton = QPushButton("선택 부적 장착", self)
+                    self.equip_button.setCursor(Qt.CursorShape.PointingHandCursor)
+                    self.equip_button.setMinimumHeight(28)
+                    self.equip_button.setFont(CustomFont(9, bold=True))
+                    self.equip_button.setStyleSheet(
+                        """
+                        QPushButton {
+                            background-color: #4A90E2;
+                            color: white;
+                            border: 0px;
+                            border-radius: 4px;
+                            padding: 4px 12px;
+                        }
+                        QPushButton:hover {
+                            background-color: #357ABD;
+                        }
+                        QPushButton:pressed {
+                            background-color: #357ABD;
+                        }
+                        QPushButton:disabled {
+                            background-color: #C9D7E6;
+                            color: #F7FAFC;
+                        }
+                        """
+                    )
+                    self.equip_button.clicked.connect(self._on_equip_clicked)
+
+                    self.unequip_button: StyledButton = StyledButton(
+                        self, "장착 해제", kind="normal", point_size=9
+                    )
+                    self.unequip_button.setMinimumHeight(28)
+                    self.unequip_button.clicked.connect(self._on_unequip_clicked)
+
+                    action_layout.addWidget(self.equip_button)
+                    action_layout.addWidget(self.unequip_button)
+                    root_layout.addLayout(action_layout)
+                    self.setLayout(root_layout)
+
+                def _on_equip_clicked(self) -> None:
+                    """선택 카드 슬롯 장착 요청"""
+
+                    self._equip_function(self._slot_index)
+
+                def _on_unequip_clicked(self) -> None:
+                    """슬롯 장착 해제 요청"""
+
+                    self._unequip_function(self._slot_index)
+
+                def set_slot_state(
+                    self,
+                    display_name: str,
+                    stat_text: str,
+                    has_equipped_card: bool,
+                    can_equip_selected_card: bool,
+                    is_selected_card_equipped: bool,
+                ) -> None:
+                    """슬롯 표시 상태 일괄 반영"""
+
+                    # 슬롯 이름 및 스탯 안내 문구 반영
+                    self.name_label.setText(display_name)
+                    self.stat_label.setText(stat_text)
+
+                    # 장착 유무에 맞는 스탯 문구 색상 반영
+                    if has_equipped_card:
+                        self.stat_label.setStyleSheet(
+                            "QLabel { color: #2C3E50; border: 0px; }"
+                        )
+
+                    else:
+                        self.stat_label.setStyleSheet(
+                            "QLabel { color: #7A8795; border: 0px; }"
+                        )
+
+                    # 선택 카드 기준 슬롯 장착 버튼 상태 반영
+                    if is_selected_card_equipped:
+                        self.equip_button.setText("선택 부적 장착중")
+                        self.equip_button.setEnabled(False)
+
+                    elif can_equip_selected_card:
+                        self.equip_button.setText("선택 부적 장착")
+                        self.equip_button.setEnabled(True)
+
+                    else:
+                        self.equip_button.setText("부적 선택 필요")
+                        self.equip_button.setEnabled(False)
+
+                    # 현재 슬롯 장착 해제 버튼 활성화 반영
+                    self.unequip_button.setEnabled(has_equipped_card)
+
+            class TalismanListItem(QFrame):
+                def __init__(
+                    self,
+                    parent: QWidget,
+                    select_function: Callable[
+                        ["ResultsPage.Efficiency.TalismanInputs.TalismanCard"], None
+                    ],
+                    remove_function: Callable[
+                        ["ResultsPage.Efficiency.TalismanInputs.TalismanCard"], None
+                    ],
+                    target_card: "ResultsPage.Efficiency.TalismanInputs.TalismanCard",
+                ) -> None:
+                    super().__init__(parent)
+
+                    # 목록 항목 대상 카드 및 콜백 참조 보관
+                    self._select_function: Callable[
+                        [ResultsPage.Efficiency.TalismanInputs.TalismanCard], None
+                    ] = select_function
+                    self._remove_function: Callable[
+                        [ResultsPage.Efficiency.TalismanInputs.TalismanCard], None
+                    ] = remove_function
+                    self._target_card: (
+                        ResultsPage.Efficiency.TalismanInputs.TalismanCard
+                    ) = target_card
+
+                    # 목록 항목 전체 레이아웃 구성
+                    self.setStyleSheet(
+                        "QFrame { background-color: transparent; border: 0px; }"
+                    )
+                    self.setMinimumHeight(48)
+                    layout: QGridLayout = QGridLayout(self)
+                    layout.setContentsMargins(0, 0, 0, 0)
+                    layout.setSpacing(0)
+
+                    # 목록 선택 버튼 구성
+                    self.select_button: QPushButton = QPushButton("", self)
+                    self.select_button.setCheckable(True)
+                    self.select_button.setCursor(Qt.CursorShape.PointingHandCursor)
+                    self.select_button.setMinimumHeight(48)
+                    self.select_button.setFont(CustomFont(10, bold=True))
+                    self.select_button.setStyleSheet(
+                        """
+                        QPushButton {
+                            background-color: #FFFFFF;
+                            color: #2C3E50;
+                            border: 1px solid #D9E0EA;
+                            border-radius: 6px;
+                            padding: 0px 118px 0px 12px;
+                            text-align: left;
+                        }
+                        QPushButton:hover {
+                            background-color: #F6FAFF;
+                            border: 1px solid #BFD4EC;
+                        }
+                        QPushButton:checked {
+                            background-color: #E8F2FF;
+                            border: 1px solid #4A90E2;
+                            color: #1F4E79;
+                        }
+                        """
+                    )
+                    self.select_button.clicked.connect(self._on_select_clicked)
+
+                    # 목록 우측 상태/삭제 컨테이너 구성
+                    self.actions_widget: QWidget = QWidget(self)
+                    self.actions_widget.setStyleSheet(
+                        "QWidget { background-color: transparent; border: 0px; }"
+                    )
+                    actions_layout: QHBoxLayout = QHBoxLayout(self.actions_widget)
+                    actions_layout.setContentsMargins(0, 0, 8, 0)
+                    actions_layout.setSpacing(6)
+
+                    # 장착 슬롯 요약 라벨 구성
+                    self.equipped_state_label: QLabel = QLabel("미장착", self)
+                    self.equipped_state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.equipped_state_label.setMinimumWidth(58)
+                    self.equipped_state_label.setFont(CustomFont(8, bold=True))
+                    self.equipped_state_label.setStyleSheet(
+                        """
+                        QLabel {
+                            background-color: #EEF2F7;
+                            color: #5C6B7A;
+                            border: 0px;
+                            border-radius: 4px;
+                            padding: 4px 8px;
+                        }
+                        """
+                    )
+                    actions_layout.addWidget(self.equipped_state_label)
+
+                    # 목록 삭제 버튼 구성
+                    self.remove_button: StyledButton = StyledButton(
+                        self, "삭제", kind="danger", point_size=8
+                    )
+                    self.remove_button.setFixedHeight(24)
+                    self.remove_button.clicked.connect(self._on_remove_clicked)
+                    actions_layout.addWidget(self.remove_button)
+                    self.actions_widget.setLayout(actions_layout)
+
+                    # 목록 선택 버튼 위 상태/삭제 컨테이너 겹치기 배치
+                    layout.addWidget(self.select_button, 0, 0)
+                    layout.addWidget(
+                        self.actions_widget,
+                        0,
+                        0,
+                        Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight,
+                    )
+                    self.setLayout(layout)
+
+                def _on_select_clicked(self, _checked: bool) -> None:
+                    """목록 항목 선택 전달"""
+
+                    self._select_function(self._target_card)
+
+                def _on_remove_clicked(self) -> None:
+                    """목록 항목 삭제 전달"""
+
+                    self._remove_function(self._target_card)
+
+                def set_title_text(self, text: str) -> None:
+                    """목록 버튼 표시명 반영"""
+
+                    self.select_button.setText(text)
+
+                def set_selected_state(self, is_selected: bool) -> None:
+                    """목록 버튼 선택 상태 반영"""
+
+                    self.select_button.setChecked(is_selected)
+
+                def set_equipped_slots(self, slot_indexes: list[int]) -> None:
+                    """장착 슬롯 요약 문구 반영"""
+
+                    # 미장착 상태 문구 및 색상 반영
+                    if not slot_indexes:
+                        self.equipped_state_label.setText("미장착")
+                        self.equipped_state_label.setStyleSheet(
+                            """
+                            QLabel {
+                                background-color: #EEF2F7;
+                                color: #5C6B7A;
+                                border: 0px;
+                                border-radius: 4px;
+                                padding: 4px 8px;
+                            }
+                            """
+                        )
+                        return
+
+                    # 장착 슬롯 번호 기반 상태 문구 반영
+                    slot_text: str = ", ".join(
+                        f"{slot_index + 1}번" for slot_index in slot_indexes
+                    )
+                    self.equipped_state_label.setText(slot_text)
+                    self.equipped_state_label.setStyleSheet(
+                        """
+                        QLabel {
+                            background-color: #EAF5EA;
+                            color: #2F855A;
+                            border: 0px;
+                            border-radius: 4px;
+                            padding: 4px 8px;
+                        }
+                        """
+                    )
+
+            class TalismanCard(QFrame):
                 def __init__(
                     self,
                     parent: QWidget,
                     connected_function: Callable[[], None],
-                    remove_function: Callable[
-                        ["ResultsPage.Efficiency.TalismanInputs.TalismanRow"], None
-                    ],
                     data: OwnedTalisman | None = None,
                 ) -> None:
                     super().__init__(parent)
+
+                    # 우측 편집 카드 외곽 스타일 구성
+                    self.setObjectName("TalismanCard")
                     self.setStyleSheet(
-                        "QFrame { background-color: transparent; border: 0px solid; }"
+                        """
+                        QFrame#TalismanCard {
+                            background-color: #F8FAFC;
+                            border: 1px solid #DDE5EF;
+                            border-radius: 8px;
+                        }
+                        """
                     )
 
-                    # 보유 부적 한 줄 편집 UI 구성
+                    # 편집 카드 부적 정의와 현재 선택 상태 보관
                     self._connected_function: Callable[[], None] = connected_function
-                    self._remove_function = remove_function
                     self._templates: list[TalismanSpec] = list(TALISMAN_SPECS)
+                    self._grade_order: list[TalismanGrade] = []
+                    self._templates_by_grade: dict[
+                        TalismanGrade,
+                        list[TalismanSpec],
+                    ] = {}
 
-                    layout: QHBoxLayout = QHBoxLayout(self)
-                    layout.setContentsMargins(0, 0, 0, 0)
-                    layout.setSpacing(8)
+                    # 데이터에 존재하는 등급 순서대로 그룹 구성
+                    grade: TalismanGrade
+                    for grade in (
+                        TalismanGrade.NORMAL,
+                        TalismanGrade.ADVANCED,
+                        TalismanGrade.RARE,
+                        TalismanGrade.HEROIC,
+                        TalismanGrade.LEGENDARY,
+                    ):
+                        grade_templates: list[TalismanSpec] = [
+                            template
+                            for template in self._templates
+                            if template.grade is grade
+                        ]
+                        if not grade_templates:
+                            continue
 
-                    self.template_combobox = CustomComboBox(
-                        self,
-                        [template.name for template in self._templates],
-                        connected_function,
-                    )
+                        self._grade_order.append(grade)
+                        self._templates_by_grade[grade] = grade_templates
+
+                    # 초기 선택 부적과 등급 상태 결정
+                    initial_template: TalismanSpec = self._templates[0]
                     if data is not None:
-                        for index, template in enumerate(self._templates):
-                            if template.name == data.name:
-                                self.template_combobox.setCurrentIndex(index)
-                                break
+                        template: TalismanSpec
+                        for template in self._templates:
+                            if template.name != data.name:
+                                continue
 
+                            initial_template = template
+                            break
+
+                    self._selected_grade: TalismanGrade = initial_template.grade
+                    self._selected_template: TalismanSpec = initial_template
+                    self._grade_buttons: dict[TalismanGrade, QPushButton] = {}
+                    self._template_buttons: dict[str, QPushButton] = {}
+
+                    # 카드 본문 레이아웃 구성
+                    root_layout: QVBoxLayout = QVBoxLayout(self)
+                    root_layout.setContentsMargins(12, 12, 12, 12)
+                    root_layout.setSpacing(6)
+
+                    # 등급 라벨과 버튼 간격 축소용 섹션 레이아웃 구성
+                    grade_section_layout: QVBoxLayout = QVBoxLayout()
+                    grade_section_layout.setContentsMargins(0, 0, 0, 0)
+                    grade_section_layout.setSpacing(3)
+
+                    # 등급 선택 버튼 영역 구성
+                    grade_title: QLabel = QLabel("등급", self)
+                    grade_title.setFont(CustomFont(11, bold=True))
+                    grade_section_layout.addWidget(grade_title)
+
+                    self.grade_buttons_widget: QWidget = QWidget(self)
+                    self.grade_buttons_widget.setStyleSheet(
+                        "background-color: transparent;"
+                    )
+                    grade_layout: QHBoxLayout = QHBoxLayout(self.grade_buttons_widget)
+                    grade_layout.setContentsMargins(0, 0, 0, 0)
+                    grade_layout.setSpacing(6)
+
+                    for grade in self._grade_order:
+                        grade_button: QPushButton = QPushButton(grade.value, self)
+                        grade_button.setCheckable(True)
+                        grade_button.setCursor(Qt.CursorShape.PointingHandCursor)
+                        grade_button.setMinimumHeight(30)
+                        grade_button.setFont(CustomFont(9, bold=True))
+                        grade_button.clicked.connect(
+                            partial(self._set_selected_grade, grade, True)
+                        )
+                        self._grade_buttons[grade] = grade_button
+                        grade_layout.addWidget(grade_button)
+
+                    grade_layout.addStretch(1)
+                    self.grade_buttons_widget.setLayout(grade_layout)
+                    grade_section_layout.addWidget(self.grade_buttons_widget)
+                    root_layout.addLayout(grade_section_layout)
+
+                    # 부적 선택 라벨과 목록 간격 축소용 섹션 레이아웃 구성
+                    template_section_layout: QVBoxLayout = QVBoxLayout()
+                    template_section_layout.setContentsMargins(0, 0, 0, 0)
+                    template_section_layout.setSpacing(3)
+
+                    # 부적 선택 스크롤 영역 구성
+                    template_title: QLabel = QLabel("부적 선택", self)
+                    template_title.setFont(CustomFont(11, bold=True))
+                    template_section_layout.addWidget(template_title)
+
+                    self.template_scroll_area: QScrollArea = QScrollArea(self)
+                    self.template_scroll_area.setWidgetResizable(True)
+                    self.template_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+                    self.template_scroll_area.setMinimumHeight(150)
+                    self.template_scroll_area.setSizePolicy(
+                        QSizePolicy.Policy.Expanding,
+                        QSizePolicy.Policy.Expanding,
+                    )
+                    self.template_scroll_area.setStyleSheet(
+                        """
+                        QScrollArea {
+                            background-color: #FFFFFF;
+                            border: 1px solid #D9E0EA;
+                            border-radius: 6px;
+                        }
+                        """
+                    )
+
+                    self.template_scroll_content: QWidget = QWidget(
+                        self.template_scroll_area
+                    )
+                    self.template_scroll_content.setStyleSheet(
+                        "background-color: transparent;"
+                    )
+                    self.template_list_layout: QVBoxLayout = QVBoxLayout(
+                        self.template_scroll_content
+                    )
+                    self.template_list_layout.setContentsMargins(8, 8, 8, 8)
+                    self.template_list_layout.setSpacing(6)
+                    self.template_list_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+                    self.template_scroll_content.setLayout(self.template_list_layout)
+                    self.template_scroll_area.setWidget(self.template_scroll_content)
+                    template_section_layout.addWidget(self.template_scroll_area, 1)
+                    root_layout.addLayout(template_section_layout, 1)
+
+                    # 부적 레벨 입력과 스탯 미리보기 가로 배치 구성
+                    level_row_layout: QHBoxLayout = QHBoxLayout()
+                    level_row_layout.setContentsMargins(0, 0, 0, 0)
+                    level_row_layout.setSpacing(10)
+
+                    # 부적 레벨 입력 구성
                     self.level_input_widget: KVInput = KVInput(
                         self,
                         "레벨",
                         f"{data.level if data is not None else 0}",
                         connected_function,
-                        max_width=80,
+                        max_width=100,
                     )
                     self.level_input: CustomLineEdit = self.level_input_widget.input
+                    level_row_layout.addWidget(self.level_input_widget)
 
-                    self.remove_button: StyledButton = StyledButton(
-                        self, "삭제", kind="danger"
+                    # 스탯 미리보기 안내 라벨 구성
+                    self.preview_label: QLabel = QLabel("", self)
+                    self.preview_label.setFont(CustomFont(10))
+                    self.preview_label.setWordWrap(True)
+                    self.preview_label.setMinimumHeight(
+                        self.level_input.sizeHint().height()
                     )
-                    self.remove_button.clicked.connect(self._on_remove_clicked)
+                    self.preview_label.setAlignment(
+                        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+                    )
+                    self.preview_label.setStyleSheet(
+                        "QLabel { color: #5C6B7A; border: 0px; }"
+                    )
+                    level_row_layout.addWidget(
+                        self.preview_label,
+                        1,
+                        Qt.AlignmentFlag.AlignBottom,
+                    )
+                    root_layout.addLayout(level_row_layout)
+                    self.setLayout(root_layout)
 
-                    layout.addWidget(self.template_combobox)
-                    layout.addWidget(self.level_input_widget)
-                    layout.addWidget(self.remove_button)
-                    self.setLayout(layout)
+                    # 초기 등급/부적 버튼 상태와 미리보기 반영
+                    self._refresh_grade_buttons()
+                    self._rebuild_template_buttons()
+                    self.refresh_preview_text()
 
-                def _on_remove_clicked(self) -> None:
-                    """보유 부적 제거 요청"""
+                    # 레벨 변경 시 미리보기 재계산 연결
+                    self.level_input.textChanged.connect(self.refresh_preview_text)
 
-                    self._remove_function(self)
+                def _set_selected_grade(
+                    self,
+                    target_grade: TalismanGrade,
+                    emit_change: bool = True,
+                    _checked: bool = False,
+                ) -> None:
+                    """등급 버튼 선택 상태 전환"""
+
+                    # 동일 등급 재선택 시 불필요한 갱신 차단
+                    if self._selected_grade is target_grade:
+                        return
+
+                    # 등급 전환 시 첫 부적 자동 선택 적용
+                    self._selected_grade = target_grade
+                    self._selected_template = self._templates_by_grade[target_grade][0]
+                    self._refresh_grade_buttons()
+                    self._rebuild_template_buttons()
+                    self.refresh_preview_text()
+                    if emit_change:
+                        self._connected_function()
+
+                def _set_selected_template(
+                    self,
+                    target_template: TalismanSpec,
+                    emit_change: bool = True,
+                    _checked: bool = False,
+                ) -> None:
+                    """등급 내 부적 선택 상태 전환"""
+
+                    # 동일 부적 재선택 시 불필요한 갱신 차단
+                    if self._selected_template.name == target_template.name:
+                        return
+
+                    # 부적 변경 시 현재 등급과 미리보기 동기화
+                    self._selected_grade = target_template.grade
+                    self._selected_template = target_template
+                    self._refresh_grade_buttons()
+                    self._rebuild_template_buttons()
+                    self.refresh_preview_text()
+                    if emit_change:
+                        self._connected_function()
+
+                def _refresh_grade_buttons(self) -> None:
+                    """등급 버튼 선택 상태 스타일 갱신"""
+
+                    # 각 등급 버튼의 체크 상태와 스타일 반영
+                    grade: TalismanGrade
+                    for grade, grade_button in self._grade_buttons.items():
+                        grade_button.setChecked(grade is self._selected_grade)
+                        grade_button.setStyleSheet(
+                            """
+                            QPushButton {
+                                background-color: #FFFFFF;
+                                color: #2C3E50;
+                                border: 1px solid #D9E0EA;
+                                border-radius: 6px;
+                                padding: 6px 12px;
+                            }
+                            QPushButton:hover {
+                                background-color: #F6FAFF;
+                                border: 1px solid #BFD4EC;
+                            }
+                            QPushButton:checked {
+                                background-color: #E8F2FF;
+                                border: 1px solid #4A90E2;
+                                color: #1F4E79;
+                            }
+                            """
+                        )
+
+                def _rebuild_template_buttons(self) -> None:
+                    """선택 등급 기준 부적 선택 버튼 목록 재구성"""
+
+                    # 기존 부적 선택 버튼 위젯 전부 제거
+                    while self.template_list_layout.count() > 0:
+                        item: QLayoutItem = self.template_list_layout.takeAt(0)
+                        widget: QWidget | None = item.widget()
+                        if widget is None:
+                            continue
+
+                        widget.deleteLater()
+
+                    self._template_buttons.clear()
+
+                    # 현재 등급 부적만 버튼 목록으로 재구성
+                    template: TalismanSpec
+                    for template in self._templates_by_grade[self._selected_grade]:
+                        option_button: QPushButton = QPushButton(
+                            self._build_template_option_text(template),
+                            self.template_scroll_content,
+                        )
+                        option_button.setCheckable(True)
+                        option_button.setCursor(Qt.CursorShape.PointingHandCursor)
+                        option_button.setMinimumHeight(38)
+                        option_button.setFont(CustomFont(10, bold=True))
+                        option_button.setStyleSheet(
+                            """
+                            QPushButton {
+                                background-color: #FFFFFF;
+                                color: #2C3E50;
+                                border: 1px solid #D9E0EA;
+                                border-radius: 6px;
+                                padding: 0px 12px;
+                                text-align: left;
+                            }
+                            QPushButton:hover {
+                                background-color: #F6FAFF;
+                                border: 1px solid #BFD4EC;
+                            }
+                            QPushButton:checked {
+                                background-color: #E8F2FF;
+                                border: 1px solid #4A90E2;
+                                color: #1F4E79;
+                            }
+                            """
+                        )
+                        option_button.clicked.connect(
+                            partial(self._set_selected_template, template, True)
+                        )
+                        option_button.setChecked(
+                            template.name == self._selected_template.name
+                        )
+                        self._template_buttons[template.name] = option_button
+                        self.template_list_layout.addWidget(option_button)
+
+                    self.template_list_layout.addStretch(1)
+
+                def _build_template_option_text(self, template: TalismanSpec) -> str:
+                    """부적 선택 버튼 표시 문자열 구성"""
+
+                    # 부적명과 스탯 라벨 결합 문자열 반환
+                    stat_label: str = STAT_SPECS[template.stat_key]
+                    return f"{template.name} - {stat_label}"
+
+                def refresh_preview_text(self, _text: str = "") -> None:
+                    """편집 카드 하단 스탯 미리보기 갱신"""
+
+                    # 현재 부적 설정 기준 스탯 요약 문구 계산
+                    preview_text: str = self.build_preview_stat_text()
+                    self.preview_label.setText(f"적용 스탯: {preview_text}")
+
+                def get_selected_name(self) -> str:
+                    """현재 선택된 부적명 반환"""
+
+                    return self._selected_template.name
+
+                def get_display_name(self, fallback_index: int) -> str:
+                    """목록/요약용 부적명 반환"""
+
+                    # 현재 선택된 부적명 우선 반환
+                    name: str = self.get_selected_name().strip()
+                    if name:
+                        return name
+
+                    return f"부적 {fallback_index}"
+
+                def build_preview_stat_text(self) -> str:
+                    """요약 표시용 부적 스탯 문자열 반환"""
+
+                    # 현재 입력값 유효성 및 직렬화 데이터 복원
+                    is_valid: bool
+                    owned_talisman: OwnedTalisman
+                    is_valid, owned_talisman = self.to_owned_talisman()
+                    if not is_valid:
+                        return "레벨 입력 오류"
+
+                    # 선택 부적 정의 기준 스탯 라벨과 수치 계산
+                    stat_label: str = STAT_SPECS[self._selected_template.stat_key]
+                    stat_value: float = self._selected_template.level_stats[
+                        owned_talisman.level
+                    ]
+                    return f"{stat_label} {stat_value:+g}"
 
                 def to_owned_talisman(self) -> tuple[bool, OwnedTalisman]:
-                    """행 데이터를 보유 부적 모델로 변환"""
+                    """카드 데이터를 보유 부적 모델로 변환"""
 
+                    # 레벨 입력 유효성 검증 및 기본값 보정
                     text: str = self.level_input.text()
                     try:
                         level: int = int(text)
@@ -2055,11 +2690,9 @@ class ResultsPage(QFrame):
                         is_valid = False
                         self.level_input.set_valid(False)
 
-                    template: TalismanSpec = self._templates[
-                        self.template_combobox.currentIndex()
-                    ]
+                    # 현재 선택 부적 정의 기반 직렬화 모델 구성
                     owned_talisman: OwnedTalisman = OwnedTalisman(
-                        name=template.name,
+                        name=self._selected_template.name,
                         level=level,
                     )
                     return is_valid, owned_talisman
@@ -2073,89 +2706,385 @@ class ResultsPage(QFrame):
                 self.setStyleSheet(
                     "QFrame { background-color: transparent; border: 0px solid; }"
                 )
+                self.setMinimumHeight(300)
 
-                # 보유 부적 목록 및 현재 장착 선택 UI 구성
+                # 부적 입력 전체 상태 참조 초기화
                 self._connected_function: Callable[[], None] = connected_function
-                self._rows: list[ResultsPage.Efficiency.TalismanInputs.TalismanRow] = []
+                self._cards: list[
+                    ResultsPage.Efficiency.TalismanInputs.TalismanCard
+                ] = []
+                self._card_items: dict[
+                    ResultsPage.Efficiency.TalismanInputs.TalismanCard,
+                    ResultsPage.Efficiency.TalismanInputs.TalismanListItem,
+                ] = {}
+                self._selected_card: (
+                    ResultsPage.Efficiency.TalismanInputs.TalismanCard | None
+                ) = None
+                self._equipped_cards: list[
+                    ResultsPage.Efficiency.TalismanInputs.TalismanCard | None
+                ] = [None, None, None]
 
-                root_layout: QVBoxLayout = QVBoxLayout(self)
+                # 3단 패널 레이아웃 구성
+                root_layout: QHBoxLayout = QHBoxLayout(self)
                 root_layout.setContentsMargins(0, 0, 0, 0)
-                root_layout.setSpacing(8)
+                root_layout.setSpacing(12)
 
-                self.equipped_comboboxes: list[CustomComboBox] = []
+                # 좌측 장착 요약 패널 구성
+                self.equipped_panel: QFrame = QFrame(self)
+                self.equipped_panel.setObjectName("TalismanEquippedPanel")
+                self.equipped_panel.setStyleSheet(
+                    """
+                    QFrame#TalismanEquippedPanel {
+                        background-color: #FBFCFE;
+                        border: 1px solid #DDE5EF;
+                        border-radius: 8px;
+                    }
+                    """
+                )
+                self.equipped_panel.setMinimumWidth(250)
+                equipped_layout: QVBoxLayout = QVBoxLayout(self.equipped_panel)
+                equipped_layout.setContentsMargins(14, 14, 14, 14)
+                equipped_layout.setSpacing(10)
+
+                equipped_title: QLabel = QLabel("장착된 부적", self.equipped_panel)
+                equipped_title.setFont(CustomFont(11, bold=True))
+                equipped_layout.addWidget(equipped_title)
+
+                # 3개 장착 슬롯 패널 순차 배치
+                self.equipped_slot_panels: list[
+                    ResultsPage.Efficiency.TalismanInputs.EquippedSlotPanel
+                ] = []
                 for slot_index in range(3):
-                    equipped_layout: QHBoxLayout = QHBoxLayout()
-                    equipped_layout.setContentsMargins(0, 0, 0, 0)
-                    equipped_layout.setSpacing(8)
-                    label: QLabel = QLabel(f"현재 장착 부적 {slot_index + 1}", self)
-                    label.setFont(CustomFont(11))
-                    combobox = CustomComboBox(self, ["없음"], connected_function)
-                    self.equipped_comboboxes.append(combobox)
-                    equipped_layout.addWidget(label)
-                    equipped_layout.addWidget(combobox)
-                    equipped_layout.addStretch(1)
-                    root_layout.addLayout(equipped_layout)
+                    slot_panel: (
+                        ResultsPage.Efficiency.TalismanInputs.EquippedSlotPanel
+                    ) = ResultsPage.Efficiency.TalismanInputs.EquippedSlotPanel(
+                        self.equipped_panel,
+                        slot_index,
+                        self._equip_selected_card_to_slot,
+                        self._unequip_slot,
+                    )
+                    self.equipped_slot_panels.append(slot_panel)
+                    equipped_layout.addWidget(slot_panel)
 
-                self.rows_container: QWidget = QWidget(self)
-                self.rows_container.setStyleSheet("background-color: transparent;")
-                self.rows_layout: QVBoxLayout = QVBoxLayout(self.rows_container)
-                self.rows_layout.setContentsMargins(0, 0, 0, 0)
-                self.rows_layout.setSpacing(6)
-                root_layout.addWidget(self.rows_container)
+                equipped_layout.addStretch(1)
+
+                # 중앙 목록 패널 구성
+                self.list_panel: QFrame = QFrame(self)
+                self.list_panel.setObjectName("TalismanListPanel")
+                self.list_panel.setStyleSheet(
+                    """
+                    QFrame#TalismanListPanel {
+                        background-color: #FBFCFE;
+                        border: 1px solid #DDE5EF;
+                        border-radius: 8px;
+                    }
+                    """
+                )
+                self.list_panel.setMinimumWidth(220)
+                list_layout: QVBoxLayout = QVBoxLayout(self.list_panel)
+                list_layout.setContentsMargins(14, 14, 14, 14)
+                list_layout.setSpacing(10)
+
+                list_title: QLabel = QLabel("부적 목록", self.list_panel)
+                list_title.setFont(CustomFont(11, bold=True))
+                list_layout.addWidget(list_title)
+
+                self.list_scroll_area: QScrollArea = QScrollArea(self.list_panel)
+                self.list_scroll_area.setWidgetResizable(True)
+                self.list_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+                self.list_scroll_area.setMinimumHeight(180)
+                self.list_scroll_area.setStyleSheet(
+                    """
+                    QScrollArea {
+                        background-color: transparent;
+                        border: 0px;
+                    }
+                    """
+                )
+
+                self.list_scroll_content: QWidget = QWidget(self.list_scroll_area)
+                self.list_scroll_content.setStyleSheet("background-color: transparent;")
+                self.talisman_list_layout: QVBoxLayout = QVBoxLayout(
+                    self.list_scroll_content
+                )
+                self.talisman_list_layout.setContentsMargins(0, 0, 0, 0)
+                self.talisman_list_layout.setSpacing(8)
+                self.talisman_list_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+                self.list_scroll_content.setLayout(self.talisman_list_layout)
+                self.list_scroll_area.setWidget(self.list_scroll_content)
+                list_layout.addWidget(self.list_scroll_area)
 
                 self.add_button: StyledButton = StyledButton(
-                    self, "부적 추가", kind="add"
+                    self.list_panel, "부적 추가", kind="add"
                 )
-                self.add_button.clicked.connect(self.add_row)
-                root_layout.addWidget(self.add_button)
+                self.add_button.clicked.connect(lambda _checked=False: self.add_card())
+                list_layout.addWidget(self.add_button)
+
+                # 우측 상세 편집 패널 구성
+                self.detail_panel: QFrame = QFrame(self)
+                self.detail_panel.setObjectName("TalismanDetailPanel")
+                self.detail_panel.setStyleSheet(
+                    """
+                    QFrame#TalismanDetailPanel {
+                        background-color: #FBFCFE;
+                        border: 1px solid #DDE5EF;
+                        border-radius: 8px;
+                    }
+                    """
+                )
+                self.detail_panel.setMinimumWidth(320)
+                detail_layout: QVBoxLayout = QVBoxLayout(self.detail_panel)
+                detail_layout.setContentsMargins(14, 14, 14, 14)
+                detail_layout.setSpacing(10)
+
+                detail_title: QLabel = QLabel("선택된 부적 설정", self.detail_panel)
+                detail_title.setFont(CustomFont(11, bold=True))
+                detail_layout.addWidget(detail_title)
+
+                self.detail_stack_host: QWidget = QWidget(self.detail_panel)
+                self.detail_stack: QStackedLayout = QStackedLayout(
+                    self.detail_stack_host
+                )
+                self.detail_stack_host.setLayout(self.detail_stack)
+
+                self.empty_detail_label: QLabel = QLabel(
+                    "중앙 목록에서 부적을 선택하세요.", self.detail_stack_host
+                )
+                self.empty_detail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.empty_detail_label.setFont(CustomFont(11))
+                self.empty_detail_label.setStyleSheet(
+                    "QLabel { color: #7A8795; border: 0px; }"
+                )
+                self.detail_stack.addWidget(self.empty_detail_label)
+                detail_layout.addWidget(self.detail_stack_host)
+
+                root_layout.addWidget(self.equipped_panel, 3)
+                root_layout.addWidget(self.list_panel, 3)
+                root_layout.addWidget(self.detail_panel, 4)
                 self.setLayout(root_layout)
 
-            def add_row(
+                # 좌측 장착 패널 필요 높이 기준 전체 패널 높이 동기화
+                equipped_layout.activate()
+                panel_height: int = max(self.equipped_panel.sizeHint().height(), 360)
+                self.setFixedHeight(panel_height)
+                self.equipped_panel.setFixedHeight(panel_height)
+                self.list_panel.setFixedHeight(panel_height)
+                self.detail_panel.setFixedHeight(panel_height)
+
+                # 초기 비어 있는 장착/상세 상태 반영
+                self.refresh_equipped_options()
+
+            def _notify_change(self) -> None:
+                """상위 입력 변경 콜백 전달"""
+
+                self._connected_function()
+
+            def _on_card_content_changed(self) -> None:
+                """부적 내용 변경 시 요약/목록 동기화"""
+
+                self.refresh_equipped_options()
+                self._notify_change()
+
+            def _equip_selected_card_to_slot(self, slot_index: int) -> None:
+                """선택된 부적 카드를 지정 슬롯에 장착"""
+
+                # 선택 카드 부재 시 장착 처리 중단
+                if self._selected_card is None:
+                    return
+
+                # 기존 슬롯에 있던 동일 카드 참조 우선 제거
+                current_slot_index: int
+                for current_slot_index, equipped_card in enumerate(
+                    self._equipped_cards
+                ):
+                    if equipped_card is not self._selected_card:
+                        continue
+
+                    self._equipped_cards[current_slot_index] = None
+
+                # 대상 슬롯에 선택 카드 장착 후 화면 갱신
+                self._equipped_cards[slot_index] = self._selected_card
+                self.refresh_equipped_options()
+                self._notify_change()
+
+            def _unequip_slot(self, slot_index: int) -> None:
+                """지정 슬롯 장착 카드 해제"""
+
+                # 빈 슬롯 해제 요청 차단
+                if self._equipped_cards[slot_index] is None:
+                    return
+
+                # 슬롯 카드 제거 후 화면 갱신
+                self._equipped_cards[slot_index] = None
+                self.refresh_equipped_options()
+                self._notify_change()
+
+            def select_card(
+                self,
+                target_card: "ResultsPage.Efficiency.TalismanInputs.TalismanCard",
+            ) -> None:
+                """중앙 목록 기준 선택 카드 전환"""
+
+                self._selected_card = target_card
+                self.refresh_equipped_options()
+
+            def add_card(
                 self,
                 data: OwnedTalisman | None = None,
                 emit_change: bool = True,
             ) -> None:
-                """보유 부적 행 추가"""
+                """부적 카드 추가"""
 
-                row = ResultsPage.Efficiency.TalismanInputs.TalismanRow(
-                    self.rows_container,
-                    self._connected_function,
-                    self.remove_row,
-                    data=data,
+                # 신규 편집 카드와 목록 항목 동시 생성
+                card: ResultsPage.Efficiency.TalismanInputs.TalismanCard = (
+                    ResultsPage.Efficiency.TalismanInputs.TalismanCard(
+                        self.detail_stack_host,
+                        self._on_card_content_changed,
+                        data=data,
+                    )
                 )
-                self._rows.append(row)
-                self.rows_layout.addWidget(row)
+                list_item: ResultsPage.Efficiency.TalismanInputs.TalismanListItem = (
+                    ResultsPage.Efficiency.TalismanInputs.TalismanListItem(
+                        self.list_scroll_content,
+                        self.select_card,
+                        self.remove_card,
+                        card,
+                    )
+                )
+
+                # 내부 카드/목록 참조 등록
+                self._cards.append(card)
+                self._card_items[card] = list_item
+                self.talisman_list_layout.addWidget(list_item)
+                self.detail_stack.addWidget(card)
+
+                # 신규 추가 부적 기본 선택 처리
+                self._selected_card = card
                 self.refresh_equipped_options()
                 if emit_change:
-                    self._connected_function()
+                    self._notify_change()
 
-            def remove_row(
+            def remove_card(
                 self,
-                target_row: "ResultsPage.Efficiency.TalismanInputs.TalismanRow",
+                target_card: "ResultsPage.Efficiency.TalismanInputs.TalismanCard",
+                emit_change: bool = True,
             ) -> None:
-                """보유 부적 행 제거"""
+                """부적 카드 제거"""
 
-                self.rows_layout.removeWidget(target_row)
-                self._rows.remove(target_row)
-                target_row.deleteLater()
+                # 제거 전 현재 인덱스 기반 대체 선택 후보 계산
+                target_index: int = self._cards.index(target_card)
+                next_selected_card: (
+                    ResultsPage.Efficiency.TalismanInputs.TalismanCard | None
+                ) = None
+                if len(self._cards) > 1:
+                    fallback_index: int = min(target_index, len(self._cards) - 2)
+                    next_selected_card = self._cards[fallback_index]
+
+                # 목록 항목과 상세 카드 위젯 제거
+                list_item: ResultsPage.Efficiency.TalismanInputs.TalismanListItem = (
+                    self._card_items.pop(target_card)
+                )
+                self.talisman_list_layout.removeWidget(list_item)
+                list_item.deleteLater()
+                self.detail_stack.removeWidget(target_card)
+
+                # 내부 상태 참조에서 대상 카드 제거
+                self._cards.remove(target_card)
+                target_card.deleteLater()
+
+                # 장착 슬롯 내 대상 카드 참조 정리
+                slot_index: int
+                for slot_index, equipped_card in enumerate(self._equipped_cards):
+                    if equipped_card is target_card:
+                        self._equipped_cards[slot_index] = None
+
+                # 선택 카드 참조 정리
+                if self._selected_card is target_card:
+                    self._selected_card = next_selected_card
+
                 self.refresh_equipped_options()
-                self._connected_function()
+                if emit_change:
+                    self._notify_change()
 
             def refresh_equipped_options(self) -> None:
-                """현재 장착 부적 선택 목록 갱신"""
+                """목록 선택/장착/요약 패널 동기화"""
 
-                options: list[str] = ["없음"]
-                for row in self._rows:
-                    options.append(row.template_combobox.currentText())
+                # 현재 선택 카드 참조 유효성 정리
+                if self._selected_card not in self._cards:
+                    self._selected_card = self._cards[0] if self._cards else None
 
-                for combobox in self.equipped_comboboxes:
-                    current_text: str = combobox.currentText()
-                    combobox.blockSignals(True)
-                    combobox.clear()
-                    combobox.addItems(options)
-                    if current_text in options:
-                        combobox.setCurrentIndex(options.index(current_text))
-                    combobox.blockSignals(False)
+                # 현재 장착 슬롯 카드 참조 유효성 정리
+                slot_index: int
+                for slot_index, equipped_card in enumerate(self._equipped_cards):
+                    if equipped_card in self._cards:
+                        continue
+
+                    self._equipped_cards[slot_index] = None
+
+                # 중앙 목록 표시명 및 장착 슬롯 상태 갱신
+                for index, card in enumerate(self._cards, start=1):
+                    display_name: str = card.get_display_name(index)
+                    list_item: (
+                        ResultsPage.Efficiency.TalismanInputs.TalismanListItem
+                    ) = self._card_items[card]
+                    equipped_slots: list[int] = [
+                        slot_position
+                        for slot_position, equipped_card in enumerate(
+                            self._equipped_cards
+                        )
+                        if equipped_card is card
+                    ]
+                    list_item.set_title_text(display_name)
+                    list_item.set_selected_state(card is self._selected_card)
+                    list_item.set_equipped_slots(equipped_slots)
+
+                # 우측 상세 카드 표시 상태 갱신
+                if self._selected_card is None:
+                    self.detail_stack.setCurrentWidget(self.empty_detail_label)
+
+                else:
+                    self.detail_stack.setCurrentWidget(self._selected_card)
+
+                # 좌측 장착 슬롯 패널 내용 갱신
+                self._refresh_equipped_summary()
+
+            def _refresh_equipped_summary(self) -> None:
+                """좌측 장착 부적 슬롯 요약 패널 갱신"""
+
+                # 각 슬롯별 장착 부적명과 스탯 요약 반영
+                slot_index: int
+                for slot_index, slot_panel in enumerate(self.equipped_slot_panels):
+                    equipped_card: (
+                        ResultsPage.Efficiency.TalismanInputs.TalismanCard | None
+                    ) = self._equipped_cards[slot_index]
+
+                    # 빈 슬롯 상태 문구 및 버튼 상태 반영
+                    if equipped_card is None:
+                        slot_panel.set_slot_state(
+                            "장착된 부적 없음",
+                            "선택된 장착 부적이 없습니다.",
+                            has_equipped_card=False,
+                            can_equip_selected_card=(self._selected_card is not None),
+                            is_selected_card_equipped=False,
+                        )
+                        continue
+
+                    # 장착된 카드 이름과 단일 스탯 요약 계산
+                    equipped_index: int = self._cards.index(equipped_card) + 1
+                    display_name: str = equipped_card.get_display_name(equipped_index)
+                    stat_text: str = equipped_card.build_preview_stat_text()
+                    slot_panel.set_slot_state(
+                        display_name,
+                        stat_text,
+                        has_equipped_card=True,
+                        can_equip_selected_card=(
+                            self._selected_card is not None
+                            and equipped_card is not self._selected_card
+                        ),
+                        is_selected_card_equipped=(
+                            equipped_card is self._selected_card
+                        ),
+                    )
 
             def load(
                 self,
@@ -2164,57 +3093,68 @@ class ResultsPage(QFrame):
             ) -> None:
                 """저장된 부적 입력 상태 로드"""
 
-                for row in self._rows.copy():
-                    self.remove_row(row)
+                # 기존 카드 전부 제거
+                for card in self._cards.copy():
+                    self.remove_card(card, emit_change=False)
 
+                # 저장된 부적 카드 순서대로 복원
                 for owned_talisman in owned_talismans:
-                    self.add_row(owned_talisman, emit_change=False)
+                    self.add_card(owned_talisman, emit_change=False)
 
+                # 저장된 장착 슬롯 이름 기준 카드 참조 복원
+                self._equipped_cards = [None, None, None]
+                used_cards: list[ResultsPage.Efficiency.TalismanInputs.TalismanCard] = (
+                    []
+                )
+                slot_index: int
+                for slot_index in range(min(len(equipped_names), 3)):
+                    equipped_name: str = equipped_names[slot_index]
+                    if not equipped_name:
+                        continue
+
+                    card: ResultsPage.Efficiency.TalismanInputs.TalismanCard
+                    for card in self._cards:
+                        # 이미 다른 슬롯에 복원된 카드 재사용 방지
+                        if any(used_card is card for used_card in used_cards):
+                            continue
+
+                        if card.get_selected_name() != equipped_name:
+                            continue
+
+                        self._equipped_cards[slot_index] = card
+                        used_cards.append(card)
+                        break
+
+                # 초기 선택 상태 및 화면 반영
+                self._selected_card = self._cards[0] if self._cards else None
                 self.refresh_equipped_options()
-                owned_name_order: list[str] = [
-                    owned_talisman.name for owned_talisman in owned_talismans
-                ]
-                for combobox_index, combobox in enumerate(self.equipped_comboboxes):
-                    if combobox_index >= len(equipped_names):
-                        combobox.setCurrentIndex(0)
-                        continue
-
-                    equipped_name: str = equipped_names[combobox_index]
-                    if equipped_name not in owned_name_order:
-                        combobox.setCurrentIndex(0)
-                        continue
-
-                    combobox.setCurrentIndex(owned_name_order.index(equipped_name) + 1)
 
             def build_state(self) -> tuple[bool, list[OwnedTalisman], list[str]]:
                 """현재 부적 입력 상태 복원"""
 
+                # 카드 목록 기준 보유 부적 직렬화
                 is_valid: bool = True
                 owned_talismans: list[OwnedTalisman] = []
-                for row in self._rows:
-                    row_valid: bool
+                for card in self._cards:
+                    card_valid: bool
                     owned_talisman: OwnedTalisman
-                    row_valid, owned_talisman = row.to_owned_talisman()
-                    is_valid = is_valid and row_valid
+                    card_valid, owned_talisman = card.to_owned_talisman()
+                    is_valid = is_valid and card_valid
                     owned_talismans.append(owned_talisman)
 
+                # 3칸 슬롯 순서를 유지한 장착 부적 이름 배열 구성
                 equipped_names: list[str] = []
-                seen_names: set[str] = set()
-                for combobox in self.equipped_comboboxes:
-                    selected_index: int = combobox.currentIndex()
-                    if selected_index <= 0:
+                equipped_card: ResultsPage.Efficiency.TalismanInputs.TalismanCard | None
+                for equipped_card in self._equipped_cards:
+                    if equipped_card is None:
+                        equipped_names.append("")
                         continue
 
-                    target_index: int = selected_index - 1
-                    if target_index >= len(owned_talismans):
-                        continue
-
-                    target_name: str = owned_talismans[target_index].name
-                    if target_name in seen_names:
-                        continue
-
-                    seen_names.add(target_name)
-                    equipped_names.append(target_name)
+                    card_valid: bool
+                    owned_talisman: OwnedTalisman
+                    card_valid, owned_talisman = equipped_card.to_owned_talisman()
+                    is_valid = is_valid and card_valid
+                    equipped_names.append(owned_talisman.name)
 
                 return is_valid, owned_talismans, equipped_names
 
