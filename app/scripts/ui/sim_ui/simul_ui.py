@@ -623,7 +623,10 @@ class ResultsPage(QFrame):
             target_metric=selected_metric,
         )
         if realm_result is None:
-            realm_rows: list[tuple[str, str]] = [("다음 경지", "불가")]
+            realm_rows: list[tuple[str, str]] = [
+                ("다음 경지", "불가능"),
+                ("최적 분배", "불가능"),
+            ]
         else:
             danjeon_text: str = (
                 f"상 {realm_result.danjeon_distribution[0]}, "
@@ -3959,12 +3962,60 @@ class ResultsPage(QFrame):
             self._realm_up_list: ResultsPage.Efficiency.ResultList = (
                 ResultsPage.Efficiency.ResultList(self)
             )
+
+            def _make_sub_title(text: str, parent: QWidget) -> QLabel:
+                lbl = QLabel(text, parent)
+                lbl.setFont(CustomFont(11, bold=True))
+                lbl.setStyleSheet(
+                    "QLabel { background-color: transparent; border: 0px;"
+                    " color: #555555; }"
+                )
+                return lbl
+
+            _level_wrapper = QWidget(self)
+            _level_wrapper.setStyleSheet(
+                "QWidget { background-color: transparent; border: 0px; }"
+            )
+            _level_wrapper_layout = QVBoxLayout(_level_wrapper)
+            _level_wrapper_layout.setContentsMargins(0, 0, 0, 0)
+            _level_wrapper_layout.setSpacing(6)
+            _level_wrapper_layout.addWidget(_make_sub_title("레벨 1업", _level_wrapper))
+            _level_wrapper_layout.addWidget(self._level_up_list)
+            _level_wrapper_layout.addStretch(1)
+            _level_wrapper.setLayout(_level_wrapper_layout)
+
+            _realm_wrapper = QWidget(self)
+            _realm_wrapper.setStyleSheet(
+                "QWidget { background-color: transparent; border: 0px; }"
+            )
+            _realm_wrapper_layout = QVBoxLayout(_realm_wrapper)
+            _realm_wrapper_layout.setContentsMargins(0, 0, 0, 0)
+            _realm_wrapper_layout.setSpacing(6)
+            _realm_wrapper_layout.addWidget(
+                _make_sub_title("다음 경지", _realm_wrapper)
+            )
+            _realm_wrapper_layout.addWidget(self._realm_up_list)
+            _realm_wrapper_layout.addStretch(1)
+            _realm_wrapper.setLayout(_realm_wrapper_layout)
+
+            _growth_vsep = QFrame(self)
+            _growth_vsep.setFixedWidth(1)
+            _growth_vsep.setStyleSheet(
+                "QFrame { background-color: #E0E0E0; border: 0px; }"
+            )
+            _growth_vsep.setSizePolicy(
+                QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding
+            )
+
+            _growth_row: QHBoxLayout = QHBoxLayout()
+            _growth_row.setContentsMargins(0, 0, 0, 0)
+            _growth_row.setSpacing(10)
+            _growth_row.addWidget(_level_wrapper)
+            _growth_row.addWidget(_growth_vsep)
+            _growth_row.addWidget(_realm_wrapper)
+
             self._growth_card: SectionCard = SectionCard(self, "성장 효율")
-            self._growth_card.add_sub_title("레벨 1업")
-            self._growth_card.add_widget(self._level_up_list)
-            self._growth_card.add_separator()
-            self._growth_card.add_sub_title("다음 경지")
-            self._growth_card.add_widget(self._realm_up_list)
+            self._growth_card.add_layout(_growth_row)
 
             # 사용자 지정 변화량 카드 (조건부 표시)
             self._custom_list: ResultsPage.Efficiency.ResultList = (
