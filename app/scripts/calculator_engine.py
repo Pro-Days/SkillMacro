@@ -1060,7 +1060,7 @@ def build_simulation_events(
     for current_time_ms in range(
         0,
         TIMELINE_MILLISECONDS,
-        1000,
+        700,
     ):
         hit_events.append(
             HitEvent(

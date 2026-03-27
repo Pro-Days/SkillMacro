@@ -6,7 +6,7 @@ from typing import Any
 from webbrowser import open_new
 
 import requests
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QKeyEvent, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -31,12 +31,17 @@ from app.scripts.ui.sim_ui.simul_ui import SimUI
 
 
 class MainWindow(QWidget):
+    version_check_completed: Signal = Signal(bool, str, str)
+
     def __init__(self) -> None:
         """
         메인 윈도우 초기화
         """
 
         super().__init__()
+
+        # 백그라운드 버전 확인 결과 수신 연결
+        self.version_check_completed.connect(self._apply_version_check_result)
 
         # 프로그램 아이콘 설정
         self.setWindowIcon(
@@ -62,8 +67,14 @@ class MainWindow(QWidget):
 
         # 버전 확인 쓰레드
         if config.macro.is_version_check_enabled:
-            self.version_timer: QTimer = QTimer(self)
-            self.version_timer.singleShot(100, self.version_check_thread)
+            # 초기 화면 표시 이후 백그라운드 버전 확인 시작
+            QTimer.singleShot(100, self._start_version_check_thread)
+
+    def _start_version_check_thread(self) -> None:
+        """버전 확인 백그라운드 쓰레드 시작"""
+
+        # UI 프리징 방지를 위한 네트워크 작업 분리
+        Thread(target=self.version_check_thread, daemon=True).start()
 
     def change_layout(self, num: int) -> None:
         """
@@ -108,31 +119,48 @@ class MainWindow(QWidget):
         """
 
         try:
-            # GitHub API를 통해 최신 버전 확인
+            # GitHub 최신 릴리스 태그 조회
             response: requests.Response = requests.get(
-                "https://api.github.com/repos/pro-days/skillmacro/releases/latest"
+                "https://api.github.com/repos/pro-days/skillmacro/releases/latest",
+                timeout=3.0,
             )
+            response.raise_for_status()
 
-            # 응답이 성공적이면 최신 버전 정보 저장
-            if response.status_code == 200:
-                app_state.ui.current_version = response.json()["name"]
-                app_state.ui.update_url = response.json()["html_url"]
+            # 응답 JSON에서 비교 기준 태그와 이동 URL 추출
+            payload: dict[str, Any] = response.json()
+            latest_tag: str = str(payload["tag_name"])
+            update_url: str = str(payload["html_url"])
 
-                # 현재 버전과 최신 버전이 일치하지 않는 경우
-                if app_state.ui.current_version != config.version:
-                    self.popup_manager.show_notice(NoticeKind.REQUIRE_UPDATE)
+        except (requests.RequestException, ValueError, KeyError, TypeError):
+            # 실패 결과를 메인 스레드로 전달
+            self.version_check_completed.emit(False, "", "")
+            return
 
-            # 응답이 실패하면 버전 확인 실패로 처리
-            else:
-                raise Exception("최신 버전 확인 실패")
+        # 성공 결과를 메인 스레드로 전달
+        self.version_check_completed.emit(True, latest_tag, update_url)
 
-        # 예외 발생 시 버전 확인 실패로 처리
-        except Exception:
+    def _apply_version_check_result(
+        self,
+        is_success: bool,
+        latest_tag: str,
+        update_url: str,
+    ) -> None:
+        """버전 확인 결과 UI 반영"""
+
+        # 실패 상태 초기화 및 알림 표시
+        if not is_success:
             app_state.ui.current_version = ""
             app_state.ui.update_url = ""
-
-            # 팝업 표시
             self.popup_manager.show_notice(NoticeKind.FAILED_UPDATE_CHECK)
+            return
+
+        # 최신 태그와 이동 URL 상태 반영
+        app_state.ui.current_version = latest_tag
+        app_state.ui.update_url = update_url
+
+        # 현재 태그와 다를 때만 업데이트 안내 표시
+        if latest_tag != config.version:
+            self.popup_manager.show_notice(NoticeKind.REQUIRE_UPDATE)
 
     def init_UI(self) -> None:
         """

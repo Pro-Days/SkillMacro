@@ -25,18 +25,43 @@ file_dir: str = os.path.join(data_path, "macros.json")
 custom_skills_file_dir: str = os.path.join(data_path, "custom_skills.json")
 
 
+def create_default_custom_skills_data() -> None:
+    """빈 custom_skills.json 생성"""
+
+    # 커스텀 스킬 저장 디렉토리 보장
+    os.makedirs(data_path, exist_ok=True)
+
+    # 비어있는 커스텀 스킬 파일 초기화
+    with open(custom_skills_file_dir, "w", encoding="utf-8") as f:
+        json.dump({}, f, ensure_ascii=False, indent=4)
+
+
 def load_custom_skills() -> None:
     """custom_skills.json 불러와 각 서버 SkillRegistry에 주입"""
 
     if not os.path.isfile(custom_skills_file_dir):
         return
 
-    with open(custom_skills_file_dir, "r", encoding="utf-8") as f:
-        raw: dict[str, dict] = json.load(f)
+    try:
+        # 커스텀 스킬 원본 JSON 로드
+        with open(custom_skills_file_dir, "r", encoding="utf-8") as f:
+            raw: dict[str, dict] = json.load(f)
 
-    for server_id, import_data in raw.items():
-        server_spec: ServerSpec = server_registry.get(server_id)
-        skill_import: CustomSkillImport = CustomSkillImport.from_dict(import_data)
+        # 레지스트리 반영 전 전체 구조 사전 검증
+        parsed_imports: dict[str, tuple[ServerSpec, CustomSkillImport]] = {}
+        for server_id, import_data in raw.items():
+            server_spec: ServerSpec = server_registry.get(server_id)
+            skill_import: CustomSkillImport = CustomSkillImport.from_dict(import_data)
+            parsed_imports[server_id] = (server_spec, skill_import)
+    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
+        # 손상된 커스텀 스킬 파일 초기화
+        create_default_custom_skills_data()
+        return
+
+    # 검증이 끝난 커스텀 스킬만 레지스트리에 반영
+    for server_id, parsed in parsed_imports.items():
+        server_spec: ServerSpec = parsed[0]
+        skill_import: CustomSkillImport = parsed[1]
 
         for skill_id in skill_import.skills:
             skill_def_data: dict = skill_import.skill_details[skill_id].to_dict()
@@ -91,8 +116,14 @@ def save_custom_skills(server_id: str, skill_import: CustomSkillImport) -> None:
 
     existing: dict[str, dict] = {}
     if os.path.isfile(custom_skills_file_dir):
-        with open(custom_skills_file_dir, "r", encoding="utf-8") as f:
-            existing = json.load(f)
+        try:
+            # 기존 커스텀 스킬 파일 병합 로드
+            with open(custom_skills_file_dir, "r", encoding="utf-8") as f:
+                existing = json.load(f)
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            # 손상된 커스텀 스킬 파일 초기화
+            create_default_custom_skills_data()
+            existing = {}
 
     existing[server_id] = skill_import.to_dict()
 
@@ -111,7 +142,13 @@ def load_data(num: int = -1) -> None:
     load_custom_skills()
 
     repo: MacroPresetRepository = MacroPresetRepository(file_dir)
-    preset_file: MacroPresetFile = repo.load()
+    try:
+        # 매크로 프리셋 파일 로드
+        preset_file: MacroPresetFile = repo.load()
+    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
+        # 손상된 매크로 프리셋 파일 초기화
+        create_default_data()
+        preset_file = repo.load()
 
     # 파일에 저장되지 않은 기본값 항목을 인-메모리로 복원
     for preset in preset_file.preset:
@@ -238,6 +275,25 @@ def update_data() -> None:
 
     # 데이터가 없을 때만 현재 스키마 기본 파일 생성
     if not os.path.isfile(file_dir):
+        create_default_data()
+        return
+
+    repo: MacroPresetRepository = MacroPresetRepository(file_dir)
+    try:
+        # 기존 프리셋 파일 기본 구조 검증
+        preset_file: MacroPresetFile = repo.load()
+    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
+        # 손상된 프리셋 파일 기본값 재생성
+        create_default_data()
+        return
+
+    # 비어있는 프리셋 목록 복구
+    if not preset_file.preset:
+        create_default_data()
+        return
+
+    # 최근 프리셋 인덱스 범위 복구
+    if not (0 <= preset_file.recent_preset < len(preset_file.preset)):
         create_default_data()
         return
 
