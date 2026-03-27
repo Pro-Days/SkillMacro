@@ -122,7 +122,7 @@
       },
       "builtin:한월 RPG:수류섬": {
         "name": "수류섬",
-        "cooltime": 8.0,
+        "cooltime": 10.0,
         "levels": {
           "1": [
             {
