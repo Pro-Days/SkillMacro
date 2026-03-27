@@ -1,7 +1,236 @@
 {
   "한월 RPG": {
-    "skills": [],
-    "scrolls": [],
-    "skill_details": {}
+    "skills": ["builtin:한월 RPG:수류참", "builtin:한월 RPG:수류섬"],
+    "scrolls": [
+      {
+        "scroll_id": "builtin:한월 RPG:수류검법",
+        "name": "수류검법",
+        "skills": ["builtin:한월 RPG:수류참", "builtin:한월 RPG:수류섬"]
+      }
+    ],
+    "skill_details": {
+      "builtin:한월 RPG:수류참": {
+        "name": "수류참",
+        "cooltime": 8.0,
+        "levels": {
+          "1": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.0
+            }
+          ],
+          "2": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.09
+            }
+          ],
+          "3": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.18
+            }
+          ],
+          "4": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.27
+            }
+          ],
+          "5": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.36
+            }
+          ],
+          "6": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.45
+            }
+          ],
+          "7": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.54
+            }
+          ],
+          "8": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.63
+            }
+          ],
+          "9": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.72
+            }
+          ],
+          "10": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.81
+            }
+          ],
+          "11": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.9
+            }
+          ],
+          "12": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.99
+            }
+          ],
+          "13": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 4.08
+            }
+          ],
+          "14": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 4.17
+            }
+          ],
+          "15": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 4.26
+            }
+          ]
+        }
+      },
+      "builtin:한월 RPG:수류섬": {
+        "name": "수류섬",
+        "cooltime": 8.0,
+        "levels": {
+          "1": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.3
+            }
+          ],
+          "2": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.39
+            }
+          ],
+          "3": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.48
+            }
+          ],
+          "4": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.57
+            }
+          ],
+          "5": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.66
+            }
+          ],
+          "6": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.75
+            }
+          ],
+          "7": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.84
+            }
+          ],
+          "8": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 3.93
+            }
+          ],
+          "9": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 4.02
+            }
+          ],
+          "10": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 4.11
+            }
+          ],
+          "11": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 4.2
+            }
+          ],
+          "12": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 4.29
+            }
+          ],
+          "13": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 4.38
+            }
+          ],
+          "14": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 4.47
+            }
+          ],
+          "15": [
+            {
+              "time": 0.0,
+              "type": "damage",
+              "damage": 4.56
+            }
+          ]
+        }
+      }
+    }
   }
 }
