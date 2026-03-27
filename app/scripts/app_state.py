@@ -95,6 +95,9 @@ class MacroState:
     # 스킬 쿨타임 타이머
     skill_cooltime_timers: dict[EquippedSkillRef, float] = field(default_factory=dict)
 
+    # 스킬 선입력 보호를 위한 평타 중지 종료 시각
+    attack_pause_until: float = 0.0
+
 
 @dataclass
 class UiState:

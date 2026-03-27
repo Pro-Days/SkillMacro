@@ -19,6 +19,8 @@ from app.scripts.macro_models import (
 from app.scripts.registry.key_registry import KeyRegistry, KeySpec
 
 DEBUG_PRINT_INFO = False
+ATTACK_PAUSE_BUFFER_SECONDS = 0.05
+ATTACK_PAUSE_POLL_SECONDS = 0.01
 
 
 # 전역 입력 상태 추적
@@ -137,6 +139,9 @@ def running_macro_thread(run_id: int) -> None:
 
     # 매크로 클릭 쓰레드
     if app_state.macro.current_use_default_attack:
+        # 첫 스킬 입력 전에 평타가 먼저 나가지 않도록 시작 직후 보호 구간 선예약
+        _pause_attack_for(_get_attack_hold_seconds())
+
         Thread(
             target=clicking_mouse_thread,
             args=[app_state.macro.run_id],
@@ -148,6 +153,24 @@ def running_macro_thread(run_id: int) -> None:
         wait_seconds: float = 0.0
         if not app_state.macro.task_list:
             wait_seconds = build_task_list(show_info=DEBUG_PRINT_INFO)
+
+        # 다음 스킬이 아직 멀면 평타를 유지한 채 직전 보호 구간까지만 대기
+        if not app_state.macro.task_list and wait_seconds > 0.0:
+            attack_hold_seconds: float = _get_attack_hold_seconds()
+
+            if wait_seconds > attack_hold_seconds:
+                time.sleep(
+                    (wait_seconds - attack_hold_seconds)
+                    * config.macro.SLEEP_COEFFICIENT_UNIT
+                )
+                continue
+
+            # 다음 스킬 임박 구간 동안 평타 중지 예약
+            _pause_attack_for(wait_seconds + ATTACK_PAUSE_BUFFER_SECONDS)
+
+        # 즉시 사용할 스킬이 있으면 평타 스레드 선차단
+        if app_state.macro.task_list:
+            _pause_attack_for(_get_attack_hold_seconds())
 
         # 스킬 사용하고 사용 여부 리턴
         is_used_skill: bool = use_skill(run_id=app_state.macro.run_id)
@@ -166,11 +189,43 @@ def running_macro_thread(run_id: int) -> None:
 def clicking_mouse_thread(run_id: int) -> None:
     """마우스 클릭 쓰레드"""
 
-    mouse_controller = mouse.Controller()
+    mouse_controller: mouse.Controller = mouse.Controller()
 
     while app_state.macro.is_running and app_state.macro.run_id == run_id:
+        # 스킬 입력 보호 구간에는 평타 클릭 보류
+        remaining_pause_seconds: float = (
+            app_state.macro.attack_pause_until - time.perf_counter()
+        )
+        if remaining_pause_seconds > 0.0:
+            time.sleep(min(remaining_pause_seconds, ATTACK_PAUSE_POLL_SECONDS))
+            continue
+
         mouse_controller.click(mouse.Button.left)
-        time.sleep(app_state.macro.current_delay * 0.001)
+        time.sleep(0.1)
+
+
+def _get_attack_hold_seconds() -> float:
+    """다음 스킬 직전에 평타를 멈출 보호 구간 반환"""
+
+    # 평타 1회 주기와 추가 버퍼를 합친 스킬 선점 구간 계산
+    attack_hold_seconds: float = (
+        app_state.macro.current_delay * 0.001
+    ) + ATTACK_PAUSE_BUFFER_SECONDS
+    return attack_hold_seconds
+
+
+def _pause_attack_for(duration_seconds: float) -> None:
+    """지정 시간 동안 평타를 중지하도록 예약"""
+
+    if duration_seconds <= 0.0:
+        return
+
+    # 이미 더 긴 중지 예약이 있으면 기존 종료 시각 유지
+    pause_until: float = time.perf_counter() + duration_seconds
+    app_state.macro.attack_pause_until = max(
+        app_state.macro.attack_pause_until,
+        pause_until,
+    )
 
 
 def _press_skill_keys(
@@ -245,11 +300,13 @@ def init_macro() -> None:
         )
     )
 
+    # 새 실행 사이클에 맞춘 런타임 상태 초기화
     app_state.macro.afk_started_time = time.time()
     app_state.macro.current_line_index = 0
     app_state.macro.prepared_skills = set(placed_refs)
     app_state.macro.skill_sequence = _collect_priority_skill_sequence()
     app_state.macro.using_link_skills.clear()
+    app_state.macro.attack_pause_until = 0.0
 
     skill_ref_map: dict[str, EquippedSkillRef] = (
         app_state.macro.current_preset.skills.get_placed_skill_ref_map(
@@ -287,7 +344,10 @@ def use_skill(run_id: int) -> bool:
     if not app_state.macro.task_list:
         return False
 
-    kbd_controller = keyboard.Controller()
+    # 스킬 입력 직전과 후속 딜레이 동안 평타 끼어들기 차단
+    _pause_attack_for(_get_attack_hold_seconds())
+
+    kbd_controller: keyboard.Controller = keyboard.Controller()
     skill_ref: EquippedSkillRef = app_state.macro.task_list.pop(0)
     app_state.macro.skill_cooltime_timers[skill_ref] = time.perf_counter()
 
@@ -312,7 +372,13 @@ def use_link_skill(link_skill: LinkSkill, run_id: int) -> None:
     if not all(skill_id in skill_ref_map for skill_id in link_skill.skills):
         return
 
-    kbd_controller = keyboard.Controller()
+    # 연계 입력 전체 구간 동안 평타 클릭 차단
+    link_skill_pause_seconds: float = (
+        len(link_skill.skills) * app_state.macro.current_delay * 0.001
+    ) + ATTACK_PAUSE_BUFFER_SECONDS
+    _pause_attack_for(link_skill_pause_seconds)
+
+    kbd_controller: keyboard.Controller = keyboard.Controller()
 
     for skill_id in link_skill.skills:
         skill_ref: EquippedSkillRef = skill_ref_map[skill_id]
