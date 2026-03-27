@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QPixmap
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPixmap, QWheelEvent
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -124,7 +124,7 @@ class CustomComboBox(QComboBox):
         self,
         parent: QWidget,
         items: list[str],
-        connected_function=None,
+        connected_function: Callable[[int], None] | None = None,
         point_size: int = 10,
     ) -> None:
         super().__init__(parent)
@@ -167,6 +167,20 @@ class CustomComboBox(QComboBox):
 
         if connected_function:
             self.currentIndexChanged.connect(connected_function)
+
+    def wheelEvent(self, event: QWheelEvent) -> None:  # type: ignore
+        """
+        닫힌 상태 휠 변경 방지
+        """
+
+        # 드롭다운 펼침 상태에서만 기본 스크롤 동작 허용
+        if self.view().isVisible():
+            super().wheelEvent(event)
+
+            return
+
+        # 호버 상태 휠 입력 무시
+        event.ignore()
 
 
 class SkillImage(QLabel):
