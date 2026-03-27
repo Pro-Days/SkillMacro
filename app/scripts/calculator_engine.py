@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import heapq
+import os
 import random
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wait
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, TypeVar
 
 from app.scripts.calculator_models import (
+    OVERALL_STAT_ORDER,
     REALM_TIER_SPECS,
     TALISMAN_SPECS,
     BaseStats,
@@ -62,6 +65,139 @@ TIMELINE_MILLISECONDS: int = 60000
 
 # 역산 시 음수 허용 범위
 INVERSE_NEGATIVE_TOLERANCE: float = 0.01
+
+# _fast_resolve 용 enum 키 모듈 수준 캐시 (매 호출마다 enum descriptor 접근 제거)
+_FK_STR: StatKey = StatKey.STR
+_FK_STR_PERCENT: StatKey = StatKey.STR_PERCENT
+_FK_DEXTERITY: StatKey = StatKey.DEXTERITY
+_FK_DEXTERITY_PERCENT: StatKey = StatKey.DEXTERITY_PERCENT
+_FK_VITALITY: StatKey = StatKey.VITALITY
+_FK_VITALITY_PERCENT: StatKey = StatKey.VITALITY_PERCENT
+_FK_LUCK: StatKey = StatKey.LUCK
+_FK_LUCK_PERCENT: StatKey = StatKey.LUCK_PERCENT
+_FK_ATTACK: StatKey = StatKey.ATTACK
+_FK_ATTACK_PERCENT: StatKey = StatKey.ATTACK_PERCENT
+_FK_HP: StatKey = StatKey.HP
+_FK_HP_PERCENT: StatKey = StatKey.HP_PERCENT
+_FK_CRIT_RATE_PERCENT: StatKey = StatKey.CRIT_RATE_PERCENT
+_FK_CRIT_DAMAGE_PERCENT: StatKey = StatKey.CRIT_DAMAGE_PERCENT
+_FK_DROP_RATE_PERCENT: StatKey = StatKey.DROP_RATE_PERCENT
+_FK_EXP_PERCENT: StatKey = StatKey.EXP_PERCENT
+_FK_DODGE_PERCENT: StatKey = StatKey.DODGE_PERCENT
+_FK_POTION_HEAL_PERCENT: StatKey = StatKey.POTION_HEAL_PERCENT
+_FK_SKILL_SPEED_PERCENT: StatKey = StatKey.SKILL_SPEED_PERCENT
+
+# _evaluate_distribution_selection 용 사전 계산 상수
+_STAT_ORDER_KEYS: tuple[StatKey, ...] = OVERALL_STAT_ORDER
+_STAT_ORDER_VALUES: tuple[str, ...] = tuple(sk.value for sk in OVERALL_STAT_ORDER)
+
+# 기울기 기반 필터링 상수
+_GRADIENT_TOP_K: int = 15
+_GRADIENT_EXACT_THRESHOLD: int = 500
+
+
+def _compute_power_gradient(
+    timeline_artifacts: TimelineEvaluationArtifacts,
+    base_changed_stats: dict[StatKey, float],
+    target_metric: PowerMetric,
+    relevant_stat_keys: frozenset[StatKey],
+) -> dict[StatKey, float]:
+    """기준점에서의 전투력 기울기 (∂power/∂stat) 계산"""
+
+    base_resolved: FinalStats = _fast_resolve(base_changed_stats)
+    base_power: PowerSummary = evaluate_calculator_power(
+        timeline_artifacts, base_resolved
+    )
+    base_value: float = base_power.metrics[target_metric]
+
+    gradient: dict[StatKey, float] = {}
+    for stat_key in relevant_stat_keys:
+        perturbed: dict[StatKey, float] = base_changed_stats.copy()
+        perturbed[stat_key] = perturbed.get(stat_key, 0.0) + 1.0
+        perturbed_resolved: FinalStats = _fast_resolve(perturbed)
+        perturbed_power: PowerSummary = evaluate_calculator_power(
+            timeline_artifacts, perturbed_resolved
+        )
+        gradient[stat_key] = perturbed_power.metrics[target_metric] - base_value
+
+    return gradient
+
+
+def _score_contribution_by_gradient(
+    gradient: dict[StatKey, float],
+    contribution: Contribution,
+) -> float:
+    """기울기 기반 기여 점수 계산 (선형 근사)"""
+
+    score: float = 0.0
+    for stat_key, value in contribution.values.items():
+        grad_value: float | None = gradient.get(stat_key)
+        if grad_value is not None:
+            score += grad_value * value
+    return score
+
+
+def _fast_resolve(changed_stats: dict[StatKey, float]) -> FinalStats:
+    """enum 접근 최소화된 고속 resolve (사전 구성된 StatKey dict 전용)"""
+
+    final_strength: float = changed_stats[_FK_STR] * (
+        1.0 + (changed_stats[_FK_STR_PERCENT] * 0.01)
+    )
+    final_dexterity: float = changed_stats[_FK_DEXTERITY] * (
+        1.0 + (changed_stats[_FK_DEXTERITY_PERCENT] * 0.01)
+    )
+    final_vitality: float = changed_stats[_FK_VITALITY] * (
+        1.0 + (changed_stats[_FK_VITALITY_PERCENT] * 0.01)
+    )
+    final_luck: float = changed_stats[_FK_LUCK] * (
+        1.0 + (changed_stats[_FK_LUCK_PERCENT] * 0.01)
+    )
+
+    resolved_values: dict[StatKey, float] = changed_stats.copy()
+
+    resolved_values[_FK_STR] = final_strength
+    resolved_values[_FK_DEXTERITY] = final_dexterity
+    resolved_values[_FK_VITALITY] = final_vitality
+    resolved_values[_FK_LUCK] = final_luck
+
+    attack_percent: float = changed_stats[_FK_ATTACK_PERCENT] + (final_dexterity * 0.3)
+    resolved_values[_FK_ATTACK_PERCENT] = attack_percent
+
+    resolved_values[_FK_ATTACK] = (changed_stats[_FK_ATTACK] + final_strength) * (
+        1.0 + (attack_percent * 0.01)
+    )
+
+    resolved_values[_FK_HP] = (changed_stats[_FK_HP] + (final_vitality * 5.0)) * (
+        1.0 + (changed_stats[_FK_HP_PERCENT] * 0.01)
+    )
+
+    resolved_values[_FK_CRIT_RATE_PERCENT] = changed_stats[_FK_CRIT_RATE_PERCENT] + (
+        final_dexterity * 0.05
+    )
+
+    resolved_values[_FK_CRIT_DAMAGE_PERCENT] = changed_stats[
+        _FK_CRIT_DAMAGE_PERCENT
+    ] + (final_strength * 0.1)
+
+    resolved_values[_FK_DROP_RATE_PERCENT] = changed_stats[_FK_DROP_RATE_PERCENT] + (
+        final_luck * 0.2
+    )
+
+    resolved_values[_FK_EXP_PERCENT] = changed_stats[_FK_EXP_PERCENT] + (
+        final_luck * 0.2
+    )
+
+    resolved_values[_FK_DODGE_PERCENT] = changed_stats[_FK_DODGE_PERCENT] + (
+        final_vitality * 0.03
+    )
+
+    resolved_values[_FK_POTION_HEAL_PERCENT] = changed_stats[
+        _FK_POTION_HEAL_PERCENT
+    ] + (final_vitality * 0.5)
+
+    return FinalStats(values=resolved_values)
+
+
 INVERSE_ROUND_DIGITS: int = 6
 
 
@@ -1224,53 +1360,105 @@ def evaluate_calculator_power(
 ) -> PowerSummary:
     """사전 계산 타임라인 아티팩트 기준 5종 전투력 계산"""
 
+    # enum 키 상수를 로컬 변수로 캐시하여 반복 descriptor 접근 제거
+    _ATTACK: StatKey = StatKey.ATTACK
+    _FINAL_ATTACK_PERCENT: StatKey = StatKey.FINAL_ATTACK_PERCENT
+    _BOSS_ATTACK_PERCENT: StatKey = StatKey.BOSS_ATTACK_PERCENT
+    _CRIT_RATE_PERCENT: StatKey = StatKey.CRIT_RATE_PERCENT
+    _CRIT_DAMAGE_PERCENT: StatKey = StatKey.CRIT_DAMAGE_PERCENT
+    _SKILL_DAMAGE_PERCENT: StatKey = StatKey.SKILL_DAMAGE_PERCENT
+    _HP: StatKey = StatKey.HP
+    _DODGE_PERCENT: StatKey = StatKey.DODGE_PERCENT
+    _RESIST_PERCENT: StatKey = StatKey.RESIST_PERCENT
+    _POTION_HEAL_PERCENT: StatKey = StatKey.POTION_HEAL_PERCENT
+    _DROP_RATE_PERCENT: StatKey = StatKey.DROP_RATE_PERCENT
+    _EXP_PERCENT: StatKey = StatKey.EXP_PERCENT
+
+    base_values: dict[StatKey, float] = resolved_stats.values
+    hit_events: tuple[HitEvent, ...] = artifacts.timeline.hit_events
+    all_active_buffs: tuple[tuple[BuffWindow, ...], ...] = artifacts.active_buffs_by_hit
+
+    # 동일 버프 조합에 대한 스탯 캐시 (dict.copy 횟수 대폭 감소)
+    buff_stats_cache: dict[int, dict[StatKey, float]] = {}
+
     # 타격별 활성 버프 스냅샷 재사용 기반 총데미지 누적
     total_boss_damage: float = 0.0
     total_normal_damage: float = 0.0
 
+    # 연속 동일 버프 참조 빠른 건너뛰기 (id() + dict.get 호출 제거)
+    prev_active_buffs: tuple[BuffWindow, ...] | None = None
+    cached_buffed_stats: dict[StatKey, float] = base_values
+
+    hit_index: int
     hit_event: HitEvent
-    buffed_stats: dict[StatKey, float]
-    for hit_event, buffed_stats in _iterate_buffed_hit_events(
-        artifacts,
-        resolved_stats,
-    ):
-        total_boss_damage += _calculate_hit_damage(
-            resolved_stats=buffed_stats,
-            hit_event=hit_event,
-            is_boss=True,
-        )
-        total_normal_damage += _calculate_hit_damage(
-            resolved_stats=buffed_stats,
-            hit_event=hit_event,
-            is_boss=False,
-        )
+    for hit_index, hit_event in enumerate(hit_events):
+        active_buffs: tuple[BuffWindow, ...] = all_active_buffs[hit_index]
+        if active_buffs is not prev_active_buffs:
+            prev_active_buffs = active_buffs
+            buff_id: int = id(active_buffs)
+            buffed_stats: dict[StatKey, float] | None = buff_stats_cache.get(buff_id)
+            if buffed_stats is None:
+                buffed_stats = base_values.copy()
+                for active_buff in active_buffs:
+                    buffed_stats[active_buff.stat_key] = (
+                        buffed_stats[active_buff.stat_key] + active_buff.value
+                    )
+                buff_stats_cache[buff_id] = buffed_stats
+            cached_buffed_stats = buffed_stats
+        buffed_stats = cached_buffed_stats
+
+        # 인라인된 데미지 계산 (함수 호출 오버헤드 제거)
+        multiplier: float = hit_event.multiplier
+        attack_power: float = buffed_stats[_ATTACK]
+        attack_power *= 1.0 + (buffed_stats[_FINAL_ATTACK_PERCENT] * 0.01)
+
+        crit_rate: float = buffed_stats[_CRIT_RATE_PERCENT]
+        if crit_rate > 100.0:
+            crit_rate = 100.0
+        crit_damage: float = buffed_stats[_CRIT_DAMAGE_PERCENT]
+        skill_damage_mult: float = 1.0 + (buffed_stats[_SKILL_DAMAGE_PERCENT] * 0.01)
+        crit_mult: float = 1.0 + (crit_rate * crit_damage * 0.0001)
+        base_damage: float = attack_power * multiplier * crit_mult * skill_damage_mult
+
+        # 보스 데미지: 보스 공격력% 추가 반영
+        boss_attack_mult: float = 1.0 + (buffed_stats[_BOSS_ATTACK_PERCENT] * 0.01)
+        total_boss_damage += base_damage * boss_attack_mult
+        total_normal_damage += base_damage
 
     # 세그먼트별 비타격 전투력 배수 시간가중 평균 누적
     weighted_boss_multiplier_sum: float = 0.0
     weighted_normal_multiplier_sum: float = 0.0
     timeline_segment: TimelineSegment
     for timeline_segment in artifacts.timeline_segments:
-        segment_stats: dict[StatKey, float] = _apply_active_buffs(
-            resolved_stats,
-            timeline_segment.active_buffs,
-        )
+        seg_buffs: tuple[BuffWindow, ...] = timeline_segment.active_buffs
+        seg_buff_id: int = id(seg_buffs)
+        segment_stats: dict[StatKey, float] | None = buff_stats_cache.get(seg_buff_id)
+        if segment_stats is None:
+            segment_stats = base_values.copy()
+            for active_buff in seg_buffs:
+                segment_stats[active_buff.stat_key] = (
+                    segment_stats[active_buff.stat_key] + active_buff.value
+                )
+            buff_stats_cache[seg_buff_id] = segment_stats
 
         # 보스 전투력용 생존 배수 계산
-        hp_value: float = float(segment_stats[StatKey.HP])
-        dodge_value: float = float(segment_stats[StatKey.DODGE_PERCENT])
-        resist_value: float = float(segment_stats[StatKey.RESIST_PERCENT])
-        potion_heal_value: float = float(segment_stats[StatKey.POTION_HEAL_PERCENT])
-        dodge_denominator: float = max(1.0 - (dodge_value * 0.01), 0.01)
+        hp_value: float = segment_stats[_HP]
+        dodge_value: float = segment_stats[_DODGE_PERCENT]
+        resist_value: float = segment_stats[_RESIST_PERCENT]
+        potion_heal_value: float = segment_stats[_POTION_HEAL_PERCENT]
+        dodge_denominator: float = 1.0 - (dodge_value * 0.01)
+        if dodge_denominator < 0.01:
+            dodge_denominator = 0.01
 
-        boss_multiplier: float = hp_value
+        boss_multiplier: float = 1
         boss_multiplier *= 1.0 / dodge_denominator
         boss_multiplier *= 1.0 + (resist_value * 0.01)
         boss_multiplier *= 1.0 + (potion_heal_value * 0.01)
         weighted_boss_multiplier_sum += boss_multiplier * timeline_segment.duration
 
         # 일반 전투력용 획득 배수 계산
-        drop_rate_value: float = float(segment_stats[StatKey.DROP_RATE_PERCENT])
-        exp_value: float = float(segment_stats[StatKey.EXP_PERCENT])
+        drop_rate_value: float = segment_stats[_DROP_RATE_PERCENT]
+        exp_value: float = segment_stats[_EXP_PERCENT]
 
         normal_multiplier: float = 1.0 + (drop_rate_value * 0.01)
         normal_multiplier *= 1.0 + (exp_value * 0.01)
@@ -2188,35 +2376,113 @@ def _evaluate_distribution_selection(
         distribution_state
     )
 
-    # 내부 선택지 최고 후보 탐색 블록
+    # 기준 베이스의 str 키 → 값 맵을 사전 캐시하여 반복 변환 제거
+    base_raw_values: dict[str, float] = base_state.base_stats.values
+
+    # 분배 기여만 적용한 기준 스탯 구성 (기울기 계산용)
+    dist_base_stats: dict[StatKey, float] = {}
+    for _idx, _sk in enumerate(_STAT_ORDER_KEYS):
+        _base_val: float = base_raw_values.get(_STAT_ORDER_VALUES[_idx], 0.0)
+        dist_base_stats[_sk] = _base_val + distribution_contribution.values.get(
+            _sk, 0.0
+        )
+
+    # 기준 타임라인 조회 (기울기 계산용)
+    dist_resolved: FinalStats = _fast_resolve(dist_base_stats)
+    dist_skill_speed: float = float(dist_resolved.values[_FK_SKILL_SPEED_PERCENT])
+    dist_speed_key: float = round(dist_skill_speed, 2)
+    dist_timeline: TimelineEvaluationArtifacts | None = timeline_cache.get(
+        dist_speed_key
+    )
+    if dist_timeline is None:
+        dist_timeline = _build_timeline_evaluation_artifacts(
+            build_calculator_timeline(
+                server_spec=server_spec,
+                preset=preset,
+                skills_info=skills_info,
+                delay_ms=delay_ms,
+                cooltime_reduction=dist_skill_speed,
+            )
+        )
+        timeline_cache[dist_speed_key] = dist_timeline
+
+    # 조합 수 기반 기울기 필터링 적용 여부 결정
+    total_combos: int = (
+        len(danjeon_entries) * len(title_entries) * len(talisman_entries)
+    )
+    if total_combos > _GRADIENT_EXACT_THRESHOLD:
+        # 기여에 사용되는 스탯 키 수집
+        relevant_stats: set[StatKey] = set()
+        for _, _contrib in danjeon_entries:
+            relevant_stats.update(k for k, v in _contrib.values.items() if v != 0.0)
+        for _, _contrib in title_entries:
+            relevant_stats.update(k for k, v in _contrib.values.items() if v != 0.0)
+        for _, _contrib in talisman_entries:
+            relevant_stats.update(k for k, v in _contrib.values.items() if v != 0.0)
+
+        # 기준점 기울기 계산
+        gradient: dict[StatKey, float] = _compute_power_gradient(
+            dist_timeline,
+            dist_base_stats,
+            target_metric,
+            frozenset(relevant_stats),
+        )
+
+        # 각 차원 독립 점수 매기기 → 상위 K개 필터링
+        effective_danjeon: list[tuple[DanjeonState, Contribution]] = sorted(
+            danjeon_entries,
+            key=lambda e: _score_contribution_by_gradient(gradient, e[1]),
+            reverse=True,
+        )[:_GRADIENT_TOP_K]
+        effective_title: list[tuple[str | None, Contribution]] = sorted(
+            title_entries,
+            key=lambda e: _score_contribution_by_gradient(gradient, e[1]),
+            reverse=True,
+        )[:_GRADIENT_TOP_K]
+        effective_talisman: list[tuple[tuple[str, ...], Contribution]] = sorted(
+            talisman_entries,
+            key=lambda e: _score_contribution_by_gradient(gradient, e[1]),
+            reverse=True,
+        )[:_GRADIENT_TOP_K]
+    else:
+        effective_danjeon = danjeon_entries
+        effective_title = title_entries
+        effective_talisman = talisman_entries
+
+    # 필터링된 후보에 대한 정확 평가 루프
     best_result: OptimizationResult | None = None
     best_metric_delta: float | None = None
     danjeon_state: DanjeonState
     danjeon_contribution: Contribution
-    for danjeon_state, danjeon_contribution in danjeon_entries:
+    for danjeon_state, danjeon_contribution in effective_danjeon:
         equipped_title_name: str | None
         title_contribution: Contribution
-        for equipped_title_name, title_contribution in title_entries:
+        for equipped_title_name, title_contribution in effective_title:
             equipped_talisman_names: tuple[str, ...]
             talisman_contribution: Contribution
-            for equipped_talisman_names, talisman_contribution in talisman_entries:
-                # 선택지 기여 병합 블록
-                candidate_contribution: Contribution = distribution_contribution.merge(
+            for equipped_talisman_names, talisman_contribution in effective_talisman:
+                # 선택지 기여 병합 블록 (인라인)
+                merged_values: dict[StatKey, float] = (
+                    distribution_contribution.values.copy()
+                )
+                for _contrib in (
                     danjeon_contribution,
                     title_contribution,
                     talisman_contribution,
-                )
-                optimized_base_stats: BaseStats = (
-                    _build_base_stats_from_base_and_contribution(
-                        base_state,
-                        candidate_contribution,
-                    )
-                )
+                ):
+                    for _sk, _v in _contrib.values.items():
+                        merged_values[_sk] = merged_values.get(_sk, 0.0) + _v
 
-                # 스탯 해석 및 스킬속도 캐시 조회 블록
-                optimized_resolved_stats: FinalStats = optimized_base_stats.resolve()
+                # 기여 적용 + resolve 통합
+                changed_stats: dict[StatKey, float] = {}
+                for _idx, _sk in enumerate(_STAT_ORDER_KEYS):
+                    _base_val = base_raw_values.get(_STAT_ORDER_VALUES[_idx], 0.0)
+                    changed_stats[_sk] = _base_val + merged_values.get(_sk, 0.0)
+
+                optimized_resolved_stats: FinalStats = _fast_resolve(changed_stats)
+
                 candidate_skill_speed: float = float(
-                    optimized_resolved_stats.values[StatKey.SKILL_SPEED_PERCENT]
+                    optimized_resolved_stats.values[_FK_SKILL_SPEED_PERCENT]
                 )
                 speed_cache_key: float = round(candidate_skill_speed, 2)
                 cached_timeline_artifacts: TimelineEvaluationArtifacts | None = (
@@ -2235,7 +2501,6 @@ def _evaluate_distribution_selection(
                     )
                     timeline_cache[speed_cache_key] = cached_timeline_artifacts
 
-                # 전투력 재평가 및 최고 후보 갱신 블록
                 optimized_summary: PowerSummary = evaluate_calculator_power(
                     artifacts=cached_timeline_artifacts,
                     resolved_stats=optimized_resolved_stats,
@@ -2249,6 +2514,7 @@ def _evaluate_distribution_selection(
                     continue
 
                 best_metric_delta = metric_delta
+                optimized_base_stats: BaseStats = BaseStats.from_stat_map(changed_stats)
                 best_result = OptimizationResult(
                     candidate=OptimizationCandidate(
                         distribution=distribution_state,
@@ -2263,6 +2529,193 @@ def _evaluate_distribution_selection(
     return best_result
 
 
+def _search_subtree(
+    server_spec: "ServerSpec",
+    preset: "MacroPreset",
+    skills_info: dict[str, "SkillUsageSetting"],
+    delay_ms: int,
+    context: EvaluationContext,
+    base_state: BaseState,
+    danjeon_entries: list[tuple[DanjeonState, Contribution]],
+    title_entries: list[tuple[str | None, Contribution]],
+    talisman_entries: list[tuple[tuple[str, ...], Contribution]],
+    target_metric: PowerMetric,
+    sub_range: DistributionSearchRange,
+    baseline_timeline_entry: tuple[float, TimelineEvaluationArtifacts],
+) -> OptimizationResult | None:
+    """단일 서브트리에 대한 Branch-and-Bound 탐색 (프로세스 워커 호환)"""
+
+    timeline_cache: dict[float, TimelineEvaluationArtifacts] = {
+        baseline_timeline_entry[0]: baseline_timeline_entry[1]
+    }
+    distribution_result_cache: dict[tuple[int, int, int, int], OptimizationResult] = {}
+
+    # 서브트리 루트 상계 계산
+    root_distribution_state: DistributionState = _build_optimistic_distribution_state(
+        sub_range
+    )
+    root_cache_key: tuple[int, int, int, int] = _build_distribution_cache_key(
+        root_distribution_state
+    )
+    root_result: OptimizationResult | None = _evaluate_distribution_selection(
+        server_spec=server_spec,
+        preset=preset,
+        skills_info=skills_info,
+        delay_ms=delay_ms,
+        context=context,
+        base_state=base_state,
+        distribution_state=root_distribution_state,
+        danjeon_entries=danjeon_entries,
+        title_entries=title_entries,
+        talisman_entries=talisman_entries,
+        timeline_cache=timeline_cache,
+        target_metric=target_metric,
+    )
+    if root_result is None:
+        return None
+
+    distribution_result_cache[root_cache_key] = root_result
+
+    # 상계 우선 탐색 큐 초기화
+    search_queue: list[tuple[float, int, DistributionSearchRange]] = []
+    root_upper_bound: float = root_result.deltas[target_metric]
+    heapq.heappush(search_queue, (-root_upper_bound, 0, sub_range))
+
+    best_result: OptimizationResult | None = None
+    best_metric_delta: float | None = None
+    node_sequence: int = 1
+
+    while search_queue:
+        priority_item: tuple[float, int, DistributionSearchRange] = heapq.heappop(
+            search_queue
+        )
+        node_upper_bound: float = -priority_item[0]
+        distribution_range: DistributionSearchRange = priority_item[2]
+        if best_metric_delta is not None and node_upper_bound <= best_metric_delta:
+            continue
+
+        if _is_leaf_distribution_search_range(distribution_range):
+            leaf_distribution_state: DistributionState = _build_leaf_distribution_state(
+                distribution_range
+            )
+            leaf_cache_key: tuple[int, int, int, int] = _build_distribution_cache_key(
+                leaf_distribution_state
+            )
+            leaf_result: OptimizationResult | None = distribution_result_cache.get(
+                leaf_cache_key
+            )
+            if leaf_result is None:
+                leaf_result = _evaluate_distribution_selection(
+                    server_spec=server_spec,
+                    preset=preset,
+                    skills_info=skills_info,
+                    delay_ms=delay_ms,
+                    context=context,
+                    base_state=base_state,
+                    distribution_state=leaf_distribution_state,
+                    danjeon_entries=danjeon_entries,
+                    title_entries=title_entries,
+                    talisman_entries=talisman_entries,
+                    timeline_cache=timeline_cache,
+                    target_metric=target_metric,
+                )
+                if leaf_result is None:
+                    continue
+                distribution_result_cache[leaf_cache_key] = leaf_result
+
+            leaf_metric_delta: float = leaf_result.deltas[target_metric]
+            if best_metric_delta is not None and leaf_metric_delta <= best_metric_delta:
+                continue
+
+            best_metric_delta = leaf_metric_delta
+            best_result = leaf_result
+            continue
+
+        child_ranges: tuple[DistributionSearchRange, DistributionSearchRange] = (
+            _split_distribution_search_range(distribution_range)
+        )
+        child_range: DistributionSearchRange
+        for child_range in child_ranges:
+            if not _is_distribution_search_range_feasible(child_range):
+                continue
+
+            optimistic_distribution_state: DistributionState = (
+                _build_optimistic_distribution_state(child_range)
+            )
+            optimistic_cache_key: tuple[int, int, int, int] = (
+                _build_distribution_cache_key(optimistic_distribution_state)
+            )
+            optimistic_result: OptimizationResult | None = (
+                distribution_result_cache.get(optimistic_cache_key)
+            )
+            if optimistic_result is None:
+                optimistic_result = _evaluate_distribution_selection(
+                    server_spec=server_spec,
+                    preset=preset,
+                    skills_info=skills_info,
+                    delay_ms=delay_ms,
+                    context=context,
+                    base_state=base_state,
+                    distribution_state=optimistic_distribution_state,
+                    danjeon_entries=danjeon_entries,
+                    title_entries=title_entries,
+                    talisman_entries=talisman_entries,
+                    timeline_cache=timeline_cache,
+                    target_metric=target_metric,
+                )
+                if optimistic_result is None:
+                    continue
+                distribution_result_cache[optimistic_cache_key] = optimistic_result
+
+            child_upper_bound: float = optimistic_result.deltas[target_metric]
+            if best_metric_delta is not None and child_upper_bound <= best_metric_delta:
+                continue
+
+            heapq.heappush(
+                search_queue,
+                (-child_upper_bound, node_sequence, child_range),
+            )
+            node_sequence += 1
+
+    return best_result
+
+
+def _generate_sub_ranges(
+    root_range: DistributionSearchRange,
+    target_count: int,
+) -> list[DistributionSearchRange]:
+    """탐색 루트를 target_count 개 이상의 서브 범위로 분할"""
+
+    ranges: list[DistributionSearchRange] = [root_range]
+    while len(ranges) < target_count:
+        # 가장 넓은 축 폭을 가진 범위를 선택하여 분할
+        best_idx: int = 0
+        best_span: int = 0
+        for idx, search_range in enumerate(ranges):
+            span: int = max(
+                search_range.strength_max - search_range.strength_min,
+                search_range.dexterity_max - search_range.dexterity_min,
+                search_range.vitality_max - search_range.vitality_min,
+            )
+            if span > best_span:
+                best_span = span
+                best_idx = idx
+
+        if best_span == 0:
+            break
+
+        target_range: DistributionSearchRange = ranges.pop(best_idx)
+        child_a: DistributionSearchRange
+        child_b: DistributionSearchRange
+        child_a, child_b = _split_distribution_search_range(target_range)
+        if _is_distribution_search_range_feasible(child_a):
+            ranges.append(child_a)
+        if _is_distribution_search_range_feasible(child_b):
+            ranges.append(child_b)
+
+    return ranges
+
+
 def optimize_current_selection(
     server_spec: "ServerSpec",
     preset: "MacroPreset",
@@ -2272,8 +2725,17 @@ def optimize_current_selection(
     base_stats: BaseStats,
     calculator_input: CalculatorPresetInput,
     target_metric: PowerMetric,
+    progress_callback: Callable[[str, int], None] | None = None,
+    cancel_checker: Callable[[], None] | None = None,
 ) -> OptimizationResult | None:
     """현재 선택 조합 최적화"""
+
+    # 최적화 진입 직전 취소와 진행 상태 확인 블록
+    if cancel_checker is not None:
+        cancel_checker()
+
+    if progress_callback is not None:
+        progress_callback("최적화 후보 준비 중...", 0)
 
     # 기준 베이스 분리 검증 실패 시 최적화 중단
     validation: BaseValidation = validate_base_state(
@@ -2341,152 +2803,121 @@ def optimize_current_selection(
         )
     )
 
-    # 스킬속도 기준 타임라인 캐시 구성 블록
+    # 스킬속도 기준 타임라인 캐시 시드
     baseline_speed_cache_key: float = round(
         context.baseline_final_stats.values[StatKey.SKILL_SPEED_PERCENT], 2
     )
-    timeline_cache: dict[float, TimelineEvaluationArtifacts] = {
-        baseline_speed_cache_key: context.timeline_artifacts
-    }
-
-    # 스탯 분배 평가 캐시 구성 블록
-    distribution_result_cache: dict[tuple[int, int, int, int], OptimizationResult] = {}
-    root_distribution_state: DistributionState = _build_optimistic_distribution_state(
-        distribution_root
-    )
-    root_cache_key: tuple[int, int, int, int] = _build_distribution_cache_key(
-        root_distribution_state
-    )
-    root_result: OptimizationResult | None = distribution_result_cache.get(
-        root_cache_key
-    )
-    if root_result is None:
-        root_result = _evaluate_distribution_selection(
-            server_spec=server_spec,
-            preset=preset,
-            skills_info=skills_info,
-            delay_ms=delay_ms,
-            context=context,
-            base_state=base_state,
-            distribution_state=root_distribution_state,
-            danjeon_entries=danjeon_entries,
-            title_entries=title_entries,
-            talisman_entries=talisman_entries,
-            timeline_cache=timeline_cache,
-            target_metric=target_metric,
-        )
-        if root_result is None:
-            return None
-
-        distribution_result_cache[root_cache_key] = root_result
-
-    # 상계 우선 탐색 큐 초기화 블록
-    search_queue: list[tuple[float, int, DistributionSearchRange]] = []
-    root_upper_bound: float = root_result.deltas[target_metric]
-    heapq.heappush(
-        search_queue,
-        (-root_upper_bound, 0, distribution_root),
+    baseline_timeline_entry: tuple[float, TimelineEvaluationArtifacts] = (
+        baseline_speed_cache_key,
+        context.timeline_artifacts,
     )
 
-    # 최고 후보 및 큐 순서 추적 블록
+    # 탐색 공간 분할 및 병렬 실행
+    worker_count: int = os.cpu_count() or 4
+    sub_ranges: list[DistributionSearchRange] = _generate_sub_ranges(
+        distribution_root, worker_count * 2
+    )
+
+    shared_args: tuple[object, ...] = (
+        server_spec,
+        preset,
+        skills_info,
+        delay_ms,
+        context,
+        base_state,
+        danjeon_entries,
+        title_entries,
+        talisman_entries,
+        target_metric,
+    )
+
+    # 서브 범위가 적으면 직렬 실행, 충분하면 병렬 실행
     best_result: OptimizationResult | None = None
     best_metric_delta: float | None = None
-    node_sequence: int = 1
-    while search_queue:
-        # 상계 기준 최우선 범위 추출 블록
-        priority_item: tuple[float, int, DistributionSearchRange] = heapq.heappop(
-            search_queue
-        )
-        node_upper_bound: float = -priority_item[0]
-        distribution_range: DistributionSearchRange = priority_item[2]
-        if best_metric_delta is not None and node_upper_bound <= best_metric_delta:
-            continue
+    total_sub_ranges: int = max(1, len(sub_ranges))
+    completed_sub_ranges: int = 0
 
-        # 리프 범위 정확 평가 블록
-        if _is_leaf_distribution_search_range(distribution_range):
-            leaf_distribution_state: DistributionState = _build_leaf_distribution_state(
-                distribution_range
+    # 서브 범위 준비 완료 진행 상태 반영 블록
+    if progress_callback is not None:
+        progress_callback("최적화 계산 중...", 5)
+
+    if len(sub_ranges) <= 2:
+        # 탐색 공간이 작으면 직렬 실행
+        for sub_range in sub_ranges:
+            if cancel_checker is not None:
+                cancel_checker()
+
+            result: OptimizationResult | None = _search_subtree(
+                *shared_args,
+                sub_range=sub_range,
+                baseline_timeline_entry=baseline_timeline_entry,
             )
-            leaf_cache_key: tuple[int, int, int, int] = _build_distribution_cache_key(
-                leaf_distribution_state
-            )
-            leaf_result: OptimizationResult | None = distribution_result_cache.get(
-                leaf_cache_key
-            )
-            if leaf_result is None:
-                leaf_result = _evaluate_distribution_selection(
-                    server_spec=server_spec,
-                    preset=preset,
-                    skills_info=skills_info,
-                    delay_ms=delay_ms,
-                    context=context,
-                    base_state=base_state,
-                    distribution_state=leaf_distribution_state,
-                    danjeon_entries=danjeon_entries,
-                    title_entries=title_entries,
-                    talisman_entries=talisman_entries,
-                    timeline_cache=timeline_cache,
-                    target_metric=target_metric,
+            completed_sub_ranges += 1
+
+            if result is not None:
+                delta: float = result.deltas[target_metric]
+                if best_metric_delta is None or delta > best_metric_delta:
+                    best_metric_delta = delta
+                    best_result = result
+
+            # 직렬 탐색 진행률 반영 블록
+            if progress_callback is not None:
+                progress_value: int = 5 + int(
+                    (completed_sub_ranges / total_sub_ranges) * 90
                 )
-                if leaf_result is None:
+                progress_callback("최적화 계산 중...", progress_value)
+    else:
+        # 병렬 탐색 중 취소 응답성 확보 블록
+        pool: ProcessPoolExecutor = ProcessPoolExecutor(max_workers=worker_count)
+        pending_futures: set[Future[OptimizationResult | None]] = set()
+        should_wait_for_pool: bool = True
+
+        try:
+            pending_futures = {
+                pool.submit(
+                    _search_subtree,
+                    *shared_args,
+                    sub_range=sub_range,
+                    baseline_timeline_entry=baseline_timeline_entry,
+                )
+                for sub_range in sub_ranges
+            }
+            while pending_futures:
+                if cancel_checker is not None:
+                    cancel_checker()
+
+                done_futures: set[Future[OptimizationResult | None]]
+                done_futures, pending_futures = wait(
+                    pending_futures,
+                    timeout=0.1,
+                    return_when=FIRST_COMPLETED,
+                )
+                if not done_futures:
                     continue
 
-                distribution_result_cache[leaf_cache_key] = leaf_result
+                future: Future[OptimizationResult | None]
+                for future in done_futures:
+                    result: OptimizationResult | None = future.result()
+                    completed_sub_ranges += 1
+                    if result is not None:
+                        delta: float = result.deltas[target_metric]
+                        if best_metric_delta is None or delta > best_metric_delta:
+                            best_metric_delta = delta
+                            best_result = result
 
-            leaf_metric_delta: float = leaf_result.deltas[target_metric]
-            if best_metric_delta is not None and leaf_metric_delta <= best_metric_delta:
-                continue
-
-            best_metric_delta = leaf_metric_delta
-            best_result = leaf_result
-            continue
-
-        # 자식 범위 상계 계산 및 큐 삽입 블록
-        child_ranges: tuple[DistributionSearchRange, DistributionSearchRange] = (
-            _split_distribution_search_range(distribution_range)
-        )
-        child_range: DistributionSearchRange
-        for child_range in child_ranges:
-            if not _is_distribution_search_range_feasible(child_range):
-                continue
-
-            optimistic_distribution_state: DistributionState = (
-                _build_optimistic_distribution_state(child_range)
+                    # 병렬 탐색 진행률 반영 블록
+                    if progress_callback is not None:
+                        progress_value: int = 5 + int(
+                            (completed_sub_ranges / total_sub_ranges) * 90
+                        )
+                        progress_callback("최적화 계산 중...", progress_value)
+        except Exception:
+            should_wait_for_pool = False
+            raise
+        finally:
+            pool.shutdown(
+                wait=should_wait_for_pool,
+                cancel_futures=not should_wait_for_pool,
             )
-            optimistic_cache_key: tuple[int, int, int, int] = (
-                _build_distribution_cache_key(optimistic_distribution_state)
-            )
-            optimistic_result: OptimizationResult | None = (
-                distribution_result_cache.get(optimistic_cache_key)
-            )
-            if optimistic_result is None:
-                optimistic_result = _evaluate_distribution_selection(
-                    server_spec=server_spec,
-                    preset=preset,
-                    skills_info=skills_info,
-                    delay_ms=delay_ms,
-                    context=context,
-                    base_state=base_state,
-                    distribution_state=optimistic_distribution_state,
-                    danjeon_entries=danjeon_entries,
-                    title_entries=title_entries,
-                    talisman_entries=talisman_entries,
-                    timeline_cache=timeline_cache,
-                    target_metric=target_metric,
-                )
-                if optimistic_result is None:
-                    continue
-
-                distribution_result_cache[optimistic_cache_key] = optimistic_result
-
-            child_upper_bound: float = optimistic_result.deltas[target_metric]
-            if best_metric_delta is not None and child_upper_bound <= best_metric_delta:
-                continue
-
-            heapq.heappush(
-                search_queue,
-                (-child_upper_bound, node_sequence, child_range),
-            )
-            node_sequence += 1
 
     return best_result

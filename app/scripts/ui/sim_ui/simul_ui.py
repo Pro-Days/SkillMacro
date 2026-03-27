@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QEvent, QObject, QSize, Qt, QThread, Signal
 from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLayout,
     QLayoutItem,
+    QProgressBar,
     QPushButton,
     QScrollArea,
     QScrollBar,
@@ -166,6 +167,13 @@ class SimUI:
         self.stacked_layout.addWidget(self.graph_page)
         self.stacked_layout.addWidget(self.results_page)
 
+        # 결과 계산 오버레이와 백그라운드 스레드 구성
+        self._results_overlay: _CalculationOverlay = _CalculationOverlay(
+            self.parent,
+            self._cancel_results_calculation,
+        )
+        self._calc_thread: _CalculatorThread | None = None
+
         self.stacked_layout.setCurrentIndex(0)
         # 스택 레이아웃 설정
         self.main_frame.setLayout(self.stacked_layout)
@@ -202,9 +210,10 @@ class SimUI:
         if index == 1:
             self.graph_page.refresh()
 
-        # 결과 페이지 진입 직전 저장된 계산기 상태 기준 재동기화
+        # 결과 페이지 진입 요청 시 현재 페이지 유지 상태로 백그라운드 계산 시작
         if index == 2:
-            self.results_page.sync_from_preset()
+            self._start_results_calculation()
+            return
 
         # 네비게이션 버튼 색 변경
         self.update_nav(index)
@@ -260,6 +269,86 @@ class SimUI:
         horizontal_bar: QScrollBar = self.scroll_area.horizontalScrollBar()
         horizontal_bar.setValue(min(horizontal_bar.value(), horizontal_bar.maximum()))
 
+    def _start_results_calculation(self) -> None:
+        """현재 페이지 유지 상태로 결과 페이지 계산 시작"""
+
+        # 중복 계산 요청 차단 블록
+        if self._calc_thread is not None and self._calc_thread.isRunning():
+            return
+
+        # 저장된 계산기 입력 기준 계산 인자 복원 블록
+        preset: MacroPreset = app_state.macro.current_preset
+        calculator_input: CalculatorPresetInput = preset.info.calculator
+        base_stats: BaseStats = calculator_input.base_stats
+        level: int = calculator_input.level
+        selected_metric: PowerMetric = calculator_input.selected_metric
+
+        # 결과 페이지 초기 상태와 진행 오버레이 표시 블록
+        self.results_page.set_loading_state()
+        self._results_overlay.show_overlay(
+            "스탯 계산기 결과 준비 중...", "대기 중...", 0
+        )
+
+        # 백그라운드 계산 스레드 연결 블록
+        self._calc_thread = _CalculatorThread(
+            server_spec=app_state.macro.current_server,
+            preset=preset,
+            delay_ms=app_state.macro.current_delay,
+            base_stats=base_stats,
+            calculator_input=calculator_input,
+            level=level,
+            selected_metric=selected_metric,
+        )
+        self._calc_thread.progress_signal.connect(self._on_results_calculation_progress)
+        self._calc_thread.finished_signal.connect(self._on_results_calculation_finished)
+        self._calc_thread.start()
+
+    def _cancel_results_calculation(self) -> None:
+        """진행 중인 결과 계산 취소 요청"""
+
+        # 실행 중인 계산이 없으면 취소 동작 무시 블록
+        if self._calc_thread is None or not self._calc_thread.isRunning():
+            return
+
+        # 사용자 취소 의도 즉시 반영 블록
+        self._results_overlay.set_cancelling()
+        self._calc_thread.cancel()
+
+    def _on_results_calculation_progress(self, message: str, value: int) -> None:
+        """오버레이 진행 상태 갱신"""
+
+        # 백그라운드 계산 단계 문구와 진행률 반영 블록
+        self._results_overlay.update_progress(message, value)
+
+    def _on_results_calculation_finished(
+        self,
+        output_rows: ResultsPage.OutputRows | None,
+        is_cancelled: bool,
+    ) -> None:
+        """백그라운드 계산 종료 후 페이지 전환 처리"""
+
+        # 완료 스레드 참조 해제와 오버레이 정리 블록
+        self._calc_thread = None
+        self._results_overlay.hide()
+
+        # 사용자 취소 요청이면 현재 페이지 유지 블록
+        if is_cancelled:
+            return
+
+        # 계산 실패 시 오류 결과 표시 후 결과 페이지 진입 블록
+        if output_rows is None:
+            self.results_page.set_error_state()
+            self.update_nav(2)
+            self.stacked_layout.setCurrentIndex(2)
+            self.adjust_main_frame_height()
+            return
+
+        # 계산 성공 결과 반영 후 결과 페이지 진입 블록
+        self.results_page.set_output_rows(output_rows)
+        self.update_nav(2)
+        self.stacked_layout.setCurrentIndex(2)
+        self.adjust_main_frame_height()
+
 
 class InputPage(QFrame):
     def __init__(
@@ -289,6 +378,157 @@ class InputPage(QFrame):
         self.setLayout(layout)
 
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+
+class _CalculationOverlay(QFrame):
+    def __init__(
+        self,
+        parent: QWidget,
+        cancel_handler: Callable[[], None],
+    ) -> None:
+        super().__init__(parent)
+
+        # 부모 전체를 덮는 반투명 오버레이 기본 설정 블록
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setStyleSheet("QFrame { background-color: rgba(15, 23, 42, 110); }")
+        self.setGeometry(parent.rect())
+        self.hide()
+        parent.installEventFilter(self)
+
+        # 오버레이 중앙 카드 구성 블록
+        container: QFrame = QFrame(self)
+        container.setFixedWidth(360)
+        container.setStyleSheet(
+            "QFrame { background-color: #FFFFFF; border: 1px solid #D8DEE8; border-radius: 16px; }"
+        )
+
+        title_label: QLabel = QLabel("계산 중", container)
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_label.setFont(CustomFont(15, bold=True))
+        title_label.setStyleSheet(
+            "QLabel { background-color: transparent; border: 0px; color: #111827; }"
+        )
+
+        self._message_label: QLabel = QLabel(container)
+        self._message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._message_label.setFont(CustomFont(12, bold=True))
+        self._message_label.setStyleSheet(
+            "QLabel { background-color: transparent; border: 0px; color: #1F2937; }"
+        )
+
+        self._detail_label: QLabel = QLabel(container)
+        self._detail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._detail_label.setFont(CustomFont(11))
+        self._detail_label.setStyleSheet(
+            "QLabel { background-color: transparent; border: 0px; color: #6B7280; }"
+        )
+
+        self._progress_label: QLabel = QLabel(container)
+        self._progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._progress_label.setFont(CustomFont(11))
+        self._progress_label.setStyleSheet(
+            "QLabel { background-color: transparent; border: 0px; color: #4B5563; }"
+        )
+
+        self._progress_bar: QProgressBar = QProgressBar(container)
+        self._progress_bar.setRange(0, 100)
+        self._progress_bar.setTextVisible(False)
+        self._progress_bar.setFixedHeight(12)
+        self._progress_bar.setStyleSheet(
+            """
+            QProgressBar {
+                background-color: #E5E7EB;
+                border: 0px;
+                border-radius: 6px;
+            }
+            QProgressBar::chunk {
+                background-color: #9180F7;
+                border-radius: 6px;
+            }
+            """
+        )
+
+        self._cancel_button: QPushButton = QPushButton("취소", container)
+        self._cancel_button.setFont(CustomFont(11, bold=True))
+        self._cancel_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._cancel_button.setFixedHeight(40)
+        self._cancel_button.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #F3F4F6;
+                border: 1px solid #D1D5DB;
+                border-radius: 10px;
+                color: #111827;
+            }
+            QPushButton:hover {
+                background-color: #E5E7EB;
+            }
+            QPushButton:disabled {
+                background-color: #E5E7EB;
+                color: #9CA3AF;
+            }
+            """
+        )
+        self._cancel_button.clicked.connect(cancel_handler)
+
+        # 중앙 카드 내부 정렬 블록
+        container_layout: QVBoxLayout = QVBoxLayout(container)
+        container_layout.setContentsMargins(24, 24, 24, 24)
+        container_layout.setSpacing(12)
+        container_layout.addWidget(title_label)
+        container_layout.addWidget(self._message_label)
+        container_layout.addWidget(self._detail_label)
+        container_layout.addWidget(self._progress_bar)
+        container_layout.addWidget(self._progress_label)
+        container_layout.addSpacing(4)
+        container_layout.addWidget(self._cancel_button)
+        container.setLayout(container_layout)
+
+        # 오버레이 전체 중앙 배치 블록
+        overlay_layout: QVBoxLayout = QVBoxLayout(self)
+        overlay_layout.setContentsMargins(24, 24, 24, 24)
+        overlay_layout.addStretch(1)
+        overlay_layout.addWidget(container, alignment=Qt.AlignmentFlag.AlignCenter)
+        overlay_layout.addStretch(1)
+        self.setLayout(overlay_layout)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        """부모 리사이즈 시 오버레이 영역 동기화"""
+
+        # 부모 크기 변경 시 오버레이 전체 영역 재배치 블록
+        if watched is self.parent() and event.type() == QEvent.Type.Resize:
+            parent_widget: QWidget = self.parentWidget()
+            self.setGeometry(parent_widget.rect())
+
+        return super().eventFilter(watched, event)
+
+    def show_overlay(self, message: str, detail: str, value: int) -> None:
+        """초기 진행 상태와 함께 오버레이 표시"""
+
+        # 취소 버튼 활성화와 초기 진행 상태 반영 블록
+        self._cancel_button.setEnabled(True)
+        self._message_label.setText(message)
+        self.update_progress(detail, value)
+
+        # 최상단 오버레이 표시 블록
+        self.show()
+        self.raise_()
+
+    def update_progress(self, detail: str, value: int) -> None:
+        """진행 문구와 진행률 갱신"""
+
+        # 진행 문구와 백분율 레이블 동기화 블록
+        clamped_value: int = max(0, min(100, value))
+        self._detail_label.setText(detail)
+        self._progress_label.setText(f"{clamped_value}%")
+        self._progress_bar.setValue(clamped_value)
+
+    def set_cancelling(self) -> None:
+        """취소 요청 직후 오버레이 상태 갱신"""
+
+        # 중복 취소 방지와 취소 진행 상태 표기 블록
+        self._cancel_button.setEnabled(False)
+        self._detail_label.setText("취소 요청 처리 중...")
 
 
 class GraphPage(QFrame):
@@ -503,6 +743,95 @@ class GraphPage(QFrame):
             self.setLayout(layout)
 
 
+class _CalculationCancelledError(Exception):
+    """계산 취소 요청 전달용 내부 예외"""
+
+
+class _CalculatorThread(QThread):
+    """백그라운드에서 계산기 연산을 수행하는 스레드"""
+
+    finished_signal = Signal(object, bool)
+    progress_signal = Signal(str, int)
+
+    def __init__(
+        self,
+        server_spec: "ServerSpec",
+        preset: "MacroPreset",
+        delay_ms: int,
+        base_stats: BaseStats,
+        calculator_input: "CalculatorPresetInput",
+        level: int,
+        selected_metric: "PowerMetric",
+    ) -> None:
+        super().__init__()
+        self._server_spec = server_spec
+        self._preset = preset
+        self._delay_ms = delay_ms
+        self._base_stats = base_stats
+        self._calculator_input = calculator_input
+        self._level = level
+        self._selected_metric = selected_metric
+        self._is_cancel_requested: bool = False
+
+    def cancel(self) -> None:
+        """계산 취소 요청 기록"""
+
+        # 스레드 인터럽트와 내부 취소 플래그 동시 반영 블록
+        self._is_cancel_requested = True
+        self.requestInterruption()
+
+    def _emit_progress(self, message: str, value: int) -> None:
+        """진행 상태 시그널 방출"""
+
+        # 취소 여부 확인 이후 진행 상태 전파 블록
+        self._ensure_not_cancelled()
+        self.progress_signal.emit(message, value)
+
+    def _ensure_not_cancelled(self) -> None:
+        """취소 요청 시 내부 예외 발생"""
+
+        # 스레드 인터럽트 또는 명시적 취소 요청 감지 블록
+        if self._is_cancel_requested or self.isInterruptionRequested():
+            raise _CalculationCancelledError()
+
+    def run(self) -> None:
+        try:
+            # 계산 컨텍스트 선행 구성 블록
+            self._emit_progress("컨텍스트 생성 중...", 0)
+            context: EvaluationContext = build_calculator_context(
+                server_spec=self._server_spec,
+                preset=self._preset,
+                skills_info=self._preset.usage_settings,
+                delay_ms=self._delay_ms,
+                base_stats=self._base_stats,
+            )
+
+            # 결과 행 전체 계산 블록
+            self._emit_progress("결과 정리 준비 중...", 0)
+            output_rows: ResultsPage.OutputRows = ResultsPage._build_output_rows(
+                server_spec=self._server_spec,
+                preset=self._preset,
+                delay_ms=self._delay_ms,
+                base_stats=self._base_stats,
+                level=self._level,
+                selected_metric=self._selected_metric,
+                current_realm=self._calculator_input.realm_tier,
+                calculator_input=self._calculator_input,
+                context=context,
+                progress_callback=self._emit_progress,
+                cancel_checker=self._ensure_not_cancelled,
+            )
+
+            # 완료 직전 취소 여부 재확인 블록
+            self._ensure_not_cancelled()
+            self.progress_signal.emit("완료됨", 100)
+            self.finished_signal.emit(output_rows, False)
+        except _CalculationCancelledError:
+            self.finished_signal.emit(None, True)
+        except Exception:
+            self.finished_signal.emit(None, False)
+
+
 class ResultsPage(QFrame):
     @dataclass(frozen=True)
     class OutputRows:
@@ -538,10 +867,23 @@ class ResultsPage(QFrame):
 
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-    def sync_from_preset(self) -> None:
-        """저장된 계산기 상태를 결과 페이지에 동기화"""
+    def set_loading_state(self) -> None:
+        """결과 페이지 로딩 출력 반영"""
 
-        self.view.refresh_from_preset()
+        # 결과 카드 공통 로딩 상태 반영 블록
+        self.view.set_loading_outputs()
+
+    def set_error_state(self) -> None:
+        """결과 페이지 오류 출력 반영"""
+
+        # 결과 카드 공통 오류 상태 반영 블록
+        self.view.set_error_outputs()
+
+    def set_output_rows(self, output_rows: "ResultsPage.OutputRows") -> None:
+        """계산 완료 결과 반영"""
+
+        # 계산 완료 결과 행을 결과 카드에 반영 블록
+        self.view.set_output_rows(output_rows)
 
     @staticmethod
     def _format_delta(value: float) -> str:
@@ -567,8 +909,17 @@ class ResultsPage(QFrame):
         current_realm: "RealmTier",
         calculator_input: CalculatorPresetInput,
         context: "EvaluationContext",
+        progress_callback: Callable[[str, int], None] | None = None,
+        cancel_checker: Callable[[], None] | None = None,
     ) -> "ResultsPage.OutputRows":
         """공용 계산기 결과 행 구성"""
+
+        # 현재 전투력 구성 직전 진행 단계 반영 블록
+        if progress_callback is not None:
+            progress_callback("현재 전투력 정리 중...", 0)
+
+        if cancel_checker is not None:
+            cancel_checker()
 
         # 현재 전투력 출력 행 구성
         current_power_rows: list[tuple[str, str]] = []
@@ -582,9 +933,22 @@ class ResultsPage(QFrame):
                 )
             )
 
+        # 스탯 효율 계산 시작 단계 반영 블록
+        if progress_callback is not None:
+            progress_callback("스탯 효율 계산 중...", 0)
+
         # 스탯 1당 효율 출력 행 구성
         stat_rows: list[tuple[str, str]] = []
-        for stat_key, stat_label in STAT_SPECS.items():
+        stat_count: int = len(STAT_SPECS)
+        stat_index: int
+        stat_key: StatKey
+        stat_label: str
+        for stat_index, (stat_key, stat_label) in enumerate(
+            STAT_SPECS.items(), start=1
+        ):
+            if cancel_checker is not None:
+                cancel_checker()
+
             deltas: dict[PowerMetric, float] = evaluate_single_stat_delta(
                 context=context,
                 stat_key=stat_key,
@@ -594,10 +958,21 @@ class ResultsPage(QFrame):
 
             stat_rows.append((label, cls._format_delta(deltas[selected_metric])))
 
+            if progress_callback is not None:
+                stat_progress: int = 0
+                progress_callback("스탯 효율 계산 중...", stat_progress)
+
         stat_rows.sort(
             key=lambda row: float(row[1].replace(",", "")),
             reverse=True,
         )
+
+        # 레벨업 효율 계산 단계 반영 블록
+        if progress_callback is not None:
+            progress_callback("레벨 효율 계산 중...", 0)
+
+        if cancel_checker is not None:
+            cancel_checker()
 
         # 레벨 1업 효율 출력 행 구성
         level_up: LevelUpEvaluation = evaluate_level_up_delta(
@@ -614,6 +989,13 @@ class ResultsPage(QFrame):
             ("레벨 1업", cls._format_delta(level_up.deltas[selected_metric])),
             ("최적 분배", level_distribution_text),
         ]
+
+        # 경지 효율 계산 단계 반영 블록
+        if progress_callback is not None:
+            progress_callback("경지 효율 계산 중...", 0)
+
+        if cancel_checker is not None:
+            cancel_checker()
 
         # 다음 경지 효율 출력 행 구성
         realm_result: RealmAdvanceEvaluation | None = evaluate_next_realm_delta(
@@ -641,6 +1023,13 @@ class ResultsPage(QFrame):
                 ("최적 분배", danjeon_text),
             ]
 
+        # 스크롤 효율 계산 단계 반영 블록
+        if progress_callback is not None:
+            progress_callback("스크롤 효율 계산 중...", 0)
+
+        if cancel_checker is not None:
+            cancel_checker()
+
         # 스크롤 +1 효율 출력 행 구성
         scroll_rows: list[tuple[str, str]] = []
         scroll_results: list[ScrollUpgradeEvaluation] = evaluate_scroll_upgrade_deltas(
@@ -650,7 +1039,13 @@ class ResultsPage(QFrame):
             delay_ms=delay_ms,
             base_stats=base_stats,
         )
-        for scroll_result in scroll_results:
+        scroll_count: int = max(1, len(scroll_results))
+        scroll_index: int
+        scroll_result: ScrollUpgradeEvaluation
+        for scroll_index, scroll_result in enumerate(scroll_results, start=1):
+            if cancel_checker is not None:
+                cancel_checker()
+
             scroll_rows.append(
                 (
                     f"{scroll_result.scroll_name} Lv.{scroll_result.next_level}",
@@ -658,10 +1053,21 @@ class ResultsPage(QFrame):
                 )
             )
 
+            if progress_callback is not None:
+                scroll_progress: int = 0
+                progress_callback("스크롤 효율 계산 중...", scroll_progress)
+
         scroll_rows.sort(
             key=lambda row: float(row[1].replace(",", "")),
             reverse=True,
         )
+
+        # 사용자 지정 변화량 계산 단계 반영 블록
+        if progress_callback is not None:
+            progress_callback("사용자 지정 변화량 계산 중...", 0)
+
+        if cancel_checker is not None:
+            cancel_checker()
 
         # 사용자 지정 변화량 결과 행 공용 구성
         custom_rows: list[tuple[str, str]] = cls._build_custom_delta_rows(
@@ -674,6 +1080,13 @@ class ResultsPage(QFrame):
             v != 0.0 for v in calculator_input.custom_stat_changes.values()
         )
 
+        # 최적화 결과 계산 단계 반영 블록
+        if progress_callback is not None:
+            progress_callback("최적화 결과 계산 중...", 0)
+
+        if cancel_checker is not None:
+            cancel_checker()
+
         # 최적화 결과 행 구성
         optimization_result: OptimizationResult | None = optimize_current_selection(
             server_spec=server_spec,
@@ -684,6 +1097,8 @@ class ResultsPage(QFrame):
             base_stats=base_stats,
             calculator_input=calculator_input,
             target_metric=selected_metric,
+            progress_callback=progress_callback,
+            cancel_checker=cancel_checker,
         )
         if optimization_result is None:
             optimization_rows: list[tuple[str, str]] = [("상태", "불가")]
@@ -738,6 +1153,13 @@ class ResultsPage(QFrame):
                 ("최적 칭호", title_text),
                 ("최적 부적", talisman_text),
             ]
+
+        # 결과 반환 직전 완료 단계 반영 블록
+        if progress_callback is not None:
+            progress_callback("결과 화면 준비 중...", 100)
+
+        if cancel_checker is not None:
+            cancel_checker()
 
         return cls.OutputRows(
             current_power=current_power_rows,
@@ -4052,12 +4474,7 @@ class ResultsPage(QFrame):
 
             self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
-        def _get_preset(self) -> "MacroPreset":
-            """현재 선택 프리셋 반환"""
-
-            return app_state.macro.current_preset
-
-        def _set_error_outputs(self) -> None:
+        def set_error_outputs(self) -> None:
             """결과 페이지 오류 상태 출력"""
 
             error_rows: list[tuple[str, str]] = [("상태", "오류")]
@@ -4070,48 +4487,23 @@ class ResultsPage(QFrame):
             self._opt_result_list.set_rows(error_rows)
             self._opt_stats_grid.set_stats(None)
 
-        def refresh_from_preset(self) -> None:
-            """저장된 계산기 상태 기준 결과 전용 출력 재구성"""
+        def set_loading_outputs(self) -> None:
+            """계산 시작 시 로딩 상태 출력"""
 
-            preset: MacroPreset = self._get_preset()
-            calculator_input: CalculatorPresetInput = preset.info.calculator
-            base_stats: BaseStats = calculator_input.base_stats
-            level: int = calculator_input.level
-            selected_metric: PowerMetric = calculator_input.selected_metric
+            loading_rows: list[tuple[str, str]] = [("상태", "계산 중...")]
+            self._power_list.set_rows(loading_rows)
+            self._stat_list.set_rows(loading_rows)
+            self._level_up_list.set_rows(loading_rows)
+            self._realm_up_list.set_rows(loading_rows)
+            self._scroll_list.set_rows(loading_rows)
+            self._custom_card.setVisible(False)
+            self._opt_result_list.set_rows(loading_rows)
+            self._opt_stats_grid.set_stats(None)
 
-            # 저장된 스크롤 레벨 유효성 사전 확인
-            scroll_is_valid: bool = True
-            for entry in SkillInputs.build_entries():
-                scroll_level: int = preset.info.get_scroll_level(entry.scroll_id)
-                if not (
-                    1 <= scroll_level <= app_state.macro.current_server.max_skill_level
-                ):
-                    scroll_is_valid = False
-                    break
+        def set_output_rows(self, output_rows: ResultsPage.OutputRows) -> None:
+            """백그라운드 계산 완료 결과 UI 반영"""
 
-            if not scroll_is_valid:
-                self._set_error_outputs()
-                return
-
-            context: EvaluationContext = build_calculator_context(
-                server_spec=app_state.macro.current_server,
-                preset=preset,
-                skills_info=preset.usage_settings,
-                delay_ms=app_state.macro.current_delay,
-                base_stats=base_stats,
-            )
-            output_rows: ResultsPage.OutputRows = ResultsPage._build_output_rows(
-                server_spec=app_state.macro.current_server,
-                preset=preset,
-                delay_ms=app_state.macro.current_delay,
-                base_stats=base_stats,
-                calculator_input=calculator_input,
-                level=level,
-                selected_metric=selected_metric,
-                current_realm=calculator_input.realm_tier,
-                context=context,
-            )
-
+            # 완료된 결과 구조를 각 카드에 반영 블록
             selected_label: str = POWER_METRIC_LABELS[output_rows.selected_metric]
             self._power_list.set_rows(output_rows.current_power, selected_label)
             self._stat_list.set_rows(output_rows.stat_efficiency)

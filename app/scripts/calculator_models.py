@@ -433,66 +433,88 @@ class BaseStats:
     ) -> "FinalStats":
         """베이스 스탯을 최종 스탯으로 변환"""
 
-        changed_stats: dict[StatKey, float] = self.with_changes(
-            stat_changes
-        ).to_stat_map()
+        # enum 키 상수를 로컬 변수로 캐시하여 반복 descriptor 접근 제거
+        _STR: StatKey = StatKey.STR
+        _STR_PERCENT: StatKey = StatKey.STR_PERCENT
+        _DEXTERITY: StatKey = StatKey.DEXTERITY
+        _DEXTERITY_PERCENT: StatKey = StatKey.DEXTERITY_PERCENT
+        _VITALITY: StatKey = StatKey.VITALITY
+        _VITALITY_PERCENT: StatKey = StatKey.VITALITY_PERCENT
+        _LUCK: StatKey = StatKey.LUCK
+        _LUCK_PERCENT: StatKey = StatKey.LUCK_PERCENT
+        _ATTACK: StatKey = StatKey.ATTACK
+        _ATTACK_PERCENT: StatKey = StatKey.ATTACK_PERCENT
+        _HP: StatKey = StatKey.HP
+        _HP_PERCENT: StatKey = StatKey.HP_PERCENT
+        _CRIT_RATE_PERCENT: StatKey = StatKey.CRIT_RATE_PERCENT
+        _CRIT_DAMAGE_PERCENT: StatKey = StatKey.CRIT_DAMAGE_PERCENT
+        _DROP_RATE_PERCENT: StatKey = StatKey.DROP_RATE_PERCENT
+        _EXP_PERCENT: StatKey = StatKey.EXP_PERCENT
+        _DODGE_PERCENT: StatKey = StatKey.DODGE_PERCENT
+        _POTION_HEAL_PERCENT: StatKey = StatKey.POTION_HEAL_PERCENT
+        # stat_changes=None 최적화: with_changes + to_stat_map 우회
+        if stat_changes is None:
+            raw: dict[str, float] = self.values
+            changed_stats: dict[StatKey, float] = {
+                stat_key: raw.get(stat_key.value, 0.0)
+                for stat_key in OVERALL_STAT_ORDER
+            }
+        else:
+            changed_stats = self.with_changes(stat_changes).to_stat_map()
 
         # 스탯% 적용
-        final_strength: float = changed_stats[StatKey.STR] * (
-            1.0 + (changed_stats[StatKey.STR_PERCENT] * 0.01)
+        final_strength: float = changed_stats[_STR] * (
+            1.0 + (changed_stats[_STR_PERCENT] * 0.01)
         )
-        final_dexterity: float = changed_stats[StatKey.DEXTERITY] * (
-            1.0 + (changed_stats[StatKey.DEXTERITY_PERCENT] * 0.01)
+        final_dexterity: float = changed_stats[_DEXTERITY] * (
+            1.0 + (changed_stats[_DEXTERITY_PERCENT] * 0.01)
         )
-        final_vitality: float = changed_stats[StatKey.VITALITY] * (
-            1.0 + (changed_stats[StatKey.VITALITY_PERCENT] * 0.01)
+        final_vitality: float = changed_stats[_VITALITY] * (
+            1.0 + (changed_stats[_VITALITY_PERCENT] * 0.01)
         )
-        final_luck: float = float(changed_stats[StatKey.LUCK]) * (
-            1.0 + (float(changed_stats[StatKey.LUCK_PERCENT]) * 0.01)
+        final_luck: float = changed_stats[_LUCK] * (
+            1.0 + (changed_stats[_LUCK_PERCENT] * 0.01)
         )
 
         resolved_values: dict[StatKey, float] = changed_stats.copy()
 
-        resolved_values[StatKey.STR] = final_strength
-        resolved_values[StatKey.DEXTERITY] = final_dexterity
-        resolved_values[StatKey.VITALITY] = final_vitality
-        resolved_values[StatKey.LUCK] = final_luck
+        resolved_values[_STR] = final_strength
+        resolved_values[_DEXTERITY] = final_dexterity
+        resolved_values[_VITALITY] = final_vitality
+        resolved_values[_LUCK] = final_luck
 
-        resolved_values[StatKey.ATTACK_PERCENT] = changed_stats[
-            StatKey.ATTACK_PERCENT
-        ] + (final_dexterity * 0.3)
+        attack_percent: float = changed_stats[_ATTACK_PERCENT] + (final_dexterity * 0.3)
+        resolved_values[_ATTACK_PERCENT] = attack_percent
 
-        resolved_values[StatKey.ATTACK] = (
-            changed_stats[StatKey.ATTACK] + final_strength
-        ) * (1.0 + (resolved_values[StatKey.ATTACK_PERCENT] * 0.01))
+        resolved_values[_ATTACK] = (changed_stats[_ATTACK] + final_strength) * (
+            1.0 + (attack_percent * 0.01)
+        )
 
-        resolved_values[StatKey.HP] = (
-            changed_stats[StatKey.HP] + (final_vitality * 5.0)
-        ) * (1.0 + (changed_stats[StatKey.HP_PERCENT] * 0.01))
+        resolved_values[_HP] = (changed_stats[_HP] + (final_vitality * 5.0)) * (
+            1.0 + (changed_stats[_HP_PERCENT] * 0.01)
+        )
 
-        resolved_values[StatKey.CRIT_RATE_PERCENT] = changed_stats[
-            StatKey.CRIT_RATE_PERCENT
-        ] + (final_dexterity * 0.05)
+        resolved_values[_CRIT_RATE_PERCENT] = changed_stats[_CRIT_RATE_PERCENT] + (
+            final_dexterity * 0.05
+        )
 
-        resolved_values[StatKey.CRIT_DAMAGE_PERCENT] = changed_stats[
-            StatKey.CRIT_DAMAGE_PERCENT
-        ] + (final_strength * 0.1)
+        resolved_values[_CRIT_DAMAGE_PERCENT] = changed_stats[_CRIT_DAMAGE_PERCENT] + (
+            final_strength * 0.1
+        )
 
-        resolved_values[StatKey.DROP_RATE_PERCENT] = changed_stats[
-            StatKey.DROP_RATE_PERCENT
-        ] + (final_luck * 0.2)
-
-        resolved_values[StatKey.EXP_PERCENT] = changed_stats[StatKey.EXP_PERCENT] + (
+        resolved_values[_DROP_RATE_PERCENT] = changed_stats[_DROP_RATE_PERCENT] + (
             final_luck * 0.2
         )
 
-        resolved_values[StatKey.DODGE_PERCENT] = changed_stats[
-            StatKey.DODGE_PERCENT
-        ] + (final_vitality * 0.03)
+        resolved_values[_EXP_PERCENT] = changed_stats[_EXP_PERCENT] + (final_luck * 0.2)
 
-        resolved_values[StatKey.POTION_HEAL_PERCENT] = changed_stats[
-            StatKey.POTION_HEAL_PERCENT
-        ] + (final_vitality * 0.5)
+        resolved_values[_DODGE_PERCENT] = changed_stats[_DODGE_PERCENT] + (
+            final_vitality * 0.03
+        )
+
+        resolved_values[_POTION_HEAL_PERCENT] = changed_stats[_POTION_HEAL_PERCENT] + (
+            final_vitality * 0.5
+        )
 
         return FinalStats(values=resolved_values)
 
