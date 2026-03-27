@@ -83,6 +83,7 @@ from app.scripts.ui.sim_ui.graph import (
 if TYPE_CHECKING:
     from app.scripts.calculator_engine import (
         EvaluationContext,
+        FinalStats,
         GraphAnalysis,
         GraphDamageEvent,
         GraphReport,
@@ -845,6 +846,7 @@ class ResultsPage(QFrame):
         custom_delta: list[tuple[str, str]]
         optimization_result: list[tuple[str, str]]
         has_custom_delta: bool
+        custom_base_stats: BaseStats | None
         optimized_base_stats: BaseStats | None
         selected_metric: "PowerMetric"
 
@@ -1080,6 +1082,12 @@ class ResultsPage(QFrame):
             v != 0.0 for v in calculator_input.custom_stat_changes.values()
         )
 
+        # 사용자 지정 변화량 반영 전체 스탯 구성
+        custom_base_stats: BaseStats | None = cls._build_custom_delta_base_stats(
+            calculator_input=calculator_input,
+            base_stats=base_stats,
+        )
+
         # 최적화 결과 계산 단계 반영 블록
         if progress_callback is not None:
             progress_callback("최적화 결과 계산 중...", 0)
@@ -1170,6 +1178,7 @@ class ResultsPage(QFrame):
             custom_delta=custom_rows,
             optimization_result=optimization_rows,
             has_custom_delta=has_custom_delta,
+            custom_base_stats=custom_base_stats,
             optimized_base_stats=(
                 optimization_result.base_stats
                 if optimization_result is not None
@@ -1177,6 +1186,24 @@ class ResultsPage(QFrame):
             ),
             selected_metric=selected_metric,
         )
+
+    @staticmethod
+    def _build_custom_stat_change_map(
+        calculator_input: CalculatorPresetInput,
+    ) -> dict[StatKey, float]:
+        """저장된 사용자 지정 변화량 맵 복원"""
+
+        # 0이 아닌 사용자 지정 변화량만 enum 키 기준으로 재구성
+        custom_changes: dict[StatKey, float] = {}
+        stat_key: StatKey
+        for stat_key in STAT_SPECS.keys():
+            change_value: float = calculator_input.custom_stat_changes[stat_key.value]
+            if change_value == 0.0:
+                continue
+
+            custom_changes[stat_key] = change_value
+
+        return custom_changes
 
     @classmethod
     def _build_custom_delta_rows(
@@ -1186,14 +1213,10 @@ class ResultsPage(QFrame):
     ) -> list[tuple[str, str]]:
         """사용자 지정 변화량 결과 행 공용 구성"""
 
-        # 저장된 사용자 지정 변화량 맵 복원
-        custom_changes: dict[StatKey, float] = {}
-        for stat_key in STAT_SPECS.keys():
-            change_value: float = calculator_input.custom_stat_changes[stat_key.value]
-            if change_value == 0.0:
-                continue
-
-            custom_changes[stat_key] = change_value
+        # 저장된 사용자 지정 변화량 맵 재사용
+        custom_changes: dict[StatKey, float] = cls._build_custom_stat_change_map(
+            calculator_input
+        )
 
         # 사용자 지정 변화량 기준 5종 전투력 변화량 계산
         custom_deltas: dict[PowerMetric, float] = evaluate_arbitrary_stat_delta(
@@ -1210,6 +1233,25 @@ class ResultsPage(QFrame):
             )
 
         return custom_rows
+
+    @classmethod
+    def _build_custom_delta_base_stats(
+        cls,
+        calculator_input: CalculatorPresetInput,
+        base_stats: BaseStats,
+    ) -> BaseStats | None:
+        """사용자 지정 변화량 반영 전체 스탯 구성"""
+
+        # 저장된 사용자 지정 변화량 맵 재사용
+        custom_changes: dict[StatKey, float] = cls._build_custom_stat_change_map(
+            calculator_input
+        )
+        if not custom_changes:
+            return None
+
+        # 기준 베이스 스탯에 사용자 지정 변화량 적용
+        adjusted_base_stats: BaseStats = base_stats.with_changes(custom_changes)
+        return adjusted_base_stats
 
     class Efficiency(QFrame):
         def __init__(
@@ -4259,8 +4301,8 @@ class ResultsPage(QFrame):
                 # 순위 목록 높이 재고정
                 ResultsPage.ResultsView._refresh_widget_geometry(self)
 
-        class OptimizedStatsGrid(QFrame):
-            """최적화 후 전체 스탯 읽기 전용 2열 그리드"""
+        class OverallStatsGrid(QFrame):
+            """결과 카드 공용 전체 스탯 읽기 전용 2열 그리드"""
 
             def __init__(self, parent: QWidget) -> None:
                 super().__init__(parent)
@@ -4280,8 +4322,9 @@ class ResultsPage(QFrame):
                 # 이전 스탯 셀 즉시 제거
                 ResultsPage.ResultsView._clear_layout_widgets(self._grid)
 
+                # 전체 스탯 표시 불가 상태 문구 출력
                 if base_stats is None:
-                    unavail: QLabel = QLabel("최적화 불가", self)
+                    unavail: QLabel = QLabel("표시 불가", self)
                     unavail.setFont(CustomFont(11))
                     unavail.setStyleSheet(
                         "QLabel { color: #888888; background: transparent; border: 0px; }"
@@ -4290,7 +4333,8 @@ class ResultsPage(QFrame):
                     ResultsPage.ResultsView._refresh_widget_geometry(self)
                     return
 
-                final_stats = base_stats.resolve()
+                # 베이스 스탯 해석 결과를 2열 그리드로 배치
+                final_stats: "FinalStats" = base_stats.resolve()
                 for row_idx, (left_key, right_key) in enumerate(OVERALL_STAT_GRID_ROWS):
                     for col_idx, stat_key in enumerate((left_key, right_key)):
                         if stat_key is None:
@@ -4443,18 +4487,24 @@ class ResultsPage(QFrame):
             self._custom_list: ResultsPage.Efficiency.ResultList = (
                 ResultsPage.Efficiency.ResultList(self)
             )
+            self._custom_stats_grid: ResultsPage.ResultsView.OverallStatsGrid = (
+                ResultsPage.ResultsView.OverallStatsGrid(self)
+            )
             self._custom_card: SectionCard = SectionCard(
                 self, "사용자 지정 변화량 결과"
             )
             self._custom_card.add_widget(self._custom_list)
+            self._custom_card.add_separator()
+            self._custom_card.add_sub_title("변화 적용 후 전체 스탯")
+            self._custom_card.add_widget(self._custom_stats_grid)
             self._custom_card.setVisible(False)
 
             # 최적화 결과 카드
             self._opt_result_list: ResultsPage.Efficiency.ResultList = (
                 ResultsPage.Efficiency.ResultList(self)
             )
-            self._opt_stats_grid: ResultsPage.ResultsView.OptimizedStatsGrid = (
-                ResultsPage.ResultsView.OptimizedStatsGrid(self)
+            self._opt_stats_grid: ResultsPage.ResultsView.OverallStatsGrid = (
+                ResultsPage.ResultsView.OverallStatsGrid(self)
             )
             self._opt_card: SectionCard = SectionCard(self, "최적화 결과")
             self._opt_card.add_widget(self._opt_result_list)
@@ -4484,6 +4534,9 @@ class ResultsPage(QFrame):
             self._realm_up_list.set_rows(error_rows)
             self._scroll_list.set_rows(error_rows)
             self._custom_card.setVisible(False)
+
+            # 사용자 지정 변화량 전체 스탯 표시 초기화
+            self._custom_stats_grid.set_stats(None)
             self._opt_result_list.set_rows(error_rows)
             self._opt_stats_grid.set_stats(None)
 
@@ -4497,6 +4550,9 @@ class ResultsPage(QFrame):
             self._realm_up_list.set_rows(loading_rows)
             self._scroll_list.set_rows(loading_rows)
             self._custom_card.setVisible(False)
+
+            # 사용자 지정 변화량 전체 스탯 표시 초기화
+            self._custom_stats_grid.set_stats(None)
             self._opt_result_list.set_rows(loading_rows)
             self._opt_stats_grid.set_stats(None)
 
@@ -4512,7 +4568,12 @@ class ResultsPage(QFrame):
             self._scroll_list.set_rows(output_rows.scroll_efficiency)
             self._custom_card.setVisible(output_rows.has_custom_delta)
             if output_rows.has_custom_delta:
+                # 사용자 지정 변화량 결과 카드 하위 섹션 동기화
                 self._custom_list.set_rows(output_rows.custom_delta)
+                self._custom_stats_grid.set_stats(output_rows.custom_base_stats)
+            else:
+                # 사용자 지정 변화량 미입력 시 이전 전체 스탯 표시 제거
+                self._custom_stats_grid.set_stats(None)
             self._opt_result_list.set_rows(output_rows.optimization_result)
             self._opt_stats_grid.set_stats(output_rows.optimized_base_stats)
 
