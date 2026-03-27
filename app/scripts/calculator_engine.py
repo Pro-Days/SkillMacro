@@ -378,6 +378,10 @@ class EvaluationContext:
     baseline_base_stats: BaseStats
     baseline_final_stats: FinalStats
     baseline_summary: PowerSummary
+    server_spec: "ServerSpec"
+    preset: "MacroPreset"
+    skills_info: dict[str, "SkillUsageSetting"]
+    delay_ms: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -1593,6 +1597,10 @@ def build_calculator_context(
         baseline_base_stats=base_stats,
         baseline_final_stats=baseline_final_stats,
         baseline_summary=baseline_summary,
+        server_spec=server_spec,
+        preset=preset,
+        skills_info=skills_info,
+        delay_ms=delay_ms,
     )
 
 
@@ -1605,9 +1613,32 @@ def evaluate_stat_changes(
     # 기준 입력의 내부 원시 스탯 기준 변화량 적용 블록
     resolved_stats: FinalStats = context.baseline_base_stats.resolve(stat_changes)
 
+    # 스킬속도 변화 여부 기준 타임라인 재사용 분기 블록
+    timeline_artifacts: TimelineEvaluationArtifacts = context.timeline_artifacts
+    baseline_skill_speed: float = float(
+        context.baseline_final_stats.values[StatKey.SKILL_SPEED_PERCENT]
+    )
+    resolved_skill_speed: float = float(
+        resolved_stats.values[StatKey.SKILL_SPEED_PERCENT]
+    )
+    if resolved_skill_speed != baseline_skill_speed:
+
+        # 변경된 스킬속도 기준 타임라인 재구성 블록
+        updated_timeline: Timeline = build_calculator_timeline(
+            server_spec=context.server_spec,
+            preset=context.preset,
+            skills_info=context.skills_info,
+            delay_ms=context.delay_ms,
+            cooltime_reduction=resolved_skill_speed,
+        )
+        timeline_artifacts = _build_timeline_evaluation_artifacts(
+            updated_timeline,
+            level=context.timeline_artifacts.level,
+        )
+
     # 기준 타임라인 아티팩트 재사용 기반 전투력 재평가
     summary: PowerSummary = evaluate_calculator_power(
-        artifacts=context.timeline_artifacts,
+        artifacts=timeline_artifacts,
         resolved_stats=resolved_stats,
     )
 
