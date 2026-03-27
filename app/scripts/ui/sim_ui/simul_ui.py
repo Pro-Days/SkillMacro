@@ -1400,11 +1400,59 @@ class ResultsPage(QFrame):
             """페이지 이동에 필요한 입력 유효성 반환"""
 
             stats_valid: bool
+            base_stats: BaseStats
             level_valid: bool
-            stats_valid, _ = self._read_base_stats()
+            # 기본 입력과 원시 베이스 스탯 복원 블록
+            stats_valid, base_stats = self._read_base_stats()
             level_valid, _ = self._read_level()
+
+            # 스크롤 레벨 입력 검증 블록
             scroll_valid: bool = self._read_scroll_levels(save_levels=False)
-            return stats_valid and level_valid and scroll_valid
+            if not (stats_valid and level_valid and scroll_valid):
+                return False
+
+            # 시뮬레이터 그래프 분모 0 방지용 피해 계산 가능 여부 검증 블록
+            return self._has_positive_simulation_damage(base_stats)
+
+        def _has_positive_simulation_damage(self, base_stats: BaseStats) -> bool:
+            """시뮬레이터 진입 가능한 최소 피해 조건 검증"""
+
+            # 최종 공격 관련 스탯과 배율 복원 블록
+            resolved_stats: FinalStats = base_stats.resolve()
+            attack_power: float = resolved_stats.values[StatKey.ATTACK]
+            final_attack_multiplier: float = 1.0 + (
+                resolved_stats.values[StatKey.FINAL_ATTACK_PERCENT] * 0.01
+            )
+            boss_attack_multiplier: float = 1.0 + (
+                resolved_stats.values[StatKey.BOSS_ATTACK_PERCENT] * 0.01
+            )
+            skill_damage_multiplier: float = 1.0 + (
+                resolved_stats.values[StatKey.SKILL_DAMAGE_PERCENT] * 0.01
+            )
+
+            # 공격 관련 입력칸 강조 상태 동기화 블록
+            attack_input_valid: bool = attack_power > 0.0
+            final_attack_input_valid: bool = final_attack_multiplier > 0.0
+            boss_attack_input_valid: bool = boss_attack_multiplier > 0.0
+            skill_damage_input_valid: bool = skill_damage_multiplier > 0.0
+            self.stats_inputs.inputs[StatKey.ATTACK].set_valid(attack_input_valid)
+            self.stats_inputs.inputs[StatKey.FINAL_ATTACK_PERCENT].set_valid(
+                final_attack_input_valid
+            )
+            self.stats_inputs.inputs[StatKey.BOSS_ATTACK_PERCENT].set_valid(
+                boss_attack_input_valid
+            )
+            self.stats_inputs.inputs[StatKey.SKILL_DAMAGE_PERCENT].set_valid(
+                skill_damage_input_valid
+            )
+
+            # 그래프 비율 계산용 총 피해량 0 방지 블록
+            return (
+                attack_input_valid
+                and final_attack_input_valid
+                and boss_attack_input_valid
+                and skill_damage_input_valid
+            )
 
         def load_from_preset_state(self) -> None:
             """저장된 계산기 상태를 현재 입력 위젯에 반영"""
