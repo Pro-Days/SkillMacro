@@ -1277,11 +1277,12 @@ def _calculate_hit_damage(
             float(resolved_stats[StatKey.BOSS_ATTACK_PERCENT]) * 0.01
         )
 
-    # 기대 치명타를 반영한 기본 타격 데미지 계산
+    # 기대 치명타 배율 계산
     crit_rate: float = min(float(resolved_stats[StatKey.CRIT_RATE_PERCENT]), 100.0)
     crit_damage: float = float(resolved_stats[StatKey.CRIT_DAMAGE_PERCENT])
+    crit_bonus_ratio: float = (crit_damage - 100.0) * 0.01
     damage: float = attack_power * hit_event.multiplier
-    damage *= 1.0 + (crit_rate * crit_damage * 0.0001)
+    damage *= 1.0 + ((crit_rate * 0.01) * crit_bonus_ratio)
 
     damage *= 1.0 + (float(resolved_stats[StatKey.SKILL_DAMAGE_PERCENT]) * 0.01)
 
@@ -1308,11 +1309,12 @@ def _calculate_random_hit_damage(
     damage: float = attack_power * hit_event.multiplier
     damage *= rng.uniform(0.95, 1.05)
 
-    # 치명타 확률과 치명타 피해량 기반 랜덤 치명타 반영
+    # 치명타 추가 배율 계산
     crit_rate: float = min(float(resolved_stats[StatKey.CRIT_RATE_PERCENT]), 100.0)
     crit_damage: float = float(resolved_stats[StatKey.CRIT_DAMAGE_PERCENT])
+    crit_bonus_ratio: float = (crit_damage - 100.0) * 0.01
     if rng.random() < (crit_rate * 0.01):
-        damage *= 1.0 + (crit_damage * 0.01)
+        damage *= 1.0 + crit_bonus_ratio
 
     damage *= 1.0 + (float(resolved_stats[StatKey.SKILL_DAMAGE_PERCENT]) * 0.01)
 
@@ -1464,12 +1466,15 @@ def evaluate_calculator_power(
         attack_power: float = buffed_stats[_ATTACK]
         attack_power *= 1.0 + (buffed_stats[_FINAL_ATTACK_PERCENT] * 0.01)
 
+        # 치명타 기대 배율 계산
         crit_rate: float = buffed_stats[_CRIT_RATE_PERCENT]
         if crit_rate > 100.0:
             crit_rate = 100.0
+
         crit_damage: float = buffed_stats[_CRIT_DAMAGE_PERCENT]
+        crit_bonus_ratio: float = (crit_damage - 100.0) * 0.01
         skill_damage_mult: float = 1.0 + (buffed_stats[_SKILL_DAMAGE_PERCENT] * 0.01)
-        crit_mult: float = 1.0 + (crit_rate * crit_damage * 0.0001)
+        crit_mult: float = 1.0 + ((crit_rate * 0.01) * crit_bonus_ratio)
         base_damage: float = attack_power * multiplier * crit_mult * skill_damage_mult
 
         # 보스 데미지: 보스 공격력% 추가 반영
