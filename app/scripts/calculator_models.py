@@ -373,7 +373,14 @@ class BaseStats:
     def create_default(cls) -> "BaseStats":
         """기본 베이스 스탯 생성"""
 
-        return cls(values={stat_key.value: 0.0 for stat_key in OVERALL_STAT_ORDER})
+        # 전체 스탯 기본값 맵 구성
+        default_values: dict[str, float] = {
+            stat_key.value: 0.0 for stat_key in OVERALL_STAT_ORDER
+        }
+
+        # 치명타 공격력 기본 입력값 반영
+        default_values[StatKey.CRIT_DAMAGE_PERCENT.value] = 110.0
+        return cls(values=default_values)
 
     @classmethod
     def from_dict(cls, data: dict[str, float]) -> "BaseStats":
