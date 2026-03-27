@@ -41,8 +41,10 @@ class MacroConfig:
 
     # 이 계수를 조정하여 time.sleep과 실제 시간 간의 괴리를 조정
     # todo: 다른 방식으로 조정하도록 변경
-    SLEEP_COEFFICIENT_NORMAL: ClassVar[float] = 0.975
-    SLEEP_COEFFICIENT_UNIT: ClassVar[float] = 0.97
+    SLEEP_COEFFICIENT_NORMAL: ClassVar[float] = 1.0
+    SLEEP_COEFFICIENT_UNIT: ClassVar[float] = 1.0
+    # SLEEP_COEFFICIENT_NORMAL: ClassVar[float] = 0.975
+    # SLEEP_COEFFICIENT_UNIT: ClassVar[float] = 0.97
 
 
 @dataclass(frozen=True)
