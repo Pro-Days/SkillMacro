@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QLayoutItem,
     QPushButton,
     QScrollArea,
+    QScrollBar,
     QSizePolicy,
     QStackedLayout,
     QVBoxLayout,
@@ -27,7 +28,6 @@ from app.scripts.app_state import app_state
 from app.scripts.calculator_engine import (
     DISPLAY_POWER_METRICS,
     POWER_METRIC_LABELS,
-    build_base_state,
     build_calculator_context,
     build_internal_base_stats,
     evaluate_arbitrary_stat_delta,
@@ -36,9 +36,9 @@ from app.scripts.calculator_engine import (
     evaluate_scroll_upgrade_deltas,
     evaluate_single_stat_delta,
     optimize_current_selection,
-    validate_base_state,
 )
 from app.scripts.calculator_models import (
+    OVERALL_STAT_GRID_ROWS,
     OVERALL_STAT_ORDER,
     REALM_TIER_SPECS,
     STAT_SPECS,
@@ -81,8 +81,6 @@ from app.scripts.ui.sim_ui.graph import (
 
 if TYPE_CHECKING:
     from app.scripts.calculator_engine import (
-        BaseState,
-        BaseValidation,
         EvaluationContext,
         GraphAnalysis,
         GraphDamageEvent,
@@ -239,14 +237,28 @@ class SimUI:
     def adjust_main_frame_height(self) -> None:
         """현재 표시 중인 UI 높이에 맞춰 메인 프레임 높이를 동기화."""
 
-        current_widget = self.stacked_layout.currentWidget()
+        current_widget: QWidget | None = self.stacked_layout.currentWidget()
         if current_widget is None:
             return
 
+        current_layout: QLayout | None = current_widget.layout()
+        if current_layout is not None:
+            # 현재 페이지 레이아웃 최신 sizeHint 반영
+            current_layout.invalidate()
+            current_layout.activate()
+
+        # 현재 페이지 geometry 재계산
+        current_widget.updateGeometry()
         current_widget.adjustSize()
-        height = current_widget.sizeHint().height()
+        height: int = current_widget.sizeHint().height()
         if height > 0:
             self.main_frame.setFixedHeight(height)
+
+        # 스크롤 위치 범위 보정
+        vertical_bar: QScrollBar = self.scroll_area.verticalScrollBar()
+        vertical_bar.setValue(min(vertical_bar.value(), vertical_bar.maximum()))
+        horizontal_bar: QScrollBar = self.scroll_area.horizontalScrollBar()
+        horizontal_bar.setValue(min(horizontal_bar.value(), horizontal_bar.maximum()))
 
 
 class InputPage(QFrame):
@@ -502,8 +514,10 @@ class ResultsPage(QFrame):
         realm_up: list[tuple[str, str]]
         scroll_efficiency: list[tuple[str, str]]
         custom_delta: list[tuple[str, str]]
-        base_state: list[tuple[str, str]]
         optimization_result: list[tuple[str, str]]
+        has_custom_delta: bool
+        optimized_base_stats: BaseStats | None
+        selected_metric: "PowerMetric"
 
     def __init__(
         self,
@@ -516,13 +530,10 @@ class ResultsPage(QFrame):
         self.view: ResultsPage.ResultsView = self.ResultsView(self)
 
         layout = QVBoxLayout(self)
-
         layout.addWidget(self.efficiency_title)
         layout.addWidget(self.view)
-
-        # 레이아웃 여백과 간격 설정
-        layout.setSpacing(10)  # 위젯들 사이의 간격
-        layout.setContentsMargins(10, 10, 10, 10)  # 레이아웃의 여백
+        layout.setSpacing(10)
+        layout.setContentsMargins(10, 10, 10, 10)
         self.setLayout(layout)
 
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -655,40 +666,10 @@ class ResultsPage(QFrame):
             context=context,
         )
 
-        # 기준 상태 분리 결과 행 구성
-        validation: BaseValidation = validate_base_state(
-            base_stats=base_stats,
-            calculator_input=calculator_input,
+        # 사용자 지정 변화량 입력 여부
+        has_custom_delta: bool = any(
+            v != 0.0 for v in calculator_input.custom_stat_changes.values()
         )
-        if not validation.is_valid:
-            return cls.OutputRows(
-                current_power=current_power_rows,
-                stat_efficiency=stat_rows,
-                level_up=level_up_rows,
-                realm_up=realm_rows,
-                scroll_efficiency=scroll_rows,
-                custom_delta=custom_rows,
-                base_state=[("상태", "오류"), ("사유", validation.message)],
-                optimization_result=[("상태", "불가")],
-            )
-
-        base_state: BaseState = build_base_state(
-            base_stats=base_stats,
-            calculator_input=calculator_input,
-        )
-        base_state_rows: list[tuple[str, str]] = [
-            ("상태", "정상"),
-            (
-                "기준 공격력",
-                cls._format_current_power(
-                    base_state.final_stats.values[StatKey.ATTACK]
-                ),
-            ),
-            (
-                "기준 체력",
-                cls._format_current_power(base_state.final_stats.values[StatKey.HP]),
-            ),
-        ]
 
         # 최적화 결과 행 구성
         optimization_result: OptimizationResult | None = optimize_current_selection(
@@ -762,8 +743,14 @@ class ResultsPage(QFrame):
             realm_up=realm_rows,
             scroll_efficiency=scroll_rows,
             custom_delta=custom_rows,
-            base_state=base_state_rows,
             optimization_result=optimization_rows,
+            has_custom_delta=has_custom_delta,
+            optimized_base_stats=(
+                optimization_result.base_stats
+                if optimization_result is not None
+                else None
+            ),
+            selected_metric=selected_metric,
         )
 
     @classmethod
@@ -1061,6 +1048,16 @@ class ResultsPage(QFrame):
                     value_label: QLabel = QLabel(value, row_widget)
                     value_label.setFont(CustomFont(11))
                     value_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+
+                    # +/- 부호 기준 색상 코딩
+                    try:
+                        numeric: float = float(value.replace(",", ""))
+                        if numeric > 0:
+                            value_label.setStyleSheet("QLabel { color: #27AE60; }")
+                        elif numeric < 0:
+                            value_label.setStyleSheet("QLabel { color: #E74C3C; }")
+                    except ValueError:
+                        pass
 
                     row_layout.addWidget(title_label)
                     row_layout.addStretch(1)
@@ -3559,102 +3556,445 @@ class ResultsPage(QFrame):
             )
 
     class ResultsView(QFrame):
+        @staticmethod
+        def _clear_layout_widgets(target_layout: QLayout) -> None:
+            """결과 레이아웃 위젯 즉시 분리 및 삭제 예약"""
+
+            while target_layout.count():
+                child_item: QLayoutItem = target_layout.takeAt(0)
+                child_widget: QWidget | None = child_item.widget()
+                child_layout: QLayout | None = child_item.layout()
+
+                # 중첩 레이아웃 내부 항목 순차 제거
+                if child_layout is not None:
+                    ResultsPage.ResultsView._clear_layout_widgets(child_layout)
+
+                # 기존 위젯 부모 분리 및 삭제 예약
+                if child_widget is not None:
+                    child_widget.hide()
+                    child_widget.setParent(None)
+                    child_widget.deleteLater()
+
+        @staticmethod
+        def _refresh_widget_geometry(target_widget: QWidget) -> None:
+            """현재 콘텐츠 기준 위젯 geometry 재계산"""
+
+            target_layout: QLayout | None = target_widget.layout()
+            if target_layout is not None:
+                # 최신 콘텐츠 기준 레이아웃 재계산
+                target_layout.invalidate()
+                target_layout.activate()
+
+            # 최신 sizeHint 반영
+            target_widget.updateGeometry()
+            target_widget.adjustSize()
+
+        @staticmethod
+        def _sync_stack_host_height(start_widget: QWidget) -> None:
+            """동적 결과 목록 변경 후 상위 스택/스크롤 높이 재동기화"""
+
+            ancestor: QWidget | None = start_widget
+            scroll_area: QScrollArea | None = None
+            stack_host: QWidget | None = None
+            current_page: QWidget | None = None
+
+            while ancestor is not None:
+                # 스크롤 영역 도달 시 탐색 중단 — 스크롤 영역 자체는 리사이즈 불필요
+                if isinstance(ancestor, QScrollArea):
+                    scroll_area = ancestor
+                    break
+
+                ancestor_layout: QLayout | None = ancestor.layout()
+
+                # 메인 스택 호스트 탐색 — adjustSize 전에 식별
+                if isinstance(ancestor_layout, QStackedLayout):
+                    stack_host = ancestor
+                    current_page = ancestor_layout.currentWidget()
+
+                if ancestor_layout is not None:
+                    # 부모 레이아웃 sizeHint 무효화 및 재계산
+                    ancestor_layout.invalidate()
+                    ancestor_layout.activate()
+
+                # sizeHint 변경만 전파 — adjustSize 는 생략하여
+                # 스크롤 위치가 중간 리사이즈로 틀어지는 것을 방지
+                ancestor.updateGeometry()
+
+                ancestor = ancestor.parentWidget()
+
+            # 현재 페이지 기준 메인 프레임 높이 재고정
+            if stack_host is not None and current_page is not None:
+                current_layout: QLayout | None = current_page.layout()
+                if current_layout is not None:
+                    current_layout.invalidate()
+                    current_layout.activate()
+
+                current_page.updateGeometry()
+                current_height: int = current_page.sizeHint().height()
+                if current_height > 0:
+                    stack_host.setFixedHeight(current_height)
+
+            # 스크롤바 범위 재조정 후 현재 위치 보정
+            if scroll_area is not None:
+                vertical_bar: QScrollBar = scroll_area.verticalScrollBar()
+                vertical_bar.setValue(min(vertical_bar.value(), vertical_bar.maximum()))
+                horizontal_bar: QScrollBar = scroll_area.horizontalScrollBar()
+                horizontal_bar.setValue(
+                    min(horizontal_bar.value(), horizontal_bar.maximum())
+                )
+
+        class PowerResultList(QFrame):
+            """현재 전투력 전용 목록 — selected_metric 행 강조"""
+
+            def __init__(self, parent: QWidget) -> None:
+                super().__init__(parent)
+                self.setStyleSheet(
+                    "QFrame { background-color: transparent; border: 0px; }"
+                )
+                self.setSizePolicy(
+                    QSizePolicy.Policy.Expanding,
+                    QSizePolicy.Policy.Preferred,
+                )
+                self._layout: QVBoxLayout = QVBoxLayout(self)
+                self._layout.setContentsMargins(0, 0, 0, 0)
+                self._layout.setSpacing(4)
+                self.setLayout(self._layout)
+
+            def set_rows(
+                self,
+                rows: list[tuple[str, str]],
+                selected_label: str = "",
+            ) -> None:
+                # 이전 결과 행 즉시 제거
+                ResultsPage.ResultsView._clear_layout_widgets(self._layout)
+
+                for title, value in rows:
+                    is_selected: bool = title == selected_label
+                    font_size: int = 13 if is_selected else 11
+
+                    row_widget: QFrame = QFrame(self)
+                    if is_selected:
+                        row_widget.setStyleSheet(
+                            "QFrame { background-color: #EBF5FB;"
+                            " border-radius: 4px; border: 0px; }"
+                        )
+                    else:
+                        row_widget.setStyleSheet(
+                            "QFrame { background-color: transparent; border: 0px; }"
+                        )
+                    row_layout: QHBoxLayout = QHBoxLayout(row_widget)
+                    row_layout.setContentsMargins(
+                        8, 8 if is_selected else 5, 8, 8 if is_selected else 5
+                    )
+                    row_layout.setSpacing(10)
+
+                    title_label: QLabel = QLabel(title, row_widget)
+                    title_label.setFont(CustomFont(font_size, bold=is_selected))
+                    title_label.setStyleSheet(
+                        "QLabel { background: transparent; border: 0px; color: #2C3E50; }"
+                    )
+
+                    value_label: QLabel = QLabel(value, row_widget)
+                    value_label.setFont(CustomFont(font_size, bold=is_selected))
+                    value_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+                    value_label.setStyleSheet(
+                        "QLabel { background: transparent; border: 0px; color: #2C3E50; }"
+                    )
+
+                    # 행 최소 높이 확보
+                    row_widget.setMinimumHeight(
+                        max(
+                            title_label.sizeHint().height(),
+                            value_label.sizeHint().height(),
+                        )
+                        + 16
+                    )
+                    row_layout.addWidget(title_label)
+                    row_layout.addStretch(1)
+                    row_layout.addWidget(value_label)
+                    self._layout.addWidget(row_widget)
+
+                # 결과 목록 높이 재고정
+                ResultsPage.ResultsView._refresh_widget_geometry(self)
+
+        class RankedResultList(QFrame):
+            """순위형 결과 목록 — 미니 바 및 1위 배지 표시"""
+
+            def __init__(self, parent: QWidget) -> None:
+                super().__init__(parent)
+                self.setStyleSheet(
+                    "QFrame { background-color: transparent; border: 0px; }"
+                )
+                self.setSizePolicy(
+                    QSizePolicy.Policy.Expanding,
+                    QSizePolicy.Policy.Preferred,
+                )
+                self._rows: list[tuple[str, str]] = []
+                self._content_layout: QVBoxLayout = QVBoxLayout(self)
+                self._content_layout.setContentsMargins(0, 0, 0, 0)
+                self._content_layout.setSpacing(4)
+                self.setLayout(self._content_layout)
+
+            def set_rows(self, rows: list[tuple[str, str]]) -> None:
+                self._rows = rows
+                self._render()
+
+            def _render(self) -> None:
+                # 이전 순위 행 즉시 제거
+                ResultsPage.ResultsView._clear_layout_widgets(self._content_layout)
+
+                if not self._rows:
+                    # 빈 결과 상태 높이 재계산
+                    ResultsPage.ResultsView._refresh_widget_geometry(self)
+                    return
+
+                # 값 파싱 및 최대 절대값 계산
+                numeric_vals: list[float] = []
+                max_abs: float = 0.0
+                for _, value in self._rows:
+                    try:
+                        nv: float = float(value.replace(",", ""))
+                        numeric_vals.append(nv)
+                        if abs(nv) > max_abs:
+                            max_abs = abs(nv)
+                    except ValueError:
+                        numeric_vals.append(0.0)
+
+                for i, (title, value) in enumerate(self._rows):
+                    nv = numeric_vals[i]
+                    is_best: bool = i == 0 and len(self._rows) > 1
+
+                    row_widget: QFrame = QFrame(self)
+                    row_widget.setStyleSheet(
+                        "QFrame { background-color: transparent; border: 0px; }"
+                    )
+                    row_layout: QHBoxLayout = QHBoxLayout(row_widget)
+                    row_layout.setContentsMargins(8, 4, 8, 4)
+                    row_layout.setSpacing(8)
+
+                    # 1위 배지
+                    badge_label: QLabel = QLabel("★" if is_best else "", row_widget)
+                    badge_label.setFixedWidth(14)
+                    badge_label.setFont(CustomFont(10))
+                    badge_label.setStyleSheet(
+                        "QLabel { color: #F39C12; background: transparent; border: 0px; }"
+                    )
+                    row_layout.addWidget(badge_label)
+
+                    # 항목 이름 — 최소 폭만 보장하고 남는 공간 확장
+                    title_label: QLabel = QLabel(title, row_widget)
+                    title_label.setFont(CustomFont(11))
+                    title_label.setStyleSheet(
+                        "QLabel { background: transparent; border: 0px; }"
+                    )
+                    title_label.setFixedWidth(160)
+                    row_layout.addWidget(title_label)
+
+                    row_layout.addStretch(1)
+
+                    # 미니 바 — stretch 오른쪽에 위치해 값과 붙어있음
+                    bar_container: QFrame = QFrame(row_widget)
+                    bar_container.setFixedSize(80, 10)
+                    bar_container.setStyleSheet(
+                        "QFrame { background-color: #E8E8E8; border-radius: 3px; border: 0px; }"
+                    )
+                    if max_abs > 0:
+                        bar_fill: QFrame = QFrame(bar_container)
+                        bar_fill.setFixedHeight(10)
+                        bar_fill.setFixedWidth(max(1, int(80 * abs(nv) / max_abs)))
+                        bar_color: str = "#27AE60" if nv >= 0 else "#E74C3C"
+                        bar_fill.setStyleSheet(
+                            f"QFrame {{ background-color: {bar_color}; border-radius: 3px; border: 0px; }}"
+                        )
+                    row_layout.addWidget(bar_container)
+
+                    # 값 — 바 바로 오른쪽에 고정폭으로 배치
+                    value_label: QLabel = QLabel(value, row_widget)
+                    value_label.setFont(CustomFont(11))
+                    value_label.setFixedWidth(90)
+                    value_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+                    value_style: str = "background: transparent; border: 0px;"
+                    if nv > 0:
+                        value_style += " color: #27AE60;"
+                    elif nv < 0:
+                        value_style += " color: #E74C3C;"
+                    value_label.setStyleSheet(f"QLabel {{ {value_style} }}")
+                    row_layout.addWidget(value_label)
+
+                    # 순위 행 최소 높이 확보
+                    row_widget.setMinimumHeight(
+                        max(
+                            title_label.sizeHint().height(),
+                            value_label.sizeHint().height(),
+                        )
+                        + 12
+                    )
+                    self._content_layout.addWidget(row_widget)
+
+                # 순위 목록 높이 재고정
+                ResultsPage.ResultsView._refresh_widget_geometry(self)
+
+        class OptimizedStatsGrid(QFrame):
+            """최적화 후 전체 스탯 읽기 전용 2열 그리드"""
+
+            def __init__(self, parent: QWidget) -> None:
+                super().__init__(parent)
+                self.setStyleSheet(
+                    "QFrame { background-color: transparent; border: 0px; }"
+                )
+                self.setSizePolicy(
+                    QSizePolicy.Policy.Expanding,
+                    QSizePolicy.Policy.Preferred,
+                )
+                self._grid: QGridLayout = QGridLayout(self)
+                self._grid.setVerticalSpacing(6)
+                self._grid.setHorizontalSpacing(12)
+                self.setLayout(self._grid)
+
+            def set_stats(self, base_stats: BaseStats | None) -> None:
+                # 이전 스탯 셀 즉시 제거
+                ResultsPage.ResultsView._clear_layout_widgets(self._grid)
+
+                if base_stats is None:
+                    unavail: QLabel = QLabel("최적화 불가", self)
+                    unavail.setFont(CustomFont(11))
+                    unavail.setStyleSheet(
+                        "QLabel { color: #888888; background: transparent; border: 0px; }"
+                    )
+                    self._grid.addWidget(unavail, 0, 0)
+                    ResultsPage.ResultsView._refresh_widget_geometry(self)
+                    return
+
+                final_stats = base_stats.resolve()
+                for row_idx, (left_key, right_key) in enumerate(OVERALL_STAT_GRID_ROWS):
+                    for col_idx, stat_key in enumerate((left_key, right_key)):
+                        if stat_key is None:
+                            continue
+                        label_text: str = STAT_SPECS[stat_key]
+                        value_text: str = f"{final_stats.values[stat_key]:,.2f}"
+
+                        cell: QFrame = QFrame(self)
+                        cell.setStyleSheet(
+                            "QFrame { background-color: #F5F5F5;"
+                            " border-radius: 4px; border: 0px; }"
+                        )
+                        cell_layout: QHBoxLayout = QHBoxLayout(cell)
+                        cell_layout.setContentsMargins(8, 4, 8, 4)
+                        cell_layout.setSpacing(6)
+
+                        lbl: QLabel = QLabel(label_text, cell)
+                        lbl.setFont(CustomFont(10))
+                        lbl.setStyleSheet(
+                            "QLabel { color: #555555; background: transparent; border: 0px; }"
+                        )
+
+                        val: QLabel = QLabel(value_text, cell)
+                        val.setFont(CustomFont(10))
+                        val.setAlignment(Qt.AlignmentFlag.AlignRight)
+                        val.setStyleSheet(
+                            "QLabel { color: #2C3E50; background: transparent; border: 0px; }"
+                        )
+
+                        # 스탯 셀 최소 높이 확보
+                        cell.setMinimumHeight(
+                            max(lbl.sizeHint().height(), val.sizeHint().height()) + 12
+                        )
+                        cell_layout.addWidget(lbl)
+                        cell_layout.addStretch(1)
+                        cell_layout.addWidget(val)
+                        self._grid.addWidget(cell, row_idx, col_idx)
+
+                # 전체 스탯 그리드 높이 재고정
+                ResultsPage.ResultsView._refresh_widget_geometry(self)
+
         def __init__(
             self,
             parent: QFrame,
         ) -> None:
             super().__init__(parent)
+            self.setStyleSheet("QFrame { background-color: transparent; border: 0px; }")
 
-            if config.ui.debug_colors:
-                self.setStyleSheet(
-                    "QFrame { background-color: green; border: 0px solid; }"
-                )
-            else:
-                self.setStyleSheet(
-                    "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
-                )
+            # 현재 전투력 카드
+            self._power_list: ResultsPage.ResultsView.PowerResultList = (
+                ResultsPage.ResultsView.PowerResultList(self)
+            )
+            self._power_card: SectionCard = SectionCard(self, "현재 전투력")
+            self._power_card.add_widget(self._power_list)
 
-            # 결과 전용 출력 위젯 구성
-            self.current_power_title: QLabel = QLabel("현재 전투력", self)
-            self.current_power_title.setFont(CustomFont(12))
-            self.current_power_list: ResultsPage.Efficiency.ResultList = (
+            # 스탯 1당 효율 + 스크롤 +1 효율 통합 카드
+            self._stat_list: ResultsPage.ResultsView.RankedResultList = (
+                ResultsPage.ResultsView.RankedResultList(self)
+            )
+            self._scroll_list: ResultsPage.ResultsView.RankedResultList = (
+                ResultsPage.ResultsView.RankedResultList(self)
+            )
+            _vsep = QFrame(self)
+            _vsep.setFixedWidth(1)
+            _vsep.setStyleSheet("QFrame { background-color: #E0E0E0; border: 0px; }")
+            _vsep.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+            _scroll_wrapper = QWidget(self)
+            _scroll_wrapper.setStyleSheet(
+                "QWidget { background-color: transparent; border: 0px; }"
+            )
+            _scroll_wrapper_layout = QVBoxLayout(_scroll_wrapper)
+            _scroll_wrapper_layout.setContentsMargins(0, 0, 0, 0)
+            _scroll_wrapper_layout.setSpacing(0)
+            _scroll_wrapper_layout.addWidget(self._scroll_list)
+            _scroll_wrapper_layout.addStretch(1)
+            _scroll_wrapper.setLayout(_scroll_wrapper_layout)
+
+            _eff_row: QHBoxLayout = QHBoxLayout()
+            _eff_row.setContentsMargins(0, 0, 0, 0)
+            _eff_row.setSpacing(10)
+            _eff_row.addWidget(self._stat_list)
+            _eff_row.addWidget(_vsep)
+            _eff_row.addWidget(_scroll_wrapper)
+            self._stat_scroll_card: SectionCard = SectionCard(self, "효율 비교")
+            self._stat_scroll_card.add_layout(_eff_row)
+
+            # 성장 효율 카드 (레벨업 + 경지)
+            self._level_up_list: ResultsPage.Efficiency.ResultList = (
                 ResultsPage.Efficiency.ResultList(self)
             )
-
-            self.stat_efficiency_title: QLabel = QLabel("스탯 1당 효율", self)
-            self.stat_efficiency_title.setFont(CustomFont(12))
-            self.stat_efficiency_list: ResultsPage.Efficiency.ResultList = (
+            self._realm_up_list: ResultsPage.Efficiency.ResultList = (
                 ResultsPage.Efficiency.ResultList(self)
             )
+            self._growth_card: SectionCard = SectionCard(self, "성장 효율")
+            self._growth_card.add_sub_title("레벨 1업")
+            self._growth_card.add_widget(self._level_up_list)
+            self._growth_card.add_separator()
+            self._growth_card.add_sub_title("다음 경지")
+            self._growth_card.add_widget(self._realm_up_list)
 
-            self.level_up_title: QLabel = QLabel("레벨 1업 효율", self)
-            self.level_up_title.setFont(CustomFont(12))
-            self.level_up_list: ResultsPage.Efficiency.ResultList = (
+            # 사용자 지정 변화량 카드 (조건부 표시)
+            self._custom_list: ResultsPage.Efficiency.ResultList = (
                 ResultsPage.Efficiency.ResultList(self)
             )
+            self._custom_card: SectionCard = SectionCard(
+                self, "사용자 지정 변화량 결과"
+            )
+            self._custom_card.add_widget(self._custom_list)
+            self._custom_card.setVisible(False)
 
-            self.realm_up_title: QLabel = QLabel("다음 경지 효율", self)
-            self.realm_up_title.setFont(CustomFont(12))
-            self.realm_up_list: ResultsPage.Efficiency.ResultList = (
+            # 최적화 결과 카드
+            self._opt_result_list: ResultsPage.Efficiency.ResultList = (
                 ResultsPage.Efficiency.ResultList(self)
             )
-
-            self.scroll_efficiency_title: QLabel = QLabel("스크롤 +1 효율", self)
-            self.scroll_efficiency_title.setFont(CustomFont(12))
-            self.scroll_efficiency_list: ResultsPage.Efficiency.ResultList = (
-                ResultsPage.Efficiency.ResultList(self)
+            self._opt_stats_grid: ResultsPage.ResultsView.OptimizedStatsGrid = (
+                ResultsPage.ResultsView.OptimizedStatsGrid(self)
             )
+            self._opt_card: SectionCard = SectionCard(self, "최적화 결과")
+            self._opt_card.add_widget(self._opt_result_list)
+            self._opt_card.add_separator()
+            self._opt_card.add_sub_title("최적화 후 전체 스탯")
+            self._opt_card.add_widget(self._opt_stats_grid)
 
-            self.custom_delta_result_title: QLabel = QLabel(
-                "사용자 지정 변화량 결과", self
-            )
-            self.custom_delta_result_title.setFont(CustomFont(12))
-            self.custom_delta_result_list: ResultsPage.Efficiency.ResultList = (
-                ResultsPage.Efficiency.ResultList(self)
-            )
-
-            self.base_state_title: QLabel = QLabel("기준 상태 분리", self)
-            self.base_state_title.setFont(CustomFont(12))
-            self.base_state_list: ResultsPage.Efficiency.ResultList = (
-                ResultsPage.Efficiency.ResultList(self)
-            )
-
-            self.optimization_result_title: QLabel = QLabel("최적화 결과", self)
-            self.optimization_result_title.setFont(CustomFont(12))
-            self.optimization_result_list: ResultsPage.Efficiency.ResultList = (
-                ResultsPage.Efficiency.ResultList(self)
-            )
-
-            # 결과 섹션 묶음 레이아웃 구성
-            base_section: QWidget = QWidget(self)
-            base_section_layout: QVBoxLayout = QVBoxLayout(base_section)
-            base_section_layout.setContentsMargins(0, 0, 0, 0)
-            base_section_layout.setSpacing(10)
-            base_section_layout.addWidget(self.current_power_title)
-            base_section_layout.addWidget(self.current_power_list)
-            base_section_layout.addWidget(self.stat_efficiency_title)
-            base_section_layout.addWidget(self.stat_efficiency_list)
-            base_section_layout.addWidget(self.level_up_title)
-            base_section_layout.addWidget(self.level_up_list)
-            base_section_layout.addWidget(self.realm_up_title)
-            base_section_layout.addWidget(self.realm_up_list)
-            base_section_layout.addWidget(self.scroll_efficiency_title)
-            base_section_layout.addWidget(self.scroll_efficiency_list)
-            base_section_layout.addWidget(self.custom_delta_result_title)
-            base_section_layout.addWidget(self.custom_delta_result_list)
-
-            optimization_section: QWidget = QWidget(self)
-            optimization_section_layout: QVBoxLayout = QVBoxLayout(optimization_section)
-            optimization_section_layout.setContentsMargins(0, 0, 0, 0)
-            optimization_section_layout.setSpacing(10)
-            optimization_section_layout.addWidget(self.base_state_title)
-            optimization_section_layout.addWidget(self.base_state_list)
-            optimization_section_layout.addWidget(self.optimization_result_title)
-            optimization_section_layout.addWidget(self.optimization_result_list)
-
-            layout = QVBoxLayout(self)
-            layout.addWidget(base_section)
-            layout.addWidget(optimization_section)
+            layout: QVBoxLayout = QVBoxLayout(self)
+            layout.addWidget(self._power_card)
+            layout.addWidget(self._stat_scroll_card)
+            layout.addWidget(self._growth_card)
+            layout.addWidget(self._custom_card)
+            layout.addWidget(self._opt_card)
             layout.setSpacing(10)
             layout.setContentsMargins(10, 10, 10, 10)
             self.setLayout(layout)
@@ -3670,19 +4010,18 @@ class ResultsPage(QFrame):
             """결과 페이지 오류 상태 출력"""
 
             error_rows: list[tuple[str, str]] = [("상태", "오류")]
-            self.current_power_list.set_rows(error_rows)
-            self.stat_efficiency_list.set_rows(error_rows)
-            self.level_up_list.set_rows(error_rows)
-            self.realm_up_list.set_rows(error_rows)
-            self.scroll_efficiency_list.set_rows(error_rows)
-            self.custom_delta_result_list.set_rows(error_rows)
-            self.base_state_list.set_rows(error_rows)
-            self.optimization_result_list.set_rows(error_rows)
+            self._power_list.set_rows(error_rows)
+            self._stat_list.set_rows(error_rows)
+            self._level_up_list.set_rows(error_rows)
+            self._realm_up_list.set_rows(error_rows)
+            self._scroll_list.set_rows(error_rows)
+            self._custom_card.setVisible(False)
+            self._opt_result_list.set_rows(error_rows)
+            self._opt_stats_grid.set_stats(None)
 
         def refresh_from_preset(self) -> None:
             """저장된 계산기 상태 기준 결과 전용 출력 재구성"""
 
-            # 저장된 계산기 입력 상태 직접 조회
             preset: MacroPreset = self._get_preset()
             calculator_input: CalculatorPresetInput = preset.info.calculator
             base_stats: BaseStats = calculator_input.base_stats
@@ -3703,7 +4042,6 @@ class ResultsPage(QFrame):
                 self._set_error_outputs()
                 return
 
-            # 저장된 기준 입력 기준 전투력 컨텍스트 재구성
             context: EvaluationContext = build_calculator_context(
                 server_spec=app_state.macro.current_server,
                 preset=preset,
@@ -3722,14 +4060,18 @@ class ResultsPage(QFrame):
                 current_realm=calculator_input.realm_tier,
                 context=context,
             )
-            self.current_power_list.set_rows(output_rows.current_power)
-            self.stat_efficiency_list.set_rows(output_rows.stat_efficiency)
-            self.level_up_list.set_rows(output_rows.level_up)
-            self.realm_up_list.set_rows(output_rows.realm_up)
-            self.scroll_efficiency_list.set_rows(output_rows.scroll_efficiency)
-            self.custom_delta_result_list.set_rows(output_rows.custom_delta)
-            self.base_state_list.set_rows(output_rows.base_state)
-            self.optimization_result_list.set_rows(output_rows.optimization_result)
+
+            selected_label: str = POWER_METRIC_LABELS[output_rows.selected_metric]
+            self._power_list.set_rows(output_rows.current_power, selected_label)
+            self._stat_list.set_rows(output_rows.stat_efficiency)
+            self._level_up_list.set_rows(output_rows.level_up)
+            self._realm_up_list.set_rows(output_rows.realm_up)
+            self._scroll_list.set_rows(output_rows.scroll_efficiency)
+            self._custom_card.setVisible(output_rows.has_custom_delta)
+            if output_rows.has_custom_delta:
+                self._custom_list.set_rows(output_rows.custom_delta)
+            self._opt_result_list.set_rows(output_rows.optimization_result)
+            self._opt_stats_grid.set_stats(output_rows.optimized_base_stats)
 
 
 class SkillInputs(QFrame):
