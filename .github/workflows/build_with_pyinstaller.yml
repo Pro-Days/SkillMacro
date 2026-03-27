@@ -14,5 +14,5 @@ jobs:
           pyinstaller_ver: '==6.16.0'
           spec: 'SkillMacro.py'
           requirements: 'requirements.txt'
-          upload_exe_with_name: 'SkillMacro'
+          upload_exe_with_name: 'ProDaysSkillMacro'
           options: -F, -w, -i ".\app\resources\image\icon.ico", --add-data "app;app"
