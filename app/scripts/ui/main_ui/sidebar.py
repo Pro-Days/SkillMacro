@@ -33,6 +33,7 @@ from app.scripts.custom_skill_models import CustomScrollDefinition, CustomSkillI
 from app.scripts.data_manager import (
     custom_skills_file_dir,
     data_path,
+    read_custom_skills_data,
     remove_custom_scroll,
 )
 from app.scripts.macro_models import (
@@ -1503,15 +1504,12 @@ class SkillSettings(QFrame):
         )
 
         existing_skills: dict = {}
-        if os.path.isfile(custom_skills_file_dir):
-            with open(custom_skills_file_dir, "r", encoding="utf-8") as _f:
-                existing_raw: dict = json.load(_f)
-            if server_spec.id in existing_raw:
-                existing_skills = dict(
-                    CustomSkillImport.from_dict(
-                        existing_raw[server_spec.id]
-                    ).skill_details
-                )
+        # 검증된 커스텀 스킬 원본에서 기존 서버 스킬 상세 조회
+        existing_raw: dict[str, dict] = read_custom_skills_data()
+        if server_spec.id in existing_raw:
+            existing_skills = dict(
+                CustomSkillImport.from_dict(existing_raw[server_spec.id]).skill_details
+            )
 
         existing_scroll = CustomScrollDefinition(
             scroll_id=scroll_def.id,
@@ -1543,10 +1541,8 @@ class SkillSettings(QFrame):
                     )
                 )
 
-            existing: dict = {}
-            if os.path.isfile(custom_skills_file_dir):
-                with open(custom_skills_file_dir, "r", encoding="utf-8") as _f:
-                    existing = json.load(_f)
+            # 검증된 커스텀 스킬 원본 조회
+            existing: dict[str, dict] = read_custom_skills_data()
             server_data: dict = existing.get(
                 server_spec.id, {"skills": [], "scrolls": [], "skill_details": {}}
             )

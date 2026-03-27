@@ -50,7 +50,7 @@ from app.scripts.custom_skill_models import (
     HealEffectPayload,
     SkillEffectType,
 )
-from app.scripts.data_manager import custom_skills_file_dir, save_custom_skills
+from app.scripts.data_manager import read_custom_skills_data, save_custom_skills
 from app.scripts.macro_models import SkillUsageSetting
 from app.scripts.registry.key_registry import KeyRegistry
 from app.scripts.registry.resource_registry import (
@@ -1647,13 +1647,12 @@ class PopupManager:
 
                 # 기존 custom_skills.json과 병합 저장
                 existing_import: CustomSkillImport | None = None
-                if os.path.isfile(custom_skills_file_dir):
-                    with open(custom_skills_file_dir, "r", encoding="utf-8") as _f:
-                        existing_raw: dict = json.load(_f)
-                    if server_spec.id in existing_raw:
-                        existing_import = CustomSkillImport.from_dict(
-                            existing_raw[server_spec.id]
-                        )
+                # 검증된 커스텀 스킬 원본에서 기존 서버 데이터 조회
+                existing_raw: dict[str, dict] = read_custom_skills_data()
+                if server_spec.id in existing_raw:
+                    existing_import = CustomSkillImport.from_dict(
+                        existing_raw[server_spec.id]
+                    )
 
                 if existing_import is not None:
                     merged_skills = tuple(

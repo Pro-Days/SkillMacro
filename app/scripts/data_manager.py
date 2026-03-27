@@ -36,27 +36,53 @@ def create_default_custom_skills_data() -> None:
         json.dump({}, f, ensure_ascii=False, indent=4)
 
 
-def load_custom_skills() -> None:
-    """custom_skills.json 불러와 각 서버 SkillRegistry에 주입"""
+def read_custom_skills_data() -> dict[str, dict]:
+    """custom_skills.json 원본 데이터 반환"""
 
+    # 커스텀 스킬 파일이 없으면 빈 데이터 반환
     if not os.path.isfile(custom_skills_file_dir):
-        return
+        return {}
 
     try:
-        # 커스텀 스킬 원본 JSON 로드
+        # 커스텀 스킬 JSON 원본 로드
         with open(custom_skills_file_dir, "r", encoding="utf-8") as f:
-            raw: dict[str, dict] = json.load(f)
+            raw_obj: object = json.load(f)
 
-        # 레지스트리 반영 전 전체 구조 사전 검증
-        parsed_imports: dict[str, tuple[ServerSpec, CustomSkillImport]] = {}
+        # 루트 객체 타입 검증
+        if not isinstance(raw_obj, dict):
+            raise TypeError("custom_skills root must be a dict")
+
+        raw: dict[str, dict] = raw_obj
+
+        # 서버별 커스텀 스킬 구조 사전 검증
         for server_id, import_data in raw.items():
-            server_spec: ServerSpec = server_registry.get(server_id)
-            skill_import: CustomSkillImport = CustomSkillImport.from_dict(import_data)
-            parsed_imports[server_id] = (server_spec, skill_import)
+            if not isinstance(server_id, str):
+                raise TypeError("server_id must be a string")
+
+            if not isinstance(import_data, dict):
+                raise TypeError("custom skill import must be a dict")
+
+            CustomSkillImport.from_dict(import_data)
     except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
         # 손상된 커스텀 스킬 파일 초기화
         create_default_custom_skills_data()
-        return
+        return {}
+
+    return raw
+
+
+def load_custom_skills() -> None:
+    """custom_skills.json 불러와 각 서버 SkillRegistry에 주입"""
+
+    # 검증된 커스텀 스킬 원본 확보
+    raw: dict[str, dict] = read_custom_skills_data()
+
+    # 레지스트리 반영 전 전체 구조 파싱
+    parsed_imports: dict[str, tuple[ServerSpec, CustomSkillImport]] = {}
+    for server_id, import_data in raw.items():
+        server_spec: ServerSpec = server_registry.get(server_id)
+        skill_import: CustomSkillImport = CustomSkillImport.from_dict(import_data)
+        parsed_imports[server_id] = (server_spec, skill_import)
 
     # 검증이 끝난 커스텀 스킬만 레지스트리에 반영
     for server_id, parsed in parsed_imports.items():
@@ -93,8 +119,8 @@ def remove_custom_scroll(server_id: str, scroll_id: str) -> None:
     if not os.path.isfile(custom_skills_file_dir):
         return
 
-    with open(custom_skills_file_dir, "r", encoding="utf-8") as f:
-        existing: dict = json.load(f)
+    # 검증된 커스텀 스킬 원본 조회
+    existing: dict[str, dict] = read_custom_skills_data()
 
     if server_id not in existing:
         return
@@ -114,16 +140,8 @@ def remove_custom_scroll(server_id: str, scroll_id: str) -> None:
 def save_custom_skills(server_id: str, skill_import: CustomSkillImport) -> None:
     """custom_skills.json에 서버별 커스텀 스킬 저장"""
 
-    existing: dict[str, dict] = {}
-    if os.path.isfile(custom_skills_file_dir):
-        try:
-            # 기존 커스텀 스킬 파일 병합 로드
-            with open(custom_skills_file_dir, "r", encoding="utf-8") as f:
-                existing = json.load(f)
-        except (OSError, json.JSONDecodeError, TypeError, ValueError):
-            # 손상된 커스텀 스킬 파일 초기화
-            create_default_custom_skills_data()
-            existing = {}
+    # 검증된 기존 커스텀 스킬 원본 조회
+    existing: dict[str, dict] = read_custom_skills_data()
 
     existing[server_id] = skill_import.to_dict()
 
