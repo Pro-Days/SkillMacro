@@ -202,15 +202,13 @@ def add_preset() -> None:
     탭 추가시 데이터 생성
     """
 
-    repo = MacroPresetRepository(file_dir)
-    preset_file: MacroPresetFile = repo.load()
-
     new_preset: MacroPreset = get_default_preset()
-    preset_file.preset.append(new_preset)
-    repo.save(preset_file)
 
-    # 메모리에도 반영
-    app_state.macro.presets = preset_file.preset.copy()
+    # 기존 프리셋 객체 참조를 유지한 채 새 프리셋만 메모리에 추가
+    app_state.macro.presets.append(new_preset)
+
+    # 현재 메모리 상태 전체를 저장 파일에 반영
+    save_data()
 
 
 def get_default_preset() -> MacroPreset:
