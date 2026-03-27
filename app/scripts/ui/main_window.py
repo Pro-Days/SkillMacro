@@ -162,6 +162,16 @@ class MainWindow(QWidget):
         if latest_tag != config.version:
             self.popup_manager.show_notice(NoticeKind.REQUIRE_UPDATE)
 
+    def _show_pending_backup_notices(self) -> None:
+        """로딩 중 생성된 데이터 백업 알림 표시"""
+
+        # UI 초기화 전에 적재된 백업 알림 1회 표시
+        if not app_state.ui.has_pending_backup_notice:
+            return
+
+        app_state.ui.has_pending_backup_notice = False
+        self.popup_manager.show_notice(NoticeKind.DATA_FILE_BACKED_UP)
+
     def init_UI(self) -> None:
         """
         프로그램 처음 UI 설정
@@ -251,6 +261,9 @@ class MainWindow(QWidget):
         self.setLayout(layout)
 
         self.show()
+
+        # 데이터 로딩 중 생성된 백업 알림 표시
+        self._show_pending_backup_notices()
 
         # self.change_layout(1)
 

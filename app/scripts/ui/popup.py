@@ -116,6 +116,7 @@ class NoticeKind(Enum):
     # 업데이트/설정
     REQUIRE_UPDATE = auto()  # 업데이트 필요
     FAILED_UPDATE_CHECK = auto()  # 업데이트 확인 실패
+    DATA_FILE_BACKED_UP = auto()  # 데이터 파일 백업 완료
 
     # 시뮬레이션
     SIM_INPUT_ERROR = auto()  # 시뮬레이션 정보 입력 오류
@@ -949,6 +950,12 @@ class NoticeController:
 
             case NoticeKind.FAILED_UPDATE_CHECK:
                 return NoticeData("프로그램 업데이트 확인에 실패하였습니다.", "warning")
+
+            case NoticeKind.DATA_FILE_BACKED_UP:
+                return NoticeData(
+                    "데이터 파일 오류가 발생하여 백업 파일을 생성했습니다.",
+                    "warning",
+                )
 
             case NoticeKind.SIM_INPUT_ERROR:
                 return NoticeData("시뮬레이션 정보가 올바르게 입력되지 않았습니다.")

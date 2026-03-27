@@ -104,12 +104,16 @@ class UiState:
     # 업데이트 url
     update_url: str = ""
 
+    # 데이터 백업 알림 대기 여부 (팝업 매니저 로딩 전이라 임시)
+    has_pending_backup_notice: bool = False
+
     # 현재 활성화된 사이드바 페이지 인덱스
     current_sidebar_page: int = 0
 
     # 시작키 설정 중인지
     # todo: SessionState로 이동 고려
     is_setting_key: bool = False
+
 
 @dataclass
 class AppState:

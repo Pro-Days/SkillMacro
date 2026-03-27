@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime
 
 from app.scripts.app_state import app_state
 from app.scripts.config import config
@@ -23,6 +24,30 @@ local_appdata: str = os.environ.get("LOCALAPPDATA", default="")
 data_path: str = os.path.join(local_appdata, "ProDays", "SkillMacro")
 file_dir: str = os.path.join(data_path, "macros.json")
 custom_skills_file_dir: str = os.path.join(data_path, "custom_skills.json")
+
+
+def backup_data_file(file_path: str) -> None:
+    """오류가 난 데이터 파일을 타임스탬프 백업으로 이동"""
+
+    # 실제 파일이 있을 때만 백업 수행
+    if not os.path.isfile(file_path):
+        return
+
+    # 원본 이름을 유지한 타임스탬프 백업 경로 구성
+    directory_path: str = os.path.dirname(file_path)
+    original_name: str = os.path.basename(file_path)
+    stem: str
+    suffix: str
+    stem, suffix = os.path.splitext(original_name)
+    timestamp: str = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    backup_name: str = f"{stem}.backup-{timestamp}{suffix}"
+    backup_path: str = os.path.join(directory_path, backup_name)
+
+    # 손상 파일을 기본 파일 생성 전에 별도 백업으로 이동
+    os.replace(file_path, backup_path)
+
+    # UI 초기화 이후 표시할 백업 알림 대기 상태 반영
+    app_state.ui.has_pending_backup_notice = True
 
 
 def create_default_custom_skills_data() -> None:
@@ -64,7 +89,8 @@ def read_custom_skills_data() -> dict[str, dict]:
 
             CustomSkillImport.from_dict(import_data)
     except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
-        # 손상된 커스텀 스킬 파일 초기화
+        # 손상된 커스텀 스킬 파일 백업 후 초기화
+        backup_data_file(custom_skills_file_dir)
         create_default_custom_skills_data()
         return {}
 
@@ -77,12 +103,18 @@ def load_custom_skills() -> None:
     # 검증된 커스텀 스킬 원본 확보
     raw: dict[str, dict] = read_custom_skills_data()
 
-    # 레지스트리 반영 전 전체 구조 파싱
-    parsed_imports: dict[str, tuple[ServerSpec, CustomSkillImport]] = {}
-    for server_id, import_data in raw.items():
-        server_spec: ServerSpec = server_registry.get(server_id)
-        skill_import: CustomSkillImport = CustomSkillImport.from_dict(import_data)
-        parsed_imports[server_id] = (server_spec, skill_import)
+    try:
+        # 레지스트리 반영 전 전체 구조 파싱
+        parsed_imports: dict[str, tuple[ServerSpec, CustomSkillImport]] = {}
+        for server_id, import_data in raw.items():
+            server_spec: ServerSpec = server_registry.get(server_id)
+            skill_import: CustomSkillImport = CustomSkillImport.from_dict(import_data)
+            parsed_imports[server_id] = (server_spec, skill_import)
+    except (KeyError, TypeError, ValueError):
+        # 레지스트리에 반영할 수 없는 커스텀 스킬 파일 백업 후 초기화
+        backup_data_file(custom_skills_file_dir)
+        create_default_custom_skills_data()
+        return
 
     # 검증이 끝난 커스텀 스킬만 레지스트리에 반영
     for server_id, parsed in parsed_imports.items():
@@ -164,23 +196,31 @@ def load_data(num: int = -1) -> None:
         # 매크로 프리셋 파일 로드
         preset_file: MacroPresetFile = repo.load()
     except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
-        # 손상된 매크로 프리셋 파일 초기화
+        # 손상된 매크로 프리셋 파일 백업 후 초기화
+        backup_data_file(file_dir)
         create_default_data()
         preset_file = repo.load()
 
-    # 파일에 저장되지 않은 기본값 항목을 인-메모리로 복원
-    for preset in preset_file.preset:
-        server: ServerSpec = server_registry.get(preset.settings.server_id)
-        for scroll_id in server.skill_registry.get_all_scroll_ids():
-            preset.info.scroll_levels.setdefault(scroll_id, 1)
-        for skill_id in server.skill_registry.get_all_skill_ids():
-            preset.usage_settings.setdefault(skill_id, SkillUsageSetting())
+    try:
+        # 파일에 저장되지 않은 기본값 항목을 인-메모리로 복원
+        for preset in preset_file.preset:
+            server: ServerSpec = server_registry.get(preset.settings.server_id)
+            for scroll_id in server.skill_registry.get_all_scroll_ids():
+                preset.info.scroll_levels.setdefault(scroll_id, 1)
+            for skill_id in server.skill_registry.get_all_skill_ids():
+                preset.usage_settings.setdefault(skill_id, SkillUsageSetting())
 
-    # num이 -1이면 최근 탭, 아니면 해당 탭 번호
-    if num == -1:
-        target_index: int = preset_file.recent_preset
-    else:
-        target_index: int = num
+        # num이 -1이면 최근 탭, 아니면 해당 탭 번호
+        if num == -1:
+            target_index: int = preset_file.recent_preset
+        else:
+            target_index = num
+    except (KeyError, TypeError, ValueError):
+        # 후처리 불가능한 프리셋 파일 백업 후 초기화
+        backup_data_file(file_dir)
+        create_default_data()
+        preset_file = repo.load()
+        target_index = 0
 
     # 프리셋 업데이트
     app_state.macro.presets = preset_file.preset
@@ -301,17 +341,22 @@ def update_data() -> None:
         # 기존 프리셋 파일 기본 구조 검증
         preset_file: MacroPresetFile = repo.load()
     except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
-        # 손상된 프리셋 파일 기본값 재생성
+        # 손상된 프리셋 파일 백업 후 기본값 재생성
+        backup_data_file(file_dir)
         create_default_data()
         return
 
     # 비어있는 프리셋 목록 복구
     if not preset_file.preset:
+        # 비정상 프리셋 파일 백업 후 기본값 재생성
+        backup_data_file(file_dir)
         create_default_data()
         return
 
     # 최근 프리셋 인덱스 범위 복구
     if not (0 <= preset_file.recent_preset < len(preset_file.preset)):
+        # 비정상 프리셋 파일 백업 후 기본값 재생성
+        backup_data_file(file_dir)
         create_default_data()
         return
 
