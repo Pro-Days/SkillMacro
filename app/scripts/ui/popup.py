@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.scripts.app_state import app_state
-from app.scripts.calculator_models import get_stat_label
+from app.scripts.calculator_models import StatKey, get_stat_label
 from app.scripts.config import config
 from app.scripts.custom_classes import CustomFont, CustomLineEdit, CustomShadowEffect
 from app.scripts.custom_skill_models import (
@@ -175,6 +175,16 @@ class PopupAction:
     enabled: bool = True
     is_selected: bool = False
     on_trigger: Callable[[], None] | None = None
+
+
+@dataclass(frozen=True)
+class SkillLevelInputRow:
+    """레벨별 효과 입력 행 위젯 묶음"""
+
+    type_combo: QComboBox
+    amount_input: CustomLineEdit
+    stat_combo: QComboBox
+    duration_input: CustomLineEdit
 
 
 class PopupContent(QFrame):
@@ -2276,7 +2286,7 @@ class CustomSkillAddDialog(QDialog):
         ct_init: str,
         level_start: int,
         existing_levels: dict | None = None,
-    ) -> tuple[QFrame, CustomLineEdit, CustomLineEdit, dict[int, tuple]]:
+    ) -> tuple[QFrame, CustomLineEdit, CustomLineEdit, dict[int, SkillLevelInputRow]]:
         """스킬 카드 + 레벨별 효과 입력 (기본 숨김) 생성."""
         card: QFrame = QFrame(self)
         card.setObjectName("card")
@@ -2351,8 +2361,8 @@ class CustomSkillAddDialog(QDialog):
             }
         """
 
-        # level_inputs: {level: (combo, amount_input, stat_input, duration_input)}
-        level_inputs: dict[int, tuple] = {}
+        # 레벨별 입력 위젯 묶음 구성
+        level_inputs: dict[int, SkillLevelInputRow] = {}
 
         for lvl in range(level_start, self.max_skill_level + 1):
             row: QHBoxLayout = QHBoxLayout()
@@ -2379,15 +2389,17 @@ class CustomSkillAddDialog(QDialog):
             amount_inp.setStyleSheet(self._INPUT_STYLE)
             amount_inp.set_valid(True)
 
-            stat_inp: CustomLineEdit = CustomLineEdit(
-                level_widget, text="", point_size=9, border_radius=4
-            )
-            stat_inp.setPlaceholderText("스탯명")
-            stat_inp.setFixedHeight(24)
-            stat_inp.setFixedWidth(50)
-            stat_inp.setStyleSheet(self._INPUT_STYLE)
-            stat_inp.set_valid(True)
-            stat_inp.setVisible(False)
+            # 버프 대상 스탯 선택 콤보 구성
+            stat_combo: QComboBox = QComboBox(level_widget)
+            stat_key: StatKey
+            for stat_key in StatKey:
+                stat_combo.addItem(get_stat_label(stat_key), stat_key.value)
+
+            stat_combo.setFont(CustomFont(9))
+            stat_combo.setFixedHeight(24)
+            stat_combo.setFixedWidth(118)
+            stat_combo.setStyleSheet(_COMBO_STYLE)
+            stat_combo.setVisible(False)
 
             duration_inp: CustomLineEdit = CustomLineEdit(
                 level_widget, text="0", point_size=9, border_radius=4
@@ -2410,20 +2422,25 @@ class CustomSkillAddDialog(QDialog):
                     elif effect.type == SkillEffectType.BUFF:
                         type_combo.setCurrentIndex(2)
                         amount_inp.setText(str(effect.value))  # type: ignore[union-attr]
-                        stat_inp.setText(effect.stat)  # type: ignore[union-attr]
+                        # 저장된 스탯 키 기반 선택 상태 복원
+                        buff_stat_key: StatKey = StatKey(str(effect.stat))  # type: ignore[union-attr]
+                        stat_combo.setCurrentIndex(
+                            stat_combo.findData(buff_stat_key.value)
+                        )
                         duration_inp.setText(str(effect.duration))  # type: ignore[union-attr]
-                        stat_inp.setVisible(True)
+                        stat_combo.setVisible(True)
                         duration_inp.setVisible(True)
                     else:
                         amount_inp.setText(str(effect.damage))  # type: ignore[union-attr]
 
             def _on_type_change(
                 idx: int,
-                si: CustomLineEdit = stat_inp,
+                sc: QComboBox = stat_combo,
                 di: CustomLineEdit = duration_inp,
             ) -> None:
+                # 버프 타입 선택 시 추가 입력 위젯 노출
                 is_buff = idx == 2
-                si.setVisible(is_buff)
+                sc.setVisible(is_buff)
                 di.setVisible(is_buff)
 
             type_combo.currentIndexChanged.connect(_on_type_change)
@@ -2431,11 +2448,16 @@ class CustomSkillAddDialog(QDialog):
             row.addWidget(lv_lbl)
             row.addWidget(type_combo)
             row.addWidget(amount_inp)
-            row.addWidget(stat_inp)
+            row.addWidget(stat_combo)
             row.addWidget(duration_inp)
             row.addStretch()
             level_layout.addLayout(row)
-            level_inputs[lvl] = (type_combo, amount_inp, stat_inp, duration_inp)
+            level_inputs[lvl] = SkillLevelInputRow(
+                type_combo=type_combo,
+                amount_input=amount_inp,
+                stat_combo=stat_combo,
+                duration_input=duration_inp,
+            )
 
         layout.addWidget(level_widget)
 
@@ -2450,23 +2472,35 @@ class CustomSkillAddDialog(QDialog):
 
         return card, name_input, ct_input, level_inputs
 
-    def _build_levels(self, level_inputs: dict[int, tuple], level_start: int) -> dict:
+    def _build_levels(
+        self,
+        level_inputs: dict[int, SkillLevelInputRow],
+        level_start: int,
+    ) -> dict:
         """레벨 입력 위젯에서 levels dict 생성. level_start 미만은 데미지 0 고정."""
         levels: dict = {}
+
+        # 시작 레벨 이전 구간 기본 데미지 효과 구성
         for lvl in range(1, level_start):
             levels[str(lvl)] = [{"time": 0.0, "type": "damage", "damage": 0.0}]
-        for lvl, (combo, amount_inp, stat_inp, duration_inp) in level_inputs.items():
-            type_idx: int = combo.currentIndex()
+
+        # 레벨별 선택 타입에 맞는 저장 페이로드 구성
+        for lvl, input_row in level_inputs.items():
+            type_idx: int = input_row.type_combo.currentIndex()
             try:
-                amount: float = float(amount_inp.text().strip() or "0")
+                amount: float = float(input_row.amount_input.text().strip() or "0")
             except ValueError:
                 amount = 0.0
+
             if type_idx == 1:  # 힐
                 levels[str(lvl)] = [{"time": 0.0, "type": "heal", "heal": amount}]
             elif type_idx == 2:  # 버프
-                stat: str = stat_inp.text().strip()
+                # 선택형 콤보의 현재 스탯 키 저장
+                stat: str = str(input_row.stat_combo.currentData())
                 try:
-                    duration: float = float(duration_inp.text().strip() or "0")
+                    duration: float = float(
+                        input_row.duration_input.text().strip() or "0"
+                    )
                 except ValueError:
                     duration = 0.0
                 levels[str(lvl)] = [

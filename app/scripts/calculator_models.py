@@ -717,7 +717,14 @@ STAT_SPECS: dict[StatKey, str] = {
 def get_stat_label(stat_key: StatKey | str) -> str:
     """스탯 키 표시 이름 반환"""
 
-    resolved_stat_key: StatKey = StatKey(str(stat_key))
+    # enum 인스턴스 직접 전달 경로 우선 처리
+    if isinstance(stat_key, StatKey):
+        resolved_stat_key: StatKey = stat_key
+
+    # 문자열 기반 저장값 전달 경로 정규화
+    else:
+        resolved_stat_key = StatKey(stat_key)
+
     return STAT_SPECS[resolved_stat_key]
 
 
