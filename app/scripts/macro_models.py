@@ -33,7 +33,7 @@ class EquippedSkillRef:
 class MacroSkills:
     """매크로 스킬 데이터 모델"""
 
-    # 장착된 스크롤 ID 목록 (빈 슬롯은 "")
+    # 장착된 무공비급 ID 목록 (빈 슬롯은 "")
     equipped_scrolls: list[str] = field(default_factory=list)
 
     # 하단 슬롯 배치 스킬 ID 목록 (빈 슬롯은 "")
@@ -65,13 +65,13 @@ class MacroSkills:
         self,
         server_spec: "ServerSpec",
     ) -> list[str]:
-        """현재 장착 스크롤 기준 제공 스킬 ID 목록 반환"""
+        """현재 장착 무공비급 기준 제공 스킬 ID 목록 반환"""
 
-        # 장착된 스크롤 순서를 유지한 채 2개 스킬씩 평탄화 구성
+        # 장착된 무공비급 순서를 유지한 채 2개 스킬씩 평탄화 구성
         available_skill_ids: list[str] = []
 
         for scroll_id in self.equipped_scrolls:
-            # 빈 스크롤 슬롯은 제공 스킬이 없으므로 건너뛰기
+            # 빈 무공비급 슬롯은 제공 스킬이 없으므로 건너뛰기
             if not scroll_id:
                 continue
 
@@ -141,11 +141,11 @@ class MacroSkills:
         server_spec: "ServerSpec",
         skill_ref: EquippedSkillRef,
     ) -> str:
-        """(상단) 해당 위치의 스크롤로부터 스킬 ID 반환"""
+        """(상단) 해당 위치의 무공비급로부터 스킬 ID 반환"""
 
         scroll_id: str = self.equipped_scrolls[skill_ref.scroll_index]
 
-        # 위치에 스크롤이 장착되지 않은 경우
+        # 위치에 무공비급이 장착되지 않은 경우
         if not scroll_id:
             return ""
 
@@ -331,7 +331,7 @@ class LinkSkill:
 class PresetInfo:
     """프리셋 정보 데이터 모델"""
 
-    # 스크롤 레벨 (key: scroll_id, value: level)
+    # 무공비급 레벨 (key: scroll_id, value: level)
     scroll_levels: dict[str, int] = field(default_factory=dict)
     # 새 계산기 입력 상태
     calculator: CalculatorPresetInput = field(
@@ -357,14 +357,14 @@ class PresetInfo:
         }
 
     def get_scroll_level(self, scroll_id: str) -> int:
-        """스크롤 ID 기준 레벨 반환"""
+        """무공비급 ID 기준 레벨 반환"""
 
-        # 스크롤이 레벨 저장의 단일 기준이므로 ID로 직접 조회
+        # 무공비급이 레벨 저장의 단일 기준이므로 ID로 직접 조회
         level: int = self.scroll_levels[scroll_id]
         return level
 
     def set_scroll_level(self, scroll_id: str, level: int) -> None:
-        """스크롤 ID 기준 레벨 저장"""
+        """무공비급 ID 기준 레벨 저장"""
 
         self.scroll_levels[scroll_id] = level
 
@@ -373,9 +373,9 @@ class PresetInfo:
         server_spec: "ServerSpec",
         skill_id: str,
     ) -> int:
-        """스킬 ID 기준 소속 스크롤 레벨 반환"""
+        """스킬 ID 기준 소속 무공비급 레벨 반환"""
 
-        # 레지스트리의 직접 소속 매핑으로 스캔 없이 스크롤 레벨 조회
+        # 레지스트리의 직접 소속 매핑으로 스캔 없이 무공비급 레벨 조회
         scroll_id: str = server_spec.skill_registry.get_scroll_id_by_skill_id(skill_id)
         return self.get_scroll_level(scroll_id)
 
@@ -428,9 +428,7 @@ class MacroPreset:
             "settings": self.settings.to_dict(),
             # 기본값과 동일한 설정은 저장하지 않음
             "usage_settings": {
-                k: v.to_dict()
-                for k, v in self.usage_settings.items()
-                if v != _default
+                k: v.to_dict() for k, v in self.usage_settings.items() if v != _default
             },
             "link_skills": [ls.to_dict() for ls in self.link_skills],
             "info": self.info.to_dict(),
@@ -480,7 +478,7 @@ class MacroPreset:
             },
             link_skills=[],
             info=PresetInfo(
-                # 현재 서버의 모든 스크롤 레벨 기본값 구성
+                # 현재 서버의 모든 무공비급 레벨 기본값 구성
                 scroll_levels={scroll_id: 1 for scroll_id in scroll_ids.copy()},
                 calculator=CalculatorPresetInput.create_default(),
             ),

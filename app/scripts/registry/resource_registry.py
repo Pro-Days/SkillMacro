@@ -42,7 +42,7 @@ class ResourceRegistry:
 
     # 스킬 아이콘 캐시
     _SKILL_PIXMAP_CACHE: dict[str, QPixmap] = field(default_factory=dict)
-    # 스크롤 아이콘 캐시
+    # 무공비급 아이콘 캐시
     _SCROLL_PIXMAP_CACHE: dict[str, QPixmap] = field(default_factory=dict)
 
     # 폰트 디렉토리 등록
@@ -102,7 +102,7 @@ class ResourceRegistry:
         return colored
 
     def get_scroll_pixmap(self, scroll_id: str | None = None) -> QPixmap:
-        """스크롤 이미지 반환"""
+        """무공비급 이미지 반환"""
 
         if scroll_id is None:
             return QPixmap(convert_resource_path("resources\\image\\emptySkill.png"))
@@ -112,7 +112,7 @@ class ResourceRegistry:
         if scroll_id in self._SCROLL_PIXMAP_CACHE:
             return self._SCROLL_PIXMAP_CACHE[scroll_id]
 
-        # 스크롤 이름 기반 텍스트 아이콘 생성
+        # 무공비급 이름 기반 텍스트 아이콘 생성
         scroll_name: str = self._extract_icon_label(scroll_id)
         colored: QPixmap = self._build_labeled_pixmap(label=scroll_name)
 

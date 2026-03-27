@@ -66,7 +66,7 @@ if TYPE_CHECKING:
 
 
 def get_current_scroll_skill_ids(preset: MacroPreset) -> list[str]:
-    """현재 장착 스크롤 기준 제공 스킬 ID 목록 반환"""
+    """현재 장착 무공비급 기준 제공 스킬 ID 목록 반환"""
 
     return preset.skills.get_available_skill_ids(app_state.macro.current_server)
 
@@ -192,10 +192,10 @@ class Sidebar(QFrame):
         # 연계스킬 목록 내용 변화(추가/삭제/갱신) 시 사이드바 높이 동기화
         self.link_skill_settings.contentResized.connect(self.adjust_stack_height)
 
-        # 스킬 사용설정 스크롤 변경 시 사이드바 높이 동기화
+        # 스킬 사용설정 무공비급 변경 시 사이드바 높이 동기화
         self.skill_settings.contentResized.connect(self.adjust_stack_height)
 
-        # 커스텀 스크롤 삭제 시 메인 UI 갱신 시그널 전파
+        # 커스텀 무공비급 삭제 시 메인 UI 갱신 시그널 전파
         self.skill_settings.scrollDeleted.connect(self.scrollDeleted.emit)
 
         # 네비게이션 버튼
@@ -214,7 +214,7 @@ class Sidebar(QFrame):
         self.nav_button.set_active_button(0)
         self.adjust_stack_height()
 
-        # 스크롤바
+        # 무공비급바
         self.scroll_area: QScrollArea = QScrollArea()
         self.scroll_area.setWidget(self.page_navigator)
         self.scroll_area.setStyleSheet(
@@ -227,10 +227,10 @@ class Sidebar(QFrame):
             """
         )
 
-        # 위젯이 스크롤 영역에 맞춰 크기 조절되도록
+        # 위젯이 무공비급 영역에 맞춰 크기 조절되도록
         self.scroll_area.setWidgetResizable(True)
 
-        # 스크롤바 스크롤 설정
+        # 무공비급바 무공비급 설정
         self.scroll_area.setVerticalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOn
         )
@@ -960,7 +960,7 @@ class SkillSettings(QFrame):
         self._skill_ids: list[str] = []
         self._skill_cards: list[SkillSettingCardWidgets] = []
 
-        # 선택된 스크롤 요약 카드 구성
+        # 선택된 무공비급 요약 카드 구성
         self._selected_scroll_icon: QLabel = QLabel()
         self._selected_scroll_icon.setFixedSize(40, 40)
         self._selected_scroll_icon.setScaledContents(True)
@@ -1013,13 +1013,13 @@ class SkillSettings(QFrame):
             """
         )
 
-        # 선택 스크롤 카드 전역 호버 카드 연결
+        # 선택 무공비급 카드 전역 호버 카드 연결
         self.popup_manager.bind_hover_card(
             self._selected_scroll_button,
             self._build_selected_scroll_hover_card,
         )
 
-        # 커스텀 스크롤 수정/삭제 버튼 (커스텀 스크롤 선택 시에만 표시)
+        # 커스텀 무공비급 수정/삭제 버튼 (커스텀 무공비급 선택 시에만 표시)
         _custom_btn_style: str = """
             QPushButton {{
                 background-color: transparent;
@@ -1091,9 +1091,9 @@ class SkillSettings(QFrame):
         return preset
 
     def _sync_scroll_ids(self, scroll_defs: list["ScrollDef"]) -> None:
-        """현재 서버 스크롤 ID 목록 동기화"""
+        """현재 서버 무공비급 ID 목록 동기화"""
 
-        # 스크롤 ID 목록 비교용 캐시 구성
+        # 무공비급 ID 목록 비교용 캐시 구성
         scroll_ids: list[str] = [scroll_def.id for scroll_def in scroll_defs]
         if scroll_ids == self._scroll_ids:
             return
@@ -1101,28 +1101,28 @@ class SkillSettings(QFrame):
         self._scroll_ids = scroll_ids
 
     def _sync_selected_scroll(self, scroll_defs: list["ScrollDef"]) -> None:
-        """현재 선택 스크롤 상태 보정"""
+        """현재 선택 무공비급 상태 보정"""
 
-        # 스크롤이 없는 서버라면 선택 상태 초기화
+        # 무공비급이 없는 서버라면 선택 상태 초기화
         if not scroll_defs:
             self._selected_scroll_id = ""
             return
 
-        # 기존 선택이 유효하지 않으면 첫 번째 스크롤 선택
+        # 기존 선택이 유효하지 않으면 첫 번째 무공비급 선택
         available_scroll_ids: set[str] = {scroll_def.id for scroll_def in scroll_defs}
         if self._selected_scroll_id not in available_scroll_ids:
             self._selected_scroll_id = scroll_defs[0].id
 
     def _update_selected_scroll_card(self, scroll_def: "ScrollDef") -> None:
-        """선택된 스크롤 요약 카드 갱신"""
+        """선택된 무공비급 요약 카드 갱신"""
 
-        # 선택된 스크롤 아이콘과 이름 동기화
+        # 선택된 무공비급 아이콘과 이름 동기화
         scroll_pixmap: QPixmap = resource_registry.get_scroll_pixmap(scroll_def.id)
         self._selected_scroll_icon.setPixmap(scroll_pixmap)
         self._selected_scroll_name.setText(scroll_def.name)
         self._selected_scroll_name.setToolTip(scroll_def.name)
 
-        # 커스텀 스크롤이면 수정/삭제 버튼 표시
+        # 커스텀 무공비급이면 수정/삭제 버튼 표시
         is_custom: bool = scroll_def.id.startswith(f"{CUSTOM_SKILL_PREFIX}:")
         self._custom_actions_frame.setVisible(is_custom)
 
@@ -1378,7 +1378,7 @@ class SkillSettings(QFrame):
     def update_from_preset(self, preset: "MacroPreset") -> None:
         """프리셋으로부터 위젯 상태를 업데이트"""
 
-        # 서버 전체 스크롤 목록과 현재 선택 상태 동기화
+        # 서버 전체 무공비급 목록과 현재 선택 상태 동기화
         server_spec: "ServerSpec" = app_state.macro.current_server
         scroll_defs: list["ScrollDef"] = (
             server_spec.skill_registry.get_all_scroll_defs()
@@ -1391,7 +1391,7 @@ class SkillSettings(QFrame):
             self._selected_scroll_name.setText("")
             return
 
-        # 선택된 스크롤 카드와 대상 스킬 행 재구성
+        # 선택된 무공비급 카드와 대상 스킬 행 재구성
         scroll_def: "ScrollDef" = (
             app_state.macro.current_server.skill_registry.get_scroll(
                 self._selected_scroll_id
@@ -1438,13 +1438,13 @@ class SkillSettings(QFrame):
             card.priority_btn.setText("-" if p == 0 else str(p))
 
     def _build_selected_scroll_hover_card(self) -> HoverCardData | None:
-        """선택된 스크롤 카드 기준 호버 카드 구성"""
+        """선택된 무공비급 카드 기준 호버 카드 구성"""
 
-        # 선택 스크롤이 없는 초기 상태는 카드 미표시
+        # 선택 무공비급이 없는 초기 상태는 카드 미표시
         if not self._selected_scroll_id:
             return None
 
-        # 현재 선택 스크롤과 저장 레벨 기준으로 카드 내용 구성
+        # 현재 선택 무공비급과 저장 레벨 기준으로 카드 내용 구성
         scroll_def: "ScrollDef" = (
             app_state.macro.current_server.skill_registry.get_scroll(
                 self._selected_scroll_id
@@ -1466,20 +1466,20 @@ class SkillSettings(QFrame):
         return self.popup_manager.build_skill_hover_card(skill_id, level)
 
     def on_scroll_select_clicked(self) -> None:
-        """스크롤 선택 팝업 표시"""
+        """무공비급 선택 팝업 표시"""
 
         # 동일 팝업이 열려 있으면 토글 종료
         if self.popup_manager.is_popup_active(PopupKind.SCROLL_SELECT):
             self.popup_manager.close_popup()
             return
 
-        # 현재 서버의 전체 스크롤 목록 준비
+        # 현재 서버의 전체 무공비급 목록 준비
         server_spec: "ServerSpec" = app_state.macro.current_server
         scroll_defs: list["ScrollDef"] = (
             server_spec.skill_registry.get_all_scroll_defs()
         )
 
-        # 팝업 선택 결과를 현재 선택 스크롤에 반영
+        # 팝업 선택 결과를 현재 선택 무공비급에 반영
         def apply(scroll_id: str) -> None:
             self._selected_scroll_id = scroll_id
             self.update_from_preset(self._get_preset())
@@ -1496,7 +1496,7 @@ class SkillSettings(QFrame):
         )
 
     def _on_edit_custom_scroll(self) -> None:
-        """커스텀 스크롤 수정 다이얼로그 열기"""
+        """커스텀 무공비급 수정 다이얼로그 열기"""
 
         server_spec = app_state.macro.current_server
         scroll_def: ScrollDef = server_spec.skill_registry.get_scroll(
@@ -1569,7 +1569,7 @@ class SkillSettings(QFrame):
         dialog.exec()
 
     def _on_delete_custom_scroll(self) -> None:
-        """커스텀 스크롤 삭제"""
+        """커스텀 무공비급 삭제"""
 
         scroll_id: str = self._selected_scroll_id
         server_spec = app_state.macro.current_server
@@ -1578,9 +1578,9 @@ class SkillSettings(QFrame):
 
         remove_custom_scroll(server_spec.id, scroll_id)
 
-        # 모든 프리셋에서 삭제된 스크롤/스킬 관련 데이터 정리
+        # 모든 프리셋에서 삭제된 무공비급/스킬 관련 데이터 정리
         for preset in app_state.macro.presets:
-            # 장착 스크롤 슬롯에서 제거
+            # 장착 무공비급 슬롯에서 제거
             for i, sid in enumerate(preset.skills.equipped_scrolls):
                 if sid == scroll_id:
                     preset.skills.equipped_scrolls[i] = ""
@@ -2176,7 +2176,7 @@ class LinkSkillEditor(QFrame):
         )
 
     def _get_all_skill_ids(self) -> list[str]:
-        """현재 장착 스크롤 기준 제공 스킬 ID 목록을 반환"""
+        """현재 장착 무공비급 기준 제공 스킬 ID 목록을 반환"""
 
         preset: MacroPreset = self._get_preset()
         return get_current_scroll_skill_ids(preset)

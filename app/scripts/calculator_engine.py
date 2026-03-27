@@ -409,7 +409,7 @@ class RealmAdvanceEvaluation:
 
 @dataclass(frozen=True, slots=True)
 class ScrollUpgradeEvaluation:
-    """스크롤 레벨 상승 효율 계산 결과"""
+    """무공비급 레벨 상승 효율 계산 결과"""
 
     scroll_id: str
     scroll_name: str
@@ -1082,7 +1082,7 @@ def build_simulation_events(
         cooltime_reduction=cooltime_reduction,
     )
 
-    # 현재 스크롤 레벨 기준 데미지/버프 효과 테이블 조회
+    # 현재 무공비급 레벨 기준 데미지/버프 효과 테이블 조회
     placed_skill_ids: list[str] = preset.skills.get_placed_skill_ids()
     damage_effects_map: dict[str, list[DamageEffect]]
     buff_effects_map: dict[str, list[BuffEffect]]
@@ -1682,9 +1682,9 @@ def extract_skill_level_effects(
     preset: "MacroPreset",
     skill_id: str,
 ) -> list[LevelEffect]:
-    """현재 스크롤 레벨 기준 스킬 효과 목록 조회"""
+    """현재 무공비급 레벨 기준 스킬 효과 목록 조회"""
 
-    # 스크롤 레벨과 실제 효과 테이블 연결
+    # 무공비급 레벨과 실제 효과 테이블 연결
     skill_level: int = preset.info.get_skill_level(server_spec, skill_id)
     skill_effects: list[LevelEffect] = server_spec.skill_registry.get(skill_id).levels[
         skill_level
@@ -1700,7 +1700,7 @@ def build_skill_effect_maps(
 ) -> tuple[dict[str, list[DamageEffect]], dict[str, list[BuffEffect]]]:
     """현재 배치 스킬의 레벨별 데미지/버프 효과 맵 구성"""
 
-    # 스크롤 레벨 반영 효과를 데미지/버프별로 미리 분리
+    # 무공비급 레벨 반영 효과를 데미지/버프별로 미리 분리
     damage_effects_map: dict[str, list[DamageEffect]] = {}
     buff_effects_map: dict[str, list[BuffEffect]] = {}
 
@@ -1854,7 +1854,7 @@ def evaluate_scroll_upgrade_deltas(
     delay_ms: int,
     base_stats: BaseStats,
 ) -> list[ScrollUpgradeEvaluation]:
-    """각 스크롤 1레벨 상승 시 전투력 차이 계산"""
+    """각 무공비급 1레벨 상승 시 전투력 차이 계산"""
 
     # 현재 레벨 기준 기준 전투력 컨텍스트 구성
     baseline_context: EvaluationContext = build_calculator_context(
@@ -1865,23 +1865,23 @@ def evaluate_scroll_upgrade_deltas(
         base_stats=base_stats,
     )
 
-    # 현재 프리셋 장착 순서 기준 계산 대상 스크롤 목록 구성
+    # 현재 프리셋 장착 순서 기준 계산 대상 무공비급 목록 구성
     equipped_scroll_ids: list[str] = []
     seen_scroll_ids: set[str] = set()
     scroll_id: str
     for scroll_id in preset.skills.equipped_scrolls:
-        # 빈 슬롯과 중복 저장 스크롤 제외
+        # 빈 슬롯과 중복 저장 무공비급 제외
         if not scroll_id or scroll_id in seen_scroll_ids:
             continue
 
         equipped_scroll_ids.append(scroll_id)
         seen_scroll_ids.add(scroll_id)
 
-    # 스크롤별 1레벨 상승 효과 계산
+    # 무공비급별 1레벨 상승 효과 계산
     evaluations: list[ScrollUpgradeEvaluation] = []
     scroll_def: "ScrollDef"
     for scroll_id in equipped_scroll_ids:
-        # 현재 장착 스크롤 정의 조회
+        # 현재 장착 무공비급 정의 조회
         scroll_def = server_spec.skill_registry.get_scroll(scroll_id)
         current_level: int = preset.info.get_scroll_level(scroll_def.id)
         if current_level >= server_spec.max_skill_level:

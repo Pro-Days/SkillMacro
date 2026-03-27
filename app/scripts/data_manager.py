@@ -139,7 +139,7 @@ def load_custom_skills() -> None:
 
 
 def remove_custom_scroll(server_id: str, scroll_id: str) -> None:
-    """custom_skills.json에서 스크롤 및 연결 스킬 제거, SkillRegistry에서도 제거"""
+    """custom_skills.json에서 무공비급 및 연결 스킬 제거, SkillRegistry에서도 제거"""
 
     server_spec: ServerSpec = server_registry.get(server_id)
     scroll_def: ScrollDef = server_spec.skill_registry.get_scroll(scroll_id)

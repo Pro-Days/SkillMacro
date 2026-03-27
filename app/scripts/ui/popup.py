@@ -537,7 +537,7 @@ class ActionListContent(PopupContent):
             """
         )
 
-        # 스크롤바 없이 전체 항목을 나열
+        # 무공비급바 없이 전체 항목을 나열
         v = QVBoxLayout(self)
         v.setContentsMargins(5, 5, 5, 5)
         v.setSpacing(5)
@@ -709,7 +709,7 @@ class PopupHost(QWidget):
         # 팝업 내용 위젯
         self._content: QWidget | None = None
 
-        # 스크롤 이벤트를 감지하기 위한 이벤트 필터 설치
+        # 무공비급 이벤트를 감지하기 위한 이벤트 필터 설치
         app: QCoreApplication | None = QGuiApplication.instance()
         if app is not None:
             app.installEventFilter(self)
@@ -773,9 +773,9 @@ class PopupHost(QWidget):
         self.move(x, y)
 
     def eventFilter(self, obj, event: QEvent) -> bool:  # type: ignore
-        """부모 위젯의 스크롤 이벤트를 감지"""
+        """부모 위젯의 무공비급 이벤트를 감지"""
 
-        # 스크롤 이벤트 감지 및 팝업 닫기
+        # 무공비급 이벤트 감지 및 팝업 닫기
         if self.isVisible() and event.type() == QEvent.Type.Wheel:
             self.close()
             return False
@@ -891,9 +891,9 @@ class NoticeHost(PopupHost):
         pass
 
     def eventFilter(self, watched, event: QEvent) -> bool:  # type: ignore
-        """부모 위젯의 스크롤 이벤트를 감지"""
+        """부모 위젯의 무공비급 이벤트를 감지"""
 
-        # 스크롤 이벤트 감지
+        # 무공비급 이벤트 감지
         if event.type() == QEvent.Type.Wheel:
             return False
 
@@ -1178,9 +1178,9 @@ class PopupManager:
         scroll_def: ScrollDef,
         level: int,
     ) -> HoverCardData:
-        """스크롤 정보 호버 카드 데이터 구성"""
+        """무공비급 정보 호버 카드 데이터 구성"""
 
-        # 스크롤 공용 레벨 표시 라인 먼저 구성
+        # 무공비급 공용 레벨 표시 라인 먼저 구성
         lines: list[HoverCardLine] = [
             HoverCardLine(f"레벨 {level}", color="#F0EAD6"),
         ]
@@ -1273,9 +1273,9 @@ class PopupManager:
         return lines
 
     def _build_effect_summary(self, effects: list[LevelEffect]) -> str:
-        """스크롤 카드용 짧은 효과 요약 구성"""
+        """무공비급 카드용 짧은 효과 요약 구성"""
 
-        # 여러 효과를 한 줄 요약으로 합쳐 스크롤 카드 높이 최소화
+        # 여러 효과를 한 줄 요약으로 합쳐 무공비급 카드 높이 최소화
         summaries: list[str] = []
 
         for effect in effects:
@@ -1615,7 +1615,7 @@ class PopupManager:
         on_selected: Callable[[str], None],
         on_add_skill: Callable[[], None] | None = None,
     ) -> None:
-        """스크롤 선택 팝업"""
+        """무공비급 선택 팝업"""
 
         if app_state.macro.is_running:
             self.show_notice(NoticeKind.MACRO_IS_RUNNING)
@@ -1680,7 +1680,7 @@ class PopupManager:
 
                 save_custom_skills(server_spec.id, merged)
 
-                # 현재 세션 인-메모리에 새 스크롤/스킬 기본값 반영
+                # 현재 세션 인-메모리에 새 무공비급/스킬 기본값 반영
                 for preset in app_state.macro.presets:
                     for scroll in skill_import.scrolls:
                         preset.info.scroll_levels.setdefault(scroll.scroll_id, 1)
@@ -1846,7 +1846,7 @@ class SkillGridSelectContent(QFrame):
         root.setContentsMargins(margin, margin, margin, margin)
         root.setSpacing(spacing)
 
-        # 스크롤 영역
+        # 무공비급 영역
         scroll = QScrollArea(self)
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -1894,7 +1894,7 @@ class SkillGridSelectContent(QFrame):
         root.addWidget(scroll)
         self.setLayout(root)
 
-        # 보여줄 최대 행 수만큼 높이 제한(스크롤로 나머지 보기)
+        # 보여줄 최대 행 수만큼 높이 제한(무공비급로 나머지 보기)
         visible_rows: int = min(
             max_visible_rows,
             (len(skill_ids) + columns - 1) // columns,
@@ -1914,7 +1914,7 @@ class SkillGridSelectContent(QFrame):
 
 
 class ScrollGridSelectContent(QFrame):
-    """스크롤 선택용 그리드 컨텐츠"""
+    """무공비급 선택용 그리드 컨텐츠"""
 
     selected = Signal(str)
 
@@ -1928,7 +1928,7 @@ class ScrollGridSelectContent(QFrame):
     ) -> None:
         super().__init__()
 
-        # 스크롤 선택 팝업 루트 식별자 지정
+        # 무공비급 선택 팝업 루트 식별자 지정
         self.setObjectName("skillScrollSelectPopup")
 
         self.popup_manager: PopupManager = popup_manager
@@ -2047,9 +2047,9 @@ class ScrollGridSelectContent(QFrame):
         scroll_area.setFixedHeight(estimated_height)
 
     def _emit_scroll_selected(self, scroll_id: str, is_occupied: bool) -> None:
-        """점유 여부를 확인한 뒤 스크롤 선택 이벤트 전달"""
+        """점유 여부를 확인한 뒤 무공비급 선택 이벤트 전달"""
 
-        # 다른 칸에서 사용 중인 스크롤은 선택만 차단
+        # 다른 칸에서 사용 중인 무공비급은 선택만 차단
         if is_occupied:
             return
 
@@ -2059,15 +2059,15 @@ class ScrollGridSelectContent(QFrame):
         self,
         scroll_def: ScrollDef,
     ) -> HoverCardData | None:
-        """스크롤 버튼 기준 호버 카드 구성"""
+        """무공비급 버튼 기준 호버 카드 구성"""
 
-        # 스크롤 ID 자체를 공용 레벨 저장 키로 직접 사용
+        # 무공비급 ID 자체를 공용 레벨 저장 키로 직접 사용
         level: int = app_state.macro.current_preset.info.get_scroll_level(scroll_def.id)
         return self.popup_manager.build_scroll_hover_card(scroll_def, level)
 
 
 class CustomSkillAddDialog(QDialog):
-    """커스텀 스크롤/스킬 추가·수정 폼 다이얼로그"""
+    """커스텀 무공비급/스킬 추가·수정 폼 다이얼로그"""
 
     skill_added = Signal(CustomSkillImport)
 
@@ -2107,7 +2107,7 @@ class CustomSkillAddDialog(QDialog):
         self._existing_scroll = existing_scroll
 
         is_edit: bool = existing_scroll is not None
-        self.setWindowTitle("스크롤 수정" if is_edit else "스크롤 추가")
+        self.setWindowTitle("무공비급 수정" if is_edit else "무공비급 추가")
         self.setFixedSize(400, 520)
 
         # 기존 값 준비
@@ -2141,9 +2141,9 @@ class CustomSkillAddDialog(QDialog):
         root.setContentsMargins(20, 20, 20, 20)
         root.setSpacing(14)
 
-        # ── 스크롤 카드 ──
+        # ── 무공비급 카드 ──
         scroll_card, (self._scroll_name_input,) = self._make_card(
-            "스크롤",
+            "무공비급",
             [("이름", scroll_name_init)],
         )
         root.addWidget(scroll_card)
@@ -2171,7 +2171,7 @@ class CustomSkillAddDialog(QDialog):
         root.addWidget(skill2_card)
         root.addStretch()
 
-        # ── 에러 라벨 (스크롤 영역 밖, 하단 고정) ──
+        # ── 에러 라벨 (무공비급 영역 밖, 하단 고정) ──
         self._error_label: QLabel = QLabel(self)
         self._error_label.setFont(CustomFont(10))
         self._error_label.setStyleSheet(
@@ -2182,7 +2182,7 @@ class CustomSkillAddDialog(QDialog):
         self._error_label.hide()
         outer.addWidget(self._error_label)
 
-        # ── 버튼 행 (스크롤 영역 밖, 하단 고정) ──
+        # ── 버튼 행 (무공비급 영역 밖, 하단 고정) ──
         btn_row: QHBoxLayout = QHBoxLayout()
         btn_row.setSpacing(8)
         btn_row.setContentsMargins(20, 8, 20, 16)
@@ -2492,7 +2492,7 @@ class CustomSkillAddDialog(QDialog):
         # 필드 유효성 검사
         valid: bool = True
         for inp, value, msg in [
-            (self._scroll_name_input, scroll_name, "스크롤 이름을 입력해주세요."),
+            (self._scroll_name_input, scroll_name, "무공비급 이름을 입력해주세요."),
             (self._skill1_name_input, skill1_name, "스킬 1 이름을 입력해주세요."),
             (self._skill2_name_input, skill2_name, "스킬 2 이름을 입력해주세요."),
         ]:

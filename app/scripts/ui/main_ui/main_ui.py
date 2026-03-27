@@ -181,7 +181,7 @@ class MainUI(QFrame):
         )
 
     def on_scroll_select_requested(self, scroll_index: int) -> None:
-        """스크롤 선택 팝업"""
+        """무공비급 선택 팝업"""
 
         def apply(scroll_id: str) -> None:
             current_tab: Tab = self.tab_widget.get_current_tab()
@@ -491,7 +491,7 @@ class Tab(QFrame):
         self.skillKeyRequested.emit(index)
 
     def on_scroll_clicked(self, scroll_index: int) -> None:
-        """상단 스크롤 버튼 클릭"""
+        """상단 무공비급 버튼 클릭"""
 
         if app_state.ui.current_sidebar_page == 4:
             self.noticeRequested.emit(NoticeKind.EDITING_LINK_SKILL)
@@ -501,14 +501,14 @@ class Tab(QFrame):
             self.noticeRequested.emit(NoticeKind.MACRO_IS_RUNNING)
             return
 
-        # 메인 상단 슬롯 재클릭 시 현재 장착 스크롤 즉시 해제
+        # 메인 상단 슬롯 재클릭 시 현재 장착 무공비급 즉시 해제
         current_scroll_id: str = self.preset.skills.equipped_scrolls[scroll_index]
         if current_scroll_id:
             self.apply_scroll(scroll_index, current_scroll_id)
             self.dataChanged.emit()
             return
 
-        # 빈 슬롯 클릭 시에만 스크롤 선택 팝업 노출
+        # 빈 슬롯 클릭 시에만 무공비급 선택 팝업 노출
         self.scrollSelectRequested.emit(scroll_index)
 
     def on_placed_skill_clicked(self, skill_ref: EquippedSkillRef) -> None:
@@ -571,7 +571,7 @@ class Tab(QFrame):
         if not selected_skill_id:
             return
 
-        # 현재 장착된 스크롤이 제공하는 스킬만 배치 대상으로 허용
+        # 현재 장착된 무공비급이 제공하는 스킬만 배치 대상으로 허용
         available_skill_ids: list[str] = self.preset.skills.get_available_skill_ids(
             app_state.macro.current_server
         )
@@ -596,10 +596,10 @@ class Tab(QFrame):
         self.dataChanged.emit()
 
     def apply_scroll(self, scroll_index: int, scroll_id: str) -> bool:
-        """스크롤 장착 적용"""
+        """무공비급 장착 적용"""
 
         current_scroll_id: str = self.preset.skills.equipped_scrolls[scroll_index]
-        # 동일 스크롤 재선택 시 해당 슬롯 장착 해제 처리
+        # 동일 무공비급 재선택 시 해당 슬롯 장착 해제 처리
         target_scroll_id: str = ""
         if current_scroll_id != scroll_id:
             target_scroll_id = scroll_id
@@ -608,7 +608,7 @@ class Tab(QFrame):
         if target_scroll_id and target_scroll_id in self.preset.skills.equipped_scrolls:
             return False
 
-        # 교체 또는 해제 전 기존 스크롤 제공 스킬 정리
+        # 교체 또는 해제 전 기존 무공비급 제공 스킬 정리
         if current_scroll_id:
             current_scroll_def: ScrollDef = (
                 app_state.macro.current_server.skill_registry.get_scroll(
@@ -626,14 +626,14 @@ class Tab(QFrame):
         return True
 
     def _sync_link_skills_to_available_skills(self) -> None:
-        """현재 스크롤 기준으로 연계스킬 목록 정리"""
+        """현재 무공비급 기준으로 연계스킬 목록 정리"""
 
         available_skill_ids: set[str] = set(
             self.preset.skills.get_available_skill_ids(app_state.macro.current_server)
         )
         filtered_link_skills: list[LinkSkill] = []
 
-        # 현재 스크롤이 더 이상 제공하지 않는 스킬은 연계 목록에서 제거
+        # 현재 무공비급이 더 이상 제공하지 않는 스킬은 연계 목록에서 제거
         for link_skill in self.preset.link_skills:
             filtered_skill_ids: list[str] = [
                 skill_id
@@ -718,7 +718,7 @@ class Tab(QFrame):
         return self.placed_skills.get_key_button(index)
 
     def get_scroll_button(self, index: int) -> QPushButton:
-        """스크롤 버튼 반환"""
+        """무공비급 버튼 반환"""
 
         return self.available_skills.get_scroll_button(index)
 
@@ -844,7 +844,7 @@ class SkillPreview(QFrame):
 
 
 class AvailableSkillPanel(QFrame):
-    """상단 장착 스크롤과 사용 가능 스킬 패널"""
+    """상단 장착 무공비급과 사용 가능 스킬 패널"""
 
     scrollClicked = Signal(int)
     skillClicked = Signal(object)
@@ -882,7 +882,7 @@ class AvailableSkillPanel(QFrame):
             column.update_from_preset(preset)
 
     def get_scroll_button(self, index: int) -> QPushButton:
-        """스크롤 버튼 반환"""
+        """무공비급 버튼 반환"""
 
         return self.columns[index].scroll_button
 
@@ -989,9 +989,9 @@ class AvailableSkillPanel(QFrame):
                 )
 
         def _build_scroll_hover_card(self) -> HoverCardData | None:
-            """현재 컬럼 스크롤 기준 호버 카드 구성"""
+            """현재 컬럼 무공비급 기준 호버 카드 구성"""
 
-            # 스크롤 미장착 상태에서는 카드 대신 기본 안내 숨김 처리
+            # 무공비급 미장착 상태에서는 카드 대신 기본 안내 숨김 처리
             preset: MacroPreset = app_state.macro.current_preset
             scroll_id: str = preset.skills.equipped_scrolls[self.scroll_index]
 

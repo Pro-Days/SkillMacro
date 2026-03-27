@@ -173,7 +173,7 @@ class CustomComboBox(QComboBox):
         닫힌 상태 휠 변경 방지
         """
 
-        # 드롭다운 펼침 상태에서만 기본 스크롤 동작 허용
+        # 드롭다운 펼침 상태에서만 기본 무공비급 동작 허용
         if self.view().isVisible():
             super().wheelEvent(event)
 

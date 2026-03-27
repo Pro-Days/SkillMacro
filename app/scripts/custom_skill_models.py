@@ -234,7 +234,7 @@ class CustomSkillDefinition:
 
 @dataclass(frozen=True, slots=True)
 class CustomScrollDefinition:
-    """커스텀 스크롤 입력 데이터"""
+    """커스텀 무공비급 입력 데이터"""
 
     scroll_id: str
     name: str
@@ -242,7 +242,7 @@ class CustomScrollDefinition:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "CustomScrollDefinition":
-        # 스크롤 기본 필수 필드 검증
+        # 무공비급 기본 필수 필드 검증
         scroll_id: str = _require_text(data, "scroll_id")
         name: str = _require_text(data, "name")
         raw_skills: Any = data["skills"]
@@ -266,7 +266,7 @@ class CustomScrollDefinition:
         )
 
     def to_dict(self) -> dict[str, Any]:
-        # 저장용 스크롤 데이터 직렬화
+        # 저장용 무공비급 데이터 직렬화
         payload: dict[str, Any] = {
             "scroll_id": self.scroll_id,
             "name": self.name,
@@ -345,7 +345,7 @@ class CustomSkillImport:
         scrolls: list[CustomScrollDefinition] = []
         seen_scroll_ids: set[str] = set()
 
-        # 스크롤 정의 정규화 및 스킬 참조 무결성 검증
+        # 무공비급 정의 정규화 및 스킬 참조 무결성 검증
         for raw_scroll in raw_scrolls:
             if not isinstance(raw_scroll, dict):
                 raise CustomSkillImportError("scroll must be a dictionary")

@@ -133,7 +133,7 @@ class SkillDef:
 
 @dataclass(frozen=True, slots=True)
 class ScrollDef:
-    """스크롤 데이터"""
+    """무공비급 데이터"""
 
     id: str
     server_id: str

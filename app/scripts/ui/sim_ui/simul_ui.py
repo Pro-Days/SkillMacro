@@ -134,16 +134,16 @@ class SimUI:
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
 
-        # 스크롤바
+        # 무공비급바
         self.scroll_area: QScrollArea = QScrollArea(self.parent)
         self.scroll_area.setWidget(self.main_frame)
-        # 위젯이 스크롤 영역에 맞춰 크기 조절되도록
+        # 위젯이 무공비급 영역에 맞춰 크기 조절되도록
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setStyleSheet(
             "QScrollArea { background-color: #FFFFFF; border: 0px solid black; border-radius: 10px; }"
         )
 
-        # 스크롤바 스크롤 설정
+        # 무공비급바 무공비급 설정
         self.scroll_area.setVerticalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOn
         )
@@ -186,7 +186,7 @@ class SimUI:
         """메인 화면에서 계산기 화면으로 진입
 
         내부 페이지를 입력 화면으로 되돌리고
-        메인 화면에서 변경된 스크롤 레벨 등을 입력 위젯에 동기화
+        메인 화면에서 변경된 무공비급 레벨 등을 입력 위젯에 동기화
         """
         if self.stacked_layout.currentIndex() != 0:
             self.stacked_layout.setCurrentIndex(0)
@@ -265,7 +265,7 @@ class SimUI:
         if height > 0:
             self.main_frame.setFixedHeight(height)
 
-        # 스크롤 위치 범위 보정
+        # 무공비급 위치 범위 보정
         vertical_bar: QScrollBar = self.scroll_area.verticalScrollBar()
         vertical_bar.setValue(min(vertical_bar.value(), vertical_bar.maximum()))
         horizontal_bar: QScrollBar = self.scroll_area.horizontalScrollBar()
@@ -1039,14 +1039,14 @@ class ResultsPage(QFrame):
                 ("최적 분배", danjeon_text),
             ]
 
-        # 스크롤 효율 계산 단계 반영 블록
+        # 무공비급 효율 계산 단계 반영 블록
         if progress_callback is not None:
-            progress_callback("스크롤 효율 계산 중...", 0)
+            progress_callback("무공비급 효율 계산 중...", 0)
 
         if cancel_checker is not None:
             cancel_checker()
 
-        # 스크롤 +1 효율 출력 행 구성
+        # 무공비급 +1 효율 출력 행 구성
         scroll_rows: list[tuple[str, str]] = []
         scroll_results: list[ScrollUpgradeEvaluation] = evaluate_scroll_upgrade_deltas(
             server_spec=server_spec,
@@ -1071,7 +1071,7 @@ class ResultsPage(QFrame):
 
             if progress_callback is not None:
                 scroll_progress: int = 0
-                progress_callback("스크롤 효율 계산 중...", scroll_progress)
+                progress_callback("무공비급 효율 계산 중...", scroll_progress)
 
         scroll_rows.sort(
             key=lambda row: float(row[1].replace(",", "")),
@@ -1329,7 +1329,7 @@ class ResultsPage(QFrame):
                 self._get_initial_base_stats(),
             )
 
-            # 스크롤 레벨 입력 UI 구성
+            # 무공비급 레벨 입력 UI 구성
             self.skills = SkillInputs(
                 self,
                 SkillInputs.build_entries(),
@@ -1376,7 +1376,7 @@ class ResultsPage(QFrame):
             stats_card = SectionCard(self, "전체 스탯")
             stats_card.add_widget(self.stats_inputs)
 
-            scroll_card = SectionCard(self, "스크롤 레벨")
+            scroll_card = SectionCard(self, "무공비급 레벨")
             scroll_card.add_widget(self.skills)
 
             delta_card = SectionCard(self, "사용자 지정 스탯 변화량")
@@ -1420,7 +1420,7 @@ class ResultsPage(QFrame):
             stats_valid, base_stats = self._read_base_stats()
             level_valid, _ = self._read_level()
 
-            # 스크롤 레벨 입력 검증 블록
+            # 무공비급 레벨 입력 검증 블록
             scroll_valid: bool = self._read_scroll_levels(save_levels=False)
             if not (stats_valid and level_valid and scroll_valid):
                 return False
@@ -1490,13 +1490,13 @@ class ResultsPage(QFrame):
                     f"{calculator_input.custom_stat_changes[stat_key.value]:g}"
                 )
 
-            # 현재 장착 스크롤 기준 입력칸 재구성
+            # 현재 장착 무공비급 기준 입력칸 재구성
             self.skills.rebuild_entries(
                 SkillInputs.build_entries(),
                 self.on_base_input_changed,
             )
 
-            # 저장된 스크롤 레벨 입력값 재반영
+            # 저장된 무공비급 레벨 입력값 재반영
             for input_widget, entry in zip(self.skills.inputs, self.skills.entries):
                 input_widget.setText(
                     str(self._get_preset().info.get_scroll_level(entry.scroll_id))
@@ -2960,7 +2960,7 @@ class ResultsPage(QFrame):
                     template_section_layout.setContentsMargins(0, 0, 0, 0)
                     template_section_layout.setSpacing(3)
 
-                    # 부적 선택 스크롤 영역 구성
+                    # 부적 선택 무공비급 영역 구성
                     template_title: QLabel = QLabel("부적 선택", self)
                     template_title.setFont(CustomFont(11, bold=True))
                     template_section_layout.addWidget(template_title)
@@ -3952,9 +3952,9 @@ class ResultsPage(QFrame):
             return True, level
 
         def _read_scroll_levels(self, save_levels: bool = True) -> bool:
-            """스크롤 레벨 입력 검증 및 저장"""
+            """무공비급 레벨 입력 검증 및 저장"""
 
-            # 모든 스크롤 레벨을 검증하고 필요 시 현재 프리셋에 반영
+            # 모든 무공비급 레벨을 검증하고 필요 시 현재 프리셋에 반영
             all_valid: bool = True
             for input_widget, entry in zip(self.skills.inputs, self.skills.entries):
                 text: str = input_widget.text()
@@ -4137,7 +4137,7 @@ class ResultsPage(QFrame):
 
         @staticmethod
         def _sync_stack_host_height(start_widget: QWidget) -> None:
-            """동적 결과 목록 변경 후 상위 스택/스크롤 높이 재동기화"""
+            """동적 결과 목록 변경 후 상위 스택/무공비급 높이 재동기화"""
 
             ancestor: QWidget | None = start_widget
             scroll_area: QScrollArea | None = None
@@ -4145,7 +4145,7 @@ class ResultsPage(QFrame):
             current_page: QWidget | None = None
 
             while ancestor is not None:
-                # 스크롤 영역 도달 시 탐색 중단 — 스크롤 영역 자체는 리사이즈 불필요
+                # 무공비급 영역 도달 시 탐색 중단 — 무공비급 영역 자체는 리사이즈 불필요
                 if isinstance(ancestor, QScrollArea):
                     scroll_area = ancestor
                     break
@@ -4163,7 +4163,7 @@ class ResultsPage(QFrame):
                     ancestor_layout.activate()
 
                 # sizeHint 변경만 전파 — adjustSize 는 생략하여
-                # 스크롤 위치가 중간 리사이즈로 틀어지는 것을 방지
+                # 무공비급 위치가 중간 리사이즈로 틀어지는 것을 방지
                 ancestor.updateGeometry()
 
                 ancestor = ancestor.parentWidget()
@@ -4180,7 +4180,7 @@ class ResultsPage(QFrame):
                 if current_height > 0:
                     stack_host.setFixedHeight(current_height)
 
-            # 스크롤바 범위 재조정 후 현재 위치 보정
+            # 무공비급바 범위 재조정 후 현재 위치 보정
             if scroll_area is not None:
                 vertical_bar: QScrollBar = scroll_area.verticalScrollBar()
                 vertical_bar.setValue(min(vertical_bar.value(), vertical_bar.maximum()))
@@ -4469,7 +4469,7 @@ class ResultsPage(QFrame):
             self._power_card: SectionCard = SectionCard(self, "현재 전투력")
             self._power_card.add_widget(self._power_list)
 
-            # 스탯 1당 효율 + 스크롤 +1 효율 통합 카드
+            # 스탯 1당 효율 + 무공비급 +1 효율 통합 카드
             self._stat_list: ResultsPage.ResultsView.RankedResultList = (
                 ResultsPage.ResultsView.RankedResultList(self)
             )
@@ -4660,7 +4660,7 @@ class ResultsPage(QFrame):
 class SkillInputs(QFrame):
     @dataclass(frozen=True)
     class Entry:
-        """스크롤 레벨 입력 UI 한 칸의 표시/저장 정보"""
+        """무공비급 레벨 입력 UI 한 칸의 표시/저장 정보"""
 
         title: str
         value: int
@@ -4668,19 +4668,19 @@ class SkillInputs(QFrame):
 
     @staticmethod
     def build_entries() -> list["SkillInputs.Entry"]:
-        """현재 서버/프리셋 기준 스크롤 레벨 입력 목록 구성"""
+        """현재 서버/프리셋 기준 무공비급 레벨 입력 목록 구성"""
 
         preset: MacroPreset = app_state.macro.current_preset
         entries: list[SkillInputs.Entry] = []
 
-        # 현재 프리셋 장착 순서 기준 스크롤 입력 목록 구성
+        # 현재 프리셋 장착 순서 기준 무공비급 입력 목록 구성
         scroll_id: str
         for scroll_id in preset.skills.equipped_scrolls:
-            # 빈 스크롤 슬롯 제외
+            # 빈 무공비급 슬롯 제외
             if not scroll_id:
                 continue
 
-            # 장착 스크롤 정의 조회 및 저장 레벨 연결
+            # 장착 무공비급 정의 조회 및 저장 레벨 연결
             scroll_def: ScrollDef = (
                 app_state.macro.current_server.skill_registry.get_scroll(scroll_id)
             )
@@ -4734,7 +4734,7 @@ class SkillInputs(QFrame):
         entries: list["SkillInputs.Entry"],
         connected_function: Callable[[], None],
     ) -> None:
-        """현재 장착 스크롤 기준 입력 위젯 재구성"""
+        """현재 장착 무공비급 기준 입력 위젯 재구성"""
 
         # 기존 입력 위젯 제거 및 내부 참조 초기화
         while self._grid_layout.count():
@@ -4748,7 +4748,7 @@ class SkillInputs(QFrame):
 
             child_widget.deleteLater()
 
-        # 새 장착 스크롤 입력 목록 반영
+        # 새 장착 무공비급 입력 목록 반영
         self.entries = entries
         self.inputs = []
         self._rebuild_grid_items(connected_function)
@@ -4816,7 +4816,7 @@ class SkillInputs(QFrame):
                 max_width=40,
             )
 
-            # 스크롤 아이콘 우선, 없으면 개별 스킬 아이콘 사용
+            # 무공비급 아이콘 우선, 없으면 개별 스킬 아이콘 사용
             icon_size: int = level_input.sizeHint().height()
             icon_pixmap: QPixmap = resource_registry.get_scroll_pixmap(entry.scroll_id)
             image: SkillImage = SkillImage(
@@ -4825,7 +4825,7 @@ class SkillInputs(QFrame):
                 icon_size,
             )
 
-            # 계산기 스크롤 레벨 아이콘에 공용 호버 카드 연결
+            # 계산기 무공비급 레벨 아이콘에 공용 호버 카드 연결
             self.popup_manager.bind_hover_card(
                 image,
                 self._build_scroll_hover_card,
@@ -4847,9 +4847,9 @@ class SkillInputs(QFrame):
             self.setLayout(grid)
 
         def _build_scroll_hover_card(self) -> HoverCardData:
-            """계산기 스크롤 아이콘 기준 호버 카드 구성"""
+            """계산기 무공비급 아이콘 기준 호버 카드 구성"""
 
-            # 현재 서버 스크롤 정의와 저장 레벨 기준으로 카드 내용 구성
+            # 현재 서버 무공비급 정의와 저장 레벨 기준으로 카드 내용 구성
             scroll_def: "ScrollDef" = (
                 app_state.macro.current_server.skill_registry.get_scroll(
                     self.entry.scroll_id

@@ -85,7 +85,7 @@ class MainWindow(QWidget):
         # 2: 매크로 공유
         """
 
-        # 계산기 진입 시 입력 화면으로 리셋하고 스크롤 레벨 등 최신 상태 동기화
+        # 계산기 진입 시 입력 화면으로 리셋하고 무공비급 레벨 등 최신 상태 동기화
         if num == 1:
             self.sim_ui.on_enter()
 
@@ -228,7 +228,7 @@ class MainWindow(QWidget):
         # 사이드바에서 데이터 변경 시 저장은 MainUI 파이프라인(=tab_widget.dataChanged)로 위임
         self.sidebar.dataChanged.connect(self.main_ui.tab_widget.dataChanged.emit)
 
-        # 커스텀 스크롤 삭제 시 메인 UI 전체 갱신
+        # 커스텀 무공비급 삭제 시 메인 UI 전체 갱신
         self.sidebar.scrollDeleted.connect(
             self.main_ui.tab_widget.get_current_tab().update_from_preset
         )
