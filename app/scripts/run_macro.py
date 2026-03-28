@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from threading import Thread
+from threading import Lock, Thread
 from typing import NoReturn
 
 from pynput import keyboard, mouse
@@ -27,6 +27,59 @@ ATTACK_PAUSE_POLL_SECONDS = 0.01
 pressed_keys: set[Key | KeyCode] = set()
 any_key_pressed = False
 
+# 프로그램 주입 입력 추적 상태
+injected_press_counts: dict[str, int] = {}
+injected_release_counts: dict[str, int] = {}
+injected_input_lock: Lock = Lock()
+
+
+def _register_injected_key_event(key_spec: KeySpec) -> None:
+    """프로그램이 직접 주입하는 키 이벤트 등록"""
+
+    # 리스너 무시 대상 press/release 카운트 등록
+    with injected_input_lock:
+        injected_press_counts[key_spec.key_id] = (
+            injected_press_counts.get(key_spec.key_id, 0) + 1
+        )
+        injected_release_counts[key_spec.key_id] = (
+            injected_release_counts.get(key_spec.key_id, 0) + 1
+        )
+
+
+def _consume_injected_key_event(
+    key: Key | KeyCode,
+    counters: dict[str, int],
+) -> bool:
+    """프로그램이 등록한 입력인지 확인 후 소모"""
+
+    # 키 아이디 변환 불가 입력은 사용자 입력으로 처리
+    key_spec: KeySpec | None = KeyRegistry.pynput_key_to_keyspec(key)
+    if key_spec is None:
+        return False
+
+    # 등록된 주입 입력 카운트 차감
+    with injected_input_lock:
+        remaining_count: int = counters.get(key_spec.key_id, 0)
+        if remaining_count == 0:
+            return False
+
+        if remaining_count == 1:
+            del counters[key_spec.key_id]
+
+        else:
+            counters[key_spec.key_id] = remaining_count - 1
+
+    return True
+
+
+def _clear_injected_key_events() -> None:
+    """누적된 프로그램 주입 입력 추적 상태 초기화"""
+
+    # 이전 실행 주기의 잔여 주입 입력 상태 정리
+    with injected_input_lock:
+        injected_press_counts.clear()
+        injected_release_counts.clear()
+
 
 def on_press(key: Key | KeyCode | None) -> None:
     """키가 눌렸을 때 호출되는 함수"""
@@ -34,6 +87,10 @@ def on_press(key: Key | KeyCode | None) -> None:
     global pressed_keys, any_key_pressed
 
     if key is None:
+        return
+
+    # 프로그램이 보낸 키 입력은 AFK 갱신 대상에서 제외
+    if _consume_injected_key_event(key, injected_press_counts):
         return
 
     pressed_keys.add(key)
@@ -46,6 +103,10 @@ def on_release(key: Key | KeyCode | None) -> None:
     global pressed_keys
 
     if key is None:
+        return
+
+    # 프로그램이 보낸 키 해제 입력은 눌림 상태 추적에서 제외
+    if _consume_injected_key_event(key, injected_release_counts):
         return
 
     pressed_keys.discard(key)
@@ -245,6 +306,8 @@ def _press_skill_keys(
     if skill_ref.line_index != app_state.macro.current_line_index:
         swap_key: KeySpec = app_state.macro.current_swap_key
 
+        # 프로그램 주입 스왑 입력 등록
+        _register_injected_key_event(swap_key)
         kbd_controller.press(swap_key.value)
         kbd_controller.release(swap_key.value)
 
@@ -254,6 +317,8 @@ def _press_skill_keys(
         app_state.macro.current_preset.skills.skill_keys[skill_ref.scroll_index]
     )
 
+    # 프로그램 주입 스킬 입력 등록
+    _register_injected_key_event(skill_key)
     kbd_controller.press(skill_key.value)
     kbd_controller.release(skill_key.value)
 
@@ -301,6 +366,7 @@ def init_macro() -> None:
     )
 
     # 새 실행 사이클에 맞춘 런타임 상태 초기화
+    _clear_injected_key_events()
     app_state.macro.afk_started_time = time.time()
     app_state.macro.current_line_index = 0
     app_state.macro.prepared_skills = set(placed_refs)
