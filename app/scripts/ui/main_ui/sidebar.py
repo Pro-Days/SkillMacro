@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import copy
-import json
-import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
@@ -31,10 +29,9 @@ from app.scripts.config import config
 from app.scripts.custom_classes import CustomFont, SkillImage
 from app.scripts.custom_skill_models import CustomScrollDefinition, CustomSkillImport
 from app.scripts.data_manager import (
-    custom_skills_file_dir,
-    data_path,
     read_custom_skills_data,
     remove_custom_scroll,
+    save_custom_skills,
 )
 from app.scripts.macro_models import (
     LinkKeyType,
@@ -1526,11 +1523,13 @@ class SkillSettings(QFrame):
         )
 
         def _on_edited(skill_import: CustomSkillImport) -> None:
+            # 현재 세션 레지스트리 반영
             for sid in skill_import.skills:
                 detail = skill_import.skill_details[sid]
                 server_spec.skill_registry.add_skill_def(
                     SkillDef.from_detail_dict(sid, server_spec.id, detail.to_dict())
                 )
+
             for scroll in skill_import.scrolls:
                 server_spec.skill_registry.add_scroll_def(
                     ScrollDef(
@@ -1541,7 +1540,7 @@ class SkillSettings(QFrame):
                     )
                 )
 
-            # 검증된 커스텀 스킬 원본 조회
+            # 수정 결과를 기존 저장 구조와 병합
             existing: dict[str, dict] = read_custom_skills_data()
             server_data: dict = existing.get(
                 server_spec.id, {"skills": [], "scrolls": [], "skill_details": {}}
@@ -1557,11 +1556,10 @@ class SkillSettings(QFrame):
                 for s in server_data["scrolls"]
                 if s["scroll_id"] != self._selected_scroll_id
             ] + [s.to_dict() for s in skill_import.scrolls]
-            existing[server_spec.id] = server_data
 
-            os.makedirs(data_path, exist_ok=True)
-            with open(custom_skills_file_dir, "w", encoding="utf-8") as _f:
-                json.dump(existing, _f, ensure_ascii=False, indent=4)
+            # 검증된 병합 결과를 저장 파일에 반영
+            merged_import: CustomSkillImport = CustomSkillImport.from_dict(server_data)
+            save_custom_skills(server_spec.id, merged_import)
 
             self.update_from_preset(self._get_preset())
 
@@ -1593,6 +1591,9 @@ class SkillSettings(QFrame):
             # 사용설정에서 제거
             for skill_id in deleted_skill_ids:
                 preset.usage_settings.pop(skill_id, None)
+
+            # 무공비급 레벨 저장값 제거
+            preset.info.scroll_levels.pop(scroll_id, None)
 
             # 해당 스킬을 포함하는 연계스킬 제거
             preset.link_skills = [

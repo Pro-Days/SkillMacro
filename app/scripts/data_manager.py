@@ -8,6 +8,7 @@ from app.scripts.app_state import app_state
 from app.scripts.config import config
 from app.scripts.custom_skill_models import CustomSkillImport
 from app.scripts.macro_models import (
+    LinkSkill,
     MacroPreset,
     MacroPresetFile,
     MacroPresetRepository,
@@ -79,6 +80,9 @@ def read_custom_skills_data() -> dict[str, dict]:
 
         raw: dict[str, dict] = raw_obj
 
+        normalized_raw: dict[str, dict] = {}
+        normalized_any: bool = False
+
         # 서버별 커스텀 스킬 구조 사전 검증
         for server_id, import_data in raw.items():
             if not isinstance(server_id, str):
@@ -87,7 +91,57 @@ def read_custom_skills_data() -> dict[str, dict]:
             if not isinstance(import_data, dict):
                 raise TypeError("custom skill import must be a dict")
 
+            # 중복 무공비급은 첫 항목만 유지하는 블록
+            scrolls_obj: object = import_data.get("scrolls", [])
+            if not isinstance(scrolls_obj, list):
+                raise TypeError("scrolls must be a list")
+
+            scrolls: list[dict] = []
+            seen_scroll_ids: set[str] = set()
+            scroll_obj: object
+            for scroll_obj in scrolls_obj:
+                if not isinstance(scroll_obj, dict):
+                    raise TypeError("scroll must be a dict")
+
+                scroll_id: str = str(scroll_obj["scroll_id"]).strip()
+                if scroll_id in seen_scroll_ids:
+                    normalized_any = True
+                    continue
+
+                seen_scroll_ids.add(scroll_id)
+                scrolls.append(scroll_obj)
+
+            if len(scrolls) != len(scrolls_obj):
+                skill_ids: list[str] = []
+                seen_skill_ids: set[str] = set()
+                for scroll in scrolls:
+                    for skill_id in scroll["skills"]:
+                        if skill_id in seen_skill_ids:
+                            continue
+
+                        seen_skill_ids.add(skill_id)
+                        skill_ids.append(skill_id)
+
+                import_data = {
+                    "skills": skill_ids,
+                    "scrolls": scrolls,
+                    "skill_details": {
+                        skill_id: import_data["skill_details"][skill_id]
+                        for skill_id in skill_ids
+                    },
+                }
+
             CustomSkillImport.from_dict(import_data)
+            normalized_raw[server_id] = import_data
+
+        # 정규화 결과를 원본 파일에 즉시 반영
+        if normalized_any:
+            app_state.ui.has_pending_custom_skill_normalized_notice = True
+            os.makedirs(data_path, exist_ok=True)
+            with open(custom_skills_file_dir, "w", encoding="utf-8") as f:
+                json.dump(normalized_raw, f, ensure_ascii=False, indent=4)
+
+        raw = normalized_raw
     except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
         # 손상된 커스텀 스킬 파일 백업 후 초기화
         backup_data_file(custom_skills_file_dir)
@@ -182,6 +236,81 @@ def save_custom_skills(server_id: str, skill_import: CustomSkillImport) -> None:
         json.dump(existing, f, ensure_ascii=False, indent=4)
 
 
+def sanitize_preset_registry_references(preset: MacroPreset) -> bool:
+    """레지스트리에 없는 무공비급/스킬 참조를 프리셋에서 제거"""
+
+    server: ServerSpec = server_registry.get(preset.settings.server_id)
+    valid_scroll_ids: set[str] = set(server.skill_registry.get_all_scroll_ids())
+    valid_skill_ids: set[str] = set(server.skill_registry.get_all_skill_ids())
+    changed: bool = False
+
+    # 존재하지 않는 장착 무공비급 참조 제거 블록
+    scroll_index: int
+    for scroll_index, scroll_id in enumerate(preset.skills.equipped_scrolls):
+        if not scroll_id or scroll_id in valid_scroll_ids:
+            continue
+
+        preset.skills.equipped_scrolls[scroll_index] = ""
+        changed = True
+
+    # 존재하지 않는 하단 배치 스킬 참조 제거 블록
+    skill_index: int
+    for skill_index, skill_id in enumerate(preset.skills.placed_skills):
+        if not skill_id or skill_id in valid_skill_ids:
+            continue
+
+        preset.skills.placed_skills[skill_index] = ""
+        changed = True
+
+    # 존재하지 않는 무공비급 레벨 저장값 제거 블록
+    stale_scroll_ids: list[str] = [
+        scroll_id
+        for scroll_id in list(preset.info.scroll_levels.keys())
+        if scroll_id not in valid_scroll_ids
+    ]
+    stale_scroll_id: str
+    for stale_scroll_id in stale_scroll_ids:
+        preset.info.scroll_levels.pop(stale_scroll_id, None)
+        changed = True
+
+    # 존재하지 않는 스킬 사용설정 제거 블록
+    stale_skill_ids: list[str] = [
+        skill_id
+        for skill_id in list(preset.usage_settings.keys())
+        if skill_id not in valid_skill_ids
+    ]
+    stale_skill_id: str
+    for stale_skill_id in stale_skill_ids:
+        preset.usage_settings.pop(stale_skill_id, None)
+        changed = True
+
+    # 존재하지 않는 스킬이 포함된 연계스킬 정리 블록
+    filtered_link_skills: list[LinkSkill] = []
+    link_skill: LinkSkill
+    for link_skill in preset.link_skills:
+        filtered_skill_ids: list[str] = [
+            skill_id for skill_id in link_skill.skills if skill_id in valid_skill_ids
+        ]
+
+        if not filtered_skill_ids:
+            changed = True
+            continue
+
+        if filtered_skill_ids != link_skill.skills:
+            link_skill.skills = filtered_skill_ids
+            link_skill.set_manual()
+            link_skill.clear_key()
+            changed = True
+
+        filtered_link_skills.append(link_skill)
+
+    # 필터링 결과를 프리셋에 반영하는 블록
+    if filtered_link_skills != preset.link_skills:
+        preset.link_skills = filtered_link_skills
+
+    return changed
+
+
 def load_data(num: int = -1) -> None:
     """
     실행, 탭 변경 시 데이터 로드
@@ -192,6 +321,8 @@ def load_data(num: int = -1) -> None:
     load_custom_skills()
 
     repo: MacroPresetRepository = MacroPresetRepository(file_dir)
+    preset_was_sanitized: bool = False
+
     try:
         # 매크로 프리셋 파일 로드
         preset_file: MacroPresetFile = repo.load()
@@ -204,6 +335,10 @@ def load_data(num: int = -1) -> None:
     try:
         # 파일에 저장되지 않은 기본값 항목을 인-메모리로 복원
         for preset in preset_file.preset:
+            # 현재 레지스트리에 없는 고아 참조 정리 블록
+            if sanitize_preset_registry_references(preset):
+                preset_was_sanitized = True
+
             server: ServerSpec = server_registry.get(preset.settings.server_id)
             for scroll_id in server.skill_registry.get_all_scroll_ids():
                 preset.info.scroll_levels.setdefault(scroll_id, 1)
@@ -226,8 +361,8 @@ def load_data(num: int = -1) -> None:
     app_state.macro.presets = preset_file.preset
     app_state.macro.current_preset_index = target_index
 
-    # 현재 선택 프리셋 인덱스만 즉시 반영
-    if preset_file.recent_preset != target_index:
+    # 정리된 프리셋/현재 선택 인덱스 저장 반영 블록
+    if preset_was_sanitized or preset_file.recent_preset != target_index:
         preset_file.recent_preset = target_index
         repo.save(preset_file)
 

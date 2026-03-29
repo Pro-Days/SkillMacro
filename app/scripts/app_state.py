@@ -110,6 +110,9 @@ class UiState:
     # 데이터 백업 알림 대기 여부 (팝업 매니저 로딩 전이라 임시)
     has_pending_backup_notice: bool = False
 
+    # 커스텀 무공비급 중복 정리 알림 대기 여부
+    has_pending_custom_skill_normalized_notice: bool = False
+
     # 현재 활성화된 사이드바 페이지 인덱스
     current_sidebar_page: int = 0
 

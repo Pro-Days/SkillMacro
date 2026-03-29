@@ -59,6 +59,7 @@ from app.scripts.registry.resource_registry import (
 )
 from app.scripts.registry.server_registry import ServerSpec, server_registry
 from app.scripts.registry.skill_registry import (
+    CUSTOM_SKILL_PREFIX,
     BuffEffect,
     DamageEffect,
     HealEffect,
@@ -117,6 +118,7 @@ class NoticeKind(Enum):
     REQUIRE_UPDATE = auto()  # 업데이트 필요
     FAILED_UPDATE_CHECK = auto()  # 업데이트 확인 실패
     DATA_FILE_BACKED_UP = auto()  # 데이터 파일 백업 완료
+    CUSTOM_SKILLS_NORMALIZED = auto()  # 커스텀 무공비급 중복 정리 완료
 
     # 시뮬레이션
     SIM_INPUT_ERROR = auto()  # 시뮬레이션 정보 입력 오류
@@ -964,6 +966,12 @@ class NoticeController:
             case NoticeKind.DATA_FILE_BACKED_UP:
                 return NoticeData(
                     "데이터 파일 오류가 발생하여 백업 파일을 생성했습니다.",
+                    "warning",
+                )
+
+            case NoticeKind.CUSTOM_SKILLS_NORMALIZED:
+                return NoticeData(
+                    "중복된 커스텀 무공비급이 발견되어 자동 정리했습니다.",
                     "warning",
                 )
 
@@ -2516,6 +2524,48 @@ class CustomSkillAddDialog(QDialog):
                 levels[str(lvl)] = [{"time": 0.0, "type": "damage", "damage": amount}]
         return levels
 
+    def _validate_duplicate_names(
+        self,
+        scroll_name: str,
+        skill1_name: str,
+        skill2_name: str,
+    ) -> bool:
+        """이름 기반 중복 입력 검증"""
+
+        # 같은 무공비급 내부 스킬 이름 중복 차단 블록
+        if skill1_name == skill2_name:
+            self._skill1_name_input.set_valid(False)
+            self._skill2_name_input.set_valid(False)
+            self._show_error("스킬 1과 스킬 2의 이름은 서로 달라야 합니다.")
+            return False
+
+        self._skill1_name_input.set_valid(True)
+        self._skill2_name_input.set_valid(True)
+
+        # 동일 서버 내 커스텀 무공비급 이름 중복 차단 블록
+        server_spec: ServerSpec = server_registry.get(self.server_id)
+        current_scroll_id: str = ""
+        if self._existing_scroll is not None:
+            current_scroll_id = self._existing_scroll.scroll_id
+
+        scroll_def: ScrollDef
+        for scroll_def in server_spec.skill_registry.get_all_scroll_defs():
+            if not scroll_def.id.startswith(f"{CUSTOM_SKILL_PREFIX}:"):
+                continue
+
+            if scroll_def.id == current_scroll_id:
+                continue
+
+            if scroll_def.name != scroll_name:
+                continue
+
+            self._scroll_name_input.set_valid(False)
+            self._show_error("같은 이름의 커스텀 무공비급이 이미 존재합니다.")
+            return False
+
+        self._scroll_name_input.set_valid(True)
+        return True
+
     def _on_confirm(self) -> None:
         scroll_name: str = self._scroll_name_input.text().strip()
         skill1_name: str = self._skill1_name_input.text().strip()
@@ -2559,6 +2609,10 @@ class CustomSkillAddDialog(QDialog):
             valid = False
 
         if not valid:
+            return
+
+        # 이름 기반 ID 충돌을 유발하는 중복 입력 차단 블록
+        if not self._validate_duplicate_names(scroll_name, skill1_name, skill2_name):
             return
 
         # 수정 모드면 기존 ID 유지, 신규면 이름 기반 ID 생성

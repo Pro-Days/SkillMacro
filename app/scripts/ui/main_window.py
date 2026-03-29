@@ -164,14 +164,19 @@ class MainWindow(QWidget):
             self.popup_manager.show_notice(NoticeKind.REQUIRE_UPDATE)
 
     def _show_pending_backup_notices(self) -> None:
-        """로딩 중 생성된 데이터 백업 알림 표시"""
+        """로딩 중 생성된 데이터 관련 알림 표시"""
 
-        # UI 초기화 전에 적재된 백업 알림 1회 표시
-        if not app_state.ui.has_pending_backup_notice:
-            return
+        # UI 초기화 전에 만들어진 알림 표시
 
-        app_state.ui.has_pending_backup_notice = False
-        self.popup_manager.show_notice(NoticeKind.DATA_FILE_BACKED_UP)
+        # 데이터 파일 백업 알림 표시
+        if app_state.ui.has_pending_backup_notice:
+            app_state.ui.has_pending_backup_notice = False
+            self.popup_manager.show_notice(NoticeKind.DATA_FILE_BACKED_UP)
+
+        # 커스텀 무공비급 중복 정리 알림 표시 블록
+        if app_state.ui.has_pending_custom_skill_normalized_notice:
+            app_state.ui.has_pending_custom_skill_normalized_notice = False
+            self.popup_manager.show_notice(NoticeKind.CUSTOM_SKILLS_NORMALIZED)
 
     def init_UI(self) -> None:
         """
