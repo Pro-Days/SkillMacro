@@ -85,12 +85,19 @@ class KeyRegistry:
     def get(cls, key_id: str) -> KeySpec:
         """키 아이디로 KeySpec 반환"""
 
-        return (
+        # 내부 설정값 기준 키 조회 결과 구성
+        key_spec: KeySpec | None = (
             cls.F_KEYS.get(key_id)
             or cls.ALPHABET_KEYS.get(key_id)
             or cls.NUMBER_KEYS.get(key_id)
-            or cls.SPECIAL_KEYS[key_id]
+            or cls.SPECIAL_KEYS.get(key_id)
         )
+
+        # 등록되지 않은 키 설정값 즉시 실패
+        if key_spec is None:
+            raise KeyError(key_id)
+
+        return key_spec
 
     @classmethod
     def pynput_key_to_keyspec(cls, k: Key | KeyCode) -> KeySpec | None:
@@ -102,7 +109,26 @@ class KeyRegistry:
             if not ch:
                 return None
 
-            return cls.get(ch)
+            # 대소문자 입력 통합 처리
+            normalized_char: str = ch.lower()
+
+            # 지원하지 않는 문자 입력 무시
+            if (
+                normalized_char not in cls.ALPHABET_KEYS
+                and normalized_char not in cls.NUMBER_KEYS
+                and normalized_char not in cls.SPECIAL_KEYS
+            ):
+                return None
+
+            return cls.get(normalized_char)
 
         # Key: 특수키
-        return cls.get(k.name)
+        key_name: str | None = k.name
+        if key_name is None:
+            return None
+
+        # 지원하지 않는 특수키 입력 무시
+        if key_name not in cls.F_KEYS and key_name not in cls.SPECIAL_KEYS:
+            return None
+
+        return cls.get(key_name)
