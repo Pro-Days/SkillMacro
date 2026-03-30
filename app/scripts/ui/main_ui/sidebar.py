@@ -43,6 +43,7 @@ from app.scripts.macro_models import (
 from app.scripts.registry.key_registry import KeyRegistry, KeySpec
 from app.scripts.registry.resource_registry import (
     convert_resource_path,
+    get_theme_image_path,
     resource_registry,
 )
 from app.scripts.registry.skill_registry import CUSTOM_SKILL_PREFIX, ScrollDef, SkillDef
@@ -52,6 +53,7 @@ from app.scripts.ui.popup import (
     PopupKind,
     PopupManager,
 )
+from app.scripts.ui.themes import theme_manager
 
 if TYPE_CHECKING:
     from typing import Literal
@@ -81,6 +83,7 @@ class SkillSettingOptionDef:
 class SkillSettingCardWidgets:
     skill_id: str
     frame: QFrame
+    skill_image: SkillImage
     usage_btn: QPushButton
     sole_btn: QPushButton
     priority_btn: QPushButton
@@ -1109,6 +1112,32 @@ class SkillSettings(QFrame):
         option_frame.setLayout(option_layout)
         return option_frame
 
+    def _apply_button_state(self, button: QPushButton, active: bool) -> None:
+        """동적 프로퍼티 변경 후 버튼 스타일 재적용"""
+
+        # 활성 상태 프로퍼티 반영
+        button.setProperty("active", active)
+
+        # 프로퍼티 기반 QSS 즉시 재적용
+        button.style().unpolish(button)
+        button.style().polish(button)
+        button.update()
+
+    def _build_check_icon(self, active: bool) -> QIcon:
+        """현재 테마 기준 체크 버튼 아이콘 생성"""
+
+        # 활성 상태 아이콘은 테마별 리소스 사용
+        if active:
+            # 현재 테마 기준 활성 아이콘 경로 선택
+            icon_path: str = get_theme_image_path(
+                "checkTrue.png", theme_manager.is_dark
+            )
+            return QIcon(QPixmap(icon_path))
+
+        # 비활성 상태 아이콘은 공용 비활성 리소스 사용
+        icon_path: str = convert_resource_path("resources\\image\\checkFalse.png")
+        return QIcon(QPixmap(icon_path))
+
     def _ensure_rows(self, skill_ids: list[str]) -> None:
         """스킬 행 생성"""
 
@@ -1265,6 +1294,7 @@ class SkillSettings(QFrame):
                 SkillSettingCardWidgets(
                     skill_id=skill_id,
                     frame=card_frame,
+                    skill_image=skill_image,
                     usage_btn=usage_btn,
                     sole_btn=sole_btn,
                     priority_btn=priority_btn,
@@ -1300,39 +1330,35 @@ class SkillSettings(QFrame):
         self._ensure_rows(skill_ids)
 
         # 카드별 버튼 상태 동기화
+        placed_skill_ids: list[str] = preset.skills.get_placed_skill_ids()
         for card in self._skill_cards:
             setting: SkillUsageSetting = preset.usage_settings[card.skill_id]
+            is_placed: bool = card.skill_id in placed_skill_ids
 
-            # 토글 버튼 아이콘 상태 반영
-            usage_icon: QIcon = QIcon(
-                QPixmap(
-                    convert_resource_path(
-                        f"resources\\image\\check{bool(setting.use_skill)}.png"
-                    )
-                )
-            )
-            sole_icon: QIcon = QIcon(
-                QPixmap(
-                    convert_resource_path(
-                        f"resources\\image\\check{bool(setting.use_alone)}.png"
-                    )
-                )
-            )
-            solo_swap_icon: QIcon = QIcon(
-                QPixmap(
-                    convert_resource_path(
-                        f"resources\\image\\check{bool(setting.use_solo_swap)}.png"
-                    )
-                )
+            # 테마 전환 후에도 스킬 카드 아이콘이 즉시 바뀌도록 픽스맵 재적용
+            card.skill_image.setPixmap(
+                resource_registry.get_skill_pixmap(skill_id=card.skill_id)
             )
 
-            card.usage_btn.setIcon(usage_icon)
-            card.sole_btn.setIcon(sole_icon)
-            card.solo_swap_btn.setIcon(solo_swap_icon)
+            # 토글 버튼 아이콘과 활성 상태 프로퍼티 동기화
+            usage_active: bool = bool(setting.use_skill)
+            sole_active: bool = bool(setting.use_alone)
+            solo_swap_active: bool = bool(setting.use_solo_swap)
+            priority_active: bool = int(setting.priority) > 0
+
+            card.usage_btn.setIcon(self._build_check_icon(usage_active))
+            card.sole_btn.setIcon(self._build_check_icon(sole_active))
+            card.solo_swap_btn.setIcon(self._build_check_icon(solo_swap_active))
+
+            self._apply_button_state(card.usage_btn, usage_active)
+            self._apply_button_state(card.sole_btn, sole_active)
+            self._apply_button_state(card.solo_swap_btn, solo_swap_active)
 
             # 우선순위 숫자 텍스트 반영
             p: int = int(setting.priority)
             card.priority_btn.setText("-" if p == 0 else str(p))
+            card.priority_btn.setEnabled(is_placed)
+            self._apply_button_state(card.priority_btn, priority_active and is_placed)
 
     def _build_selected_scroll_hover_card(self) -> HoverCardData | None:
         """선택된 무공비급 카드 기준 호버 카드 구성"""
@@ -1927,11 +1953,12 @@ class LinkSkillEditor(QFrame):
         self.add_skill_btn = QPushButton()
         self.add_skill_btn.setObjectName("addSkillBtn")
         self.add_skill_btn.clicked.connect(self.add_skill)
-        pixmap = QPixmap(convert_resource_path("resources\\image\\plus.png"))
-        self.add_skill_btn.setIcon(QIcon(pixmap))
+        self.add_skill_btn.setIcon(QIcon(self._load_plus_icon(theme_manager.is_dark)))
         self.add_skill_btn.setIconSize(QSize(24, 24))
         self.add_skill_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         layout.addWidget(self.add_skill_btn)
+
+        theme_manager.theme_changed.connect(self._on_theme_changed)
 
         self.cancel_btn = QPushButton("취소")
         self.cancel_btn.clicked.connect(self.cancel)
@@ -2197,6 +2224,13 @@ class LinkSkillEditor(QFrame):
 
         self._after_data_changed(update_skills=True)
 
+    def _load_plus_icon(self, dark: bool) -> QPixmap:
+        # 현재 테마 기준 플러스 아이콘 로드
+        return QPixmap(get_theme_image_path("plus.png", dark))
+
+    def _on_theme_changed(self, dark: bool) -> None:
+        self.add_skill_btn.setIcon(QIcon(self._load_plus_icon(dark)))
+
     def cancel(self) -> None:
         """편집 취소"""
 
@@ -2284,11 +2318,13 @@ class LinkSkillEditor(QFrame):
             self.remove = QPushButton()
             self.remove.setObjectName("skillItemRemoveBtn")
             self.remove.clicked.connect(self._emit_remove)
-            pixmap = QPixmap(convert_resource_path("resources\\image\\xAlpha.png"))
-            self.remove.setIcon(QIcon(pixmap))
+            self.remove.setIcon(QIcon(self._x_icon(theme_manager.is_dark)))
             self.remove.setIconSize(QSize(16, 16))
             self.remove.setFixedSize(32, 32)
             self.remove.setCursor(Qt.CursorShape.PointingHandCursor)
+            theme_manager.theme_changed.connect(
+                lambda dark: self.remove.setIcon(QIcon(self._x_icon(dark)))
+            )
 
             layout = QHBoxLayout()
             layout.addWidget(self.skill)
@@ -2296,6 +2332,11 @@ class LinkSkillEditor(QFrame):
             layout.addWidget(self.remove)
             layout.setContentsMargins(0, 0, 0, 0)
             self.setLayout(layout)
+
+        @staticmethod
+        def _x_icon(dark: bool) -> QPixmap:
+            # 현재 테마 기준 삭제 아이콘 로드
+            return QPixmap(get_theme_image_path("xAlpha.png", dark))
 
         def _emit_change(self) -> None:
             self.changeRequested.emit(self.index)
@@ -2393,18 +2434,18 @@ class NavigationButtons(QFrame):
         layout.setSpacing(0)
         self.setLayout(layout)
 
-        icons: list[QPixmap] = [
-            QPixmap(convert_resource_path("resources\\image\\setting.png")),
-            QPixmap(convert_resource_path("resources\\image\\usageSetting.png")),
-            QPixmap(convert_resource_path("resources\\image\\linkSetting.png")),
-            QPixmap(convert_resource_path("resources\\image\\simulationSidebar.png")),
+        self._icon_names: list[str] = [
+            "setting.png",
+            "usageSetting.png",
+            "linkSetting.png",
+            "simulationSidebar.png",
         ]
         self.buttons: list[NavigationButtons.NavigationButton] = [
             self.NavigationButton(
-                icon=icons[i],
+                icon=self._load_icon(name, theme_manager.is_dark),
                 variant=str(i),
             )
-            for i in range(4)
+            for i, name in enumerate(self._icon_names)
         ]
 
         # 계산기 버튼은 임시로 비활성화
@@ -2421,6 +2462,16 @@ class NavigationButtons(QFrame):
                 button.clicked.connect(lambda: self.change_layout(1))
 
         layout.addStretch(1)
+
+        theme_manager.theme_changed.connect(self._on_theme_changed)
+
+    def _load_icon(self, filename: str, dark: bool) -> QPixmap:
+        # 현재 테마 기준 네비게이션 아이콘 로드
+        return QPixmap(get_theme_image_path(filename, dark))
+
+    def _on_theme_changed(self, dark: bool) -> None:
+        for btn, name in zip(self.buttons, self._icon_names):
+            btn.setIcon(QIcon(self._load_icon(name, dark)))
 
     def set_active_button(self, index: int) -> None:
         """활성화된 버튼 설정"""

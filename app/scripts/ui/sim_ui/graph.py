@@ -12,13 +12,25 @@ from PySide6.QtWidgets import QLabel, QWidget
 from app.scripts.calculator_engine import GraphDamageEvent
 from app.scripts.custom_classes import CustomFont
 from app.scripts.registry.skill_registry import get_builtin_skill_id, parse_skill_id
-from app.scripts.ui.themes import LIGHT_GRAPH_PALETTE, GraphPalette
+from app.scripts.ui.themes import (
+    DARK_GRAPH_PALETTE,
+    LIGHT_GRAPH_PALETTE,
+    GraphPalette,
+    theme_manager,
+)
 
 # todo: 재사용 가능하도록, 실시간 렌더링되도록 변경
 # todo: 크래시 문제 해결
 
-# 현재 라이트 테마 그래프 팔레트 참조
-GRAPH_PALETTE: GraphPalette = LIGHT_GRAPH_PALETTE
+
+def get_graph_palette() -> GraphPalette:
+    """현재 테마 기준 그래프 팔레트 반환"""
+
+    # 현재 전역 테마 상태 기준 그래프 팔레트 선택
+    if theme_manager.is_dark:
+        return DARK_GRAPH_PALETTE
+
+    return LIGHT_GRAPH_PALETTE
 
 
 class DpmDistributionCanvas(pg.PlotWidget):
@@ -27,6 +39,9 @@ class DpmDistributionCanvas(pg.PlotWidget):
     def __init__(self, parent: QWidget, results: list[list[GraphDamageEvent]]) -> None:
         super().__init__(parent=parent)
         self.setObjectName("dpmDistributionCanvas")
+
+        # 현재 테마 기준 그래프 팔레트 고정
+        self.graph_palette: GraphPalette = get_graph_palette()
 
         # 데이터 저장
         self.data: list[float] = [sum([i.damage for i in result]) for result in results]
@@ -61,7 +76,7 @@ class DpmDistributionCanvas(pg.PlotWidget):
         font = CustomFont(14)
         self.getAxis("top").label.setFont(font)
         # 제목 색상을 검정색으로 설정
-        self.getAxis("top").setTextPen(GRAPH_PALETTE.title_text)
+        self.getAxis("top").setTextPen(self.graph_palette.title_text)
 
         # 축 설정
         # 아래쪽 축
@@ -78,7 +93,7 @@ class DpmDistributionCanvas(pg.PlotWidget):
         axis_font = CustomFont(10)
         axis_bottom.setStyle(tickFont=axis_font)
         # 축 라벨 색상을 검정색으로 설정
-        axis_bottom.setTextPen(GRAPH_PALETTE.axis_text)
+        axis_bottom.setTextPen(self.graph_palette.axis_text)
 
         # self.getAxis("bottom").setStyle(showValues=True, tickAlpha=0)
         # self.getAxis("left").setStyle(showValues=True, tickLength=-20)
@@ -90,14 +105,14 @@ class DpmDistributionCanvas(pg.PlotWidget):
         self.setMenuEnabled(False)
 
         # 배경 색상 설정
-        self.setBackground(GRAPH_PALETTE.canvas_background)
+        self.setBackground(self.graph_palette.canvas_background)
 
         # 색상 정의
         self.colors: dict[str, str] = {
-            "median": GRAPH_PALETTE.dpm_median_bar,
-            "centers": GRAPH_PALETTE.dpm_center_bar,
-            "hover": GRAPH_PALETTE.dpm_hover_bar,
-            "normal": GRAPH_PALETTE.dpm_normal_bar,
+            "median": self.graph_palette.dpm_median_bar,
+            "centers": self.graph_palette.dpm_center_bar,
+            "hover": self.graph_palette.dpm_hover_bar,
+            "normal": self.graph_palette.dpm_normal_bar,
         }
 
         # 각 막대의 원래 색상을 저장할 리스트
@@ -128,6 +143,38 @@ class DpmDistributionCanvas(pg.PlotWidget):
 
         # 자동 범위 조정 버튼 비활성화
         self.hideButtons()
+
+        # 테마 전환 시 현재 그래프 색상 동기화
+        theme_manager.theme_changed.connect(self._on_theme_changed)
+
+    def _on_theme_changed(self, _dark: bool) -> None:
+        """테마 전환 시 히스토그램 색상 재구성"""
+
+        # 현재 테마 기준 팔레트 재적용
+        self.graph_palette = get_graph_palette()
+
+        # 축과 배경 색상 재적용
+        self.getAxis("top").setTextPen(self.graph_palette.title_text)
+        self.getAxis("bottom").setTextPen(self.graph_palette.axis_text)
+        self.setBackground(self.graph_palette.canvas_background)
+
+        # 막대 색상 집합 재구성
+        self.colors = {
+            "median": self.graph_palette.dpm_median_bar,
+            "centers": self.graph_palette.dpm_center_bar,
+            "hover": self.graph_palette.dpm_hover_bar,
+            "normal": self.graph_palette.dpm_normal_bar,
+        }
+
+        # 기존 히스토그램 아이템 제거 및 상태 초기화
+        self.clear()
+        self.bars = []
+        self.original_bar_colors = []
+        self.hovered_bar_index = -1
+
+        # 현재 팔레트 기준 히스토그램 재생성
+        self.create_histogram()
+        self.tooltip_label.hide()
 
     def get_bar_color(self, bar_index: int) -> str:
         """
@@ -396,6 +443,9 @@ class SkillDpsRatioCanvas(pg.PlotWidget):
         super().__init__(parent=parent)
         self.setObjectName("skillDpsRatioCanvas")
 
+        # 현재 테마 기준 그래프 팔레트 고정
+        self.graph_palette: GraphPalette = get_graph_palette()
+
         # 장착된 스킬 ID 필터링
         equipped_skill_ids: list[str] = [_id for _id in skill_ids if _id]
 
@@ -420,7 +470,7 @@ class SkillDpsRatioCanvas(pg.PlotWidget):
         ]
 
         # 색상 설정
-        palette: tuple[str, ...] = GRAPH_PALETTE.ratio_series
+        palette: tuple[str, ...] = self.graph_palette.ratio_series
         self.colors: list[str] = [
             palette[i % len(palette)] for i in range(len(self.data))
         ]
@@ -452,10 +502,10 @@ class SkillDpsRatioCanvas(pg.PlotWidget):
         font = CustomFont(point_size=14)
         self.getAxis("top").label.setFont(font)
         # 제목 색상을 검정색으로 설정
-        self.getAxis("top").setTextPen(GRAPH_PALETTE.title_text)
+        self.getAxis("top").setTextPen(self.graph_palette.title_text)
 
         # 배경 색상 설정
-        self.background_color = GRAPH_PALETTE.canvas_background
+        self.background_color = self.graph_palette.canvas_background
         self.setBackground(self.background_color)
 
         # 마우스 상호작용 비활성화 (드래그, 줌, 우클릭 메뉴 등)
@@ -467,6 +517,28 @@ class SkillDpsRatioCanvas(pg.PlotWidget):
 
         # 자동 범위 조정 버튼 비활성화
         self.hideButtons()
+
+        # 테마 전환 시 현재 그래프 색상 동기화
+        theme_manager.theme_changed.connect(self._on_theme_changed)
+
+    def _on_theme_changed(self, _dark: bool) -> None:
+        """테마 전환 시 파이 차트 색상 재구성"""
+
+        # 현재 테마 기준 팔레트 재적용
+        self.graph_palette = get_graph_palette()
+
+        # 제목과 배경 색상 재적용
+        self.getAxis("top").setTextPen(self.graph_palette.title_text)
+        self.background_color = self.graph_palette.canvas_background
+        self.setBackground(self.background_color)
+
+        # 현재 팔레트 기준 시리즈 색상 재계산
+        palette: tuple[str, ...] = self.graph_palette.ratio_series
+        self.colors = [palette[i % len(palette)] for i in range(len(self.data))]
+
+        # 기존 파이 차트 아이템 제거 후 현재 팔레트 기준 재생성
+        self.clear()
+        self.create_interactive_pie_chart()
 
     def create_interactive_pie_chart(self) -> None:
         # 각도 계산 (원래 비율대로 꽉 찬 원)
@@ -542,7 +614,7 @@ class SkillDpsRatioCanvas(pg.PlotWidget):
             text_item: pg.TextItem = pg.TextItem(
                 f"{percentage:.1f}%",
                 anchor=(0.5, 0.5),
-                color=GRAPH_PALETTE.skill_ratio_label_text,
+                color="black",
             )
             # 레이블 위치 설정
             text_item.setPos(label_x, label_y)
@@ -560,7 +632,7 @@ class SkillDpsRatioCanvas(pg.PlotWidget):
             legend_item: pg.TextItem = pg.TextItem(
                 label,
                 anchor=(0.0 if legend_x >= 0 else 1.0, 0.5),
-                color=GRAPH_PALETTE.skill_ratio_label_text,
+                color=self.graph_palette.skill_ratio_label_text,
             )
             # 범례 레이블 위치 설정
             legend_item.setPos(legend_x, legend_y)
@@ -625,6 +697,9 @@ class DMGCanvas(pg.PlotWidget):
     ) -> None:
         super().__init__(parent)
         self.setObjectName("dmgCanvas")
+
+        # 현재 테마 기준 그래프 팔레트 고정
+        self.graph_palette: GraphPalette = get_graph_palette()
 
         # 그래프 시간축 기본 단위 구성
         step: int = 1
@@ -704,7 +779,7 @@ class DMGCanvas(pg.PlotWidget):
         font = CustomFont(point_size=14)
         self.getAxis("top").label.setFont(font)
         # 제목 색상을 검정색으로 설정
-        self.getAxis("top").setTextPen(GRAPH_PALETTE.title_text)
+        self.getAxis("top").setTextPen(self.graph_palette.title_text)
 
         # 하단 축 텍스트 설정
         font_properties = {
@@ -721,12 +796,12 @@ class DMGCanvas(pg.PlotWidget):
         axis_font = CustomFont(point_size=10)
         axis_bottom.setStyle(tickFont=axis_font)
         # 축 라벨 색상을 검정색으로 설정
-        axis_bottom.setTextPen(GRAPH_PALETTE.axis_text)
+        axis_bottom.setTextPen(self.graph_palette.axis_text)
 
         # 좌측 축 설정 (Y축)
         axis_left: pg.AxisItem = self.getAxis("left")
         axis_left.setStyle(tickFont=axis_font)
-        axis_left.setTextPen(GRAPH_PALETTE.axis_text)
+        axis_left.setTextPen(self.graph_palette.axis_text)
         # Y축 선 숨기기 (숫자는 표시하되 축 선은 숨김)
         axis_left.setPen(None)
 
@@ -737,7 +812,7 @@ class DMGCanvas(pg.PlotWidget):
         axis_left.tickStrings = tickStrings
 
         # 배경 색상 설정
-        self.background_color = GRAPH_PALETTE.canvas_background
+        self.background_color = self.graph_palette.canvas_background
         self.setBackground(self.background_color)
 
         # 마우스 상호작용 비활성화 (드래그, 줌, 우클릭 메뉴 등)
@@ -748,9 +823,9 @@ class DMGCanvas(pg.PlotWidget):
         self.hideButtons()
 
         self.colors: dict[str, str] = {
-            "max": GRAPH_PALETTE.damage_max_line,
-            "mean": GRAPH_PALETTE.damage_mean_line,
-            "min": GRAPH_PALETTE.damage_min_line,
+            "max": self.graph_palette.damage_max_line,
+            "mean": self.graph_palette.damage_mean_line,
+            "min": self.graph_palette.damage_min_line,
         }
 
         # 선 그래프 그리기
@@ -772,6 +847,38 @@ class DMGCanvas(pg.PlotWidget):
         max_y: float = self.max_value * 1.1  # 최대값에 10% 여유 추가
         self.setYRange(0, max_y)
 
+        self.set_ticks()
+
+        # 테마 전환 시 현재 그래프 색상 동기화
+        theme_manager.theme_changed.connect(self._on_theme_changed)
+
+    def _on_theme_changed(self, _dark: bool) -> None:
+        """테마 전환 시 선 그래프 색상 재구성"""
+
+        # 현재 테마 기준 팔레트 재적용
+        self.graph_palette = get_graph_palette()
+
+        # 축과 배경 색상 재적용
+        self.getAxis("top").setTextPen(self.graph_palette.title_text)
+        self.getAxis("bottom").setTextPen(self.graph_palette.axis_text)
+        self.getAxis("left").setTextPen(self.graph_palette.axis_text)
+        self.background_color = self.graph_palette.canvas_background
+        self.setBackground(self.background_color)
+
+        # 선 색상 집합 재구성
+        self.colors = {
+            "max": self.graph_palette.damage_max_line,
+            "mean": self.graph_palette.damage_mean_line,
+            "min": self.graph_palette.damage_min_line,
+        }
+
+        # 기존 보조 UI 제거
+        self.clear()
+        self.tooltip_label.hide()
+        self.tooltip_label.deleteLater()
+
+        # 현재 팔레트 기준 그래프 아이템 재생성
+        self.create_line_graph()
         self.set_ticks()
 
     def create_line_graph(self) -> None:
@@ -799,7 +906,9 @@ class DMGCanvas(pg.PlotWidget):
         self.tooltip_line = pg.InfiniteLine(
             angle=90,
             movable=False,
-            pen=pg.mkPen(GRAPH_PALETTE.guide_line, width=2, style=Qt.PenStyle.DashLine),
+            pen=pg.mkPen(
+                self.graph_palette.guide_line, width=2, style=Qt.PenStyle.DashLine
+            ),
         )
         self.addItem(self.tooltip_line)
 
@@ -834,7 +943,7 @@ class DMGCanvas(pg.PlotWidget):
 
         # 눈금 펜 설정
         bottom_axis.setTickPen(
-            pg.mkPen(GRAPH_PALETTE.guide_line, width=2, style=Qt.PenStyle.DashLine)
+            pg.mkPen(self.graph_palette.guide_line, width=2, style=Qt.PenStyle.DashLine)
         )
 
     def mouseMoveEvent(self, event) -> None:  # type: ignore
@@ -935,6 +1044,9 @@ class SkillContributionCanvas(pg.PlotWidget):
         super().__init__(parent)
         self.setObjectName("skillContributionCanvas")
 
+        # 현재 테마 기준 그래프 팔레트 고정
+        self.graph_palette: GraphPalette = get_graph_palette()
+
         equipped_skill_ids: list[str] = [sid for sid in skill_ids if sid]
 
         basic_attack_skill_id: str = get_builtin_skill_id(server_id, "평타")
@@ -1017,7 +1129,7 @@ class SkillContributionCanvas(pg.PlotWidget):
         font = CustomFont(point_size=14)
         self.getAxis("top").label.setFont(font)
         # 제목 색상을 검정색으로 설정
-        self.getAxis("top").setTextPen(GRAPH_PALETTE.title_text)
+        self.getAxis("top").setTextPen(self.graph_palette.title_text)
 
         # 하단 축 텍스트 설정
         font_properties = {
@@ -1035,17 +1147,17 @@ class SkillContributionCanvas(pg.PlotWidget):
         axis_bottom.setStyle(tickFont=axis_font)
         # 축 라벨 색상을 검정색으로 설정
         axis_bottom.setPen(None)
-        axis_bottom.setTextPen(GRAPH_PALETTE.axis_text)
+        axis_bottom.setTextPen(self.graph_palette.axis_text)
 
         # 좌측 축 설정 (Y축)
         axis_left: pg.AxisItem = self.getAxis("left")
         axis_left.setStyle(tickFont=axis_font)
-        axis_left.setTextPen(GRAPH_PALETTE.axis_text)
+        axis_left.setTextPen(self.graph_palette.axis_text)
         # Y축 선 숨기기
         axis_left.setPen(None)
 
         # 배경 색상 설정
-        self.background_color = GRAPH_PALETTE.canvas_background
+        self.background_color = self.graph_palette.canvas_background
         self.setBackground(self.background_color)
 
         # 마우스 상호작용 비활성화 (드래그, 줌, 우클릭 메뉴 등)
@@ -1056,7 +1168,7 @@ class SkillContributionCanvas(pg.PlotWidget):
         self.hideButtons()
 
         # 스킬 색상 설정
-        self.colors: list[str] = [*GRAPH_PALETTE.contribution_series]
+        self.colors: list[str] = [*self.graph_palette.contribution_series]
 
         # 눈금 설정
         self.set_ticks()
@@ -1078,6 +1190,38 @@ class SkillContributionCanvas(pg.PlotWidget):
 
         # Y축 그리드를 100까지만 표시하도록 제한
         # self.getViewBox().setLimits(yMin=0, yMax=100.1, xMin=-1, xMax=617)
+
+        # 테마 전환 시 현재 그래프 색상 동기화
+        theme_manager.theme_changed.connect(self._on_theme_changed)
+
+    def _on_theme_changed(self, _dark: bool) -> None:
+        """테마 전환 시 누적 기여도 그래프 색상 재구성"""
+
+        # 현재 테마 기준 팔레트 재적용
+        self.graph_palette = get_graph_palette()
+
+        # 축과 배경 색상 재적용
+        self.getAxis("top").setTextPen(self.graph_palette.title_text)
+        self.getAxis("bottom").setTextPen(self.graph_palette.axis_text)
+        self.getAxis("left").setTextPen(self.graph_palette.axis_text)
+        self.background_color = self.graph_palette.canvas_background
+        self.setBackground(self.background_color)
+
+        # 영역 색상 집합 재구성
+        self.colors = [*self.graph_palette.contribution_series]
+
+        # 기존 범례와 그래프 아이템 제거
+        if self.plotItem is not None and self.plotItem.legend is not None:
+            self.plotItem.legend.scene().removeItem(self.plotItem.legend)
+            self.plotItem.legend = None
+
+        self.clear()
+        self.tooltip_label.hide()
+        self.tooltip_label.deleteLater()
+
+        # 현재 팔레트 기준 그래프 아이템 재생성
+        self.set_ticks()
+        self.create_area_chart()
 
     def create_area_chart(self) -> None:
         # 데이터에서 시간, 최대, 평균, 최소 값 추출
@@ -1118,13 +1262,15 @@ class SkillContributionCanvas(pg.PlotWidget):
 
         # 툴팁 선 (범위 지정 가능한 선)
         self.tooltip_line = pg.PlotCurveItem(
-            pen=pg.mkPen(GRAPH_PALETTE.guide_line, width=2, style=Qt.PenStyle.DashLine),
+            pen=pg.mkPen(
+                self.graph_palette.guide_line, width=2, style=Qt.PenStyle.DashLine
+            ),
         )
         self.addItem(self.tooltip_line)
 
         # 툴팁 점
         self.tooltip_point = pg.ScatterPlotItem(
-            pen=pg.mkPen(GRAPH_PALETTE.guide_line, width=1), size=8
+            pen=pg.mkPen(self.graph_palette.guide_line, width=1), size=8
         )
         self.addItem(self.tooltip_point)
 
@@ -1165,7 +1311,7 @@ class SkillContributionCanvas(pg.PlotWidget):
                 x=[x, x],
                 y=[0, 100],
                 pen=pg.mkPen(
-                    GRAPH_PALETTE.guide_line, width=1, style=Qt.PenStyle.DashLine
+                    self.graph_palette.guide_line, width=1, style=Qt.PenStyle.DashLine
                 ),
             )
             self.addItem(grid_line)
@@ -1176,7 +1322,7 @@ class SkillContributionCanvas(pg.PlotWidget):
                 x=[0, 60],
                 y=[y, y],
                 pen=pg.mkPen(
-                    GRAPH_PALETTE.guide_line, width=1, style=Qt.PenStyle.DashLine
+                    self.graph_palette.guide_line, width=1, style=Qt.PenStyle.DashLine
                 ),
             )
             self.addItem(grid_line)
@@ -1186,7 +1332,7 @@ class SkillContributionCanvas(pg.PlotWidget):
             x=[0, 0],
             y=[0, 100],
             pen=pg.mkPen(
-                GRAPH_PALETTE.guide_line, width=1, style=Qt.PenStyle.SolidLine
+                self.graph_palette.guide_line, width=1, style=Qt.PenStyle.SolidLine
             ),
         )
         self.addItem(grid_line)
@@ -1195,7 +1341,7 @@ class SkillContributionCanvas(pg.PlotWidget):
             x=[60, 60],
             y=[0, 100],
             pen=pg.mkPen(
-                GRAPH_PALETTE.guide_line, width=1, style=Qt.PenStyle.SolidLine
+                self.graph_palette.guide_line, width=1, style=Qt.PenStyle.SolidLine
             ),
         )
         self.addItem(grid_line)
@@ -1204,7 +1350,7 @@ class SkillContributionCanvas(pg.PlotWidget):
             x=[0, 60],
             y=[100, 100],
             pen=pg.mkPen(
-                GRAPH_PALETTE.guide_line, width=1, style=Qt.PenStyle.SolidLine
+                self.graph_palette.guide_line, width=1, style=Qt.PenStyle.SolidLine
             ),
         )
         self.addItem(grid_line)
@@ -1214,7 +1360,7 @@ class SkillContributionCanvas(pg.PlotWidget):
             x=[-1, 60],
             y=[0, 0],
             pen=pg.mkPen(
-                GRAPH_PALETTE.guide_line, width=2, style=Qt.PenStyle.SolidLine
+                self.graph_palette.guide_line, width=2, style=Qt.PenStyle.SolidLine
             ),
         )
         self.addItem(grid_line)
@@ -1285,7 +1431,7 @@ class SkillContributionCanvas(pg.PlotWidget):
             self.tooltip_point.setData(
                 pos=points_data,
                 brush=[
-                    GRAPH_PALETTE.contribution_tooltip_point_fill
+                    self.graph_palette.contribution_tooltip_point_fill
                     for i in range(len(self.data["data"]) - 1)
                 ],
                 # brush=[self.colors[i] for i in range(len(self.data["data"]) - 1)],

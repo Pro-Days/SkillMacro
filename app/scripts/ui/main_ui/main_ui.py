@@ -26,12 +26,13 @@ from app.scripts.data_manager import (
 from app.scripts.macro_models import EquippedSkillRef
 from app.scripts.registry.key_registry import KeyRegistry, KeySpec
 from app.scripts.registry.resource_registry import (
-    convert_resource_path,
+    get_theme_image_path,
     resource_registry,
 )
 from app.scripts.registry.skill_registry import ScrollDef
 from app.scripts.run_macro import build_preview_task_list
 from app.scripts.ui.popup import NoticeKind, PopupKind, PopupManager
+from app.scripts.ui.themes import theme_manager
 
 if TYPE_CHECKING:
     from app.scripts.macro_models import LinkSkill, MacroPreset, SkillUsageSetting
@@ -296,16 +297,22 @@ class TabWidget(QTabWidget):
         if tab_bar is not None:
             tab_bar.setFont(CustomFont(12))
 
+    @staticmethod
+    def _plus_icon(dark: bool) -> QPixmap:
+        # 현재 테마 기준 플러스 아이콘 로드
+        return QPixmap(get_theme_image_path("plus.png", dark))
+
     def _setup_add_tab_button(self) -> None:
         """탭 추가 버튼 구성"""
 
         self.add_tab_button: QPushButton = QPushButton()
         self.add_tab_button.setObjectName("tabAddButton")
-        self.add_tab_button.setIcon(
-            QIcon(QPixmap(convert_resource_path("resources\\image\\plus.png")))
-        )
+        self.add_tab_button.setIcon(QIcon(self._plus_icon(theme_manager.is_dark)))
         self.add_tab_button.setFixedSize(QSize(26, 26))
         self.add_tab_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        theme_manager.theme_changed.connect(
+            lambda dark: self.add_tab_button.setIcon(QIcon(self._plus_icon(dark)))
+        )
 
         corner_container: QWidget = QWidget()
         corner_layout: QVBoxLayout = QVBoxLayout(corner_container)
@@ -722,8 +729,12 @@ class Tab(QFrame):
 
         self.preview.update_preview()
 
-    def update_from_preset(self) -> None:
+    def update_from_preset(self, force_preview: bool = False) -> None:
         """프리셋 기준 UI 동기화"""
+
+        # 테마 전환 시 프리뷰 비교 캐시 초기화
+        if force_preview:
+            self.preview.invalidate_cache()
 
         selected_ref: EquippedSkillRef | None = self.get_selected_skill_ref()
         self.available_skills.update_from_preset(self.preset)
@@ -785,6 +796,12 @@ class SkillPreview(QFrame):
             )
             self.skills.append(skill)
             self.skills_layout.addWidget(skill)
+
+    def invalidate_cache(self) -> None:
+        """테마 전환 직후 프리뷰 강제 갱신용 캐시 초기화"""
+
+        # 동일 태스크 목록 비교를 우회하기 위한 이전 프리뷰 캐시 초기화
+        self.previous_task_list = ()
 
     def update_preview(self) -> None:
         """프리뷰 갱신"""

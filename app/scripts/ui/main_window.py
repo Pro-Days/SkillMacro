@@ -22,14 +22,15 @@ from PySide6.QtWidgets import (
 from app.scripts.app_state import app_state
 from app.scripts.config import config
 from app.scripts.custom_classes import CustomFont
-from app.scripts.data_manager import load_data
+from app.scripts.data_manager import load_data, save_data
+from app.scripts.macro_models import ThemeMode
 from app.scripts.registry.resource_registry import convert_resource_path
 from app.scripts.run_macro import checking_kb_thread
 from app.scripts.ui.main_ui.main_ui import MainUI
 from app.scripts.ui.main_ui.sidebar import Sidebar
 from app.scripts.ui.popup import NoticeKind, PopupManager
 from app.scripts.ui.sim_ui.simul_ui import SimUI
-from app.scripts.ui.themes import LIGHT_THEME
+from app.scripts.ui.themes import DARK_THEME, LIGHT_THEME, theme_manager
 
 
 class MainWindow(QWidget):
@@ -192,8 +193,8 @@ class MainWindow(QWidget):
         )
         # self.setGeometry(0, 0, 960, 540)
 
-        # 글로벌 테마 적용 (다크 모드 색상 반전 방지)
-        QApplication.instance().setStyleSheet(LIGHT_THEME)
+        # 글로벌 테마 적용
+        self.setStyleSheet(LIGHT_THEME)
 
         # 페이지 프레임 설정
         # 페이지1: 메인 매크로, 페이지2: 시뮬레이션
@@ -223,6 +224,11 @@ class MainWindow(QWidget):
             lambda _: self.sidebar.refresh_skill_related_pages()
         )
 
+        # 메인 UI 데이터 변경 직후 스킬 관련 페이지 최신 상태 동기화
+        self.main_ui.tab_widget.dataChanged.connect(
+            self.sidebar.refresh_skill_related_pages
+        )
+
         # 사이드바에서 데이터 변경 시 저장은 MainUI 파이프라인(=tab_widget.dataChanged)로 위임
         self.sidebar.dataChanged.connect(self.main_ui.tab_widget.dataChanged.emit)
 
@@ -234,8 +240,8 @@ class MainWindow(QWidget):
         # 시뮬레이션 UI
         self.sim_ui: SimUI = SimUI(self, self.page2)
 
-        # 하단 제작자 라벨 설정
-        self.creator_label: QPushButton = CreatorLabel(self)
+        # 하단 푸터 바 (제작자 라벨 + 테마 전환)
+        self.footer_bar: FooterBar = FooterBar(self)
 
         page1_layout = QHBoxLayout()
         page1_layout.addWidget(self.sidebar)
@@ -252,11 +258,17 @@ class MainWindow(QWidget):
 
         layout = QVBoxLayout()
         layout.addWidget(self.page_navigator)
-        layout.addWidget(self.creator_label)
+        layout.addWidget(self.footer_bar)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
         self.setLayout(layout)
+
+        # 테마 변경 시 아이콘 캐시 초기화 + UI 재갱신
+        theme_manager.theme_changed.connect(self._on_theme_changed)
+
+        # 저장된 테마 상태 재적용
+        self.footer_bar.apply_saved_theme()
 
         self.show()
 
@@ -278,6 +290,22 @@ class MainWindow(QWidget):
         self.popup_manager.update_notice_positions()
         return super().resizeEvent(event)
 
+    def _on_theme_changed(self, dark: bool) -> None:
+        """테마 변경 시 아이콘 캐시 초기화 + 모든 탭·사이드바 아이콘 재갱신"""
+
+        from app.scripts.registry.resource_registry import resource_registry
+
+        resource_registry.set_dark_mode(dark)
+
+        # 모든 탭 재갱신
+        for i in range(self.main_ui.tab_widget.count()):
+            tab = self.main_ui.tab_widget.widget(i)
+            if hasattr(tab, "update_from_preset"):
+                tab.update_from_preset(force_preview=True)  # type: ignore[union-attr]
+
+        # 사이드바 재갱신
+        self.sidebar.update_from_preset()
+
     def get_main_ui(self) -> MainUI:
         """메인 UI 객체 반환"""
         return self.main_ui
@@ -291,14 +319,105 @@ class MainWindow(QWidget):
         return self.popup_manager
 
 
-class CreatorLabel(QPushButton):
+class FooterBar(QFrame):
     def __init__(self, parent: QWidget) -> None:
-        super().__init__("  제작자: 프로데이즈  |  디스코드: prodays", parent)
+        super().__init__(parent)
 
-        self.setObjectName("creatorLabel")
-        self.setFont(CustomFont(10))
-        self.clicked.connect(lambda: open_new("https://github.com/Pro-Days/SkillMacro"))
-        self.setFixedSize(320, 24)
+        self.setObjectName("footerBar")
+        self.setFixedHeight(26)
+
+        # 제작자 라벨 (왼쪽)
+        creator_btn = QPushButton("  제작자: 프로데이즈  |  디스코드: prodays")
+        creator_btn.setObjectName("creatorLabel")
+        creator_btn.setFont(CustomFont(10))
+        creator_btn.clicked.connect(
+            lambda: open_new("https://github.com/Pro-Days/SkillMacro")
+        )
+
+        # 테마 버튼 (오른쪽)
+        self._btns: dict[ThemeMode, QPushButton] = {}
+        btn_labels = {
+            ThemeMode.LIGHT: "라이트",
+            ThemeMode.DARK: "다크",
+            ThemeMode.SYSTEM: "시스템",
+        }
+        theme_layout = QHBoxLayout()
+        theme_layout.setContentsMargins(0, 0, 6, 0)
+        theme_layout.setSpacing(4)
+        for mode, label in btn_labels.items():
+            btn = QPushButton(label)
+            btn.setObjectName("themeBtn")
+            btn.setFont(CustomFont(9))
+            btn.setFixedHeight(18)
+            btn.clicked.connect(lambda _=False, m=mode: self._apply_theme(m))
+            self._btns[mode] = btn
+            theme_layout.addWidget(btn)
+
+        theme_frame = QFrame()
+        theme_frame.setLayout(theme_layout)
+
+        layout = QHBoxLayout()
+        layout.addWidget(creator_btn)
+        layout.addStretch()
+        layout.addWidget(theme_frame)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        self.setLayout(layout)
+
+        # 저장된 테마 모드 초기 상태 반영
+        self._current_mode: ThemeMode = app_state.ui.theme_mode
+        self._update_btn_states()
+
+        # 시스템 테마 변경 감지
+        self._qapp: QApplication = QApplication.instance()  # type: ignore[assignment]
+        self._qapp.styleHints().colorSchemeChanged.connect(
+            self._on_system_scheme_changed
+        )
+
+    def apply_saved_theme(self) -> None:
+        """저장된 테마 모드를 현재 UI에 재적용"""
+
+        # 저장된 테마 상태 기준 스타일 재적용
+        self._apply_stylesheet()
+
+    def _apply_theme(self, mode: ThemeMode) -> None:
+        # 동일 테마 재선택 시 불필요한 저장 생략
+        if self._current_mode == mode:
+            return
+
+        # 현재 선택 테마 상태 갱신 블록
+        self._current_mode: ThemeMode = mode
+        app_state.ui.theme_mode = mode
+        self._update_btn_states()
+        self._apply_stylesheet()
+
+        # 테마 변경 결과 영속화 블록
+        save_data()
+
+    def _apply_stylesheet(self) -> None:
+        dark: bool = self._resolve_mode() == "dark"
+        theme_manager.set_dark(dark)
+        self.window().setStyleSheet(DARK_THEME if dark else LIGHT_THEME)
+
+    def _resolve_mode(self) -> str:
+        if self._current_mode == ThemeMode.DARK:
+            return "dark"
+        if self._current_mode == ThemeMode.LIGHT:
+            return "light"
+        # SYSTEM
+        scheme = self._qapp.styleHints().colorScheme()
+        return "dark" if scheme == Qt.ColorScheme.Dark else "light"
+
+    def _on_system_scheme_changed(self) -> None:
+        # 시스템 모드에서만 OS 색상 변경 반영
+        if self._current_mode == ThemeMode.SYSTEM:
+            self._apply_stylesheet()
+
+    def _update_btn_states(self) -> None:
+        for mode, btn in self._btns.items():
+            btn.setProperty("active", mode == self._current_mode)
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ from app.scripts.macro_models import (
     LinkKeyType,
     LinkSkill,
     MacroPreset,
+    ThemeMode,
 )
 from app.scripts.registry.key_registry import KeyRegistry, KeySpec
 from app.scripts.registry.server_registry import ServerSpec, server_registry
@@ -103,6 +104,9 @@ class MacroState:
 class UiState:
     # 현재 프로그램 버전
     current_version: str = config.version
+
+    # 현재 선택된 테마 모드
+    theme_mode: ThemeMode = ThemeMode.SYSTEM
 
     # 업데이트 url
     update_url: str = ""

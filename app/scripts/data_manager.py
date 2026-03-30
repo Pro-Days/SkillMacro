@@ -13,11 +13,12 @@ from app.scripts.macro_models import (
     MacroPresetFile,
     MacroPresetRepository,
     SkillUsageSetting,
+    ThemeMode,
 )
 from app.scripts.registry.server_registry import ServerSpec, server_registry
 from app.scripts.registry.skill_registry import ScrollDef, SkillDef
 
-data_version = 1
+data_version = 2
 
 # todo: 라이브러리를 통해 경로를 설정하도록 변경
 local_appdata: str = os.environ.get("LOCALAPPDATA", default="")
@@ -49,6 +50,39 @@ def backup_data_file(file_path: str) -> None:
 
     # UI 초기화 이후 표시할 백업 알림 대기 상태 반영
     app_state.ui.has_pending_backup_notice = True
+
+
+def migrate_macro_data_file(file_path: str) -> None:
+    """릴리스된 macros.json 저장 구조를 현재 버전으로 승격"""
+
+    try:
+        # 원본 JSON 루트 객체 로드 블록
+        with open(file_path, "r", encoding="utf-8") as f:
+            raw_obj: object = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        # 손상 파일은 기존 복구 흐름에서 처리되도록 즉시 반환
+        return
+
+    # 루트 객체 타입 검증 블록
+    if not isinstance(raw_obj, dict):
+        return
+
+    raw: dict[str, object] = raw_obj
+    migrated: bool = False
+    stored_version_obj: object = raw.get("version")
+
+    # v1 -> v2 테마 저장 필드 주입 블록
+    if stored_version_obj == 1:
+        raw["version"] = data_version
+        raw["theme_mode"] = ThemeMode.SYSTEM.value
+        migrated = True
+
+    # 마이그레이션 결과 즉시 파일 반영 블록
+    if not migrated:
+        return
+
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(raw, f, ensure_ascii=False, indent=4)
 
 
 def create_default_custom_skills_data() -> None:
@@ -360,6 +394,7 @@ def load_data(num: int = -1) -> None:
     # 프리셋 업데이트
     app_state.macro.presets = preset_file.preset
     app_state.macro.current_preset_index = target_index
+    app_state.ui.theme_mode = preset_file.theme_mode
 
     # 정리된 프리셋/현재 선택 인덱스 저장 반영 블록
     if preset_was_sanitized or preset_file.recent_preset != target_index:
@@ -375,6 +410,7 @@ def create_default_data() -> None:
     repo = MacroPresetRepository(file_dir)
     preset_file = MacroPresetFile(
         version=data_version,
+        theme_mode=app_state.ui.theme_mode,
         recent_preset=0,
         preset=[get_default_preset()],
     )
@@ -390,6 +426,7 @@ def save_data() -> None:
 
     preset_file: MacroPresetFile = MacroPresetFile(
         version=data_version,
+        theme_mode=app_state.ui.theme_mode,
         recent_preset=app_state.macro.current_preset_index,
         preset=app_state.macro.presets.copy(),
     )
@@ -470,6 +507,9 @@ def update_data() -> None:
     if not os.path.isfile(file_dir):
         create_default_data()
         return
+
+    # 릴리스 버전 저장 포맷 승격 블록
+    migrate_macro_data_file(file_dir)
 
     repo: MacroPresetRepository = MacroPresetRepository(file_dir)
     try:

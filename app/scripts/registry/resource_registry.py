@@ -14,6 +14,15 @@ from PySide6.QtGui import (
     QPixmap,
 )
 
+# 현재 다크 모드 여부 (테마 전환 시 갱신)
+_dark_mode: bool = False
+
+# 라이트 테마 이미지 출력 디렉터리 경로
+_LIGHT_THEME_IMAGE_DIR: str = "resources\\image\\light"
+
+# 다크 테마 이미지 출력 디렉터리 경로
+_DARK_THEME_IMAGE_DIR: str = "resources\\image\\dark"
+
 
 def convert_resource_path(relative_path: str) -> str:
     """리소스 경로 변경"""
@@ -24,6 +33,23 @@ def convert_resource_path(relative_path: str) -> str:
     base_path = os.path.dirname(base_path)
 
     return os.path.join(base_path, relative_path)
+
+
+def get_theme_image_path(filename: str, dark: bool) -> str:
+    """테마별 이미지 경로 반환"""
+
+    # 현재 테마에 맞는 리소스 디렉터리 선택
+    theme_dir: str = _DARK_THEME_IMAGE_DIR if dark else _LIGHT_THEME_IMAGE_DIR
+
+    # 테마 디렉터리 기준 최종 경로 반환
+    return convert_resource_path(f"{theme_dir}\\{filename}")
+
+
+def get_theme_image_url_path(filename: str, dark: bool) -> str:
+    """QSS url() 용 테마 이미지 경로 반환"""
+
+    # QSS 에서 사용하는 슬래시 형식 경로 반환
+    return get_theme_image_path(filename, dark).replace("\\", "/")
 
 
 @dataclass
@@ -61,6 +87,18 @@ class ResourceRegistry:
         if not self._initialized:
             self.initialize()
             self._initialized = True
+
+    def set_dark_mode(self, dark: bool) -> None:
+        """테마 전환 시 호출 — 캐시를 초기화해 다음 요청부터 새 색상으로 생성"""
+
+        global _dark_mode
+        _dark_mode = dark
+        self._SKILL_PIXMAP_CACHE.clear()
+        self._SCROLL_PIXMAP_CACHE.clear()
+        # 빈 스킬 슬롯 아이콘은 캐시에 항상 있어야 함
+        self._SKILL_PIXMAP_CACHE[""] = QPixmap(
+            convert_resource_path("resources\\image\\emptySkill.png")
+        )
 
     def initialize(self) -> None:
         """초기화 작업 수행"""
@@ -166,8 +204,12 @@ class ResourceRegistry:
         )
 
         # 텍스트 외곽선과 본문 렌더링
+        # 텍스트 외곽선 색상 (다크: 검정, 라이트: 흰색)
+        outline_color = (
+            QColor(0, 0, 0, 220) if _dark_mode else QColor(255, 255, 255, 220)
+        )
         painter.setFont(font)
-        painter.setPen(QColor(255, 255, 255, 220))
+        painter.setPen(outline_color)
         for offset_x in (-shadow_offset, 0, shadow_offset):
             for offset_y in (-shadow_offset, 0, shadow_offset):
                 if offset_x == 0 and offset_y == 0:
@@ -176,8 +218,8 @@ class ResourceRegistry:
                 outline_rect: QRect = text_rect.translated(offset_x, offset_y)
                 painter.drawText(outline_rect, text_flags, display_label)
 
-        # 본문 텍스트 색상 고정
-        painter.setPen(QColor(0, 0, 0))
+        # 본문 텍스트 색상 (테마에 따라 분기)
+        painter.setPen(QColor(255, 255, 255) if _dark_mode else QColor(0, 0, 0))
         painter.drawText(text_rect, text_flags, display_label)
         painter.end()
 

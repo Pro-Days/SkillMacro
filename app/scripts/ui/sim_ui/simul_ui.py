@@ -68,7 +68,7 @@ from app.scripts.custom_classes import (
 )
 from app.scripts.data_manager import save_data
 from app.scripts.registry.resource_registry import (
-    convert_resource_path,
+    get_theme_image_path,
     resource_registry,
 )
 from app.scripts.simulate_macro import simulate_random_from_calculator
@@ -80,6 +80,7 @@ from app.scripts.ui.sim_ui.graph import (
     SkillContributionCanvas,
     SkillDpsRatioCanvas,
 )
+from app.scripts.ui.themes import theme_manager
 
 if TYPE_CHECKING:
     from app.scripts.calculator_engine import (
@@ -4670,14 +4671,13 @@ class Navigation(QFrame):
         ]
 
         # 닫기 버튼
-        button: QPushButton = QPushButton(self)
-        button.setObjectName("simNavCloseBtn")
-        pixmap: QPixmap = QPixmap(convert_resource_path("resources\\image\\x.png"))
-        button.setIcon(QIcon(pixmap))
-        button.setIconSize(QSize(15, 15))
-        button.clicked.connect(lambda: func2(0))
+        self.close_button: QPushButton = QPushButton(self)
+        self.close_button.setObjectName("simNavCloseBtn")
+        self.close_button.setIcon(QIcon(self._load_close_icon(theme_manager.is_dark)))
+        self.close_button.setIconSize(QSize(15, 15))
+        self.close_button.clicked.connect(lambda: func2(0))
 
-        self.buttons.append(button)
+        self.buttons.append(self.close_button)
 
         layout.addWidget(self.buttons[0])
         layout.addWidget(self.buttons[1])
@@ -4688,3 +4688,19 @@ class Navigation(QFrame):
         layout.addWidget(self.buttons[3])
 
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+        # 테마 전환 시 닫기 버튼 아이콘 동기화
+        theme_manager.theme_changed.connect(self._on_theme_changed)
+
+    @staticmethod
+    def _load_close_icon(dark: bool) -> QPixmap:
+        """현재 테마 기준 계산기 닫기 아이콘 로드"""
+
+        # 현재 테마 기준 닫기 아이콘 로드
+        return QPixmap(get_theme_image_path("x.png", dark))
+
+    def _on_theme_changed(self, dark: bool) -> None:
+        """테마 전환 시 계산기 닫기 버튼 아이콘 갱신"""
+
+        # 현재 테마 기준 아이콘 재적용
+        self.close_button.setIcon(QIcon(self._load_close_icon(dark)))

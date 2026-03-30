@@ -15,6 +15,14 @@ if TYPE_CHECKING:
     from app.scripts.registry.skill_registry import ScrollDef
 
 
+class ThemeMode(str, Enum):
+    """저장 가능한 테마 모드"""
+
+    LIGHT = "light"
+    DARK = "dark"
+    SYSTEM = "system"
+
+
 @dataclass(frozen=True, slots=True)
 class EquippedSkillRef:
     """장착 스킬 인덱스 참조 모델"""
@@ -489,7 +497,8 @@ class MacroPreset:
 class MacroPresetFile:
     """json 파일을 저장하는 최상위 객체"""
 
-    version: int = 1
+    version: int = 2
+    theme_mode: ThemeMode = ThemeMode.SYSTEM
     recent_preset: int = 0
     preset: list[MacroPreset] = field(default_factory=list)
 
@@ -499,6 +508,7 @@ class MacroPresetFile:
 
         return cls(
             version=data["version"],
+            theme_mode=ThemeMode(data["theme_mode"]),
             recent_preset=data["recent_preset"],
             preset=[MacroPreset.from_dict(p) for p in data["preset"]],
         )
@@ -508,6 +518,7 @@ class MacroPresetFile:
 
         return {
             "version": self.version,
+            "theme_mode": self.theme_mode.value,
             "recent_preset": self.recent_preset,
             "preset": [p.to_dict() for p in self.preset],
         }

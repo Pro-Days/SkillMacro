@@ -55,6 +55,7 @@ from app.scripts.macro_models import SkillUsageSetting
 from app.scripts.registry.key_registry import KeyRegistry
 from app.scripts.registry.resource_registry import (
     convert_resource_path,
+    get_theme_image_path,
     resource_registry,
 )
 from app.scripts.registry.server_registry import ServerSpec, server_registry
@@ -67,6 +68,7 @@ from app.scripts.registry.skill_registry import (
     ScrollDef,
     SkillDef,
 )
+from app.scripts.ui.themes import theme_manager
 
 if TYPE_CHECKING:
     from app.scripts.registry.key_registry import KeySpec
@@ -469,7 +471,8 @@ class NoticeContent(PopupContent):
         remove_btn.setObjectName("noticeRemoveBtn")
         remove_btn.setFixedSize(24, 24)
         remove_btn.clicked.connect(self.closed.emit)
-        pixmap: QPixmap = QPixmap(convert_resource_path("resources\\image\\x.png"))
+        # 현재 테마 기준 닫기 아이콘 경로 선택
+        pixmap: QPixmap = QPixmap(get_theme_image_path("x.png", theme_manager.is_dark))
         remove_btn.setIcon(QIcon(pixmap))
         remove_btn.setIconSize(QSize(20, 20))
         remove_btn.setCursor(Qt.CursorShape.PointingHandCursor)

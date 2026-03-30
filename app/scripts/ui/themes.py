@@ -2,18 +2,40 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.scripts.registry.resource_registry import convert_resource_path
+from PySide6.QtCore import QObject, Signal
 
-# 런타임 경로
-_CLOSE_BTN_PATH: str = convert_resource_path("resources\\image\\x.png").replace(
-    "\\", "/"
-)
-_DOWN_ARROW_PATH: str = convert_resource_path(
-    "resources\\image\\down_arrow.png"
-).replace("\\", "/")
-_CHECK_TRUE_PATH: str = convert_resource_path(
-    "resources\\image\\checkTrue.png"
-).replace("\\", "/")
+from app.scripts.registry.resource_registry import get_theme_image_url_path
+
+
+class ThemeManager(QObject):
+    """테마 상태를 관리하고 변경을 알리는 싱글턴"""
+
+    theme_changed = Signal(bool)  # True = 다크
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._is_dark: bool = False
+
+    @property
+    def is_dark(self) -> bool:
+        return self._is_dark
+
+    def set_dark(self, dark: bool) -> None:
+        self._is_dark = dark
+        self.theme_changed.emit(dark)
+
+
+theme_manager = ThemeManager()
+
+# 런타임 경로 (라이트 정적 리소스)
+_CLOSE_BTN_PATH: str = get_theme_image_url_path("x.png", dark=False)
+_DOWN_ARROW_PATH: str = get_theme_image_url_path("down_arrow.png", dark=False)
+_CHECK_TRUE_PATH: str = get_theme_image_url_path("checkTrue.png", dark=False)
+
+# 런타임 경로 (다크 정적 리소스)
+_CLOSE_BTN_PATH_DARK: str = get_theme_image_url_path("x.png", dark=True)
+_DOWN_ARROW_PATH_DARK: str = get_theme_image_url_path("down_arrow.png", dark=True)
+_CHECK_TRUE_PATH_DARK: str = get_theme_image_url_path("checkTrue.png", dark=True)
 
 # 동적 setStyleSheet에 쓰이는 색상 상수
 # NavigationButton (사이드바) - 테마 전환 시 여기만 바꾸면 됨
@@ -325,8 +347,17 @@ QFrame#skillOptionCard {{
 
 /* 체크 버튼 (사용 여부·단독·단독스왑) */
 QPushButton#checkBtn {{
-    background-color: transparent;
+    background-color: #F6F8FB;
+    border: 1px solid #D6E0EB;
     border-radius: 8px;
+}}
+QPushButton#checkBtn[active=true] {{
+    background-color: #E8F2FF;
+    border: 1px solid #7BAEF7;
+}}
+QPushButton#checkBtn[active=false] {{
+    background-color: #F6F8FB;
+    border: 1px solid #D6E0EB;
 }}
 QPushButton#checkBtn:hover {{ background-color: #dddddd; }}
 
@@ -334,7 +365,21 @@ QPushButton#priorityBtn {{
     background-color: #FFFFFF;
     border: 1px solid #C7D4E5;
     border-radius: 8px;
+    color: #94A3B8;
     padding: 2px 8px;
+}}
+QPushButton#priorityBtn[active=true] {{
+    background-color: #E8F2FF;
+    border: 1px solid #7BAEF7;
+    color: #1E5EBF;
+}}
+QPushButton#priorityBtn[active=false] {{
+    color: #94A3B8;
+}}
+QPushButton#priorityBtn:disabled {{
+    background-color: #F4F7FA;
+    border: 1px solid #D7E2F0;
+    color: #B2BDCC;
 }}
 QPushButton#priorityBtn:hover {{ background-color: #F1F5FA; }}
 
@@ -1347,5 +1392,1335 @@ QLabel#powerLabelNumber[slot="4"] {{
 
 /* ── SkillInput 라벨 ── */
 QLabel#skillInputLabel {{ border: 0px solid; border-radius: 4px; }}
+
+
+/* ────────────────── 푸터 바 ────────────────── */
+QFrame#footerBar {{
+    background-color: #FFFFFF;
+    border-top: 1px solid #E0E0E0;
+}}
+
+QPushButton#themeBtn {{
+    background-color: transparent;
+    color: #888888;
+    border: 1px solid #DDDDDD;
+    border-radius: 4px;
+    padding: 1px 7px;
+    font-size: 10px;
+}}
+QPushButton#themeBtn:hover {{
+    background-color: #F0F0F0;
+    color: #444444;
+}}
+QPushButton#themeBtn[active=true] {{
+    background-color: #4A90D9;
+    color: #FFFFFF;
+    border: 1px solid #4A90D9;
+}}
+
+"""
+
+# 다크 테마 동적 색상 상수
+DARK_NAV_BTN_BG: str = "#1C1C28"
+DARK_NAV_BTN_HOVER_BG: str = "#2A2A3E"
+DARK_NAV_BTN_ACTIVE_BG: str = "#333350"
+DARK_NAV_BTN_BORDER: str = "#3A3A50"
+
+DARK_SIM_NAV_BG: str = "rgb(28, 28, 40)"
+DARK_SIM_NAV_HOVER_BG: str = "rgb(42, 42, 62)"
+DARK_SIM_NAV_ACTIVE_BORDER: str = "#9180F7"
+DARK_SIM_NAV_INACTIVE_BORDER: str = "#1C1C28"
+
+DARK_SETTING_BTN_ACTIVE_COLOR: str = "#E8E8F0"
+DARK_SETTING_BTN_INACTIVE_COLOR: str = "#555570"
+
+DARK_NOTICE_WARNING_ACCENT: str = "#E5AE45"
+DARK_NOTICE_ERROR_ACCENT: str = "#F07C7C"
+
+DARK_VALUE_POSITIVE_COLOR: str = "#4ECB71"
+DARK_VALUE_NEGATIVE_COLOR: str = "#F06060"
+
+DARK_STAT_POSITIVE_COLOR: str = "#4ECB71"
+DARK_STAT_NEGATIVE_COLOR: str = "#F06060"
+
+# 다크 그래프 팔레트
+DARK_GRAPH_PALETTE: GraphPalette = GraphPalette(
+    card_background="#242434",
+    card_border="#3A3A52",
+    tooltip_background="rgba(30, 30, 50, 0.92)",
+    tooltip_border="#5A5A78",
+    tooltip_text="#E0E0F0",
+    canvas_background="#242434",
+    title_text="#E0E0F0",
+    axis_text="#A0A0C0",
+    skill_ratio_label_text="#E0E0F0",
+    dpm_median_bar="#6090FF",
+    dpm_center_bar="#8AB0FF",
+    dpm_hover_bar="#B0C8FF",
+    dpm_normal_bar="#F08080",
+    ratio_series=(
+        "#EF9A9A",
+        "#90CAF9",
+        "#A5D6A7",
+        "#FFE082",
+        "#CE93D8",
+        "#FFAB76",
+        "#64B5F6",
+    ),
+    damage_max_line="#F08080",
+    damage_mean_line="#80AAFF",
+    damage_min_line="#80C880",
+    guide_line="#555570",
+    contribution_series=(
+        "#EF9A9A",
+        "#90CAF9",
+        "#A5D6A7",
+        "#FFE082",
+        "#CE93D8",
+        "#FFAB76",
+        "#64B5F6",
+    ),
+    contribution_tooltip_point_fill="#3A3A50",
+)
+
+# 다크 테마 글로벌 QSS
+DARK_THEME: str = f"""
+
+/* ────────────────── 베이스 ────────────────── */
+*:focus {{ outline: none; }}
+
+QWidget {{
+    color: #E8E8F0;
+}}
+
+QDialog {{
+    background-color: #1C1C28;
+}}
+
+QFrame {{ background-color: transparent; }}
+
+QPushButton {{
+    background-color: #2A2A3E;
+    color: #E8E8F0;
+    border: 1px solid #3A3A52;
+    border-radius: 6px;
+}}
+QPushButton:disabled {{
+    color: #555570;
+}}
+
+
+/* ────────────────── 메인 윈도우 ────────────────── */
+QWidget#mainWindow {{
+    background-color: #1C1C28;
+}}
+
+QPushButton#creatorLabel {{
+    background-color: transparent;
+    text-align: left;
+    border: 0px;
+}}
+
+
+/* ────────────────── 탭 위젯 ────────────────── */
+QTabWidget {{
+    background: #252538;
+    border: 1px solid #3A3A52;
+    border-radius: 10px;
+}}
+
+QTabWidget::pane {{
+    border: 1px solid #3A3A52;
+    border-bottom-left-radius: 10px;
+    border-bottom-right-radius: 10px;
+    border-top-right-radius: 10px;
+    background: #252538;
+}}
+
+QTabBar::tab {{
+    background: #1C1C28;
+    color: #E8E8F0;
+    border: 1px solid #3A3A52;
+    border-bottom: none;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    padding: 6px 10px;
+    margin-top: 0px;
+}}
+
+QTabBar::tab:selected {{ background: #252538; }}
+QTabBar::tab:hover    {{ background: #2E2E45; }}
+
+QTabBar::close-button {{
+    image: url("{_CLOSE_BTN_PATH_DARK}");
+    border-radius: 5px;
+}}
+QTabBar::close-button:hover   {{ background-color: #FF5555; }}
+QTabBar::close-button:pressed {{ background-color: #CC0000; }}
+
+QPushButton#tabAddButton {{
+    border: 1px solid #3A3A52;
+    background: #252538;
+    border-radius: 4px;
+}}
+QPushButton#tabAddButton:hover {{ background: #2E2E45; }}
+
+QFrame#tabDivider {{ background-color: #3A3A52; }}
+
+
+/* ────────────────── SkillPreview ────────────────── */
+QFrame#skillPreview {{
+    background-color: #1C1C28;
+    border-radius: 5px;
+    border: 1px solid #3A3A52;
+}}
+
+
+/* ────────────────── 아이콘 버튼 (무공비급·스킬) ────────────────── */
+QPushButton#availScrollBtn,
+QPushButton#availSkillBtn,
+QPushButton#placedSkillBtn {{
+    border: 0px;
+    background-color: transparent;
+    outline: none;
+}}
+
+
+/* ────────────────── 사이드바 ────────────────── */
+QFrame#sidebar {{ background-color: #1C1C28; }}
+
+QScrollArea#sidebarScrollArea {{
+    background-color: #1C1C28;
+    border: 0px solid black;
+    border-right: 1px solid #2E2E45;
+}}
+
+QFrame#navButtonsFrame {{ background-color: #1C1C28; }}
+
+QPushButton#sidebarNavButton {{
+    background-color: {DARK_NAV_BTN_BG};
+    border: 0px solid {DARK_NAV_BTN_BORDER};
+}}
+QPushButton#sidebarNavButton[variant="0"] {{
+    border-top-width: 1px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 0px;
+    border-top-left-radius: 0px;
+    border-top-right-radius: 8px;
+    border-bottom-left-radius: 0px;
+    border-bottom-right-radius: 0px;
+}}
+QPushButton#sidebarNavButton[variant="1"] {{
+    border-top-width: 0px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 0px;
+    border-top-left-radius: 0px;
+    border-top-right-radius: 0px;
+    border-bottom-left-radius: 0px;
+    border-bottom-right-radius: 0px;
+}}
+QPushButton#sidebarNavButton[variant="2"] {{
+    border-top-width: 0px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 0px;
+    border-top-left-radius: 0px;
+    border-top-right-radius: 0px;
+    border-bottom-left-radius: 0px;
+    border-bottom-right-radius: 0px;
+}}
+QPushButton#sidebarNavButton[variant="3"] {{
+    border-top-width: 0px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 0px;
+    border-top-left-radius: 0px;
+    border-top-right-radius: 0px;
+    border-bottom-left-radius: 0px;
+    border-bottom-right-radius: 8px;
+}}
+QPushButton#sidebarNavButton[active=true] {{
+    background-color: {DARK_NAV_BTN_ACTIVE_BG};
+}}
+QPushButton#sidebarNavButton:hover {{
+    background-color: {DARK_NAV_BTN_HOVER_BG};
+}}
+
+QLabel#sidebarTitle {{
+    border: 0px solid black;
+    border-radius: 10px;
+    background-color: #3A2F6A;
+}}
+
+
+/* ────────────────── 스킬 사용설정 ────────────────── */
+QPushButton#selectedScrollButton {{
+    background-color: #222236;
+    border: 1px solid #3A3060;
+    border-radius: 10px;
+    text-align: left;
+}}
+QPushButton#selectedScrollButton:hover {{ background-color: #2A2A44; }}
+
+QPushButton#editScrollBtn {{
+    background-color: transparent;
+    border: 1px solid #555570;
+    border-radius: 5px;
+    color: #AAAACC;
+    padding: 2px 10px;
+}}
+QPushButton#editScrollBtn:hover {{ background-color: #2A2A3E; }}
+
+QPushButton#deleteScrollBtn {{
+    background-color: transparent;
+    border: 1px solid #C06060;
+    border-radius: 5px;
+    color: #E07070;
+    padding: 2px 10px;
+}}
+QPushButton#deleteScrollBtn:hover {{ background-color: #3A2020; }}
+
+QLabel#optionTitle {{ color: #8888AA; background-color: transparent; border: 0px; }}
+
+QFrame#skillOptionCard {{
+    background-color: #20202E;
+    border: 1px solid #363650;
+    border-radius: 10px;
+}}
+
+QPushButton#checkBtn {{
+    background-color: #252538;
+    border: 1px solid #3A3A52;
+    border-radius: 8px;
+}}
+QPushButton#checkBtn[active=true] {{
+    background-color: #2A3D66;
+    border: 1px solid #6F96E8;
+}}
+QPushButton#checkBtn[active=false] {{
+    background-color: #252538;
+    border: 1px solid #3A3A52;
+}}
+QPushButton#checkBtn:hover {{ background-color: #2E2E45; }}
+
+QPushButton#priorityBtn {{
+    background-color: #252538;
+    border: 1px solid #3A3A52;
+    border-radius: 8px;
+    color: #6F708A;
+    padding: 2px 8px;
+}}
+QPushButton#priorityBtn[active=true] {{
+    background-color: #2A3D66;
+    border: 1px solid #6F96E8;
+    color: #E8F0FF;
+}}
+QPushButton#priorityBtn[active=false] {{
+    color: #6F708A;
+}}
+QPushButton#priorityBtn:disabled {{
+    background-color: #212132;
+    border: 1px solid #32324A;
+    color: #57586E;
+}}
+QPushButton#priorityBtn:hover {{ background-color: #2E2E48; }}
+
+QFrame#skillSettingCard {{
+    background-color: #1E1E2E;
+    border: 1px solid #363650;
+    border-radius: 12px;
+}}
+
+
+/* ────────────────── 연계스킬 목록 ────────────────── */
+QFrame#linkSkillWidget {{
+    background-color: #1E1E2E;
+    border: 1px solid #3A3A52;
+    border-radius: 12px;
+}}
+
+QFrame#linkDivider {{ background-color: #2A2A40; border: 0px; }}
+
+QLabel#badgeAuto {{
+    background-color: #1A3A28;
+    color: #5ECC80;
+    border: 1px solid #2A5A40;
+    border-radius: 8px;
+}}
+QLabel#badgeManual {{
+    background-color: #28283C;
+    color: #8888AA;
+    border: 1px solid #3A3A52;
+    border-radius: 8px;
+}}
+
+QLabel#startKeyTitle {{
+    color: #666688;
+    font-size: 12px;
+    background: transparent;
+    border: 0px;
+}}
+QLabel#startKeyValueSet {{
+    background-color: #DDDDEE;
+    color: #111122;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: bold;
+    font-size: 12px;
+}}
+QLabel#startKeyValueUnset {{
+    color: #444466;
+    font-size: 12px;
+    background: transparent;
+    border: 0px;
+}}
+
+QPushButton#linkEditBtn {{
+    background-color: #2255AA;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 8px;
+    font-weight: bold;
+    font-size: 13px;
+}}
+QPushButton#linkEditBtn:hover   {{ background-color: #2F6DBF; }}
+QPushButton#linkEditBtn:pressed {{ background-color: #1A4488; }}
+
+QPushButton#linkRemoveBtn {{
+    background-color: transparent;
+    color: #E06060;
+    border: 1px solid #C05050;
+    border-radius: 8px;
+    padding: 8px;
+    font-size: 12px;
+}}
+QPushButton#linkRemoveBtn:hover {{
+    background-color: #C05050;
+    color: white;
+}}
+
+
+/* ────────────────── 연계스킬 편집기 ────────────────── */
+QPushButton#addSkillBtn {{
+    background-color: transparent;
+    border-radius: 18px;
+}}
+QPushButton#addSkillBtn:hover {{ background-color: #2E2E45; }}
+
+QPushButton#settingItemBtn[active=true]  {{ color: #E8E8F0; }}
+QPushButton#settingItemBtn[active=false] {{ color: #555570; }}
+
+QPushButton#skillItemBtn {{
+    background-color: transparent;
+    border: 0px;
+    border-radius: 10px;
+    outline: none;
+}}
+QPushButton#skillItemRemoveBtn {{ background-color: transparent; border-radius: 16px; }}
+QPushButton#skillItemRemoveBtn:hover {{ background-color: #2E2E45; }}
+
+
+/* ────────────────── GeneralSettings SettingItem 버튼 ────────────────── */
+QPushButton#generalSettingBtn[active=true]  {{ color: #E8E8F0; }}
+QPushButton#generalSettingBtn[active=false] {{ color: #555570; }}
+
+QLabel#generalSettingTitle {{ border: 0px solid black; border-radius: 10px; }}
+
+
+/* ────────────────── CustomLineEdit ────────────────── */
+QLineEdit {{
+    color: #E8E8F0;
+    selection-background-color: #3A3A60;
+    selection-color: #E8E8F0;
+}}
+QLineEdit[valid=true] {{
+    background-color: #252535;
+    border: 1px solid #3A3A52;
+}}
+QLineEdit[valid=false] {{
+    background-color: #252535;
+    border: 2px solid #E06060;
+}}
+QLineEdit[radius="4"]  {{ border-radius: 4px; }}
+QLineEdit[radius="6"]  {{ border-radius: 6px; }}
+QLineEdit[radius="10"] {{ border-radius: 10px; }}
+
+
+/* ────────────────── CustomComboBox ────────────────── */
+QComboBox {{
+    background-color: #252535;
+    color: #E8E8F0;
+    border: 1px solid #3A3A52;
+    border-radius: 4px;
+}}
+QComboBox::drop-down {{
+    width: 20px;
+    border-left-width: 1px;
+    border-left-color: #3A3A52;
+    border-left-style: solid;
+}}
+QComboBox::down-arrow {{
+    image: url("{_DOWN_ARROW_PATH_DARK}");
+    width: 16px;
+    height: 16px;
+}}
+QComboBox QAbstractItemView {{
+    background-color: #252535;
+    color: #E8E8F0;
+    border: 1px solid #3A3A52;
+    selection-background-color: #3A3A60;
+    selection-color: #E8E8F0;
+}}
+
+
+/* ────────────────── CheckBox ────────────────── */
+QCheckBox {{
+    background-color: transparent;
+    spacing: 6px;
+}}
+QCheckBox::indicator {{
+    width: 16px;
+    height: 16px;
+    border: 1px solid #4A4A64;
+    border-radius: 4px;
+    background-color: #252535;
+}}
+QCheckBox::indicator:hover {{
+    background-color: #2E2E45;
+    border-color: #6060A0;
+}}
+QCheckBox::indicator:checked {{
+    background-color: #5B78D9;
+    border-color: #5B78D9;
+    image: url("{_CHECK_TRUE_PATH_DARK}");
+}}
+QCheckBox::indicator:checked:hover {{
+    background-color: #4A68C8;
+    border-color: #4A68C8;
+}}
+
+
+/* ────────────────── ScrollBar ────────────────── */
+QScrollBar:vertical {{
+    background-color: #1C1C28;
+    width: 10px;
+    margin: 0px;
+    border: none;
+    border-radius: 5px;
+}}
+QScrollBar::handle:vertical {{
+    background-color: #3A3A58;
+    min-height: 24px;
+    border-radius: 5px;
+}}
+QScrollBar::handle:vertical:hover {{
+    background-color: #505078;
+}}
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {{
+    height: 0px;
+    border: none;
+    background: transparent;
+}}
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {{
+    background: transparent;
+}}
+QScrollBar:horizontal {{
+    background-color: #1C1C28;
+    height: 10px;
+    margin: 0px;
+    border: none;
+    border-radius: 5px;
+}}
+QScrollBar::handle:horizontal {{
+    background-color: #3A3A58;
+    min-width: 24px;
+    border-radius: 5px;
+}}
+QScrollBar::handle:horizontal:hover {{
+    background-color: #505078;
+}}
+QScrollBar::add-line:horizontal,
+QScrollBar::sub-line:horizontal {{
+    width: 0px;
+    border: none;
+    background: transparent;
+}}
+QScrollBar::add-page:horizontal,
+QScrollBar::sub-page:horizontal {{
+    background: transparent;
+}}
+
+
+/* ────────────────── Separator ────────────────── */
+QFrame#separator {{ background-color: #2E2E45; border: 0px; }}
+
+
+/* ────────────────── SectionCard ────────────────── */
+QFrame#SectionCard {{
+    background-color: #1E1E2E;
+    border: 1px solid #363650;
+    border-radius: 8px;
+}}
+QWidget#SectionCardContent {{ background-color: transparent; }}
+QWidget#SectionCardHeader  {{ background-color: transparent; }}
+QFrame#sectionCardAccentBar {{
+    background-color: #5B78D9;
+    border: 0px;
+    border-radius: 2px;
+}}
+QLabel#sectionCardTitle    {{ background-color: transparent; border: 0px; color: #C8C8E8; }}
+QLabel#sectionCardSubTitle {{ background-color: transparent; border: 0px; color: #7878A0; }}
+
+
+/* ────────────────── StyledButton ────────────────── */
+QPushButton#styledButtonAdd {{
+    background-color: #2E7A3C;
+    color: white;
+    border: 0px;
+    border-radius: 4px;
+    padding: 4px 12px;
+}}
+QPushButton#styledButtonAdd:hover,
+QPushButton#styledButtonAdd:pressed {{ background-color: #3A8F4A; }}
+
+QPushButton#styledButtonDanger {{
+    background-color: #A03030;
+    color: white;
+    border: 0px;
+    border-radius: 4px;
+    padding: 4px 12px;
+}}
+QPushButton#styledButtonDanger:hover,
+QPushButton#styledButtonDanger:pressed {{ background-color: #C04040; }}
+
+QPushButton#styledButtonNormal {{
+    background-color: #505060;
+    color: white;
+    border: 0px;
+    border-radius: 4px;
+    padding: 4px 12px;
+}}
+QPushButton#styledButtonNormal:hover,
+QPushButton#styledButtonNormal:pressed {{ background-color: #606075; }}
+
+
+/* ────────────────── 팝업 시스템 ────────────────── */
+
+/* HoverCard */
+QFrame#hoverCardContainer {{
+    background-color: #0E0C18;
+    border: 1px solid #4A4860;
+    border-radius: 10px;
+}}
+QLabel#hoverCardTitle {{
+    color: #F7F1A1;
+    background-color: transparent;
+    border: 0px;
+}}
+QLabel#hoverCardBody {{
+    color: #C0BCDC;
+    background-color: transparent;
+    border: 0px;
+}}
+
+/* PopupHost 컨테이너 */
+QFrame#popupContainer {{
+    background-color: #1C1C28;
+    border-radius: 10px;
+    border: none;
+}}
+
+/* NoticeHost 컨테이너 */
+QFrame#noticeContainer {{
+    background-color: #22201A;
+    border: 1px solid #4A4028;
+    border-radius: 10px;
+}}
+
+QFrame#noticeAccentBar[kind="warning"] {{
+    background-color: {DARK_NOTICE_WARNING_ACCENT};
+    border-radius: 3px;
+}}
+QFrame#noticeAccentBar[kind="error"] {{
+    background-color: {DARK_NOTICE_ERROR_ACCENT};
+    border-radius: 3px;
+}}
+
+QPushButton#noticeRemoveBtn {{
+    background-color: transparent;
+    border-radius: 12px;
+}}
+QPushButton#noticeRemoveBtn:hover {{ background-color: rgba(255, 255, 255, 20); }}
+
+QPushButton#noticeActionButton {{
+    background-color: #5068C8;
+    border-radius: 4px;
+}}
+QPushButton#noticeActionButton:hover {{ background-color: #4058B8; }}
+
+/* ActionListContent */
+QFrame#actionListContent QPushButton {{
+    background-color: #1C1C28;
+    border-radius: 10px;
+    border: none;
+    padding: 2px;
+    margin: 2px;
+}}
+QFrame#actionListContent QPushButton[selected=true] {{ background-color: #2E2E45; }}
+QFrame#actionListContent QPushButton:hover          {{ background-color: #28283E; }}
+QFrame#actionListContent QPushButton:!enabled       {{ background-color: #1A1A26; }}
+
+/* InputConfirm / KeyCapture */
+QPushButton#popupConfirmBtn {{
+    background-color: #1C1C28;
+    border-radius: 10px;
+    border: 1px solid #3A3A52;
+}}
+QPushButton#popupConfirmBtn:hover {{ background-color: #2A2A3E; }}
+
+QLabel#keyCaptureLabel {{
+    background-color: #1C1C28;
+    border-radius: 10px;
+    border: 1px solid #3A3A52;
+    padding: 2px;
+}}
+
+/* 스킬·무공비급 선택 팝업 */
+QFrame#skillScrollSelectPopup {{
+    background-color: #1C1C28;
+    border: 1px solid #3A3A52;
+    border-radius: 10px;
+}}
+QScrollArea#popupGridScrollArea {{
+    background-color: #1C1C28;
+    border: 0px;
+}}
+QScrollArea#popupGridScrollArea QWidget#qt_scrollarea_viewport {{
+    background-color: #1C1C28;
+}}
+QWidget#popupGridContent {{ background-color: #1C1C28; }}
+QPushButton#gridSelectBtn {{
+    background-color: transparent;
+    border-radius: 10px;
+    border: 0px;
+    outline: none;
+}}
+QPushButton#gridAddBtn {{
+    background-color: transparent;
+    border: none;
+    color: #666688;
+    padding: 2px 0px;
+}}
+QPushButton#gridAddBtn:hover {{ color: #E8E8F0; }}
+
+/* 커스텀 무공비급 추가 다이얼로그 */
+QDialog#customSkillDialog {{
+    background-color: #1C1C28;
+}}
+QScrollArea#dialogScrollArea {{
+    border: none;
+    background-color: #1C1C28;
+}}
+QWidget#dialogScrollViewport {{
+    background-color: #1C1C28;
+}}
+QWidget#dialogScrollContent {{
+    background-color: #1C1C28;
+}}
+QLabel#dialogErrorLabel {{
+    color: #E06060;
+    border: none;
+    background: transparent;
+}}
+QPushButton#dialogCancelBtn {{
+    background-color: #252538;
+    border: 1px solid #3A3A52;
+    border-radius: 6px;
+    color: #AAAACC;
+    text-align: center;
+}}
+QPushButton#dialogCancelBtn:hover {{ background-color: #2E2E48; }}
+
+QPushButton#dialogConfirmBtn {{
+    background-color: #3A5AAA;
+    border: none;
+    border-radius: 6px;
+    color: white;
+    text-align: center;
+}}
+QPushButton#dialogConfirmBtn:hover {{ background-color: #4A6ABB; }}
+
+QFrame#dialogCard {{
+    background-color: #1E1E2C;
+    border: 1px solid #363650;
+    border-radius: 8px;
+}}
+QLabel#dialogSectionTitle {{
+    font-weight: bold;
+    color: #C0C0E0;
+    border: none;
+    background: transparent;
+}}
+QLabel#dialogFieldLabel {{
+    color: #7878A0;
+    border: none;
+    background: transparent;
+}}
+QPushButton#dialogToggleBtn {{
+    background-color: transparent;
+    border: 1px solid #3A3A52;
+    border-radius: 4px;
+    color: #8888AA;
+    text-align: left;
+    padding-left: 6px;
+}}
+QPushButton#dialogToggleBtn:hover {{ background-color: #252538; }}
+
+QDialog#customSkillDialog QLineEdit[valid=true] {{
+    background-color: #1C1C28;
+    border: 1px solid #3A3A52;
+}}
+QDialog#customSkillDialog QLineEdit[valid=false] {{
+    background-color: #1C1C28;
+    border: 1px solid #E06060;
+}}
+
+QDialog#customSkillDialog QComboBox {{
+    background-color: #1C1C28;
+    border: 1px solid #3A3A52;
+    border-radius: 4px;
+    font-size: 9pt;
+    padding-left: 4px;
+}}
+QDialog#customSkillDialog QComboBox::drop-down {{
+    width: 16px;
+    border: 0px;
+}}
+QDialog#customSkillDialog QComboBox::down-arrow {{
+    image: url("{_DOWN_ARROW_PATH_DARK}");
+    width: 12px;
+    height: 12px;
+}}
+
+
+/* ────────────────── 시뮬레이터 UI ────────────────── */
+QFrame#simMainFrame {{
+    background-color: rgb(28, 28, 40);
+    border: 0px solid;
+}}
+QScrollArea#simScrollArea {{
+    background-color: #1C1C28;
+    border: 0px solid black;
+    border-radius: 10px;
+}}
+
+QLabel#simTitle {{
+    background-color: rgb(28, 28, 40);
+    border: none;
+    border-bottom: 1px solid #2E2E45;
+    padding: 10px 0;
+}}
+
+QPushButton#simNavCloseBtn {{
+    background-color: rgb(28, 28, 40);
+    border: none;
+    border-radius: 10px;
+}}
+QPushButton#simNavCloseBtn:hover {{ background-color: rgb(42, 42, 62); }}
+
+QPushButton#navBtn {{
+    background-color: rgb(28, 28, 40);
+    border: none;
+    border-bottom: 2px solid #1C1C28;
+}}
+QPushButton#navBtn:hover {{ background-color: rgb(42, 42, 62); }}
+QPushButton#navBtn[active=true]  {{ border-bottom: 2px solid #9180F7; }}
+QPushButton#navBtn[active=false] {{ border-bottom: 2px solid #1C1C28; }}
+
+/* 계산 오버레이 */
+QFrame#calcOverlay {{ background-color: rgba(0, 0, 15, 140); }}
+QFrame#calcOverlayCard {{
+    background-color: #1E1E2E;
+    border: 1px solid #3A3A52;
+    border-radius: 16px;
+}}
+QLabel#calcOverlayTitle   {{ background-color: transparent; border: 0px; color: #E0E0F0; }}
+QLabel#calcOverlayMessage {{ background-color: transparent; border: 0px; color: #C8C8E8; }}
+QLabel#calcOverlayDetail  {{ background-color: transparent; border: 0px; color: #7878A0; }}
+QLabel#calcOverlayProgress {{ background-color: transparent; border: 0px; color: #9090B8; }}
+
+QProgressBar#calcProgressBar {{
+    background-color: #2A2A3E;
+    border: 0px;
+    border-radius: 6px;
+}}
+QProgressBar#calcProgressBar::chunk {{
+    background-color: #9180F7;
+    border-radius: 6px;
+}}
+QPushButton#calcCancelBtn {{
+    background-color: #252538;
+    border: 1px solid #3A3A52;
+    border-radius: 10px;
+    color: #E0E0F0;
+}}
+QPushButton#calcCancelBtn:hover    {{ background-color: #2E2E48; }}
+QPushButton#calcCancelBtn:disabled {{
+    background-color: #1E1E2E;
+    color: #444460;
+}}
+
+/* 그래프 카드 */
+QFrame#graphCard {{
+    background-color: {DARK_GRAPH_PALETTE.card_background};
+    border: 1px solid {DARK_GRAPH_PALETTE.card_border};
+    border-radius: 10px;
+}}
+
+QWidget#dpmDistributionCanvas,
+QWidget#skillDpsRatioCanvas,
+QWidget#dmgCanvas,
+QWidget#skillContributionCanvas {{
+    border: 0px solid;
+}}
+
+QLabel#graphTooltipLabel {{
+    background-color: {DARK_GRAPH_PALETTE.tooltip_background};
+    color: {DARK_GRAPH_PALETTE.tooltip_text};
+    padding: 5px;
+    border: 1px solid {DARK_GRAPH_PALETTE.tooltip_border};
+    border-radius: 10px;
+}}
+
+QFrame#simEfficiency {{
+    background-color: rgb(28, 28, 40);
+    border: 0px solid;
+}}
+
+
+/* ── 칭호 목록 패널 ── */
+QFrame#TitleEquippedPanel,
+QFrame#TitleListPanel,
+QFrame#TitleDetailPanel {{
+    background-color: #1E1E2C;
+    border: 1px solid #363650;
+    border-radius: 8px;
+}}
+QScrollArea#titleListScrollArea {{
+    background-color: transparent;
+    border: 0px;
+}}
+QScrollArea#titleListScrollArea QWidget#qt_scrollarea_viewport {{
+    background-color: transparent;
+}}
+QWidget#titleListScrollContent {{ background-color: transparent; }}
+
+QFrame#TitleCard {{
+    background-color: #1A1A28;
+    border: 1px solid #363650;
+    border-radius: 8px;
+}}
+
+QPushButton#titleListSelectBtn {{
+    background-color: #1C1C28;
+    color: #C8C8E0;
+    border: 1px solid #363650;
+    border-radius: 6px;
+    padding: 0px 124px 0px 12px;
+    text-align: left;
+}}
+QPushButton#titleListSelectBtn:hover {{
+    background-color: #242438;
+    border: 1px solid #4A4A6A;
+}}
+QPushButton#titleListSelectBtn:checked {{
+    background-color: #252545;
+    border: 1px solid #5B78D9;
+    color: #A0B8FF;
+}}
+
+QPushButton#titleEquipBtn[equipped=false] {{
+    background-color: #3A5AAA;
+    color: white;
+    border: 0px;
+    border-radius: 4px;
+    padding: 4px 12px;
+}}
+QPushButton#titleEquipBtn[equipped=false]:hover,
+QPushButton#titleEquipBtn[equipped=false]:pressed {{
+    background-color: #4A6ABB;
+}}
+QPushButton#titleEquipBtn[equipped=true] {{
+    background-color: #8A5020;
+    color: white;
+    border: 0px;
+    border-radius: 4px;
+    padding: 4px 12px;
+}}
+QPushButton#titleEquipBtn[equipped=true]:hover,
+QPushButton#titleEquipBtn[equipped=true]:pressed {{
+    background-color: #9A6030;
+}}
+
+QLabel#equippedNameLabel {{ color: #C8C8E0; border: 0px; }}
+QLabel#equippedStatMuted {{ color: #555575; border: 0px; }}
+QLabel#equippedStatValue {{ color: #C8C8E0; border: 0px; }}
+QLabel#panelEmptyLabel {{ color: #555575; border: 0px; }}
+
+
+/* ── 부적 패널 ── */
+QFrame#TalismanEquippedPanel,
+QFrame#TalismanListPanel,
+QFrame#TalismanDetailPanel {{
+    background-color: #1E1E2C;
+    border: 1px solid #363650;
+    border-radius: 8px;
+}}
+QScrollArea#talismanListScrollArea {{
+    background-color: transparent;
+    border: 0px;
+}}
+QScrollArea#talismanListScrollArea QWidget#qt_scrollarea_viewport {{
+    background-color: transparent;
+}}
+QWidget#talismanListScrollContent {{ background-color: transparent; }}
+
+QFrame#TalismanEquippedSlotPanel {{
+    background-color: #1C1C28;
+    border: 1px solid #363650;
+    border-radius: 6px;
+}}
+
+QLabel#slotTitleLabel {{ color: #6868A0; border: 0px; }}
+QLabel#slotStatLabel[equipped=false] {{ color: #555575; border: 0px; }}
+QLabel#slotStatLabel[equipped=true]  {{ color: #C8C8E0; border: 0px; }}
+
+QPushButton#slotEquipBtn {{
+    background-color: #3A5AAA;
+    color: white;
+    border: 0px;
+    border-radius: 4px;
+    padding: 4px 12px;
+}}
+QPushButton#slotEquipBtn:hover,
+QPushButton#slotEquipBtn:pressed {{
+    background-color: #4A6ABB;
+}}
+QPushButton#slotEquipBtn:disabled {{
+    background-color: #2A3055;
+    color: #4A4A70;
+}}
+
+QPushButton#talismanListSelectBtn {{
+    background-color: #1C1C28;
+    color: #C8C8E0;
+    border: 1px solid #363650;
+    border-radius: 6px;
+    padding: 0px 118px 0px 12px;
+    text-align: left;
+}}
+QPushButton#talismanListSelectBtn:hover {{
+    background-color: #242438;
+    border: 1px solid #4A4A6A;
+}}
+QPushButton#talismanListSelectBtn:checked {{
+    background-color: #252545;
+    border: 1px solid #5B78D9;
+    color: #A0B8FF;
+}}
+
+QLabel#talismanEquippedStateLabel[state=unequipped] {{
+    background-color: #22223A;
+    color: #6868A0;
+    border: 0px;
+    border-radius: 4px;
+    padding: 4px 8px;
+}}
+QLabel#talismanEquippedStateLabel[state=equipped] {{
+    background-color: #1A3028;
+    color: #4EBB70;
+    border: 0px;
+    border-radius: 4px;
+    padding: 4px 8px;
+}}
+
+QFrame#TalismanCard {{
+    background-color: #1A1A28;
+    border: 1px solid #363650;
+    border-radius: 8px;
+}}
+
+QPushButton#talismanGradeBtn {{
+    background-color: #1C1C28;
+    color: #C8C8E0;
+    border: 1px solid #363650;
+    border-radius: 6px;
+    padding: 6px 12px;
+}}
+QPushButton#talismanGradeBtn:hover {{
+    background-color: #242438;
+    border: 1px solid #4A4A6A;
+}}
+QPushButton#talismanGradeBtn:checked {{
+    background-color: #252545;
+    border: 1px solid #5B78D9;
+    color: #A0B8FF;
+}}
+
+QScrollArea#talismanTemplateScrollArea {{
+    background-color: #1C1C28;
+    border: 1px solid #363650;
+    border-radius: 6px;
+}}
+QScrollArea#talismanTemplateScrollArea QWidget#qt_scrollarea_viewport {{
+    background-color: #1C1C28;
+}}
+QWidget#talismanTemplateScrollContent {{ background-color: #1C1C28; }}
+
+QPushButton#talismanTemplateBtn {{
+    background-color: #1C1C28;
+    color: #C8C8E0;
+    border: 1px solid #363650;
+    border-radius: 6px;
+    padding: 0px 12px;
+    text-align: left;
+}}
+QPushButton#talismanTemplateBtn:hover {{
+    background-color: #242438;
+    border: 1px solid #4A4A6A;
+}}
+QPushButton#talismanTemplateBtn:checked {{
+    background-color: #252545;
+    border: 1px solid #5B78D9;
+    color: #A0B8FF;
+}}
+
+QLabel#talismanPreviewLabel {{ color: #6868A0; border: 0px; }}
+
+
+/* ── 결과 목록 ── */
+
+QLabel#resultValueLabel[sign=positive] {{ color: #4ECB71; }}
+QLabel#resultValueLabel[sign=negative] {{ color: #F06060; }}
+QLabel#resultValueLabel[sign=neutral]  {{ color: inherit; }}
+
+QFrame#powerResultRow[selected=true] {{
+    background-color: #1E2845;
+    border-radius: 4px;
+    border: 0px;
+}}
+QFrame#powerResultRow[selected=false] {{
+    background-color: transparent;
+    border: 0px;
+}}
+
+QLabel#powerResultLabel {{ background: transparent; border: 0px; color: #C8C8E0; }}
+
+QLabel#rankedBadgeLabel {{ color: #E8A030; background: transparent; border: 0px; }}
+QLabel#rankedTitleLabel {{ background: transparent; border: 0px; }}
+QFrame#rankedBarContainer {{
+    background-color: #2A2A3E;
+    border-radius: 3px;
+    border: 0px;
+}}
+QFrame#rankedBarFill[sign="positive"] {{
+    background-color: #4ECB71;
+    border-radius: 3px;
+    border: 0px;
+}}
+QFrame#rankedBarFill[sign="negative"] {{
+    background-color: #F06060;
+    border-radius: 3px;
+    border: 0px;
+}}
+
+QFrame#resultsVSep {{ background-color: #2E2E45; border: 0px; }}
+
+QLabel#resultsSubTitle {{
+    background-color: transparent;
+    border: 0px;
+    color: #7878A0;
+}}
+
+/* OverallStatsGrid */
+QFrame#statsGridCell {{
+    background-color: #222234;
+    border-radius: 4px;
+    border: 0px;
+}}
+QLabel#statsGridCellLabel {{ color: #7878A0; background: transparent; border: 0px; }}
+QLabel#statsGridCellValue {{ color: #C8C8E0; background: transparent; border: 0px; }}
+QLabel#statsGridUnavailLabel {{ color: #444460; background: transparent; border: 0px; }}
+
+
+/* ── 분석 카드 ── */
+QFrame#analysisCard {{
+    background-color: #1E1E2C;
+    border: 1px solid #363650;
+    border-left: 0px solid;
+    border-top-right-radius: 6px;
+    border-bottom-right-radius: 6px;
+    border-top-left-radius: 0px;
+    border-bottom-left-radius: 0px;
+}}
+QLabel#analysisCardLabel {{ background-color: transparent; border: 0px solid; }}
+QFrame#analysisAccentBar[slot="0"] {{
+    background-color: rgb(180, 80, 80);
+    border: 0px solid;
+    border-radius: 0px;
+    border-left: 1px solid #363650;
+}}
+QFrame#analysisAccentBar[slot="1"] {{
+    background-color: rgb(180, 150, 60);
+    border: 0px solid;
+    border-radius: 0px;
+    border-left: 1px solid #363650;
+}}
+QFrame#analysisAccentBar[slot="2"] {{
+    background-color: rgb(60, 120, 180);
+    border: 0px solid;
+    border-radius: 0px;
+    border-left: 1px solid #363650;
+}}
+QFrame#analysisAccentBar[slot="3"] {{
+    background-color: rgb(60, 150, 130);
+    border: 0px solid;
+    border-radius: 0px;
+    border-left: 1px solid #363650;
+}}
+QLabel#statisticNameLabel {{
+    background-color: transparent;
+    border: 0px solid;
+    color: #555575;
+}}
+QLabel#statisticValueLabel {{ background-color: transparent; border: 0px solid; }}
+
+
+/* ── PowerLabels ── */
+QFrame#powerLabels {{ background-color: #1C1C28; border: 0px solid; }}
+QLabel#powerLabelHeader[slot="0"] {{
+    background-color: rgb(140, 60, 60);
+    border: 1px solid rgb(140, 60, 60);
+    border-bottom: 0px solid;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    border-bottom-left-radius: 0px;
+    border-bottom-right-radius: 0px;
+}}
+QLabel#powerLabelNumber[slot="0"] {{
+    background-color: rgba(140, 60, 60, 120);
+    border: 1px solid rgb(140, 60, 60);
+    border-top: 0px solid;
+    border-top-left-radius: 0px;
+    border-top-right-radius: 0px;
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+}}
+QLabel#powerLabelHeader[slot="1"] {{
+    background-color: rgb(160, 140, 50);
+    border: 1px solid rgb(160, 140, 50);
+    border-bottom: 0px solid;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    border-bottom-left-radius: 0px;
+    border-bottom-right-radius: 0px;
+}}
+QLabel#powerLabelNumber[slot="1"] {{
+    background-color: rgba(160, 140, 50, 120);
+    border: 1px solid rgb(160, 140, 50);
+    border-top: 0px solid;
+    border-top-left-radius: 0px;
+    border-top-right-radius: 0px;
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+}}
+QLabel#powerLabelHeader[slot="2"] {{
+    background-color: rgb(60, 120, 180);
+    border: 1px solid rgb(60, 120, 180);
+    border-bottom: 0px solid;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    border-bottom-left-radius: 0px;
+    border-bottom-right-radius: 0px;
+}}
+QLabel#powerLabelNumber[slot="2"] {{
+    background-color: rgba(60, 120, 180, 120);
+    border: 1px solid rgb(60, 120, 180);
+    border-top: 0px solid;
+    border-top-left-radius: 0px;
+    border-top-right-radius: 0px;
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+}}
+QLabel#powerLabelHeader[slot="3"] {{
+    background-color: rgb(60, 150, 130);
+    border: 1px solid rgb(60, 150, 130);
+    border-bottom: 0px solid;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    border-bottom-left-radius: 0px;
+    border-bottom-right-radius: 0px;
+}}
+QLabel#powerLabelNumber[slot="3"] {{
+    background-color: rgba(60, 150, 130, 120);
+    border: 1px solid rgb(60, 150, 130);
+    border-top: 0px solid;
+    border-top-left-radius: 0px;
+    border-top-right-radius: 0px;
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+}}
+QLabel#powerLabelHeader[slot="4"] {{
+    background-color: rgb(130, 90, 180);
+    border: 1px solid rgb(130, 90, 180);
+    border-bottom: 0px solid;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    border-bottom-left-radius: 0px;
+    border-bottom-right-radius: 0px;
+}}
+QLabel#powerLabelNumber[slot="4"] {{
+    background-color: rgba(130, 90, 180, 120);
+    border: 1px solid rgb(130, 90, 180);
+    border-top: 0px solid;
+    border-top-left-radius: 0px;
+    border-top-right-radius: 0px;
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+}}
+
+
+/* ── SkillInput 라벨 ── */
+QLabel#skillInputLabel {{ border: 0px solid; border-radius: 4px; }}
+
+
+/* ────────────────── 푸터 바 ────────────────── */
+QFrame#footerBar {{
+    background-color: #1C1C28;
+    border-top: 1px solid #2E2E45;
+}}
+
+QPushButton#themeBtn {{
+    background-color: transparent;
+    color: #555575;
+    border: 1px solid #3A3A52;
+    border-radius: 4px;
+    padding: 1px 7px;
+    font-size: 10px;
+}}
+QPushButton#themeBtn:hover {{
+    background-color: #2A2A3E;
+    color: #AAAACC;
+}}
+QPushButton#themeBtn[active=true] {{
+    background-color: #5B78D9;
+    color: #FFFFFF;
+    border: 1px solid #5B78D9;
+}}
 
 """
