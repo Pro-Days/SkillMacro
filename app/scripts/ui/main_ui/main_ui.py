@@ -30,7 +30,7 @@ from app.scripts.registry.resource_registry import (
     resource_registry,
 )
 from app.scripts.registry.skill_registry import ScrollDef
-from app.scripts.run_macro import build_preview_task_list, init_macro
+from app.scripts.run_macro import build_preview_task_list
 from app.scripts.ui.popup import NoticeKind, PopupKind, PopupManager
 
 if TYPE_CHECKING:
@@ -41,22 +41,25 @@ if TYPE_CHECKING:
 
 class MainUI(QFrame):
     presetChanged = Signal(object, int)
+    PREVIEW_RUNNING_INTERVAL_MS: int = 75
 
     def __init__(self, master: MainWindow) -> None:
         super().__init__()
 
         self.master: MainWindow = master
         self.popup_manager: PopupManager = master.get_popup_manager()
+        self._was_macro_running: bool = False
 
+        # 실행 중 프리뷰 갱신 타이머 구성
         self._preview_timer: QTimer = QTimer(self)
         self._preview_timer.timeout.connect(self._tick_preview_update)
-        self._preview_timer.start(10)
+        self._preview_timer.start(self.PREVIEW_RUNNING_INTERVAL_MS)
 
         self.tab_widget: TabWidget = TabWidget(self, self.popup_manager)
         self.tab_widget.noticeRequested.connect(self.popup_manager.show_notice)
         self.tab_widget.skillKeyRequested.connect(self.on_skill_key_clicked)
         self.tab_widget.scrollSelectRequested.connect(self.on_scroll_select_requested)
-        self.tab_widget.dataChanged.connect(lambda: save_data())
+        self.tab_widget.dataChanged.connect(self._handle_data_changed)
 
         tab_bar: QTabBar = self.tab_widget.get_tab_bar()
         tab_bar.tabBarClicked.connect(self.on_tab_clicked)
@@ -73,7 +76,38 @@ class MainUI(QFrame):
     def _tick_preview_update(self) -> None:
         """프리뷰 갱신"""
 
-        self.tab_widget.get_current_tab().update_preview()
+        # 실행 중에는 런타임 상태 기반 프리뷰 주기 갱신
+        if app_state.macro.is_running:
+            self._was_macro_running = True
+            self._update_current_tab_preview()
+            return
+
+        # 방금 종료된 경우 최종 상태 반영용 1회 갱신
+        if self._was_macro_running:
+            self._was_macro_running = False
+            self._update_current_tab_preview()
+
+    def _handle_data_changed(self) -> None:
+        """데이터 변경 후 저장 및 프리뷰 반영"""
+
+        # 변경 데이터 즉시 저장
+        save_data()
+
+        # 비실행 중 프리뷰 즉시 갱신
+        if app_state.macro.is_running:
+            return
+
+        self._update_current_tab_preview()
+
+    def _update_current_tab_preview(self) -> None:
+        """현재 탭 프리뷰 갱신"""
+
+        # 유효 탭이 있을 때만 현재 탭 프리뷰 갱신
+        if self.tab_widget.count() == 0:
+            return
+
+        current_tab: Tab = self.tab_widget.get_current_tab()
+        current_tab.update_preview()
 
     def emit_preset_changed(self) -> None:
         """현재 프리셋 전달"""
@@ -754,9 +788,6 @@ class SkillPreview(QFrame):
 
     def update_preview(self) -> None:
         """프리뷰 갱신"""
-
-        if not app_state.macro.is_running:
-            init_macro()
 
         task_list: tuple[EquippedSkillRef, ...] = build_preview_task_list()
         if task_list == self.previous_task_list:

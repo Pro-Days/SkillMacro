@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 from threading import Lock, Thread
 from typing import NoReturn
 
@@ -31,6 +32,18 @@ any_key_pressed = False
 injected_press_counts: dict[str, int] = {}
 injected_release_counts: dict[str, int] = {}
 injected_input_lock: Lock = Lock()
+
+
+@dataclass(slots=True)
+class PreviewTaskState:
+    """프리뷰 계산용 상태 묶음"""
+
+    prepared_skills: set[EquippedSkillRef]
+    task_list: list[EquippedSkillRef]
+    preview_line_index: int
+    skill_sequence: list[EquippedSkillRef]
+    using_link_skills: list[list[EquippedSkillRef]]
+    link_skills_requirements: list[list[EquippedSkillRef]]
 
 
 def _register_injected_key_event(key_spec: KeySpec) -> None:
@@ -144,10 +157,17 @@ def checking_kb_thread() -> NoReturn:
 
         # 매크로 시작/중지
         if is_key_pressed(app_state.macro.current_start_key):
-            app_state.macro.is_running = not app_state.macro.is_running
-
-            # 매크로 시작
+            # 현재 중이면 즉시 종료 상태 전환
             if app_state.macro.is_running:
+                app_state.macro.is_running = False
+
+                # 종료 입력 직후 1줄 종료 상태 즉시 복구
+                _restore_first_line_state()
+
+            # 현재 중이 아니면 새 실행 시작
+            else:
+                app_state.macro.is_running = True
+
                 # 매크로 번호 증가
                 app_state.macro.run_id += 1
 
@@ -246,6 +266,10 @@ def running_macro_thread(run_id: int) -> None:
         if not is_used_skill:
             time.sleep(wait_seconds * config.macro.SLEEP_COEFFICIENT_UNIT)
 
+    # 현재 실행 주기 종료 시 1줄 종료 상태 복구
+    if app_state.macro.run_id == run_id:
+        _restore_first_line_state()
+
 
 def clicking_mouse_thread(run_id: int) -> None:
     """마우스 클릭 쓰레드"""
@@ -289,6 +313,23 @@ def _pause_attack_for(duration_seconds: float) -> None:
     )
 
 
+def _restore_first_line_state() -> None:
+    """현재 줄 상태를 1줄 종료 상태로 복구"""
+
+    # 이미 1줄이면 추가 입력 없이 종료
+    if app_state.macro.current_line_index == 0:
+        return
+
+    swap_key: KeySpec = app_state.macro.current_swap_key
+
+    # 종료 복귀용 스왑 입력 등록
+    kbd_controller: keyboard.Controller = keyboard.Controller()
+    _register_injected_key_event(swap_key)
+    kbd_controller.press(swap_key.value)
+    kbd_controller.release(swap_key.value)
+    app_state.macro.current_line_index = 0
+
+
 def _press_skill_keys(
     kbd_controller: keyboard.Controller,
     skill_ref: EquippedSkillRef,
@@ -303,6 +344,7 @@ def _press_skill_keys(
     if require_running and not app_state.macro.is_running:
         return
 
+    # 목표 줄과 현재 줄이 다르면 스왑 입력 수행
     if skill_ref.line_index != app_state.macro.current_line_index:
         swap_key: KeySpec = app_state.macro.current_swap_key
 
@@ -313,6 +355,7 @@ def _press_skill_keys(
 
         app_state.macro.current_line_index = skill_ref.line_index
 
+    # 현재 세로줄 공용키 기준 스킬 입력 키 조회
     skill_key: KeySpec = KeyRegistry.get(
         app_state.macro.current_preset.skills.skill_keys[skill_ref.scroll_index]
     )
@@ -444,8 +487,12 @@ def use_link_skill(link_skill: LinkSkill, run_id: int) -> None:
     ) + ATTACK_PAUSE_BUFFER_SECONDS
     _pause_attack_for(link_skill_pause_seconds)
 
+    # 수동 연계 시작 기준 1줄 상태 초기화
+    app_state.macro.current_line_index = 0
+
     kbd_controller: keyboard.Controller = keyboard.Controller()
 
+    # 연계에 등록된 순서대로 스킬 입력 진행
     for skill_id in link_skill.skills:
         skill_ref: EquippedSkillRef = skill_ref_map[skill_id]
 
@@ -460,13 +507,15 @@ def use_link_skill(link_skill: LinkSkill, run_id: int) -> None:
 def _pop_next_regular_task(
     prepared_skills: set[EquippedSkillRef],
     current_line_index: int,
+    skill_sequence: list[EquippedSkillRef],
+    link_skills_requirements: list[list[EquippedSkillRef]],
 ) -> EquippedSkillRef | None:
     """현재 줄 상태를 반영한 다음 일반 스킬 선택"""
 
     # 자동 연계에 속한 스킬 참조 집합 구성
     linked_skill_refs: set[EquippedSkillRef] = {
         skill_ref
-        for requirements in app_state.macro.link_skills_requirements
+        for requirements in link_skills_requirements
         for skill_ref in requirements
     }
     first_usable_skill_ref: EquippedSkillRef | None = None
@@ -474,7 +523,7 @@ def _pop_next_regular_task(
     first_current_line_skill_ref: EquippedSkillRef | None = None
 
     # 우선순위 순서대로 사용 가능한 일반 스킬 후보 탐색
-    for skill_ref in app_state.macro.skill_sequence:
+    for skill_ref in skill_sequence:
         skill_id: str = app_state.macro.current_preset.skills.get_placed_skill_id(
             skill_ref
         )
@@ -572,6 +621,8 @@ def build_task_list(show_info: bool = False) -> float:
         next_regular_skill_ref: EquippedSkillRef | None = _pop_next_regular_task(
             prepared_skills=app_state.macro.prepared_skills,
             current_line_index=app_state.macro.current_line_index,
+            skill_sequence=app_state.macro.skill_sequence,
+            link_skills_requirements=app_state.macro.link_skills_requirements,
         )
         if next_regular_skill_ref is not None:
             app_state.macro.task_list.append(next_regular_skill_ref)
@@ -596,39 +647,93 @@ def build_task_list(show_info: bool = False) -> float:
 def build_preview_task_list() -> tuple[EquippedSkillRef, ...]:
     """프리뷰용 task_list 계산"""
 
-    if not app_state.macro.is_running:
-        init_macro()
-
-    # 현재 실행 상태를 훼손하지 않도록 프리뷰 전용 복사본 구성
-    prepared_skills: set[EquippedSkillRef] = app_state.macro.prepared_skills.copy()
-    task_list: list[EquippedSkillRef] = app_state.macro.task_list.copy()
-    preview_line_index: int = app_state.macro.current_line_index
+    # 프리뷰 전용 상태 스냅샷 구성
+    preview_state: PreviewTaskState = _build_preview_task_state()
 
     prepared_link_skill_indices: list[int] = get_prepared_link_skill_indices(
-        prepared_skills=prepared_skills,
-        link_skills_requirements=app_state.macro.link_skills_requirements,
+        prepared_skills=preview_state.prepared_skills,
+        link_skills_requirements=preview_state.link_skills_requirements,
     )
 
     # 자동 연계가 준비된 경우 실제 실행 순서와 동일하게 먼저 추가
     for prepared_link_skill_index in prepared_link_skill_indices:
-        for skill_ref in app_state.macro.using_link_skills[prepared_link_skill_index]:
-            prepared_skills.discard(skill_ref)
-            task_list.append(skill_ref)
-            preview_line_index = skill_ref.line_index
+        for skill_ref in preview_state.using_link_skills[prepared_link_skill_index]:
+            preview_state.prepared_skills.discard(skill_ref)
+            preview_state.task_list.append(skill_ref)
+            preview_state.preview_line_index = skill_ref.line_index
 
     # 남은 일반 스킬은 단독 스왑 규칙을 반영하며 순서대로 추가
     while True:
         next_regular_skill_ref: EquippedSkillRef | None = _pop_next_regular_task(
-            prepared_skills=prepared_skills,
-            current_line_index=preview_line_index,
+            prepared_skills=preview_state.prepared_skills,
+            current_line_index=preview_state.preview_line_index,
+            skill_sequence=preview_state.skill_sequence,
+            link_skills_requirements=preview_state.link_skills_requirements,
         )
         if next_regular_skill_ref is None:
             break
 
-        task_list.append(next_regular_skill_ref)
-        preview_line_index = next_regular_skill_ref.line_index
+        preview_state.task_list.append(next_regular_skill_ref)
+        preview_state.preview_line_index = next_regular_skill_ref.line_index
 
-    return tuple(task_list)
+    return tuple(preview_state.task_list)
+
+
+def _build_preview_task_state() -> PreviewTaskState:
+    """프리뷰 계산용 상태 스냅샷 구성"""
+
+    # 실행 중에는 실제 런타임 상태를 복사해 프리뷰에 반영
+    if app_state.macro.is_running:
+        return PreviewTaskState(
+            prepared_skills=app_state.macro.prepared_skills.copy(),
+            task_list=app_state.macro.task_list.copy(),
+            preview_line_index=app_state.macro.current_line_index,
+            skill_sequence=app_state.macro.skill_sequence.copy(),
+            using_link_skills=[
+                link_skill.copy() for link_skill in app_state.macro.using_link_skills
+            ],
+            link_skills_requirements=[
+                requirements.copy()
+                for requirements in app_state.macro.link_skills_requirements
+            ],
+        )
+
+    # 미실행 중에는 프리뷰 전용 상태를 별도로 구성
+    placed_refs: list[EquippedSkillRef] = (
+        app_state.macro.current_preset.skills.get_placed_skill_refs(
+            app_state.macro.current_server
+        )
+    )
+    skill_ref_map: dict[str, EquippedSkillRef] = (
+        app_state.macro.current_preset.skills.get_placed_skill_ref_map(
+            app_state.macro.current_server
+        )
+    )
+    using_link_skills: list[list[EquippedSkillRef]] = []
+
+    # 현재 배치 기준으로 실행 가능한 자동 연계만 프리뷰 대상에 포함
+    link_skill: LinkSkill
+    for link_skill in app_state.macro.current_preset.link_skills:
+        if link_skill.use_type != LinkUseType.AUTO:
+            continue
+
+        if not all(skill_id in skill_ref_map for skill_id in link_skill.skills):
+            continue
+
+        using_link_skills.append(
+            [skill_ref_map[skill_id] for skill_id in link_skill.skills]
+        )
+
+    return PreviewTaskState(
+        prepared_skills=set(placed_refs),
+        task_list=[],
+        preview_line_index=0,
+        skill_sequence=_collect_priority_skill_sequence(),
+        using_link_skills=using_link_skills,
+        link_skills_requirements=[
+            [skill_ref for skill_ref in link_skill] for link_skill in using_link_skills
+        ],
+    )
 
 
 def get_prepared_link_skill_indices(
