@@ -17,9 +17,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.scripts.config import config
-from app.scripts.registry.resource_registry import convert_resource_path
-
 
 class CustomLineEdit(QLineEdit):
     """
@@ -38,21 +35,7 @@ class CustomLineEdit(QLineEdit):
 
         self.setFont(CustomFont(point_size))
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        self.setStyleSheet(
-            f"""
-            QLineEdit[valid=true] {{
-                background-color: #f0f0f0;
-                border: 1px solid #D9D9D9;
-                border-radius: {border_radius}px;
-            }}
-            QLineEdit[valid=false] {{
-                background-color: #f0f0f0;
-                border: 2px solid #FF6060;
-                border-radius: {border_radius}px;
-            }}
-            """
-        )
+        self.setProperty("radius", str(border_radius))
 
         self.set_valid(True)
 
@@ -81,22 +64,12 @@ class KVInput(QFrame):
     ):
         super().__init__(parent)
 
-        if config.ui.debug_colors:
-            self.setStyleSheet(
-                "QFrame { background-color: orange; border: 0px solid; }"
-            )
-        else:
-            self.setStyleSheet("QFrame { background-color: transparent; border: 0px; }")
-
         # 전체 layout 설정
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
 
         # label 생성
         self.label = QLabel(name, self)
-        self.label.setStyleSheet(
-            "QLabel { background-color: transparent; border: 0px solid; }"
-        )
         self.label.setFont(CustomFont(10))
         self.label.setAlignment(Qt.AlignmentFlag.AlignLeft)
 
@@ -129,41 +102,8 @@ class CustomComboBox(QComboBox):
     ) -> None:
         super().__init__(parent)
 
-        bg_color: str = "#f0f0f0"
-        border_color: str = "#D9D9D9"
-        arrow_path: str = convert_resource_path(
-            "resources\\image\\down_arrow.png"
-        ).replace("\\", "/")
-
-        style_sheet: str = f"""
-        QComboBox {{
-            background-color: {bg_color};
-            color: #111111;
-            border: 1px solid {border_color};
-            border-radius: 4px;
-        }}
-        QComboBox::drop-down {{
-            width: 20px;
-            border-left-width: 1px;
-            border-left-color: darkgray;
-            border-left-style: solid;
-        }}
-        QComboBox::down-arrow {{
-            image: url("{arrow_path}");
-            width: 16px;
-            height: 16px;
-        }}
-        QComboBox QAbstractItemView {{
-            background-color: {bg_color};
-            color: #111111;
-            border: 1px solid {border_color};
-            selection-background-color: #D9D9D9;
-            selection-color: #111111;
-        }}"""
-
         self.setFont(CustomFont(point_size))
         self.addItems(items)
-        self.setStyleSheet(style_sheet)
 
         if connected_function:
             self.currentIndexChanged.connect(connected_function)
@@ -190,8 +130,6 @@ class SkillImage(QLabel):
 
     def __init__(self, parent: QWidget, pixmap: QPixmap, size: int = 0) -> None:
         super().__init__(parent)
-
-        self.setStyleSheet("QLabel { background-color: transparent; border: 0px; }")
 
         self.setPixmap(pixmap)
         self.setScaledContents(True)
@@ -261,8 +199,6 @@ class KVComboInput(QFrame):
     ) -> None:
         super().__init__(parent)
 
-        self.setStyleSheet("QFrame { background-color: transparent; border: 0px; }")
-
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(2)
@@ -271,9 +207,6 @@ class KVComboInput(QFrame):
         self.label = QLabel(name, self)
         self.label.setFont(CustomFont(10))
         self.label.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        self.label.setStyleSheet(
-            "QLabel { background-color: transparent; border: 0px solid; }"
-        )
 
         # 콤보박스
         self.combobox = CustomComboBox(self, items, connected_function)
@@ -306,8 +239,8 @@ class Separator(QFrame):
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
 
+        self.setObjectName("separator")
         self.setFixedHeight(1)
-        self.setStyleSheet("QFrame { background-color: #E0E0E0; border: 0px; }")
 
 
 class SectionCard(QFrame):
@@ -333,15 +266,6 @@ class SectionCard(QFrame):
         # 카드 외곽 스타일 — 서브클래스 이름으로 선택자를 한정해
         # 내부 QFrame 에 스타일이 새어 나가지 않도록 한다.
         self.setObjectName("SectionCard")
-        self.setStyleSheet(
-            """
-            QFrame#SectionCard {
-                background-color: #FAFAFA;
-                border: 1px solid #E0E0E0;
-                border-radius: 8px;
-            }
-            """
-        )
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -356,9 +280,6 @@ class SectionCard(QFrame):
         # 콘텐츠 영역
         content_wrapper = QWidget(self)
         content_wrapper.setObjectName("SectionCardContent")
-        content_wrapper.setStyleSheet(
-            "QWidget#SectionCardContent { background-color: transparent; }"
-        )
 
         self._content_layout = QVBoxLayout(content_wrapper)
         self._content_layout.setContentsMargins(14, 10, 14, 14)
@@ -375,9 +296,6 @@ class SectionCard(QFrame):
 
         header = QWidget(self)
         header.setObjectName("SectionCardHeader")
-        header.setStyleSheet(
-            "QWidget#SectionCardHeader { background-color: transparent; }"
-        )
 
         layout = QHBoxLayout(header)
         layout.setContentsMargins(14, 10, 14, 10)
@@ -385,18 +303,13 @@ class SectionCard(QFrame):
 
         # 왼쪽 강조 바
         accent_bar = QFrame(header)
+        accent_bar.setObjectName("sectionCardAccentBar")
         accent_bar.setFixedSize(4, 16)
-        accent_bar.setStyleSheet(
-            f"QFrame {{ background-color: {self._ACCENT_COLOR};"
-            "border: 0px; border-radius: 2px; }"
-        )
 
         # 제목 레이블
         title_label = QLabel(title, header)
+        title_label.setObjectName("sectionCardTitle")
         title_label.setFont(CustomFont(12, bold=True))
-        title_label.setStyleSheet(
-            "QLabel { background-color: transparent; border: 0px; color: #2C3E50; }"
-        )
 
         layout.addWidget(accent_bar)
         layout.addWidget(title_label)
@@ -418,17 +331,14 @@ class SectionCard(QFrame):
     def add_sub_title(self, text: str) -> None:
         """서브섹션 제목 라벨 추가 (11pt, 회색)"""
         label = QLabel(text, self)
+        label.setObjectName("sectionCardSubTitle")
         label.setFont(CustomFont(11, bold=True))
-        label.setStyleSheet(
-            "QLabel { background-color: transparent; border: 0px; color: #555555; }"
-        )
         self._content_layout.addWidget(label)
 
     def add_separator(self) -> None:
         """서브섹션 사이에 수평 구분선 추가"""
         # 구분선 위아래에 여백이 생기도록 마진이 있는 래퍼로 감싼다.
         wrapper = QWidget(self)
-        wrapper.setStyleSheet("background-color: transparent;")
         wrapper_layout = QVBoxLayout(wrapper)
         wrapper_layout.setContentsMargins(0, 4, 0, 4)
         wrapper_layout.setSpacing(0)
@@ -450,13 +360,6 @@ class StyledButton(QPushButton):
         "normal" — 회색
     """
 
-    # (일반 배경, hover 배경)
-    _COLOR_MAP: dict[str, tuple[str, str]] = {
-        "add": ("#5AAA5A", "#4A9A4A"),
-        "danger": ("#D94F4F", "#B83C3C"),
-        "normal": ("#888888", "#6E6E6E"),
-    }
-
     def __init__(
         self,
         parent: QWidget,
@@ -466,24 +369,6 @@ class StyledButton(QPushButton):
     ) -> None:
         super().__init__(text, parent)
 
-        normal_bg, hover_bg = self._COLOR_MAP.get(kind, self._COLOR_MAP["normal"])
-
+        self.setObjectName(f"styledButton{kind.capitalize()}")
         self.setFont(CustomFont(point_size))
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setStyleSheet(
-            f"""
-            QPushButton {{
-                background-color: {normal_bg};
-                color: white;
-                border: 0px;
-                border-radius: 4px;
-                padding: 4px 12px;
-            }}
-            QPushButton:hover {{
-                background-color: {hover_bg};
-            }}
-            QPushButton:pressed {{
-                background-color: {hover_bg};
-            }}
-            """
-        )

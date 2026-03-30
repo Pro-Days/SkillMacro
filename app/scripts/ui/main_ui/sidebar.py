@@ -149,7 +149,7 @@ class Sidebar(QFrame):
     ) -> None:
         super().__init__(master)
 
-        self.setStyleSheet("QFrame { background-color: #FFFFFF; }")
+        self.setObjectName("sidebar")
 
         self.master: MainWindow = master
 
@@ -213,16 +213,8 @@ class Sidebar(QFrame):
 
         # 무공비급바
         self.scroll_area: QScrollArea = QScrollArea()
+        self.scroll_area.setObjectName("sidebarScrollArea")
         self.scroll_area.setWidget(self.page_navigator)
-        self.scroll_area.setStyleSheet(
-            """
-            QScrollArea {
-                background-color: #FFFFFF;
-                border: 0px solid black;
-                border-right: 1px solid #bbbbbb;
-            }
-            """
-        )
 
         # 위젯이 무공비급 영역에 맞춰 크기 조절되도록
         self.scroll_area.setWidgetResizable(True)
@@ -342,8 +334,6 @@ class GeneralSettings(QFrame):
         on_data_changed: Callable[[], None],
     ) -> None:
         super().__init__()
-
-        # self.setStyleSheet("QFrame { background-color: #FFFFFF; }")
 
         self.popup_manager: PopupManager = popup_manager
         self._on_data_changed: Callable[[], None] = on_data_changed
@@ -849,35 +839,22 @@ class GeneralSettings(QFrame):
             super().__init__()
 
             self.title = QLabel(title)
+            self.title.setObjectName("generalSettingTitle")
             self.title.setFont(CustomFont(16))
-            self.title.setStyleSheet(
-                "QLabel { border: 0px solid black; border-radius: 10px; }"
-            )
-            if config.ui.debug_colors:
-                self.title.setStyleSheet("QLabel { background-color: #FF0000; }")
 
             self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.title.setToolTip(tooltip)
 
-            button_style = """
-                QPushButton[active=true] {
-                    color: #000000;
-                }
-                QPushButton[active=false] {
-                    color: #999999;
-                }
-            """
-
             self.left_button = QPushButton(btn0_text)
+            self.left_button.setObjectName("generalSettingBtn")
             self.left_button.setFont(CustomFont(12))
-            self.left_button.setStyleSheet(button_style)
             self.left_button.setProperty("active", btn0_enabled)
             self.left_button.setFixedWidth(120)
             self.left_button.setEnabled(func0 is not None)
 
             self.right_button = QPushButton(btn1_text)
+            self.right_button.setObjectName("generalSettingBtn")
             self.right_button.setFont(CustomFont(12))
-            self.right_button.setStyleSheet(button_style)
             self.right_button.setProperty("active", btn1_enabled)
             self.right_button.setFixedWidth(120)
             self.right_button.setEnabled(func1 is not None)
@@ -943,15 +920,6 @@ class SkillSettings(QFrame):
 
         self.title = Title("스킬 사용설정")
 
-        self._check_btn_style: str = """
-            QPushButton {
-                background-color: transparent; border-radius: 8px;
-            }
-            QPushButton:hover {
-                background-color: #dddddd;
-            }
-        """
-
         self._scroll_ids: list[str] = []
         self._selected_scroll_id: str = ""
         self._skill_ids: list[str] = []
@@ -965,9 +933,6 @@ class SkillSettings(QFrame):
             Qt.WidgetAttribute.WA_TransparentForMouseEvents,
             True,
         )
-        self._selected_scroll_icon.setStyleSheet(
-            "QLabel { background-color: transparent; border: 0px; }"
-        )
 
         self._selected_scroll_name: QLabel = QLabel("")
         self._selected_scroll_name.setFont(CustomFont(14))
@@ -980,9 +945,6 @@ class SkillSettings(QFrame):
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Preferred,
         )
-        self._selected_scroll_name.setStyleSheet(
-            "QLabel { background-color: transparent; border: 0px; }"
-        )
 
         selected_scroll_layout: QHBoxLayout = QHBoxLayout()
         selected_scroll_layout.addWidget(self._selected_scroll_icon)
@@ -992,23 +954,11 @@ class SkillSettings(QFrame):
         selected_scroll_layout.setSpacing(10)
 
         self._selected_scroll_button: QPushButton = QPushButton()
+        self._selected_scroll_button.setObjectName("selectedScrollButton")
         self._selected_scroll_button.setLayout(selected_scroll_layout)
         self._selected_scroll_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self._selected_scroll_button.setMinimumHeight(62)
         self._selected_scroll_button.clicked.connect(self.on_scroll_select_clicked)
-        self._selected_scroll_button.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #F4F8FD;
-                border: 1px solid #CADEFC;
-                border-radius: 10px;
-                text-align: left;
-            }
-            QPushButton:hover {
-                background-color: #E9F2FD;
-            }
-            """
-        )
 
         # 선택 무공비급 카드 전역 호버 카드 연결
         self.popup_manager.bind_hover_card(
@@ -1017,32 +967,18 @@ class SkillSettings(QFrame):
         )
 
         # 커스텀 무공비급 수정/삭제 버튼 (커스텀 무공비급 선택 시에만 표시)
-        _custom_btn_style: str = """
-            QPushButton {{
-                background-color: transparent;
-                border: 1px solid {border};
-                border-radius: 5px;
-                color: {color};
-                padding: 2px 10px;
-            }}
-            QPushButton:hover {{ background-color: {hover}; }}
-        """
         self._edit_scroll_btn: QPushButton = QPushButton("수정")
+        self._edit_scroll_btn.setObjectName("editScrollBtn")
         self._edit_scroll_btn.setFont(CustomFont(10))
         self._edit_scroll_btn.setFixedHeight(26)
         self._edit_scroll_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._edit_scroll_btn.setStyleSheet(
-            _custom_btn_style.format(border="#AAAAAA", color="#444444", hover="#EEEEEE")
-        )
         self._edit_scroll_btn.clicked.connect(self._on_edit_custom_scroll)
 
         self._delete_scroll_btn: QPushButton = QPushButton("삭제")
+        self._delete_scroll_btn.setObjectName("deleteScrollBtn")
         self._delete_scroll_btn.setFont(CustomFont(10))
         self._delete_scroll_btn.setFixedHeight(26)
         self._delete_scroll_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._delete_scroll_btn.setStyleSheet(
-            _custom_btn_style.format(border="#E57373", color="#E53935", hover="#FDECEA")
-        )
         self._delete_scroll_btn.clicked.connect(self._on_delete_custom_scroll)
 
         custom_actions_row: QHBoxLayout = QHBoxLayout()
@@ -1145,13 +1081,11 @@ class SkillSettings(QFrame):
 
         # 옵션 제목 라벨 구성
         option_title: QLabel = QLabel(title)
+        option_title.setObjectName("optionTitle")
         option_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         option_title.setFont(CustomFont(11))
         option_title.setWordWrap(True)
         option_title.setToolTip(tooltip)
-        option_title.setStyleSheet(
-            "QLabel { color: #4B5563; background-color: transparent; border: 0px; }"
-        )
 
         # 옵션 버튼 정렬 행 구성
         button_row: QHBoxLayout = QHBoxLayout()
@@ -1170,16 +1104,8 @@ class SkillSettings(QFrame):
 
         # 옵션 카드 프레임 구성
         option_frame: QFrame = QFrame()
+        option_frame.setObjectName("skillOptionCard")
         option_frame.setToolTip(tooltip)
-        option_frame.setStyleSheet(
-            """
-            QFrame {
-                background-color: #F8FAFD;
-                border: 1px solid #DDE6F1;
-                border-radius: 10px;
-            }
-            """
-        )
         option_frame.setLayout(option_layout)
         return option_frame
 
@@ -1208,9 +1134,6 @@ class SkillSettings(QFrame):
                 QSizePolicy.Policy.Expanding,
                 QSizePolicy.Policy.Preferred,
             )
-            skill_name_label.setStyleSheet(
-                "QLabel { background-color: transparent; border: 0px; }"
-            )
 
             skill_info_layout: QHBoxLayout = QHBoxLayout()
             skill_info_layout.addWidget(skill_image)
@@ -1220,9 +1143,6 @@ class SkillSettings(QFrame):
 
             skill_info_frame: QFrame = QFrame()
             skill_info_frame.setLayout(skill_info_layout)
-            skill_info_frame.setStyleSheet(
-                "QFrame { background-color: transparent; border: 0px; }"
-            )
 
             # 스킬 정보 영역 전역 호버 카드 연결
             self.popup_manager.bind_hover_card(
@@ -1240,7 +1160,7 @@ class SkillSettings(QFrame):
 
             # 스킬 사용 여부 버튼 구성
             usage_btn: QPushButton = QPushButton()
-            usage_btn.setStyleSheet(self._check_btn_style)
+            usage_btn.setObjectName("checkBtn")
             usage_btn.setIconSize(QSize(40, 40))
             usage_btn.setFixedSize(30, 30)
             usage_btn.setToolTip(SKILL_SETTING_OPTION_MAP["usage"].tooltip)
@@ -1251,7 +1171,7 @@ class SkillSettings(QFrame):
 
             # 스킬 단독 사용 여부 버튼 구성
             sole_btn: QPushButton = QPushButton()
-            sole_btn.setStyleSheet(self._check_btn_style)
+            sole_btn.setObjectName("checkBtn")
             sole_btn.setIconSize(QSize(40, 40))
             sole_btn.setFixedSize(30, 30)
             sole_btn.setToolTip(SKILL_SETTING_OPTION_MAP["sole"].tooltip)
@@ -1261,21 +1181,9 @@ class SkillSettings(QFrame):
             # 스킬 우선순위 버튼 구성
             priority_btn: QPushButton = QPushButton("-")
             priority_btn.setFont(CustomFont(12))
+            priority_btn.setObjectName("priorityBtn")
             priority_btn.setFixedSize(52, 30)
             priority_btn.setToolTip(SKILL_SETTING_OPTION_MAP["priority"].tooltip)
-            priority_btn.setStyleSheet(
-                """
-                QPushButton {
-                    background-color: #FFFFFF;
-                    border: 1px solid #C7D4E5;
-                    border-radius: 8px;
-                    padding: 2px 8px;
-                }
-                QPushButton:hover {
-                    background-color: #F1F5FA;
-                }
-                """
-            )
             priority_btn.clicked.connect(
                 partial(lambda x: self.change_priority(x), idx)
             )
@@ -1283,7 +1191,7 @@ class SkillSettings(QFrame):
 
             # 스킬 단독 스왑 여부 버튼 구성
             solo_swap_btn: QPushButton = QPushButton()
-            solo_swap_btn.setStyleSheet(self._check_btn_style)
+            solo_swap_btn.setObjectName("checkBtn")
             solo_swap_btn.setIconSize(QSize(40, 40))
             solo_swap_btn.setFixedSize(30, 30)
             solo_swap_btn.setToolTip(SKILL_SETTING_OPTION_MAP["solo_swap"].tooltip)
@@ -1344,15 +1252,7 @@ class SkillSettings(QFrame):
             card_layout.addLayout(option_grid)
 
             card_frame: QFrame = QFrame()
-            card_frame.setStyleSheet(
-                """
-                QFrame {
-                    background-color: #FFFFFF;
-                    border: 1px solid #D7E2F0;
-                    border-radius: 12px;
-                }
-                """
-            )
+            card_frame.setObjectName("skillSettingCard")
             card_frame.setLayout(card_layout)
             card_frame.setSizePolicy(
                 QSizePolicy.Policy.Expanding,
@@ -1698,8 +1598,6 @@ class LinkSkillSettings(QFrame):
     ) -> None:
         super().__init__()
 
-        # self.setStyleSheet("QFrame { background-color: #FFFFFF; }")
-
         self.popup_manager: PopupManager = popup_manager
         self._on_data_changed: Callable[[], None] = on_data_changed
 
@@ -1815,12 +1713,9 @@ class LinkSkillSettings(QFrame):
             super().__init__()
 
             self.popup_manager: PopupManager = popup_manager
+            self.setObjectName("linkSkillWidget")
             self.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Minimum)
             self.setMaximumWidth(270)
-
-            self.setStyleSheet(
-                "QFrame { background-color: #FFFFFF; border: 1px solid #E0E0E0; border-radius: 12px; }"
-            )
 
             # 그림자 효과 추가 (카드 입체감)
             shadow = QGraphicsDropShadowEffect(self)
@@ -1838,9 +1733,6 @@ class LinkSkillSettings(QFrame):
 
             # 스킬 표시 컨테이너
             skill_container = QFrame()
-            skill_container.setStyleSheet(
-                "QFrame { background-color: transparent; border: 0px; }"
-            )
 
             skill_layout = QVBoxLayout()
             skill_layout.setContentsMargins(0, 0, 0, 0)
@@ -1863,15 +1755,6 @@ class LinkSkillSettings(QFrame):
                     skill_id: str = data.skills[i]
                     slot_frame = QFrame()
                     slot_frame.setFixedSize(icon_size, icon_size)
-                    slot_frame.setStyleSheet(
-                        """
-                        QFrame {
-                            background-color: transparent;
-                            border: 0px solid;
-                            border-radius: 2px;
-                        }
-                    """
-                    )
                     slot_layout = QVBoxLayout(slot_frame)
                     slot_layout.setContentsMargins(0, 0, 0, 0)
 
@@ -1899,8 +1782,8 @@ class LinkSkillSettings(QFrame):
 
             # 구분선
             line = QFrame()
+            line.setObjectName("linkDivider")
             line.setFixedHeight(1)
-            line.setStyleSheet("QFrame { background-color: #F1F3F5; border: 0px; }")
             root.addWidget(line)
 
             # 연계 유형, 시작 키 표시 컨테이너
@@ -1911,31 +1794,9 @@ class LinkSkillSettings(QFrame):
             is_auto: bool = data.use_type == LinkUseType.AUTO
             badge_text: str = "자동 모드" if is_auto else "수동 모드"
 
-            # 색상 테마 설정
-            if is_auto:
-                # 초록색 테마 (Auto)
-                badge_style = """
-                    QLabel {
-                        background-color: #E8F5E9; 
-                        color: #2E7D32; 
-                        border: 1px solid #C8E6C9;
-                        border-radius: 8px;
-                    }
-                """
-            else:
-                # 회색 테마 (Manual)
-                badge_style = """
-                    QLabel {
-                        background-color: #F1F3F5; 
-                        color: #495057; 
-                        border: 1px solid #DEE2E6;
-                        border-radius: 8px;
-                    }
-                """
-
             use_type_display = QLabel(badge_text)
+            use_type_display.setObjectName("badgeAuto" if is_auto else "badgeManual")
             use_type_display.setFont(CustomFont(10))
-            use_type_display.setStyleSheet(badge_style)
             use_type_display.setSizePolicy(
                 QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
             )
@@ -1945,29 +1806,22 @@ class LinkSkillSettings(QFrame):
 
             # 시작 키 표시 컨테이너
             key_container = QWidget()
-            key_container.setStyleSheet("background: transparent; border: 0px;")
 
             key_layout = QHBoxLayout(key_container)
             key_layout.setContentsMargins(0, 0, 0, 0)
             key_layout.setSpacing(6)
 
             start_key_title = QLabel("시작 키:")
-            start_key_title.setStyleSheet(
-                "QLabel { color: #868E96; font-size: 12px; background: transparent; border: 0px; }"
-            )
+            start_key_title.setObjectName("startKeyTitle")
 
             start_key_value = QLabel()
             if data.key_type == LinkKeyType.ON and data.key is not None:
                 key_val: str = KeyRegistry.get(data.key).display
                 start_key_value.setText(key_val)
-                start_key_value.setStyleSheet(
-                    "QLabel { background-color: #343A40; color: white; padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 12px; }"
-                )
+                start_key_value.setObjectName("startKeyValueSet")
             else:
                 start_key_value.setText("미설정")
-                start_key_value.setStyleSheet(
-                    "QLabel { color: #ADB5BD; font-size: 12px; background: transparent; border: 0px; }"
-                )
+                start_key_value.setObjectName("startKeyValueUnset")
 
             key_layout.addWidget(start_key_title)
             key_layout.addWidget(start_key_value)
@@ -1980,49 +1834,16 @@ class LinkSkillSettings(QFrame):
 
             # 수정 버튼
             edit_btn = QPushButton("수정하기")
+            edit_btn.setObjectName("linkEditBtn")
             edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             edit_btn.clicked.connect(lambda _, i=idx: edit_func(i))
-            edit_btn.setStyleSheet(
-                """
-                QPushButton {
-                    background-color: #3498db;
-                    color: white;
-                    border: none;
-                    border-radius: 8px;
-                    padding: 8px;
-                    font-weight: bold;
-                    font-size: 13px;
-                }
-                QPushButton:hover {
-                    background-color: #2980b9;
-                }
-                QPushButton:pressed {
-                    background-color: #1f618d;
-                }
-            """
-            )
             btn_container.addWidget(edit_btn)
 
             # 삭제 버튼
             remove_btn = QPushButton("삭제")
+            remove_btn.setObjectName("linkRemoveBtn")
             remove_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             remove_btn.clicked.connect(lambda _, i=idx: remove_func(i))
-            remove_btn.setStyleSheet(
-                """
-                QPushButton {
-                    background-color: transparent;
-                    color: #e74c3c;
-                    border: 1px solid #e74c3c;
-                    border-radius: 8px;
-                    padding: 8px;
-                    font-size: 12px;
-                }
-                QPushButton:hover {
-                    background-color: #e74c3c;
-                    color: white;
-                }
-            """
-            )
             btn_container.addWidget(remove_btn)
 
         def _build_skill_hover_card(self, skill_id: str) -> HoverCardData:
@@ -2104,17 +1925,8 @@ class LinkSkillEditor(QFrame):
         self._skill_item_widgets: list[LinkSkillEditor.SkillItem] = []
 
         self.add_skill_btn = QPushButton()
+        self.add_skill_btn.setObjectName("addSkillBtn")
         self.add_skill_btn.clicked.connect(self.add_skill)
-        self.add_skill_btn.setStyleSheet(
-            """
-            QPushButton {
-                background-color: transparent; border-radius: 18px;
-            }
-            QPushButton:hover {
-                background-color: #cccccc;
-            }
-            """
-        )
         pixmap = QPixmap(convert_resource_path("resources\\image\\plus.png"))
         self.add_skill_btn.setIcon(QIcon(pixmap))
         self.add_skill_btn.setIconSize(QSize(24, 24))
@@ -2451,6 +2263,7 @@ class LinkSkillEditor(QFrame):
             self.skill_id: str = name
 
             self.skill = QPushButton()
+            self.skill.setObjectName("skillItemBtn")
             self.skill.clicked.connect(self._emit_change)
             self.skill.setIcon(QIcon(resource_registry.get_skill_pixmap(self.skill_id)))
             # skill.setIconSize(QSize(50, 50))
@@ -2461,16 +2274,6 @@ class LinkSkillEditor(QFrame):
                 "하나의 스킬이 너무 많이 사용되면 연계가 정상적으로 작동하지 않을 수 있습니다."
             )
             self.skill.setCursor(Qt.CursorShape.PointingHandCursor)
-            self.skill.setStyleSheet(
-                """
-                QPushButton {
-                    background-color: transparent;
-                    border: 0px;
-                    border-radius: 10px;
-                    outline: none;
-                }
-                """
-            )
 
             # 연계 편집 스킬 버튼에 공용 호버 카드 연결
             self.popup_manager.bind_hover_card(
@@ -2479,15 +2282,8 @@ class LinkSkillEditor(QFrame):
             )
 
             self.remove = QPushButton()
+            self.remove.setObjectName("skillItemRemoveBtn")
             self.remove.clicked.connect(self._emit_remove)
-            self.remove.setStyleSheet(
-                """QPushButton {
-                    background-color: transparent; border-radius: 16px;
-                }
-                QPushButton:hover {
-                    background-color: #eeeeee;
-                }"""
-            )
             pixmap = QPixmap(convert_resource_path("resources\\image\\xAlpha.png"))
             self.remove.setIcon(QIcon(pixmap))
             self.remove.setIconSize(QSize(16, 16))
@@ -2535,24 +2331,17 @@ class LinkSkillEditor(QFrame):
             self.title.setToolTip(tooltip)
             self.title.setFont(CustomFont(12))
 
-            self._color_dict: dict[bool, str] = {
-                True: "#000000",
-                False: "#999999",
-            }
-
             self.left_button = QPushButton(btn0_text)
+            self.left_button.setObjectName("settingItemBtn")
             self.left_button.clicked.connect(lambda: func0())
-            self.left_button.setStyleSheet(
-                f"color: {self._color_dict[is_btn0_enabled]};"
-            )
+            self.left_button.setProperty("active", is_btn0_enabled)
             self.left_button.setFont(CustomFont(12))
             self.left_button.setCursor(Qt.CursorShape.PointingHandCursor)
 
             self.right_button = QPushButton(btn1_text)
+            self.right_button.setObjectName("settingItemBtn")
             self.right_button.clicked.connect(lambda: func1())
-            self.right_button.setStyleSheet(
-                f"color: {self._color_dict[is_btn1_enabled]};"
-            )
+            self.right_button.setProperty("active", is_btn1_enabled)
             self.right_button.setFont(CustomFont(12))
             self.right_button.setCursor(Qt.CursorShape.PointingHandCursor)
 
@@ -2566,10 +2355,15 @@ class LinkSkillEditor(QFrame):
         def set_buttons_enabled(self, left_enabled: bool, right_enabled: bool) -> None:
             """양쪽 버튼 활성화(강조) 상태를 설정 (기능 enable/disable이 아니라 색상 표시)."""
 
-            self.left_button.setStyleSheet(f"color: {self._color_dict[left_enabled]};")
-            self.right_button.setStyleSheet(
-                f"color: {self._color_dict[right_enabled]};"
-            )
+            self.left_button.setProperty("active", left_enabled)
+            self.left_button.style().unpolish(self.left_button)  # type: ignore
+            self.left_button.style().polish(self.left_button)  # type: ignore
+            self.left_button.update()
+
+            self.right_button.setProperty("active", right_enabled)
+            self.right_button.style().unpolish(self.right_button)  # type: ignore
+            self.right_button.style().polish(self.right_button)  # type: ignore
+            self.right_button.update()
 
         def set_left_button_text(self, text: str) -> None:
             """왼쪽 버튼 텍스트 설정"""
@@ -2590,16 +2384,9 @@ class NavigationButtons(QFrame):
     ) -> None:
         super().__init__()
 
+        self.setObjectName("navButtonsFrame")
         self.change_page: Callable[[Literal[0, 1, 2, 3]], None] = change_page
         self.change_layout: Callable[[int], None] = change_layout
-
-        self.setStyleSheet(
-            """
-            QFrame {
-                background-color: #ffffff; 
-            }
-            """
-        )
 
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 30, 0, 0)
@@ -2612,25 +2399,10 @@ class NavigationButtons(QFrame):
             QPixmap(convert_resource_path("resources\\image\\linkSetting.png")),
             QPixmap(convert_resource_path("resources\\image\\simulationSidebar.png")),
         ]
-        border_widthes: list[list[int]] = [
-            [0, 8, 0, 0],
-            [0, 0, 0, 0],
-            [0, 0, 0, 0],
-            [0, 0, 0, 8],
-        ]
-        border_widths: list[list[int]] = [
-            # top, right, bottom, left
-            [1, 1, 1, 0],
-            [0, 1, 1, 0],
-            [0, 1, 1, 0],
-            [0, 1, 1, 0],
-        ]
-
         self.buttons: list[NavigationButtons.NavigationButton] = [
             self.NavigationButton(
                 icon=icons[i],
-                border_radius=border_widthes[i],
-                border_width=border_widths[i],
+                variant=str(i),
             )
             for i in range(4)
         ]
@@ -2657,34 +2429,11 @@ class NavigationButtons(QFrame):
             button.set_active(i == index)
 
     class NavigationButton(QPushButton):
-        def __init__(
-            self, icon: QPixmap, border_radius: list[int], border_width: list[int]
-        ) -> None:
+        def __init__(self, icon: QPixmap, variant: str) -> None:
             super().__init__()
-
-            self.base_style: str = f"""
-                QPushButton {{
-                    background-color: #FFFFFF; 
-                    border: 0px solid #b4b4b4;
-                    border-top-width: {border_width[0]}px;
-                    border-right-width: {border_width[1]}px;
-                    border-bottom-width: {border_width[2]}px;
-                    border-left-width: {border_width[3]}px;
-                    border-top-left-radius: {border_radius[0]}px; 
-                    border-top-right-radius: {border_radius[1]}px; 
-                    border-bottom-left-radius: {border_radius[2]}px; 
-                    border-bottom-right-radius: {border_radius[3]}px;
-                }}
-                QPushButton:hover {{
-                    background-color: #F0F0F0;
-                }}
-            """
-
-            self.active_style: str = (
-                self.base_style + "QPushButton { background-color: #E0E0E0; }"
-            )
-
-            self.setStyleSheet(self.base_style)
+            self.setObjectName("sidebarNavButton")
+            self.setProperty("variant", variant)
+            self.setProperty("active", False)
 
             self.setIcon(QIcon(icon))
             self.setIconSize(QSize(32, 32))
@@ -2693,26 +2442,16 @@ class NavigationButtons(QFrame):
 
         def set_active(self, active: bool) -> None:
             """버튼 활성화 상태 설정"""
-
-            if active:
-                self.setStyleSheet(self.active_style)
-            else:
-                self.setStyleSheet(self.base_style)
+            self.setProperty("active", active)
+            self.style().unpolish(self)  # type: ignore
+            self.style().polish(self)  # type: ignore
+            self.update()
 
 
 class Title(QLabel):
     def __init__(self, text: str):
         super().__init__(text)
+        self.setObjectName("sidebarTitle")
         self.setFont(CustomFont(20))
-        self.setStyleSheet(
-            "border: 0px solid black; border-radius: 10px; background-color: #CADEFC;"
-        )
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        self.setFixedSize(250, 80)
-        self.setStyleSheet(
-            "border: 0px solid black; border-radius: 10px; background-color: #CADEFC;"
-        )
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
         self.setFixedSize(250, 80)

@@ -230,7 +230,6 @@ class MainUI(QFrame):
             anchor = QWidget(tab_bar)
             anchor.setObjectName("tabHeaderAnchor")
             anchor.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
-            anchor.setStyleSheet("background: transparent;")
             anchor.show()
             self._tab_header_anchor: QWidget = anchor
 
@@ -257,7 +256,6 @@ class TabWidget(QTabWidget):
         self.popup_manager: PopupManager = popup_manager
         self.setTabsClosable(True)
         self._setup_add_tab_button()
-        self._apply_tab_style()
         self._init_tabs()
 
         tab_bar: QTabBar | None = self.tabBar()
@@ -268,6 +266,7 @@ class TabWidget(QTabWidget):
         """탭 추가 버튼 구성"""
 
         self.add_tab_button: QPushButton = QPushButton()
+        self.add_tab_button.setObjectName("tabAddButton")
         self.add_tab_button.setIcon(
             QIcon(QPixmap(convert_resource_path("resources\\image\\plus.png")))
         )
@@ -336,76 +335,6 @@ class TabWidget(QTabWidget):
             tab: Tab = self.widget(index)  # type: ignore[assignment]
             tab.preset_index = index
 
-    def _apply_tab_style(self) -> None:
-        """탭 스타일 적용"""
-
-        tab_background_color: str = "#eeeeff"
-        tab_border_color: str = "#cccccc"
-        tab_default_color: str = "#eeeeee"
-        tab_hover_color: str = "#dddddd"
-
-        self.setStyleSheet(
-            f"""
-        QTabWidget {{
-            background: {tab_background_color};
-            border: 1px solid {tab_border_color};
-            border-radius: 10px;
-        }}
-
-        QTabWidget::pane {{
-            border: 1px solid {tab_border_color};
-            border-bottom-left-radius: 10px;
-            border-bottom-right-radius: 10px;
-            border-top-right-radius: 10px;
-            background: {tab_background_color};
-        }}
-
-        QTabBar::tab {{
-            background: {tab_default_color};
-            border: 1px solid {tab_border_color};
-            border-bottom: none;
-            border-top-left-radius: 4px;
-            border-top-right-radius: 4px;
-            padding: 6px 10px;
-            margin-top: 0px;
-        }}
-
-        QTabBar::tab:selected {{
-            background: {tab_background_color};
-        }}
-
-        QTabBar::tab:hover {{
-            background: {tab_hover_color};
-        }}
-
-        QTabBar::close-button {{
-            image: url({convert_resource_path("resources\\image\\x.png").replace("\\", "/")});
-            border-radius: 5px;
-        }}
-
-        QTabBar::close-button:hover {{
-            background-color: #FF5555;
-        }}
-
-        QTabBar::close-button:pressed {{
-            background-color: #CC0000;
-        }}
-        """
-        )
-
-        self.add_tab_button.setStyleSheet(
-            f"""
-            QPushButton {{
-                border: 1px solid {tab_border_color};
-                background: {tab_background_color};
-                border-radius: 4px;
-            }}
-            QPushButton:hover {{
-                background: {tab_hover_color};
-            }}
-            """
-        )
-
     def get_current_tab(self) -> Tab:
         """현재 탭 반환"""
 
@@ -457,7 +386,7 @@ class Tab(QFrame):
         self.placed_skills: PlacedSkillPanel = PlacedSkillPanel(self.popup_manager)
 
         divider: QFrame = QFrame(self)
-        divider.setStyleSheet("QFrame { background-color: #b4b4b4; }")
+        divider.setObjectName("tabDivider")
         divider.setFixedHeight(1)
 
         self.available_skills.scrollClicked.connect(self.on_scroll_clicked)
@@ -795,15 +724,7 @@ class SkillPreview(QFrame):
         super().__init__()
 
         self.popup_manager: PopupManager = popup_manager
-        self.setStyleSheet(
-            """
-            QFrame {
-                background-color: #ffffff;
-                border-radius: 5px;
-                border: 1px solid black;
-            }
-            """
-        )
+        self.setObjectName("skillPreview")
         self.setFixedHeight(58)
         self.setMinimumWidth(200)
 
@@ -887,7 +808,6 @@ class AvailableSkillPanel(QFrame):
 
         self.popup_manager: PopupManager = popup_manager
         self.columns: list[AvailableSkillPanel.Column] = []
-        self.setStyleSheet("QFrame { background-color: transparent; }")
 
         layout: QHBoxLayout = QHBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
@@ -932,9 +852,9 @@ class AvailableSkillPanel(QFrame):
 
             self.scroll_index: int = scroll_index
             self.popup_manager: PopupManager = popup_manager
-            self.setStyleSheet("QFrame { background-color: transparent; }")
 
             self.scroll_button: QPushButton = QPushButton(self)
+            self.scroll_button.setObjectName("availScrollBtn")
             self.scroll_button.setFixedSize(48, 48)
             self.scroll_button.setCursor(Qt.CursorShape.PointingHandCursor)
             self.scroll_button.clicked.connect(
@@ -948,6 +868,7 @@ class AvailableSkillPanel(QFrame):
             self.skill_buttons: list[QPushButton] = []
             for line_index in range(app_state.macro.current_server.skill_line_count):
                 button: QPushButton = QPushButton(self)
+                button.setObjectName("availSkillBtn")
                 button.setFixedSize(48, 48)
                 button.setCursor(Qt.CursorShape.PointingHandCursor)
                 skill_ref: EquippedSkillRef = EquippedSkillRef(
@@ -984,14 +905,6 @@ class AvailableSkillPanel(QFrame):
                 QIcon(resource_registry.get_scroll_pixmap(scroll_id or None))
             )
             self.scroll_button.setIconSize(QSize(48, 48))
-            self.scroll_button.setStyleSheet(
-                """
-                QPushButton {
-                    border: 0px;
-                    background-color: transparent;
-                }
-                """
-            )
 
             for line_index, button in enumerate(self.skill_buttons):
                 skill_ref: EquippedSkillRef = EquippedSkillRef(
@@ -1006,20 +919,6 @@ class AvailableSkillPanel(QFrame):
                     QIcon(resource_registry.get_skill_pixmap(skill_id or None))
                 )
                 button.setIconSize(QSize(48, 48))
-                # 제공 스킬 아이콘 버튼 기본 테두리 및 포커스 라인 제거
-                button.setStyleSheet(
-                    """
-                    QPushButton {
-                        border: 0px;
-                        background-color: transparent;
-                        outline: none;
-                    }
-                    QPushButton:focus {
-                        border: 0px;
-                        outline: none;
-                    }
-                    """
-                )
 
         def _build_scroll_hover_card(self) -> HoverCardData | None:
             """현재 컬럼 무공비급 기준 호버 카드 구성"""
@@ -1074,7 +973,6 @@ class PlacedSkillPanel(QFrame):
         self.popup_manager: PopupManager = popup_manager
         self.selected_ref: EquippedSkillRef | None = None
         self.columns: list[PlacedSkillPanel.Column] = []
-        self.setStyleSheet("QFrame { background-color: transparent; }")
 
         layout: QHBoxLayout = QHBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
@@ -1136,8 +1034,6 @@ class PlacedSkillPanel(QFrame):
             self.buttons: list[QPushButton] = []
             self.button_containers: list[QWidget] = []
 
-            self.setStyleSheet("QFrame { background-color: transparent; }")
-
             layout: QVBoxLayout = QVBoxLayout()
             layout.setContentsMargins(0, 0, 0, 0)
             layout.setSpacing(6)
@@ -1155,6 +1051,7 @@ class PlacedSkillPanel(QFrame):
                 container_layout.setContentsMargins(0, 0, 0, 0)
                 container_layout.setSpacing(0)
                 button: QPushButton = QPushButton(self)
+                button.setObjectName("placedSkillBtn")
                 button.setFixedSize(
                     PlacedSkillPanel.SLOT_BUTTON_SIZE,
                     PlacedSkillPanel.SLOT_BUTTON_SIZE,
@@ -1208,15 +1105,6 @@ class PlacedSkillPanel(QFrame):
                     QIcon(resource_registry.get_skill_pixmap(skill_id or None))
                 )
                 button.setIconSize(QSize(48, 48))
-                button.setStyleSheet(
-                    """
-                    QPushButton {
-                        border: 0px;
-                        background-color: transparent;
-                        outline: none;
-                    }
-                    """
-                )
 
             self.set_key(
                 KeyRegistry.get(preset.skills.skill_keys[scroll_index]).display

@@ -1,34 +1,15 @@
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from typing import ClassVar
 
 from app.scripts.registry.key_registry import KeyRegistry, KeySpec
 
 
-def _env_flag(name: str) -> bool:
-    value: str | None = os.getenv(name)
-
-    if value is None:
-        return False
-
-    return value.strip().lower() in {"1", "true", "t", "yes", "y"}
-
-
 @dataclass(frozen=True)
 class UiConfig:
     DEFAULT_WINDOW_WIDTH: ClassVar[int] = 960
     DEFAULT_WINDOW_HEIGHT: ClassVar[int] = 540
-
-    analysis_card_colors: ClassVar[tuple[str, ...]] = (
-        "255, 130, 130",  # #FF8282
-        "255, 230, 140",  # #FFE68C
-        "170, 230, 255",  # #AAE6FF
-        "150, 225, 210",  # #96E1D2
-    )
-
-    debug_colors: ClassVar[bool] = _env_flag("SKILLMACRO_DEBUG_COLORS")
 
 
 @dataclass(frozen=True)

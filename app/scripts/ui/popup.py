@@ -197,7 +197,6 @@ class PopupContent(QFrame):
 
         self.setFixedWidth(fixed_width)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        self.setStyleSheet("QFrame { background-color: transparent; }")
 
 
 class HoverCardContent(QFrame):
@@ -207,26 +206,21 @@ class HoverCardContent(QFrame):
         super().__init__()
 
         # 호버 카드 기본 레이아웃 구성
-        self.setStyleSheet("QFrame { background-color: transparent; }")
         self._layout: QVBoxLayout = QVBoxLayout(self)
         self._layout.setContentsMargins(14, 12, 14, 12)
         self._layout.setSpacing(2)
 
         # 제목 라벨 고정 배치
         self._title_label: QLabel = QLabel("", self)
+        self._title_label.setObjectName("hoverCardTitle")
         self._title_label.setFont(CustomFont(11))
-        self._title_label.setStyleSheet(
-            "QLabel { color: #F7F1A1; background-color: transparent; border: 0px; }"
-        )
         self._title_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self._layout.addWidget(self._title_label)
 
         # 본문 라벨 고정 배치
         self._body_label: QLabel = QLabel("", self)
+        self._body_label.setObjectName("hoverCardBody")
         self._body_label.setFont(CustomFont(10))
-        self._body_label.setStyleSheet(
-            "QLabel { color: #D9D5E3; background-color: transparent; border: 0px; }"
-        )
         self._body_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self._body_label.setTextFormat(Qt.TextFormat.RichText)
         self._body_label.setWordWrap(True)
@@ -271,7 +265,6 @@ class HoverCardHost(QFrame):
         self.master: QWidget = parent
 
         # 마우스 입력을 가로채지 않는 투명 오버레이 구성
-        self.setStyleSheet("background: transparent;")
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
         self.hide()
 
@@ -281,15 +274,7 @@ class HoverCardHost(QFrame):
 
         # 실제 카드 외형 컨테이너 구성
         self._container: QFrame = QFrame(self)
-        self._container.setStyleSheet(
-            """
-            QFrame {
-                background-color: #110F17;
-                border: 1px solid #5A5862;
-                border-radius: 10px;
-            }
-            """
-        )
+        self._container.setObjectName("hoverCardContainer")
         self._container.setGraphicsEffect(CustomShadowEffect(0, 4, 18, 160))
         root.addWidget(self._container)
 
@@ -425,10 +410,6 @@ class NoticeContent(PopupContent):
         super().__init__(350)
 
         # 알림 카드 외곽선을 호스트 컨테이너에서 표현하도록 내부 배경 투명화
-        self.setStyleSheet("background-color: transparent;")
-
-        # 아이콘 종류에 맞춰 좌측 강조색 결정
-        accent_color: str = "#E5AE45" if data.icon == "warning" else "#F07C7C"
 
         # 카드 내부 여백과 요소 간 간격 구성
         layout: QHBoxLayout = QHBoxLayout()
@@ -438,16 +419,14 @@ class NoticeContent(PopupContent):
 
         # 배경과 구분되는 좌측 강조 바 구성
         accent_bar: QFrame = QFrame()
+        accent_bar.setObjectName("noticeAccentBar")
+        accent_bar.setProperty("kind", data.icon)
         accent_bar.setFixedWidth(6)
         accent_bar.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
-        accent_bar.setStyleSheet(
-            f"background-color: {accent_color}; border-radius: 3px;"
-        )
         layout.addWidget(accent_bar)
 
         # 알림 아이콘 영역 구성
         icon: QLabel = QLabel()
-        icon.setStyleSheet("background-color: transparent;")
         icon.setFixedSize(24, 24)
         pixmap: QPixmap = QPixmap(
             convert_resource_path(f"resources\\image\\{data.icon}.png")
@@ -463,7 +442,6 @@ class NoticeContent(PopupContent):
         label.setWordWrap(True)
         label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         label.setFont(CustomFont(12))
-        label.setStyleSheet("background-color: transparent;")
         label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         # 본문과 추가 액션을 세로로 배치
@@ -479,17 +457,8 @@ class NoticeContent(PopupContent):
             action_text, action_callback = data.extra_action
 
             action_button: QPushButton = QPushButton(action_text)
+            action_button.setObjectName("noticeActionButton")
             action_button.setFont(CustomFont(12))
-            action_button.setStyleSheet(
-                """
-                QPushButton {
-                    background-color: #86A7FC; border-radius: 4px;
-                }
-                QPushButton:hover {
-                    background-color: #6498f0;
-                }
-                """
-            )
             action_button.setFixedSize(120, 32)
             action_button.clicked.connect(action_callback)
             action_button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -497,16 +466,7 @@ class NoticeContent(PopupContent):
 
         # 닫기 버튼을 카드 배경 위에 자연스럽게 배치
         remove_btn: QPushButton = QPushButton()
-        remove_btn.setStyleSheet(
-            """
-            QPushButton {
-                background-color: transparent; border-radius: 12px;
-            }
-            QPushButton:hover {
-                background-color: rgba(0, 0, 0, 0.08);
-            }
-            """
-        )
+        remove_btn.setObjectName("noticeRemoveBtn")
         remove_btn.setFixedSize(24, 24)
         remove_btn.clicked.connect(self.closed.emit)
         pixmap: QPixmap = QPixmap(convert_resource_path("resources\\image\\x.png"))
@@ -534,20 +494,7 @@ class ActionListContent(PopupContent):
     ) -> None:
         super().__init__(130)
 
-        self.setStyleSheet(
-            """
-            QPushButton {
-                background-color: white;
-                border-radius: 10px;
-                border: none;
-                padding: 2px;
-                margin: 2px;
-            }
-            QPushButton[selected=true] { background-color: #dddddd; }
-            QPushButton:hover { background-color: #cccccc; }
-            QPushButton:!enabled { background-color: #f0f0f0; }
-            """
-        )
+        self.setObjectName("actionListContent")
 
         # 무공비급바 없이 전체 항목을 나열
         v = QVBoxLayout(self)
@@ -592,19 +539,8 @@ class InputConfirmContent(PopupContent):
 
         # 확인 버튼
         self._btn = QPushButton("확인", self)
+        self._btn.setObjectName("popupConfirmBtn")
         self._btn.setFont(CustomFont(12))
-        self._btn.setStyleSheet(
-            """
-            QPushButton {
-                background-color: white;
-                border-radius: 10px;
-                border: 1px solid #bbbbbb;
-            }
-            QPushButton:hover {
-                background-color: #cccccc;
-            }
-            """
-        )
         self._btn.setFixedSize(50, 30)
         self._btn.clicked.connect(self._emit_submit)
 
@@ -631,28 +567,15 @@ class KeyCaptureContent(PopupContent):
         self._current_key: KeySpec | None = default_key
 
         self._label = QLabel(self)
+        self._label.setObjectName("keyCaptureLabel")
         self._label.setFont(CustomFont(12))
         self._label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._label.setStyleSheet(
-            "QLabel { background-color: white; border-radius: 10px; border: 1px solid #bbbbbb; padding: 2px; }"
-        )
         self._label.setFixedHeight(30)
         self._label.setText("키를 입력해주세요")
 
         self._btn = QPushButton("확인", self)
+        self._btn.setObjectName("popupConfirmBtn")
         self._btn.setFont(CustomFont(12))
-        self._btn.setStyleSheet(
-            """
-            QPushButton {
-                background-color: white;
-                border-radius: 10px;
-                border: 1px solid #bbbbbb;
-            }
-            QPushButton:hover {
-                background-color: #cccccc;
-            }
-            """
-        )
         self._btn.setFixedSize(50, 30)
         self._btn.clicked.connect(self._emit_submit)
 
@@ -691,15 +614,9 @@ class PopupHost(QWidget):
 
         self.master: QWidget = parent
 
-        # 배경 투명화
-        self.setStyleSheet("background: transparent;")
-
         # 팝업 내용이 들어가는 컨테이너
         self._container = QFrame(self)
         self._container.setObjectName("popupContainer")
-        self._container.setStyleSheet(
-            "QFrame#popupContainer { background-color: white; border-radius: 10px; border: none; }"
-        )
 
         # 그림자가 그려질 공간 확보
         shadow_offset_x = 0
@@ -887,15 +804,7 @@ class NoticeHost(PopupHost):
         super().__init__(parent)
 
         # 알림 카드를 메인 배경에서 띄워 보이게 하는 전용 외곽선과 그림자 구성
-        self._container.setStyleSheet(
-            """
-            QFrame#popupContainer {
-                background-color: #FFF9EE;
-                border: 1px solid #E8DABE;
-                border-radius: 10px;
-            }
-            """
-        )
+        self._container.setObjectName("noticeContainer")
         self._container.setGraphicsEffect(CustomShadowEffect(0, 10, 34, 185))
 
     def focusOutEvent(self, event) -> None:
@@ -1849,16 +1758,6 @@ class SkillGridSelectContent(QFrame):
         button_size: int = 44
         max_visible_rows: int = 6
 
-        self.setStyleSheet(
-            """
-            QFrame#skillScrollSelectPopup {
-                background-color: white;
-                border: 1px solid gray;
-                border-radius: 10px;
-            }
-            """
-        )
-
         # 전체 컨테이너
         root = QVBoxLayout(self)
         root.setContentsMargins(margin, margin, margin, margin)
@@ -1884,18 +1783,10 @@ class SkillGridSelectContent(QFrame):
             c: int = idx % columns
 
             btn: QPushButton = QPushButton(container)
+            btn.setObjectName("gridSelectBtn")
             btn.setFixedSize(button_size, button_size)
             btn.setIcon(QIcon(resource_registry.get_skill_pixmap(skill_id)))
             btn.setIconSize(QSize(icon_size, icon_size))
-            btn.setStyleSheet(
-                """
-                QPushButton {
-                    background-color: transparent;
-                    border-radius: 10px;
-                    border: 0px;
-                }
-                """
-            )
             btn.clicked.connect(lambda _, sid=skill_id: self.selected.emit(sid))
             self.popup_manager.bind_hover_card(
                 btn,
@@ -1962,27 +1853,19 @@ class ScrollGridSelectContent(QFrame):
             if scroll_id and scroll_id != current_scroll_id
         }
 
-        self.setStyleSheet(
-            """
-            QFrame#skillScrollSelectPopup {
-                background-color: white;
-                border: 1px solid gray;
-                border-radius: 10px;
-            }
-            """
-        )
-
         root: QVBoxLayout = QVBoxLayout(self)
         root.setContentsMargins(margin, margin, margin, margin)
         root.setSpacing(spacing)
 
         scroll_area: QScrollArea = QScrollArea(self)
+        scroll_area.setObjectName("popupGridScrollArea")
         scroll_area.setWidgetResizable(True)
         scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll_area.setFrameShape(QFrame.Shape.NoFrame)
 
         container: QWidget = QWidget(scroll_area)
+        container.setObjectName("popupGridContent")
         grid: QGridLayout = QGridLayout(container)
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setHorizontalSpacing(spacing)
@@ -1996,6 +1879,7 @@ class ScrollGridSelectContent(QFrame):
             is_occupied: bool = scroll_def.id in occupied_scroll_ids
 
             btn: QPushButton = QPushButton(container)
+            btn.setObjectName("gridSelectBtn")
             btn.setFixedSize(button_size, button_size)
             btn.setIcon(QIcon(resource_registry.get_scroll_pixmap(scroll_def.id)))
             btn.setIconSize(QSize(icon_size, icon_size))
@@ -2005,16 +1889,6 @@ class ScrollGridSelectContent(QFrame):
                 else Qt.CursorShape.PointingHandCursor
             )
 
-            btn.setStyleSheet(
-                """
-                QPushButton {
-                    background-color: transparent;
-                    border-radius: 10px;
-                    border: 0px;
-                    outline: none;
-                }
-                """
-            )
             btn.clicked.connect(
                 lambda _, scroll_id=scroll_def.id, occupied=is_occupied: self._emit_scroll_selected(
                     scroll_id,
@@ -2038,18 +1912,8 @@ class ScrollGridSelectContent(QFrame):
 
         if on_add_skill is not None:
             add_btn: QPushButton = QPushButton("+ 새 스킬 추가", self)
+            add_btn.setObjectName("gridAddBtn")
             add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            add_btn.setStyleSheet(
-                """
-                QPushButton {
-                    background-color: transparent;
-                    border: none;
-                    color: gray;
-                    padding: 2px 0px;
-                }
-                QPushButton:hover { color: black; }
-                """
-            )
             add_btn.clicked.connect(on_add_skill)
             root.addWidget(add_btn)
 
@@ -2089,28 +1953,6 @@ class CustomSkillAddDialog(QDialog):
 
     skill_added = Signal(CustomSkillImport)
 
-    _CARD_STYLE = """
-        QFrame#card {
-            background-color: #F8F9FA;
-            border: 1px solid #E4E6EA;
-            border-radius: 8px;
-        }
-    """
-    _LABEL_STYLE = "QLabel { color: #666666; border: none; background: transparent; }"
-    _SECTION_TITLE_STYLE = "QLabel { font-weight: bold; color: #333333; border: none; background: transparent; }"
-    _INPUT_STYLE = """
-        QLineEdit[valid=true] {
-            background-color: #FFFFFF;
-            border: 1px solid #D0D5DD;
-            border-radius: 6px;
-        }
-        QLineEdit[valid=false] {
-            background-color: #FFFFFF;
-            border: 1px solid #E53935;
-            border-radius: 6px;
-        }
-    """
-
     def __init__(
         self,
         server_id: str,
@@ -2125,6 +1967,7 @@ class CustomSkillAddDialog(QDialog):
         self._existing_scroll = existing_scroll
 
         is_edit: bool = existing_scroll is not None
+        self.setObjectName("customSkillDialog")
         self.setWindowTitle("무공비급 수정" if is_edit else "무공비급 추가")
         self.setFixedSize(400, 520)
 
@@ -2147,12 +1990,18 @@ class CustomSkillAddDialog(QDialog):
         outer.setSpacing(0)
 
         main_scroll: QScrollArea = QScrollArea(self)
+        main_scroll.setObjectName("dialogScrollArea")
         main_scroll.setWidgetResizable(True)
         main_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        main_scroll.setStyleSheet("QScrollArea { border: none; }")
         outer.addWidget(main_scroll)
 
+        # 다이얼로그 스크롤 뷰포트 배경 식별자 지정
+        dialog_viewport: QWidget = main_scroll.viewport()
+        dialog_viewport.setObjectName("dialogScrollViewport")
+
         content_widget: QWidget = QWidget()
+        # 다이얼로그 스크롤 컨텐츠 배경 식별자 지정
+        content_widget.setObjectName("dialogScrollContent")
         main_scroll.setWidget(content_widget)
 
         root: QVBoxLayout = QVBoxLayout(content_widget)
@@ -2191,10 +2040,8 @@ class CustomSkillAddDialog(QDialog):
 
         # ── 에러 라벨 (무공비급 영역 밖, 하단 고정) ──
         self._error_label: QLabel = QLabel(self)
+        self._error_label.setObjectName("dialogErrorLabel")
         self._error_label.setFont(CustomFont(10))
-        self._error_label.setStyleSheet(
-            "QLabel { color: #E53935; border: none; background: transparent; }"
-        )
         self._error_label.setWordWrap(True)
         self._error_label.setContentsMargins(20, 0, 20, 0)
         self._error_label.hide()
@@ -2206,39 +2053,17 @@ class CustomSkillAddDialog(QDialog):
         btn_row.setContentsMargins(20, 8, 20, 16)
 
         cancel_btn: QPushButton = QPushButton("취소", self)
+        cancel_btn.setObjectName("dialogCancelBtn")
         cancel_btn.setFont(CustomFont(11))
         cancel_btn.setFixedHeight(36)
         cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        cancel_btn.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #F0F0F2;
-                border: 1px solid #D0D5DD;
-                border-radius: 6px;
-                color: #555555;
-                text-align: center;
-            }
-            QPushButton:hover { background-color: #E4E4E8; }
-        """
-        )
         cancel_btn.clicked.connect(self.reject)
 
         confirm_btn: QPushButton = QPushButton("저장" if is_edit else "추가", self)
+        confirm_btn.setObjectName("dialogConfirmBtn")
         confirm_btn.setFont(CustomFont(11))
         confirm_btn.setFixedHeight(36)
         confirm_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        confirm_btn.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #4A90D9;
-                border: none;
-                border-radius: 6px;
-                color: white;
-                text-align: center;
-            }
-            QPushButton:hover { background-color: #3A7BC8; }
-        """
-        )
         confirm_btn.clicked.connect(self._on_confirm)
 
         btn_row.addWidget(cancel_btn)
@@ -2250,16 +2075,15 @@ class CustomSkillAddDialog(QDialog):
     ) -> tuple[QFrame, list[CustomLineEdit]]:
         """제목 + 필드 목록으로 카드 위젯 생성. 입력 위젯 리스트 반환."""
         card: QFrame = QFrame(self)
-        card.setObjectName("card")
-        card.setStyleSheet(self._CARD_STYLE)
+        card.setObjectName("dialogCard")
 
         layout: QVBoxLayout = QVBoxLayout(card)
         layout.setContentsMargins(14, 12, 14, 12)
         layout.setSpacing(10)
 
         title_lbl: QLabel = QLabel(title, card)
+        title_lbl.setObjectName("dialogSectionTitle")
         title_lbl.setFont(CustomFont(11))
-        title_lbl.setStyleSheet(self._SECTION_TITLE_STYLE)
         layout.addWidget(title_lbl)
 
         inputs: list[CustomLineEdit] = []
@@ -2269,15 +2093,14 @@ class CustomSkillAddDialog(QDialog):
             row.setSpacing(10)
 
             lbl: QLabel = QLabel(label_text, card)
+            lbl.setObjectName("dialogFieldLabel")
             lbl.setFont(CustomFont(10))
             lbl.setFixedWidth(74)
-            lbl.setStyleSheet(self._LABEL_STYLE)
 
             inp: CustomLineEdit = CustomLineEdit(
                 card, text=init_value, point_size=11, border_radius=6
             )
             inp.setFixedHeight(32)
-            inp.setStyleSheet(self._INPUT_STYLE)
             inp.set_valid(True)
 
             row.addWidget(lbl)
@@ -2297,16 +2120,15 @@ class CustomSkillAddDialog(QDialog):
     ) -> tuple[QFrame, CustomLineEdit, CustomLineEdit, dict[int, SkillLevelInputRow]]:
         """스킬 카드 + 레벨별 효과 입력 (기본 숨김) 생성."""
         card: QFrame = QFrame(self)
-        card.setObjectName("card")
-        card.setStyleSheet(self._CARD_STYLE)
+        card.setObjectName("dialogCard")
 
         layout: QVBoxLayout = QVBoxLayout(card)
         layout.setContentsMargins(14, 12, 14, 12)
         layout.setSpacing(10)
 
         title_lbl: QLabel = QLabel(title, card)
+        title_lbl.setObjectName("dialogSectionTitle")
         title_lbl.setFont(CustomFont(11))
-        title_lbl.setStyleSheet(self._SECTION_TITLE_STYLE)
         layout.addWidget(title_lbl)
 
         def _make_row(label_text: str, init_value: str) -> CustomLineEdit:
@@ -2314,14 +2136,13 @@ class CustomSkillAddDialog(QDialog):
             row.setContentsMargins(0, 0, 0, 0)
             row.setSpacing(10)
             lbl: QLabel = QLabel(label_text, card)
+            lbl.setObjectName("dialogFieldLabel")
             lbl.setFont(CustomFont(10))
             lbl.setFixedWidth(74)
-            lbl.setStyleSheet(self._LABEL_STYLE)
             inp: CustomLineEdit = CustomLineEdit(
                 card, text=init_value, point_size=11, border_radius=6
             )
             inp.setFixedHeight(32)
-            inp.setStyleSheet(self._INPUT_STYLE)
             inp.set_valid(True)
             row.addWidget(lbl)
             row.addWidget(inp)
@@ -2335,39 +2156,16 @@ class CustomSkillAddDialog(QDialog):
         toggle_btn: QPushButton = QPushButton("레벨별 효과 설정 ▼", card)
         toggle_btn.setFont(CustomFont(10))
         toggle_btn.setFixedHeight(26)
+        toggle_btn.setObjectName("dialogToggleBtn")
         toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        toggle_btn.setStyleSheet(
-            """
-            QPushButton {
-                background-color: transparent;
-                border: 1px solid #D0D5DD;
-                border-radius: 4px;
-                color: #666666;
-                text-align: left;
-                padding-left: 6px;
-            }
-            QPushButton:hover { background-color: #EFEFEF; }
-        """
-        )
         layout.addWidget(toggle_btn)
 
         # ── 레벨 입력 영역 (기본 숨김) ──
         level_widget: QWidget = QWidget(card)
-        level_widget.setStyleSheet("background: transparent;")
         level_widget.setVisible(False)
         level_layout: QVBoxLayout = QVBoxLayout(level_widget)
         level_layout.setContentsMargins(0, 2, 0, 2)
         level_layout.setSpacing(3)
-
-        _COMBO_STYLE = """
-            QComboBox {
-                background-color: #FFFFFF;
-                border: 1px solid #D0D5DD;
-                border-radius: 4px;
-                font-size: 9pt;
-                padding-left: 4px;
-            }
-        """
 
         # 레벨별 입력 위젯 묶음 구성
         level_inputs: dict[int, SkillLevelInputRow] = {}
@@ -2378,23 +2176,21 @@ class CustomSkillAddDialog(QDialog):
             row.setSpacing(5)
 
             lv_lbl: QLabel = QLabel(f"Lv.{lvl}", level_widget)
+            lv_lbl.setObjectName("dialogFieldLabel")
             lv_lbl.setFont(CustomFont(9))
             lv_lbl.setFixedWidth(30)
-            lv_lbl.setStyleSheet(self._LABEL_STYLE)
 
             type_combo: QComboBox = QComboBox(level_widget)
             type_combo.addItems(["데미지", "힐", "버프"])
             type_combo.setFont(CustomFont(9))
             type_combo.setFixedHeight(24)
             type_combo.setFixedWidth(58)
-            type_combo.setStyleSheet(_COMBO_STYLE)
 
             amount_inp: CustomLineEdit = CustomLineEdit(
-                level_widget, text="0", point_size=9, border_radius=4
+                level_widget, text="0", point_size=9
             )
             amount_inp.setFixedHeight(24)
             amount_inp.setFixedWidth(56)
-            amount_inp.setStyleSheet(self._INPUT_STYLE)
             amount_inp.set_valid(True)
 
             # 버프 대상 스탯 선택 콤보 구성
@@ -2406,16 +2202,14 @@ class CustomSkillAddDialog(QDialog):
             stat_combo.setFont(CustomFont(9))
             stat_combo.setFixedHeight(24)
             stat_combo.setFixedWidth(118)
-            stat_combo.setStyleSheet(_COMBO_STYLE)
             stat_combo.setVisible(False)
 
             duration_inp: CustomLineEdit = CustomLineEdit(
-                level_widget, text="0", point_size=9, border_radius=4
+                level_widget, text="0", point_size=9
             )
             duration_inp.setPlaceholderText("지속(초)")
             duration_inp.setFixedHeight(24)
             duration_inp.setFixedWidth(52)
-            duration_inp.setStyleSheet(self._INPUT_STYLE)
             duration_inp.set_valid(True)
             duration_inp.setVisible(False)
 

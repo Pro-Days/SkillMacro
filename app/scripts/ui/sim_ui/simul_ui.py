@@ -120,15 +120,7 @@ class SimUI:
 
         # 메인 프레임
         self.main_frame: QFrame = QFrame(self.parent)
-
-        if config.ui.debug_colors:
-            self.main_frame.setStyleSheet(
-                "QFrame { background-color: rgb(255, 0, 0); border: 0px solid; }"
-            )
-        else:
-            self.main_frame.setStyleSheet(
-                "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
-            )
+        self.main_frame.setObjectName("simMainFrame")
 
         self.main_frame.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
@@ -136,12 +128,10 @@ class SimUI:
 
         # 무공비급바
         self.scroll_area: QScrollArea = QScrollArea(self.parent)
+        self.scroll_area.setObjectName("simScrollArea")
         self.scroll_area.setWidget(self.main_frame)
         # 위젯이 무공비급 영역에 맞춰 크기 조절되도록
         self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setStyleSheet(
-            "QScrollArea { background-color: #FFFFFF; border: 0px solid black; border-radius: 10px; }"
-        )
 
         # 무공비급바 무공비급 설정
         self.scroll_area.setVerticalScrollBarPolicy(
@@ -230,20 +220,11 @@ class SimUI:
         내비게이션 버튼 색 업데이트
         """
 
-        # index에 해당하는 버튼만 색
-        border_color: dict[bool, str] = {True: "#9180F7", False: "#FFFFFF"}
-
-        for i in range(4):
-            self.nav.buttons[i].setStyleSheet(
-                f"""
-                QPushButton {{
-                    background-color: rgb(255, 255, 255); border: none; border-bottom: 2px solid {border_color[i == index]};
-                }}
-                QPushButton:hover {{
-                    background-color: rgb(234, 234, 234);
-                }}
-                """
-            )
+        for i in range(3):
+            btn = self.nav.buttons[i]
+            btn.setProperty("active", i == index)
+            btn.style().unpolish(btn)
+            btn.style().polish(btn)
 
     def adjust_main_frame_height(self) -> None:
         """현재 표시 중인 UI 높이에 맞춰 메인 프레임 높이를 동기화."""
@@ -360,9 +341,6 @@ class InputPage(QFrame):
     ) -> None:
         super().__init__(parent)
 
-        if config.ui.debug_colors:
-            self.setStyleSheet("QFrame { background-color: gray;}")
-
         # 계산기 입력 화면 구성
         self.input_title: Title = Title(parent=self, text="계산기 입력")
         self.editor: ResultsPage.Efficiency = ResultsPage.Efficiency(
@@ -391,86 +369,48 @@ class _CalculationOverlay(QFrame):
         super().__init__(parent)
 
         # 부모 전체를 덮는 반투명 오버레이 기본 설정 블록
+        self.setObjectName("calcOverlay")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        self.setStyleSheet("QFrame { background-color: rgba(15, 23, 42, 110); }")
         self.setGeometry(parent.rect())
         self.hide()
         parent.installEventFilter(self)
 
         # 오버레이 중앙 카드 구성 블록
         container: QFrame = QFrame(self)
+        container.setObjectName("calcOverlayCard")
         container.setFixedWidth(360)
-        container.setStyleSheet(
-            "QFrame { background-color: #FFFFFF; border: 1px solid #D8DEE8; border-radius: 16px; }"
-        )
 
         title_label: QLabel = QLabel("계산 중", container)
+        title_label.setObjectName("calcOverlayTitle")
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title_label.setFont(CustomFont(15, bold=True))
-        title_label.setStyleSheet(
-            "QLabel { background-color: transparent; border: 0px; color: #111827; }"
-        )
 
         self._message_label: QLabel = QLabel(container)
+        self._message_label.setObjectName("calcOverlayMessage")
         self._message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._message_label.setFont(CustomFont(12, bold=True))
-        self._message_label.setStyleSheet(
-            "QLabel { background-color: transparent; border: 0px; color: #1F2937; }"
-        )
 
         self._detail_label: QLabel = QLabel(container)
+        self._detail_label.setObjectName("calcOverlayDetail")
         self._detail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._detail_label.setFont(CustomFont(11))
-        self._detail_label.setStyleSheet(
-            "QLabel { background-color: transparent; border: 0px; color: #6B7280; }"
-        )
 
         self._progress_label: QLabel = QLabel(container)
+        self._progress_label.setObjectName("calcOverlayProgress")
         self._progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._progress_label.setFont(CustomFont(11))
-        self._progress_label.setStyleSheet(
-            "QLabel { background-color: transparent; border: 0px; color: #4B5563; }"
-        )
 
         self._progress_bar: QProgressBar = QProgressBar(container)
+        self._progress_bar.setObjectName("calcProgressBar")
         self._progress_bar.setRange(0, 100)
         self._progress_bar.setTextVisible(False)
         self._progress_bar.setFixedHeight(12)
-        self._progress_bar.setStyleSheet(
-            """
-            QProgressBar {
-                background-color: #E5E7EB;
-                border: 0px;
-                border-radius: 6px;
-            }
-            QProgressBar::chunk {
-                background-color: #9180F7;
-                border-radius: 6px;
-            }
-            """
-        )
 
         self._cancel_button: QPushButton = QPushButton("취소", container)
+        self._cancel_button.setObjectName("calcCancelBtn")
         self._cancel_button.setFont(CustomFont(11, bold=True))
         self._cancel_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self._cancel_button.setFixedHeight(40)
-        self._cancel_button.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #F3F4F6;
-                border: 1px solid #D1D5DB;
-                border-radius: 10px;
-                color: #111827;
-            }
-            QPushButton:hover {
-                background-color: #E5E7EB;
-            }
-            QPushButton:disabled {
-                background-color: #E5E7EB;
-                color: #9CA3AF;
-            }
-            """
-        )
         self._cancel_button.clicked.connect(cancel_handler)
 
         # 중앙 카드 내부 정렬 블록
@@ -539,9 +479,6 @@ class GraphPage(QFrame):
         parent: QFrame,
     ) -> None:
         super().__init__(parent)
-
-        if config.ui.debug_colors:
-            self.setStyleSheet("QFrame { background-color: gray;}")
 
         # 그래프 페이지 전체 레이아웃 준비
         self.main_layout: QVBoxLayout = QVBoxLayout(self)
@@ -643,9 +580,7 @@ class GraphPage(QFrame):
         ) -> None:
             super().__init__(parent)
 
-            self.setStyleSheet(
-                "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
-            )
+            self.setObjectName("graphCard")
 
             self.graph = DpmDistributionCanvas(self, results)
             self.graph.setFixedHeight(300)
@@ -663,9 +598,7 @@ class GraphPage(QFrame):
         ) -> None:
             super().__init__(parent)
 
-            self.setStyleSheet(
-                "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
-            )
+            self.setObjectName("graphCard")
 
             self.graph = SkillDpsRatioCanvas(
                 self,
@@ -688,9 +621,7 @@ class GraphPage(QFrame):
         ) -> None:
             super().__init__(parent)
 
-            self.setStyleSheet(
-                "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
-            )
+            self.setObjectName("graphCard")
 
             # 초 단위 피해량 그래프 구성
             self.graph = DMGCanvas(
@@ -714,9 +645,7 @@ class GraphPage(QFrame):
         ) -> None:
             super().__init__(parent)
 
-            self.setStyleSheet(
-                "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
-            )
+            self.setObjectName("graphCard")
 
             # 누적 피해량 그래프 구성
             self.graph = DMGCanvas(
@@ -740,9 +669,7 @@ class GraphPage(QFrame):
         ) -> None:
             super().__init__(parent)
 
-            self.setStyleSheet(
-                "QFrame { background-color: #F8F8F8; border: 1px solid #CCCCCC; border-radius: 10px; }"
-            )
+            self.setObjectName("graphCard")
 
             self.graph = SkillContributionCanvas(
                 self,
@@ -1274,15 +1201,7 @@ class ResultsPage(QFrame):
             popup_manager: PopupManager,
         ) -> None:
             super().__init__(parent)
-
-            if config.ui.debug_colors:
-                self.setStyleSheet(
-                    "QFrame { background-color: green; border: 0px solid; }"
-                )
-            else:
-                self.setStyleSheet(
-                    "QFrame { background-color: rgb(255, 255, 255); border: 0px solid; }"
-                )
+            self.setObjectName("simEfficiency")
 
             # 저장 상태 로드 중 이벤트 억제 플래그 구성
             self._is_loading_state: bool = False
@@ -1525,9 +1444,6 @@ class ResultsPage(QFrame):
                 initial_values: dict[StatKey, str],
             ) -> None:
                 super().__init__(parent)
-                self.setStyleSheet(
-                    "QFrame { background-color: transparent; border: 0px solid; }"
-                )
 
                 # 전체 스탯 입력칸 맵 구성
                 self.inputs: dict[StatKey, CustomLineEdit] = {}
@@ -1592,6 +1508,7 @@ class ResultsPage(QFrame):
                     title_label: QLabel = QLabel(title, row_widget)
                     title_label.setFont(CustomFont(11))
                     value_label: QLabel = QLabel(value, row_widget)
+                    value_label.setObjectName("resultValueLabel")
                     value_label.setFont(CustomFont(11))
                     value_label.setAlignment(Qt.AlignmentFlag.AlignRight)
 
@@ -1599,11 +1516,18 @@ class ResultsPage(QFrame):
                     try:
                         numeric: float = float(value.replace(",", ""))
                         if numeric > 0:
-                            value_label.setStyleSheet("QLabel { color: #27AE60; }")
+                            sign: str = "positive"
                         elif numeric < 0:
-                            value_label.setStyleSheet("QLabel { color: #E74C3C; }")
+                            sign = "negative"
+                        else:
+                            sign = "neutral"
                     except ValueError:
-                        pass
+                        sign = "neutral"
+                    value_label.setProperty("sign", sign)
+
+                    # 스타일 즉시 적용
+                    value_label.style().unpolish(value_label)
+                    value_label.style().polish(value_label)
 
                     row_layout.addWidget(title_label)
                     row_layout.addStretch(1)
@@ -1617,9 +1541,6 @@ class ResultsPage(QFrame):
                 connected_function: Callable[[], None],
             ) -> None:
                 super().__init__(parent)
-                self.setStyleSheet(
-                    "QFrame { background-color: transparent; border: 0px solid; }"
-                )
 
                 # 현재 스탯 분배 입력 행 구성
                 self.inputs: dict[str, CustomLineEdit] = {}
@@ -1660,9 +1581,6 @@ class ResultsPage(QFrame):
                 connected_function: Callable[[], None],
             ) -> None:
                 super().__init__(parent)
-                self.setStyleSheet(
-                    "QFrame { background-color: transparent; border: 0px solid; }"
-                )
 
                 # 현재 단전 입력 행 구성
                 self.inputs: dict[str, CustomLineEdit] = {}
@@ -1705,9 +1623,6 @@ class ResultsPage(QFrame):
                     data: OwnedTitleStat | None = None,
                 ) -> None:
                     super().__init__(parent)
-                    self.setStyleSheet(
-                        "QFrame { background-color: transparent; border: 0px solid; }"
-                    )
 
                     # 스탯 슬롯 콜백 및 옵션 구성
                     self._connected_function: Callable[[], None] = connected_function
@@ -1832,9 +1747,6 @@ class ResultsPage(QFrame):
                     )
 
                     # 목록 항목 전체 레이아웃 구성
-                    self.setStyleSheet(
-                        "QFrame { background-color: transparent; border: 0px; }"
-                    )
                     self.setMinimumHeight(48)
                     layout: QGridLayout = QGridLayout(self)
                     layout.setContentsMargins(0, 0, 0, 0)
@@ -1842,44 +1754,22 @@ class ResultsPage(QFrame):
 
                     # 칭호 선택 버튼 구성
                     self.select_button: QPushButton = QPushButton("", self)
+                    self.select_button.setObjectName("titleListSelectBtn")
                     self.select_button.setCheckable(True)
                     self.select_button.setCursor(Qt.CursorShape.PointingHandCursor)
                     self.select_button.setMinimumHeight(48)
                     self.select_button.setFont(CustomFont(10, bold=True))
-                    self.select_button.setStyleSheet(
-                        """
-                        QPushButton {
-                            background-color: #FFFFFF;
-                            color: #2C3E50;
-                            border: 1px solid #D9E0EA;
-                            border-radius: 6px;
-                            padding: 0px 124px 0px 12px;
-                            text-align: left;
-                        }
-                        QPushButton:hover {
-                            background-color: #F6FAFF;
-                            border: 1px solid #BFD4EC;
-                        }
-                        QPushButton:checked {
-                            background-color: #E8F2FF;
-                            border: 1px solid #4A90E2;
-                            color: #1F4E79;
-                        }
-                        """
-                    )
                     self.select_button.clicked.connect(self._on_select_clicked)
 
                     # 목록 상단 액션 버튼 컨테이너 구성
                     self.actions_widget: QWidget = QWidget(self)
-                    self.actions_widget.setStyleSheet(
-                        "QWidget { background-color: transparent; border: 0px; }"
-                    )
                     actions_layout: QHBoxLayout = QHBoxLayout(self.actions_widget)
                     actions_layout.setContentsMargins(0, 0, 8, 0)
                     actions_layout.setSpacing(6)
 
                     # 목록 상단 장착 버튼 구성
                     self.equip_button: QPushButton = QPushButton("장착 설정", self)
+                    self.equip_button.setObjectName("titleEquipBtn")
                     self.equip_button.setFixedHeight(24)
                     self.equip_button.setMinimumWidth(74)
                     self.equip_button.setFont(CustomFont(8, bold=True))
@@ -1938,46 +1828,14 @@ class ResultsPage(QFrame):
                 def set_equipped_state(self, is_equipped: bool) -> None:
                     """장착 상태에 맞는 버튼 스타일 반영"""
 
-                    # 장착 상태별 버튼 문구 및 색상 반영
+                    # 장착 상태별 버튼 문구 및 프로퍼티 반영
                     if is_equipped:
                         self.equip_button.setText("장착 해제")
-                        self.equip_button.setStyleSheet(
-                            """
-                            QPushButton {
-                                background-color: #C97A2B;
-                                color: white;
-                                border: 0px;
-                                border-radius: 4px;
-                                padding: 4px 12px;
-                            }
-                            QPushButton:hover {
-                                background-color: #AD6420;
-                            }
-                            QPushButton:pressed {
-                                background-color: #AD6420;
-                            }
-                            """
-                        )
-                        return
-
-                    self.equip_button.setText("장착 설정")
-                    self.equip_button.setStyleSheet(
-                        """
-                        QPushButton {
-                            background-color: #4A90E2;
-                            color: white;
-                            border: 0px;
-                            border-radius: 4px;
-                            padding: 4px 12px;
-                        }
-                        QPushButton:hover {
-                            background-color: #357ABD;
-                        }
-                        QPushButton:pressed {
-                            background-color: #357ABD;
-                        }
-                        """
-                    )
+                    else:
+                        self.equip_button.setText("장착 설정")
+                    self.equip_button.setProperty("equipped", is_equipped)
+                    self.equip_button.style().unpolish(self.equip_button)
+                    self.equip_button.style().polish(self.equip_button)
 
             class TitleCard(QFrame):
                 def __init__(
@@ -1990,15 +1848,6 @@ class ResultsPage(QFrame):
 
                     # 우측 편집 카드 외곽 스타일 구성
                     self.setObjectName("TitleCard")
-                    self.setStyleSheet(
-                        """
-                        QFrame#TitleCard {
-                            background-color: #F8FAFC;
-                            border: 1px solid #DDE5EF;
-                            border-radius: 8px;
-                        }
-                        """
-                    )
 
                     # 편집 카드 콜백 및 슬롯 행 목록 초기화
                     self._connected_function: Callable[[], None] = connected_function
@@ -2024,7 +1873,6 @@ class ResultsPage(QFrame):
 
                     # 스탯 행 컨테이너 배치
                     self.stats_container: QWidget = QWidget(self)
-                    self.stats_container.setStyleSheet("background-color: transparent;")
                     self.stats_layout: QVBoxLayout = QVBoxLayout(self.stats_container)
                     self.stats_layout.setContentsMargins(0, 0, 0, 0)
                     self.stats_layout.setSpacing(6)
@@ -2104,9 +1952,6 @@ class ResultsPage(QFrame):
                 connected_function: Callable[[], None],
             ) -> None:
                 super().__init__(parent)
-                self.setStyleSheet(
-                    "QFrame { background-color: transparent; border: 0px solid; }"
-                )
                 self.setSizePolicy(
                     QSizePolicy.Policy.Expanding,
                     QSizePolicy.Policy.Fixed,
@@ -2134,15 +1979,6 @@ class ResultsPage(QFrame):
                 # 좌측 장착 요약 패널 구성
                 self.equipped_panel: QFrame = QFrame(self)
                 self.equipped_panel.setObjectName("TitleEquippedPanel")
-                self.equipped_panel.setStyleSheet(
-                    """
-                    QFrame#TitleEquippedPanel {
-                        background-color: #FBFCFE;
-                        border: 1px solid #DDE5EF;
-                        border-radius: 8px;
-                    }
-                    """
-                )
                 self.equipped_panel.setMinimumWidth(230)
                 equipped_layout: QVBoxLayout = QVBoxLayout(self.equipped_panel)
                 equipped_layout.setContentsMargins(14, 14, 14, 14)
@@ -2155,16 +1991,11 @@ class ResultsPage(QFrame):
                 self.equipped_name_label: QLabel = QLabel(
                     "장착된 칭호 없음", self.equipped_panel
                 )
+                self.equipped_name_label.setObjectName("equippedNameLabel")
                 self.equipped_name_label.setFont(CustomFont(12, bold=True))
-                self.equipped_name_label.setStyleSheet(
-                    "QLabel { color: #2C3E50; border: 0px; }"
-                )
                 equipped_layout.addWidget(self.equipped_name_label)
 
                 self.equipped_stats_container: QWidget = QWidget(self.equipped_panel)
-                self.equipped_stats_container.setStyleSheet(
-                    "background-color: transparent;"
-                )
                 self.equipped_stats_layout: QVBoxLayout = QVBoxLayout(
                     self.equipped_stats_container
                 )
@@ -2182,15 +2013,6 @@ class ResultsPage(QFrame):
                 # 중앙 목록 패널 구성
                 self.list_panel: QFrame = QFrame(self)
                 self.list_panel.setObjectName("TitleListPanel")
-                self.list_panel.setStyleSheet(
-                    """
-                    QFrame#TitleListPanel {
-                        background-color: #FBFCFE;
-                        border: 1px solid #DDE5EF;
-                        border-radius: 8px;
-                    }
-                    """
-                )
                 self.list_panel.setMinimumWidth(220)
                 list_layout: QVBoxLayout = QVBoxLayout(self.list_panel)
                 list_layout.setContentsMargins(14, 14, 14, 14)
@@ -2201,20 +2023,13 @@ class ResultsPage(QFrame):
                 list_layout.addWidget(list_title)
 
                 self.list_scroll_area: QScrollArea = QScrollArea(self.list_panel)
+                self.list_scroll_area.setObjectName("titleListScrollArea")
                 self.list_scroll_area.setWidgetResizable(True)
                 self.list_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
                 self.list_scroll_area.setMinimumHeight(180)
-                self.list_scroll_area.setStyleSheet(
-                    """
-                    QScrollArea {
-                        background-color: transparent;
-                        border: 0px;
-                    }
-                    """
-                )
 
                 self.list_scroll_content: QWidget = QWidget(self.list_scroll_area)
-                self.list_scroll_content.setStyleSheet("background-color: transparent;")
+                self.list_scroll_content.setObjectName("titleListScrollContent")
                 self.title_list_layout: QVBoxLayout = QVBoxLayout(
                     self.list_scroll_content
                 )
@@ -2234,15 +2049,6 @@ class ResultsPage(QFrame):
                 # 우측 상세 편집 패널 구성
                 self.detail_panel: QFrame = QFrame(self)
                 self.detail_panel.setObjectName("TitleDetailPanel")
-                self.detail_panel.setStyleSheet(
-                    """
-                    QFrame#TitleDetailPanel {
-                        background-color: #FBFCFE;
-                        border: 1px solid #DDE5EF;
-                        border-radius: 8px;
-                    }
-                    """
-                )
                 self.detail_panel.setMinimumWidth(340)
                 self.detail_panel.setMinimumHeight(300)
                 detail_layout: QVBoxLayout = QVBoxLayout(self.detail_panel)
@@ -2262,11 +2068,9 @@ class ResultsPage(QFrame):
                 self.empty_detail_label: QLabel = QLabel(
                     "중앙 목록에서 칭호를 선택하세요.", self.detail_stack_host
                 )
+                self.empty_detail_label.setObjectName("panelEmptyLabel")
                 self.empty_detail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.empty_detail_label.setFont(CustomFont(11))
-                self.empty_detail_label.setStyleSheet(
-                    "QLabel { color: #7A8795; border: 0px; }"
-                )
                 self.detail_stack.addWidget(self.empty_detail_label)
                 detail_layout.addWidget(self.detail_stack_host)
 
@@ -2444,8 +2248,8 @@ class ResultsPage(QFrame):
                     empty_label: QLabel = QLabel(
                         "선택된 장착 칭호가 없습니다.", self.equipped_stats_container
                     )
+                    empty_label.setObjectName("equippedStatMuted")
                     empty_label.setFont(CustomFont(10))
-                    empty_label.setStyleSheet("QLabel { color: #7A8795; border: 0px; }")
                     self.equipped_stats_layout.addWidget(empty_label)
                     self.unequip_button.setEnabled(False)
                     return
@@ -2461,19 +2265,15 @@ class ResultsPage(QFrame):
                     empty_stats_label: QLabel = QLabel(
                         "적용된 스탯이 없습니다.", self.equipped_stats_container
                     )
+                    empty_stats_label.setObjectName("equippedStatMuted")
                     empty_stats_label.setFont(CustomFont(10))
-                    empty_stats_label.setStyleSheet(
-                        "QLabel { color: #7A8795; border: 0px; }"
-                    )
                     self.equipped_stats_layout.addWidget(empty_stats_label)
 
                 else:
                     for line in preview_lines:
                         stat_label: QLabel = QLabel(line, self.equipped_stats_container)
+                        stat_label.setObjectName("equippedStatValue")
                         stat_label.setFont(CustomFont(10, bold=True))
-                        stat_label.setStyleSheet(
-                            "QLabel { color: #2C3E50; border: 0px; }"
-                        )
                         self.equipped_stats_layout.addWidget(stat_label)
 
                 self.unequip_button.setEnabled(True)
@@ -2546,15 +2346,6 @@ class ResultsPage(QFrame):
 
                     # 슬롯 패널 외곽 스타일 구성
                     self.setObjectName("TalismanEquippedSlotPanel")
-                    self.setStyleSheet(
-                        """
-                        QFrame#TalismanEquippedSlotPanel {
-                            background-color: #FFFFFF;
-                            border: 1px solid #D9E0EA;
-                            border-radius: 6px;
-                        }
-                        """
-                    )
 
                     # 슬롯 패널 본문 레이아웃 구성
                     root_layout: QVBoxLayout = QVBoxLayout(self)
@@ -2565,29 +2356,23 @@ class ResultsPage(QFrame):
                     self.slot_title_label: QLabel = QLabel(
                         f"부적 슬롯 {slot_index + 1}", self
                     )
+                    self.slot_title_label.setObjectName("slotTitleLabel")
                     self.slot_title_label.setFont(CustomFont(10, bold=True))
-                    self.slot_title_label.setStyleSheet(
-                        "QLabel { color: #5C6B7A; border: 0px; }"
-                    )
                     root_layout.addWidget(self.slot_title_label)
 
                     # 장착 부적 이름 표시 라벨 구성
                     self.name_label: QLabel = QLabel("장착된 부적 없음", self)
+                    self.name_label.setObjectName("equippedNameLabel")
                     self.name_label.setFont(CustomFont(11, bold=True))
-                    self.name_label.setStyleSheet(
-                        "QLabel { color: #2C3E50; border: 0px; }"
-                    )
                     root_layout.addWidget(self.name_label)
 
                     # 장착 부적 스탯 요약 라벨 구성
                     self.stat_label: QLabel = QLabel(
                         "선택된 장착 부적이 없습니다.", self
                     )
+                    self.stat_label.setObjectName("slotStatLabel")
                     self.stat_label.setWordWrap(True)
                     self.stat_label.setFont(CustomFont(10))
-                    self.stat_label.setStyleSheet(
-                        "QLabel { color: #7A8795; border: 0px; }"
-                    )
                     root_layout.addWidget(self.stat_label)
 
                     # 슬롯 장착/해제 버튼 행 구성
@@ -2596,30 +2381,10 @@ class ResultsPage(QFrame):
                     action_layout.setSpacing(6)
 
                     self.equip_button: QPushButton = QPushButton("선택 부적 장착", self)
+                    self.equip_button.setObjectName("slotEquipBtn")
                     self.equip_button.setCursor(Qt.CursorShape.PointingHandCursor)
                     self.equip_button.setMinimumHeight(28)
                     self.equip_button.setFont(CustomFont(9, bold=True))
-                    self.equip_button.setStyleSheet(
-                        """
-                        QPushButton {
-                            background-color: #4A90E2;
-                            color: white;
-                            border: 0px;
-                            border-radius: 4px;
-                            padding: 4px 12px;
-                        }
-                        QPushButton:hover {
-                            background-color: #357ABD;
-                        }
-                        QPushButton:pressed {
-                            background-color: #357ABD;
-                        }
-                        QPushButton:disabled {
-                            background-color: #C9D7E6;
-                            color: #F7FAFC;
-                        }
-                        """
-                    )
                     self.equip_button.clicked.connect(self._on_equip_clicked)
 
                     self.unequip_button: StyledButton = StyledButton(
@@ -2658,15 +2423,9 @@ class ResultsPage(QFrame):
                     self.stat_label.setText(stat_text)
 
                     # 장착 유무에 맞는 스탯 문구 색상 반영
-                    if has_equipped_card:
-                        self.stat_label.setStyleSheet(
-                            "QLabel { color: #2C3E50; border: 0px; }"
-                        )
-
-                    else:
-                        self.stat_label.setStyleSheet(
-                            "QLabel { color: #7A8795; border: 0px; }"
-                        )
+                    self.stat_label.setProperty("equipped", has_equipped_card)
+                    self.stat_label.style().unpolish(self.stat_label)
+                    self.stat_label.style().polish(self.stat_label)
 
                     # 선택 카드 기준 슬롯 장착 버튼 상태 반영
                     if is_selected_card_equipped:
@@ -2710,9 +2469,6 @@ class ResultsPage(QFrame):
                     ) = target_card
 
                     # 목록 항목 전체 레이아웃 구성
-                    self.setStyleSheet(
-                        "QFrame { background-color: transparent; border: 0px; }"
-                    )
                     self.setMinimumHeight(48)
                     layout: QGridLayout = QGridLayout(self)
                     layout.setContentsMargins(0, 0, 0, 0)
@@ -2720,58 +2476,28 @@ class ResultsPage(QFrame):
 
                     # 목록 선택 버튼 구성
                     self.select_button: QPushButton = QPushButton("", self)
+                    self.select_button.setObjectName("talismanListSelectBtn")
                     self.select_button.setCheckable(True)
                     self.select_button.setCursor(Qt.CursorShape.PointingHandCursor)
                     self.select_button.setMinimumHeight(48)
                     self.select_button.setFont(CustomFont(10, bold=True))
-                    self.select_button.setStyleSheet(
-                        """
-                        QPushButton {
-                            background-color: #FFFFFF;
-                            color: #2C3E50;
-                            border: 1px solid #D9E0EA;
-                            border-radius: 6px;
-                            padding: 0px 118px 0px 12px;
-                            text-align: left;
-                        }
-                        QPushButton:hover {
-                            background-color: #F6FAFF;
-                            border: 1px solid #BFD4EC;
-                        }
-                        QPushButton:checked {
-                            background-color: #E8F2FF;
-                            border: 1px solid #4A90E2;
-                            color: #1F4E79;
-                        }
-                        """
-                    )
                     self.select_button.clicked.connect(self._on_select_clicked)
 
                     # 목록 우측 상태/삭제 컨테이너 구성
                     self.actions_widget: QWidget = QWidget(self)
-                    self.actions_widget.setStyleSheet(
-                        "QWidget { background-color: transparent; border: 0px; }"
-                    )
                     actions_layout: QHBoxLayout = QHBoxLayout(self.actions_widget)
                     actions_layout.setContentsMargins(0, 0, 8, 0)
                     actions_layout.setSpacing(6)
 
                     # 장착 슬롯 요약 라벨 구성
                     self.equipped_state_label: QLabel = QLabel("미장착", self)
+                    self.equipped_state_label.setObjectName(
+                        "talismanEquippedStateLabel"
+                    )
+                    self.equipped_state_label.setProperty("state", "unequipped")
                     self.equipped_state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     self.equipped_state_label.setMinimumWidth(58)
                     self.equipped_state_label.setFont(CustomFont(8, bold=True))
-                    self.equipped_state_label.setStyleSheet(
-                        """
-                        QLabel {
-                            background-color: #EEF2F7;
-                            color: #5C6B7A;
-                            border: 0px;
-                            border-radius: 4px;
-                            padding: 4px 8px;
-                        }
-                        """
-                    )
                     actions_layout.addWidget(self.equipped_state_label)
 
                     # 목록 삭제 버튼 구성
@@ -2816,19 +2542,15 @@ class ResultsPage(QFrame):
                 def set_equipped_slots(self, slot_indexes: list[int]) -> None:
                     """장착 슬롯 요약 문구 반영"""
 
-                    # 미장착 상태 문구 및 색상 반영
+                    # 미장착 상태 문구 및 프로퍼티 반영
                     if not slot_indexes:
                         self.equipped_state_label.setText("미장착")
-                        self.equipped_state_label.setStyleSheet(
-                            """
-                            QLabel {
-                                background-color: #EEF2F7;
-                                color: #5C6B7A;
-                                border: 0px;
-                                border-radius: 4px;
-                                padding: 4px 8px;
-                            }
-                            """
+                        self.equipped_state_label.setProperty("state", "unequipped")
+                        self.equipped_state_label.style().unpolish(
+                            self.equipped_state_label
+                        )
+                        self.equipped_state_label.style().polish(
+                            self.equipped_state_label
                         )
                         return
 
@@ -2837,17 +2559,11 @@ class ResultsPage(QFrame):
                         f"{slot_index + 1}번" for slot_index in slot_indexes
                     )
                     self.equipped_state_label.setText(slot_text)
-                    self.equipped_state_label.setStyleSheet(
-                        """
-                        QLabel {
-                            background-color: #EAF5EA;
-                            color: #2F855A;
-                            border: 0px;
-                            border-radius: 4px;
-                            padding: 4px 8px;
-                        }
-                        """
+                    self.equipped_state_label.setProperty("state", "equipped")
+                    self.equipped_state_label.style().unpolish(
+                        self.equipped_state_label
                     )
+                    self.equipped_state_label.style().polish(self.equipped_state_label)
 
             class TalismanCard(QFrame):
                 def __init__(
@@ -2860,15 +2576,6 @@ class ResultsPage(QFrame):
 
                     # 우측 편집 카드 외곽 스타일 구성
                     self.setObjectName("TalismanCard")
-                    self.setStyleSheet(
-                        """
-                        QFrame#TalismanCard {
-                            background-color: #F8FAFC;
-                            border: 1px solid #DDE5EF;
-                            border-radius: 8px;
-                        }
-                        """
-                    )
 
                     # 편집 카드 부적 정의와 현재 선택 상태 보관
                     self._connected_function: Callable[[], None] = connected_function
@@ -2931,15 +2638,13 @@ class ResultsPage(QFrame):
                     grade_section_layout.addWidget(grade_title)
 
                     self.grade_buttons_widget: QWidget = QWidget(self)
-                    self.grade_buttons_widget.setStyleSheet(
-                        "background-color: transparent;"
-                    )
                     grade_layout: QHBoxLayout = QHBoxLayout(self.grade_buttons_widget)
                     grade_layout.setContentsMargins(0, 0, 0, 0)
                     grade_layout.setSpacing(6)
 
                     for grade in self._grade_order:
                         grade_button: QPushButton = QPushButton(grade.value, self)
+                        grade_button.setObjectName("talismanGradeBtn")
                         grade_button.setCheckable(True)
                         grade_button.setCursor(Qt.CursorShape.PointingHandCursor)
                         grade_button.setMinimumHeight(30)
@@ -2973,21 +2678,15 @@ class ResultsPage(QFrame):
                         QSizePolicy.Policy.Expanding,
                         QSizePolicy.Policy.Expanding,
                     )
-                    self.template_scroll_area.setStyleSheet(
-                        """
-                        QScrollArea {
-                            background-color: #FFFFFF;
-                            border: 1px solid #D9E0EA;
-                            border-radius: 6px;
-                        }
-                        """
+                    self.template_scroll_area.setObjectName(
+                        "talismanTemplateScrollArea"
                     )
 
                     self.template_scroll_content: QWidget = QWidget(
                         self.template_scroll_area
                     )
-                    self.template_scroll_content.setStyleSheet(
-                        "background-color: transparent;"
+                    self.template_scroll_content.setObjectName(
+                        "talismanTemplateScrollContent"
                     )
                     self.template_list_layout: QVBoxLayout = QVBoxLayout(
                         self.template_scroll_content
@@ -3018,6 +2717,7 @@ class ResultsPage(QFrame):
 
                     # 스탯 미리보기 안내 라벨 구성
                     self.preview_label: QLabel = QLabel("", self)
+                    self.preview_label.setObjectName("talismanPreviewLabel")
                     self.preview_label.setFont(CustomFont(10))
                     self.preview_label.setWordWrap(True)
                     self.preview_label.setMinimumHeight(
@@ -3025,9 +2725,6 @@ class ResultsPage(QFrame):
                     )
                     self.preview_label.setAlignment(
                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-                    )
-                    self.preview_label.setStyleSheet(
-                        "QLabel { color: #5C6B7A; border: 0px; }"
                     )
                     level_row_layout.addWidget(
                         self.preview_label,
@@ -3090,30 +2787,10 @@ class ResultsPage(QFrame):
                 def _refresh_grade_buttons(self) -> None:
                     """등급 버튼 선택 상태 스타일 갱신"""
 
-                    # 각 등급 버튼의 체크 상태와 스타일 반영
+                    # 각 등급 버튼의 체크 상태 반영
                     grade: TalismanGrade
                     for grade, grade_button in self._grade_buttons.items():
                         grade_button.setChecked(grade is self._selected_grade)
-                        grade_button.setStyleSheet(
-                            """
-                            QPushButton {
-                                background-color: #FFFFFF;
-                                color: #2C3E50;
-                                border: 1px solid #D9E0EA;
-                                border-radius: 6px;
-                                padding: 6px 12px;
-                            }
-                            QPushButton:hover {
-                                background-color: #F6FAFF;
-                                border: 1px solid #BFD4EC;
-                            }
-                            QPushButton:checked {
-                                background-color: #E8F2FF;
-                                border: 1px solid #4A90E2;
-                                color: #1F4E79;
-                            }
-                            """
-                        )
 
                 def _rebuild_template_buttons(self) -> None:
                     """선택 등급 기준 부적 선택 버튼 목록 재구성"""
@@ -3136,31 +2813,11 @@ class ResultsPage(QFrame):
                             self._build_template_option_text(template),
                             self.template_scroll_content,
                         )
+                        option_button.setObjectName("talismanTemplateBtn")
                         option_button.setCheckable(True)
                         option_button.setCursor(Qt.CursorShape.PointingHandCursor)
                         option_button.setMinimumHeight(38)
                         option_button.setFont(CustomFont(10, bold=True))
-                        option_button.setStyleSheet(
-                            """
-                            QPushButton {
-                                background-color: #FFFFFF;
-                                color: #2C3E50;
-                                border: 1px solid #D9E0EA;
-                                border-radius: 6px;
-                                padding: 0px 12px;
-                                text-align: left;
-                            }
-                            QPushButton:hover {
-                                background-color: #F6FAFF;
-                                border: 1px solid #BFD4EC;
-                            }
-                            QPushButton:checked {
-                                background-color: #E8F2FF;
-                                border: 1px solid #4A90E2;
-                                color: #1F4E79;
-                            }
-                            """
-                        )
                         option_button.clicked.connect(
                             partial(self._set_selected_template, template, True)
                         )
@@ -3246,9 +2903,6 @@ class ResultsPage(QFrame):
                 connected_function: Callable[[], None],
             ) -> None:
                 super().__init__(parent)
-                self.setStyleSheet(
-                    "QFrame { background-color: transparent; border: 0px solid; }"
-                )
                 self.setMinimumHeight(300)
 
                 # 부적 입력 전체 상태 참조 초기화
@@ -3275,15 +2929,6 @@ class ResultsPage(QFrame):
                 # 좌측 장착 요약 패널 구성
                 self.equipped_panel: QFrame = QFrame(self)
                 self.equipped_panel.setObjectName("TalismanEquippedPanel")
-                self.equipped_panel.setStyleSheet(
-                    """
-                    QFrame#TalismanEquippedPanel {
-                        background-color: #FBFCFE;
-                        border: 1px solid #DDE5EF;
-                        border-radius: 8px;
-                    }
-                    """
-                )
                 self.equipped_panel.setMinimumWidth(250)
                 equipped_layout: QVBoxLayout = QVBoxLayout(self.equipped_panel)
                 equipped_layout.setContentsMargins(14, 14, 14, 14)
@@ -3314,15 +2959,6 @@ class ResultsPage(QFrame):
                 # 중앙 목록 패널 구성
                 self.list_panel: QFrame = QFrame(self)
                 self.list_panel.setObjectName("TalismanListPanel")
-                self.list_panel.setStyleSheet(
-                    """
-                    QFrame#TalismanListPanel {
-                        background-color: #FBFCFE;
-                        border: 1px solid #DDE5EF;
-                        border-radius: 8px;
-                    }
-                    """
-                )
                 self.list_panel.setMinimumWidth(220)
                 list_layout: QVBoxLayout = QVBoxLayout(self.list_panel)
                 list_layout.setContentsMargins(14, 14, 14, 14)
@@ -3333,20 +2969,13 @@ class ResultsPage(QFrame):
                 list_layout.addWidget(list_title)
 
                 self.list_scroll_area: QScrollArea = QScrollArea(self.list_panel)
+                self.list_scroll_area.setObjectName("talismanListScrollArea")
                 self.list_scroll_area.setWidgetResizable(True)
                 self.list_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
                 self.list_scroll_area.setMinimumHeight(180)
-                self.list_scroll_area.setStyleSheet(
-                    """
-                    QScrollArea {
-                        background-color: transparent;
-                        border: 0px;
-                    }
-                    """
-                )
 
                 self.list_scroll_content: QWidget = QWidget(self.list_scroll_area)
-                self.list_scroll_content.setStyleSheet("background-color: transparent;")
+                self.list_scroll_content.setObjectName("talismanListScrollContent")
                 self.talisman_list_layout: QVBoxLayout = QVBoxLayout(
                     self.list_scroll_content
                 )
@@ -3366,15 +2995,6 @@ class ResultsPage(QFrame):
                 # 우측 상세 편집 패널 구성
                 self.detail_panel: QFrame = QFrame(self)
                 self.detail_panel.setObjectName("TalismanDetailPanel")
-                self.detail_panel.setStyleSheet(
-                    """
-                    QFrame#TalismanDetailPanel {
-                        background-color: #FBFCFE;
-                        border: 1px solid #DDE5EF;
-                        border-radius: 8px;
-                    }
-                    """
-                )
                 self.detail_panel.setMinimumWidth(320)
                 detail_layout: QVBoxLayout = QVBoxLayout(self.detail_panel)
                 detail_layout.setContentsMargins(14, 14, 14, 14)
@@ -3393,11 +3013,9 @@ class ResultsPage(QFrame):
                 self.empty_detail_label: QLabel = QLabel(
                     "중앙 목록에서 부적을 선택하세요.", self.detail_stack_host
                 )
+                self.empty_detail_label.setObjectName("panelEmptyLabel")
                 self.empty_detail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.empty_detail_label.setFont(CustomFont(11))
-                self.empty_detail_label.setStyleSheet(
-                    "QLabel { color: #7A8795; border: 0px; }"
-                )
                 self.detail_stack.addWidget(self.empty_detail_label)
                 detail_layout.addWidget(self.detail_stack_host)
 
@@ -4194,9 +3812,6 @@ class ResultsPage(QFrame):
 
             def __init__(self, parent: QWidget) -> None:
                 super().__init__(parent)
-                self.setStyleSheet(
-                    "QFrame { background-color: transparent; border: 0px; }"
-                )
                 self.setSizePolicy(
                     QSizePolicy.Policy.Expanding,
                     QSizePolicy.Policy.Preferred,
@@ -4219,15 +3834,10 @@ class ResultsPage(QFrame):
                     font_size: int = 13 if is_selected else 11
 
                     row_widget: QFrame = QFrame(self)
-                    if is_selected:
-                        row_widget.setStyleSheet(
-                            "QFrame { background-color: #EBF5FB;"
-                            " border-radius: 4px; border: 0px; }"
-                        )
-                    else:
-                        row_widget.setStyleSheet(
-                            "QFrame { background-color: transparent; border: 0px; }"
-                        )
+                    row_widget.setObjectName("powerResultRow")
+                    row_widget.setProperty("selected", is_selected)
+                    row_widget.style().unpolish(row_widget)
+                    row_widget.style().polish(row_widget)
                     row_layout: QHBoxLayout = QHBoxLayout(row_widget)
                     row_layout.setContentsMargins(
                         8, 8 if is_selected else 5, 8, 8 if is_selected else 5
@@ -4235,17 +3845,13 @@ class ResultsPage(QFrame):
                     row_layout.setSpacing(10)
 
                     title_label: QLabel = QLabel(title, row_widget)
+                    title_label.setObjectName("powerResultLabel")
                     title_label.setFont(CustomFont(font_size, bold=is_selected))
-                    title_label.setStyleSheet(
-                        "QLabel { background: transparent; border: 0px; color: #2C3E50; }"
-                    )
 
                     value_label: QLabel = QLabel(value, row_widget)
+                    value_label.setObjectName("powerResultLabel")
                     value_label.setFont(CustomFont(font_size, bold=is_selected))
                     value_label.setAlignment(Qt.AlignmentFlag.AlignRight)
-                    value_label.setStyleSheet(
-                        "QLabel { background: transparent; border: 0px; color: #2C3E50; }"
-                    )
 
                     # 행 최소 높이 확보
                     row_widget.setMinimumHeight(
@@ -4268,9 +3874,6 @@ class ResultsPage(QFrame):
 
             def __init__(self, parent: QWidget) -> None:
                 super().__init__(parent)
-                self.setStyleSheet(
-                    "QFrame { background-color: transparent; border: 0px; }"
-                )
                 self.setSizePolicy(
                     QSizePolicy.Policy.Expanding,
                     QSizePolicy.Policy.Preferred,
@@ -4311,28 +3914,21 @@ class ResultsPage(QFrame):
                     is_best: bool = i == 0 and len(self._rows) > 1
 
                     row_widget: QFrame = QFrame(self)
-                    row_widget.setStyleSheet(
-                        "QFrame { background-color: transparent; border: 0px; }"
-                    )
                     row_layout: QHBoxLayout = QHBoxLayout(row_widget)
                     row_layout.setContentsMargins(8, 4, 8, 4)
                     row_layout.setSpacing(8)
 
                     # 1위 배지
                     badge_label: QLabel = QLabel("★" if is_best else "", row_widget)
+                    badge_label.setObjectName("rankedBadgeLabel")
                     badge_label.setFixedWidth(14)
                     badge_label.setFont(CustomFont(10))
-                    badge_label.setStyleSheet(
-                        "QLabel { color: #F39C12; background: transparent; border: 0px; }"
-                    )
                     row_layout.addWidget(badge_label)
 
                     # 항목 이름 — 최소 폭만 보장하고 남는 공간 확장
                     title_label: QLabel = QLabel(title, row_widget)
+                    title_label.setObjectName("rankedTitleLabel")
                     title_label.setFont(CustomFont(11))
-                    title_label.setStyleSheet(
-                        "QLabel { background: transparent; border: 0px; }"
-                    )
                     title_label.setFixedWidth(160)
                     row_layout.addWidget(title_label)
 
@@ -4340,31 +3936,34 @@ class ResultsPage(QFrame):
 
                     # 미니 바 — stretch 오른쪽에 위치해 값과 붙어있음
                     bar_container: QFrame = QFrame(row_widget)
+                    bar_container.setObjectName("rankedBarContainer")
                     bar_container.setFixedSize(80, 10)
-                    bar_container.setStyleSheet(
-                        "QFrame { background-color: #E8E8E8; border-radius: 3px; border: 0px; }"
-                    )
                     if max_abs > 0:
                         bar_fill: QFrame = QFrame(bar_container)
+                        bar_fill.setObjectName("rankedBarFill")
+                        bar_fill.setProperty(
+                            "sign",
+                            "positive" if nv >= 0 else "negative",
+                        )
                         bar_fill.setFixedHeight(10)
                         bar_fill.setFixedWidth(max(1, int(80 * abs(nv) / max_abs)))
-                        bar_color: str = "#27AE60" if nv >= 0 else "#E74C3C"
-                        bar_fill.setStyleSheet(
-                            f"QFrame {{ background-color: {bar_color}; border-radius: 3px; border: 0px; }}"
-                        )
                     row_layout.addWidget(bar_container)
 
                     # 값 — 바 바로 오른쪽에 고정폭으로 배치
                     value_label: QLabel = QLabel(value, row_widget)
+                    value_label.setObjectName("resultValueLabel")
                     value_label.setFont(CustomFont(11))
                     value_label.setFixedWidth(90)
                     value_label.setAlignment(Qt.AlignmentFlag.AlignRight)
-                    value_style: str = "background: transparent; border: 0px;"
                     if nv > 0:
-                        value_style += " color: #27AE60;"
+                        ranked_sign: str = "positive"
                     elif nv < 0:
-                        value_style += " color: #E74C3C;"
-                    value_label.setStyleSheet(f"QLabel {{ {value_style} }}")
+                        ranked_sign = "negative"
+                    else:
+                        ranked_sign = "neutral"
+                    value_label.setProperty("sign", ranked_sign)
+                    value_label.style().unpolish(value_label)
+                    value_label.style().polish(value_label)
                     row_layout.addWidget(value_label)
 
                     # 순위 행 최소 높이 확보
@@ -4385,9 +3984,6 @@ class ResultsPage(QFrame):
 
             def __init__(self, parent: QWidget) -> None:
                 super().__init__(parent)
-                self.setStyleSheet(
-                    "QFrame { background-color: transparent; border: 0px; }"
-                )
                 self.setSizePolicy(
                     QSizePolicy.Policy.Expanding,
                     QSizePolicy.Policy.Preferred,
@@ -4404,10 +4000,8 @@ class ResultsPage(QFrame):
                 # 전체 스탯 표시 불가 상태 문구 출력
                 if base_stats is None:
                     unavail: QLabel = QLabel("표시 불가", self)
+                    unavail.setObjectName("statsGridUnavailLabel")
                     unavail.setFont(CustomFont(11))
-                    unavail.setStyleSheet(
-                        "QLabel { color: #888888; background: transparent; border: 0px; }"
-                    )
                     self._grid.addWidget(unavail, 0, 0)
                     ResultsPage.ResultsView._refresh_widget_geometry(self)
                     return
@@ -4422,26 +4016,19 @@ class ResultsPage(QFrame):
                         value_text: str = f"{final_stats.values[stat_key]:,.2f}"
 
                         cell: QFrame = QFrame(self)
-                        cell.setStyleSheet(
-                            "QFrame { background-color: #F5F5F5;"
-                            " border-radius: 4px; border: 0px; }"
-                        )
+                        cell.setObjectName("statsGridCell")
                         cell_layout: QHBoxLayout = QHBoxLayout(cell)
                         cell_layout.setContentsMargins(8, 4, 8, 4)
                         cell_layout.setSpacing(6)
 
                         lbl: QLabel = QLabel(label_text, cell)
+                        lbl.setObjectName("statsGridCellLabel")
                         lbl.setFont(CustomFont(10))
-                        lbl.setStyleSheet(
-                            "QLabel { color: #555555; background: transparent; border: 0px; }"
-                        )
 
                         val: QLabel = QLabel(value_text, cell)
+                        val.setObjectName("statsGridCellValue")
                         val.setFont(CustomFont(10))
                         val.setAlignment(Qt.AlignmentFlag.AlignRight)
-                        val.setStyleSheet(
-                            "QLabel { color: #2C3E50; background: transparent; border: 0px; }"
-                        )
 
                         # 스탯 셀 최소 높이 확보
                         cell.setMinimumHeight(
@@ -4460,7 +4047,6 @@ class ResultsPage(QFrame):
             parent: QFrame,
         ) -> None:
             super().__init__(parent)
-            self.setStyleSheet("QFrame { background-color: transparent; border: 0px; }")
 
             # 현재 전투력 카드
             self._power_list: ResultsPage.ResultsView.PowerResultList = (
@@ -4477,13 +4063,10 @@ class ResultsPage(QFrame):
                 ResultsPage.ResultsView.RankedResultList(self)
             )
             _vsep = QFrame(self)
+            _vsep.setObjectName("resultsVSep")
             _vsep.setFixedWidth(1)
-            _vsep.setStyleSheet("QFrame { background-color: #E0E0E0; border: 0px; }")
             _vsep.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
             _scroll_wrapper = QWidget(self)
-            _scroll_wrapper.setStyleSheet(
-                "QWidget { background-color: transparent; border: 0px; }"
-            )
             _scroll_wrapper_layout = QVBoxLayout(_scroll_wrapper)
             _scroll_wrapper_layout.setContentsMargins(0, 0, 0, 0)
             _scroll_wrapper_layout.setSpacing(0)
@@ -4510,17 +4093,11 @@ class ResultsPage(QFrame):
 
             def _make_sub_title(text: str, parent: QWidget) -> QLabel:
                 lbl = QLabel(text, parent)
+                lbl.setObjectName("resultsSubTitle")
                 lbl.setFont(CustomFont(11, bold=True))
-                lbl.setStyleSheet(
-                    "QLabel { background-color: transparent; border: 0px;"
-                    " color: #555555; }"
-                )
                 return lbl
 
             _level_wrapper = QWidget(self)
-            _level_wrapper.setStyleSheet(
-                "QWidget { background-color: transparent; border: 0px; }"
-            )
             _level_wrapper_layout = QVBoxLayout(_level_wrapper)
             _level_wrapper_layout.setContentsMargins(0, 0, 0, 0)
             _level_wrapper_layout.setSpacing(6)
@@ -4530,9 +4107,6 @@ class ResultsPage(QFrame):
             _level_wrapper.setLayout(_level_wrapper_layout)
 
             _realm_wrapper = QWidget(self)
-            _realm_wrapper.setStyleSheet(
-                "QWidget { background-color: transparent; border: 0px; }"
-            )
             _realm_wrapper_layout = QVBoxLayout(_realm_wrapper)
             _realm_wrapper_layout.setContentsMargins(0, 0, 0, 0)
             _realm_wrapper_layout.setSpacing(6)
@@ -4544,10 +4118,8 @@ class ResultsPage(QFrame):
             _realm_wrapper.setLayout(_realm_wrapper_layout)
 
             _growth_vsep = QFrame(self)
+            _growth_vsep.setObjectName("resultsVSep")
             _growth_vsep.setFixedWidth(1)
-            _growth_vsep.setStyleSheet(
-                "QFrame { background-color: #E0E0E0; border: 0px; }"
-            )
             _growth_vsep.setSizePolicy(
                 QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding
             )
@@ -4703,11 +4275,6 @@ class SkillInputs(QFrame):
     ) -> None:
         super().__init__(mainframe)
 
-        if config.ui.debug_colors:
-            self.setStyleSheet("QFrame { background-color: green; border: 0px solid; }")
-        else:
-            self.setStyleSheet("QFrame { background-color: transparent; border: 0px; }")
-
         # 그리드 레이아웃 위젯 생성
         self._grid_layout: QGridLayout = QGridLayout(self)
 
@@ -4788,14 +4355,6 @@ class SkillInputs(QFrame):
 
             self.entry: SkillInputs.Entry = entry
             self.popup_manager: PopupManager = popup_manager
-            if config.ui.debug_colors:
-                self.setStyleSheet(
-                    "QFrame { background-color: orange; border: 0px solid; }"
-                )
-            else:
-                self.setStyleSheet(
-                    "QFrame { background-color: transparent; border: 0px; }"
-                )
 
             # 전체 layout 설정
             grid: QGridLayout = QGridLayout()
@@ -4803,7 +4362,7 @@ class SkillInputs(QFrame):
 
             # 레이블
             label: QLabel = QLabel(entry.title, self)
-            label.setStyleSheet(f"QLabel {{ border: 0px solid; border-radius: 4px; }}")
+            label.setObjectName("skillInputLabel")
             label.setFont(CustomFont(14))
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -4871,26 +4430,13 @@ class PowerLabels(QFrame):
     ) -> None:
         super().__init__(mainframe)
 
-        if config.ui.debug_colors:
-            self.setStyleSheet(
-                "QFrame { background-color: purple; border: 0px solid; }"
-            )
-        else:
-            self.setStyleSheet("QFrame { background-color: white; border: 0px solid; }")
+        self.setObjectName("powerLabels")
 
         # 레이아웃 설정
         layout: QHBoxLayout = QHBoxLayout(self)
 
         self.numbers: list[QLabel] = []
         self.titles: list[str] = titles
-        self.colors: tuple[str, ...] = (
-            "255, 130, 130",
-            "255, 230, 140",
-            "170, 230, 255",
-            "150, 225, 210",
-            "210, 180, 255",
-        )
-
         # 단일 문자열 입력 시 현재 전투력 칸 수만큼 동일 값 확장
         if isinstance(texts, str):
             texts = [texts] * len(self.titles)
@@ -4901,7 +4447,7 @@ class PowerLabels(QFrame):
                 self,
                 title,
                 texts[i],
-                self.colors[i],
+                str(i),
                 font_size,
             )
 
@@ -4929,23 +4475,21 @@ class PowerLabels(QFrame):
             mainframe: QWidget,
             name: str,
             text: str,
-            color: str,
+            slot: str,
             font_size: int = 18,
         ) -> None:
             super().__init__(mainframe)
 
             label: QLabel = QLabel(name, self)
-            label.setStyleSheet(
-                f"QLabel {{ background-color: rgb({color}); border: 1px solid rgb({color}); border-bottom: 0px solid; border-top-left-radius: 4px; border-top-right-radius: 4px; border-bottom-left-radius: 0px; border-bottom-right-radius: 0px; }}"
-            )
+            label.setObjectName("powerLabelHeader")
+            label.setProperty("slot", slot)
             label.setFont(CustomFont(14))
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             label.setFixedHeight(50)
 
             self.number: QLabel = QLabel(text, self)
-            self.number.setStyleSheet(
-                f"QLabel {{ background-color: rgba({color}, 120); border: 1px solid rgb({color}); border-top: 0px solid; border-top-left-radius: 0px; border-top-right-radius: 0px; border-bottom-left-radius: 4px; border-bottom-right-radius: 4px }}"
-            )
+            self.number.setObjectName("powerLabelNumber")
+            self.number.setProperty("slot", slot)
             self.number.setFont(CustomFont(font_size))
             self.number.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.number.setFixedHeight(90)
@@ -4977,21 +4521,12 @@ class AnalysisDetails(QFrame):
     ) -> None:
         super().__init__(mainframe)
 
-        if config.ui.debug_colors:
-            self.setStyleSheet(
-                "QFrame { background-color: brown; border: 1px solid #CCCCCC; border-top-left-radius: 0px; border-top-right-radius: 6px; border-bottom-left-radius: 0px; border-bottom-right-radius: 6px; }"
-            )
-        else:
-            self.setStyleSheet(
-                "QFrame { background-color: transparent; border: 0px solid; }"
-            )
-
         self.details: list[AnalysisDetails.Analysis] = [
             self.Analysis(
                 self,
                 analysis[i],
                 self.DETAIL_KEYS,
-                config.ui.analysis_card_colors[i],
+                str(i),
             )
             for i in range(4)
         ]
@@ -5012,39 +4547,24 @@ class AnalysisDetails(QFrame):
             parent: QFrame,
             analysis: GraphAnalysis,
             statistics: tuple[str, ...],
-            color: str,
+            slot: str,
         ) -> None:
             super().__init__(parent)
 
-            self.setStyleSheet(
-                """QFrame {
-                    background-color: #F8F8F8;
-                    border: 1px solid #CCCCCC;
-                    border-left: 0px solid;
-                    border-top-right-radius: 6px;
-                    border-bottom-right-radius: 6px;
-                    border-top-left-radius: 0px;
-                    border-bottom-left-radius: 0px;
-                    }"""
-            )
+            self.setObjectName("analysisCard")
 
             color_frame = QFrame(self)
-            color_frame.setStyleSheet(
-                f"QFrame {{ background-color: rgb({color}); border: 0px solid; border-radius: 0px; border-left: 1px solid #CCCCCC; }}"
-            )
+            color_frame.setObjectName("analysisAccentBar")
+            color_frame.setProperty("slot", slot)
             color_frame.setFixedWidth(3)
 
             title = QLabel(analysis.title, self)
-            title.setStyleSheet(
-                "QLabel { background-color: transparent; border: 0px solid; }"
-            )
+            title.setObjectName("analysisCardLabel")
             title.setFont(CustomFont(14))
             title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
             self.number = QLabel(analysis.value, self)
-            self.number.setStyleSheet(
-                "QLabel { background-color: transparent; border: 0px solid; }"
-            )
+            self.number.setObjectName("analysisCardLabel")
             self.number.setFont(CustomFont(18))
             self.number.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -5085,21 +4605,13 @@ class AnalysisDetails(QFrame):
         def __init__(self, parent: QFrame, name: str, value: str):
             super().__init__(parent)
 
-            self.setStyleSheet(
-                "QFrame { background-color: transparent; border: 0px solid; }"
-            )
-
             title = QLabel(name, self)
-            title.setStyleSheet(
-                "QLabel { background-color: transparent; border: 0px solid; color: #A0A0A0 }"
-            )
+            title.setObjectName("statisticNameLabel")
             title.setFont(CustomFont(8))
             title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
             self.number = QLabel(value, self)
-            self.number.setStyleSheet(
-                "QLabel { background-color: transparent; border: 0px solid; }"
-            )
+            self.number.setObjectName("statisticValueLabel")
             self.number.setFont(CustomFont(8))
             self.number.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -5116,9 +4628,7 @@ class AnalysisDetails(QFrame):
 class Title(QLabel):
     def __init__(self, parent, text):
         super().__init__(text, parent)
-        self.setStyleSheet(
-            "QLabel { background-color: rgb(255, 255, 255); border: none; border-bottom: 1px solid #bbbbbb; padding: 10px 0; }"
-        )
+        self.setObjectName("simTitle")
         self.setFont(CustomFont(16))
 
         # 크기 정책을 설정하여 자동 크기 조절
@@ -5135,19 +4645,8 @@ class Navigation(QFrame):
         ):
             super().__init__(text, parent)
 
-            border_color: dict[bool, str] = {True: "#9180F7", False: "#FFFFFF"}
-
-            self.setStyleSheet(
-                f"""
-                QPushButton {{
-                    background-color: rgb(255, 255, 255); border: none; border-bottom: 2px solid {border_color[is_active]}; 
-                }}
-                QPushButton:hover {{
-                    background-color: rgb(234, 234, 234);
-                }}
-                """
-            )
-
+            self.setObjectName("navBtn")
+            self.setProperty("active", is_active)
             self.setFont(CustomFont(12))
 
             # 최소 크기 설정
@@ -5158,10 +4657,6 @@ class Navigation(QFrame):
 
     def __init__(self, parent: QWidget, func1: Callable, func2: Callable):
         super().__init__(parent)
-
-        # 상단 네비게이션바
-        if config.ui.debug_colors:
-            self.setStyleSheet("QFrame { background-color: blue; }")
 
         layout = QHBoxLayout(self)
 
@@ -5176,16 +4671,7 @@ class Navigation(QFrame):
 
         # 닫기 버튼
         button: QPushButton = QPushButton(self)
-        button.setStyleSheet(
-            """
-            QPushButton {
-                background-color: rgb(255, 255, 255); border: none; border-radius: 10px;
-            }
-            QPushButton:hover {
-                background-color: rgb(234, 234, 234);
-            }
-            """
-        )
+        button.setObjectName("simNavCloseBtn")
         pixmap: QPixmap = QPixmap(convert_resource_path("resources\\image\\x.png"))
         button.setIcon(QIcon(pixmap))
         button.setIconSize(QSize(15, 15))

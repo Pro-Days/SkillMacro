@@ -183,6 +183,7 @@ requirements_temp.txt
 desktop.ini
 
 .codex
+.claude
 .prettierrc
 
 NOTES.txt

@@ -12,9 +12,13 @@ from PySide6.QtWidgets import QLabel, QWidget
 from app.scripts.calculator_engine import GraphDamageEvent
 from app.scripts.custom_classes import CustomFont
 from app.scripts.registry.skill_registry import get_builtin_skill_id, parse_skill_id
+from app.scripts.ui.themes import LIGHT_GRAPH_PALETTE, GraphPalette
 
 # todo: 재사용 가능하도록, 실시간 렌더링되도록 변경
 # todo: 크래시 문제 해결
+
+# 현재 라이트 테마 그래프 팔레트 참조
+GRAPH_PALETTE: GraphPalette = LIGHT_GRAPH_PALETTE
 
 
 class DpmDistributionCanvas(pg.PlotWidget):
@@ -22,6 +26,7 @@ class DpmDistributionCanvas(pg.PlotWidget):
 
     def __init__(self, parent: QWidget, results: list[list[GraphDamageEvent]]) -> None:
         super().__init__(parent=parent)
+        self.setObjectName("dpmDistributionCanvas")
 
         # 데이터 저장
         self.data: list[float] = [sum([i.damage for i in result]) for result in results]
@@ -56,7 +61,7 @@ class DpmDistributionCanvas(pg.PlotWidget):
         font = CustomFont(14)
         self.getAxis("top").label.setFont(font)
         # 제목 색상을 검정색으로 설정
-        self.getAxis("top").setTextPen("black")
+        self.getAxis("top").setTextPen(GRAPH_PALETTE.title_text)
 
         # 축 설정
         # 아래쪽 축
@@ -73,7 +78,7 @@ class DpmDistributionCanvas(pg.PlotWidget):
         axis_font = CustomFont(10)
         axis_bottom.setStyle(tickFont=axis_font)
         # 축 라벨 색상을 검정색으로 설정
-        axis_bottom.setTextPen("black")
+        axis_bottom.setTextPen(GRAPH_PALETTE.axis_text)
 
         # self.getAxis("bottom").setStyle(showValues=True, tickAlpha=0)
         # self.getAxis("left").setStyle(showValues=True, tickLength=-20)
@@ -85,17 +90,14 @@ class DpmDistributionCanvas(pg.PlotWidget):
         self.setMenuEnabled(False)
 
         # 배경 색상 설정
-        self.setBackground("#F8F8F8")
-
-        # 테두리 색상 설정
-        self.setStyleSheet("border: 0px solid;")
+        self.setBackground(GRAPH_PALETTE.canvas_background)
 
         # 색상 정의
         self.colors: dict[str, str] = {
-            "median": "#4070FF",
-            "centers": "#75A2FC",
-            "hover": "#BAD0FD",
-            "normal": "#F38181",
+            "median": GRAPH_PALETTE.dpm_median_bar,
+            "centers": GRAPH_PALETTE.dpm_center_bar,
+            "hover": GRAPH_PALETTE.dpm_hover_bar,
+            "normal": GRAPH_PALETTE.dpm_normal_bar,
         }
 
         # 각 막대의 원래 색상을 저장할 리스트
@@ -103,21 +105,13 @@ class DpmDistributionCanvas(pg.PlotWidget):
 
         # 툴팁 레이블 설정
         self.tooltip_label = QLabel(self)
+        self.tooltip_label.setObjectName("graphTooltipLabel")
 
         # 플래그 설정
         # self.tooltip_label.setWindowFlags(Qt.WindowType.ToolTip)
         # 투명도 설정 (0.0~1.0, 1.0이 완전 불투명)
         # self.tooltip_label.setWindowOpacity(0.8)
 
-        # 스타일 시트 설정 (테두리 제거하고 배경만 사용)
-        self.tooltip_label.setStyleSheet(
-            """QLabel {
-                background-color: rgba(255, 255, 255, 0.8);
-                padding: 5px;
-                border: 1px solid gray;
-                border-radius: 10px;
-            }"""
-        )
         self.tooltip_label.setFont(CustomFont(10))
         self.tooltip_label.setAttribute(
             Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
@@ -400,6 +394,7 @@ class SkillDpsRatioCanvas(pg.PlotWidget):
         server_id: str,
     ) -> None:
         super().__init__(parent=parent)
+        self.setObjectName("skillDpsRatioCanvas")
 
         # 장착된 스킬 ID 필터링
         equipped_skill_ids: list[str] = [_id for _id in skill_ids if _id]
@@ -425,15 +420,7 @@ class SkillDpsRatioCanvas(pg.PlotWidget):
         ]
 
         # 색상 설정
-        palette: list[str] = [
-            "#EF9A9A",
-            "#90CAF9",
-            "#A5D6A7",
-            "#FFEB3B",
-            "#CE93D8",
-            "#F0B070",
-            "#2196F3",
-        ]
+        palette: tuple[str, ...] = GRAPH_PALETTE.ratio_series
         self.colors: list[str] = [
             palette[i % len(palette)] for i in range(len(self.data))
         ]
@@ -465,14 +452,11 @@ class SkillDpsRatioCanvas(pg.PlotWidget):
         font = CustomFont(point_size=14)
         self.getAxis("top").label.setFont(font)
         # 제목 색상을 검정색으로 설정
-        self.getAxis("top").setTextPen("black")
+        self.getAxis("top").setTextPen(GRAPH_PALETTE.title_text)
 
         # 배경 색상 설정
-        self.background_color = "#F8F8F8"
+        self.background_color = GRAPH_PALETTE.canvas_background
         self.setBackground(self.background_color)
-
-        # 테두리 색상 설정
-        self.setStyleSheet("border: 0px solid;")
 
         # 마우스 상호작용 비활성화 (드래그, 줌, 우클릭 메뉴 등)
         self.setMouseEnabled(x=False, y=False)
@@ -558,7 +542,7 @@ class SkillDpsRatioCanvas(pg.PlotWidget):
             text_item: pg.TextItem = pg.TextItem(
                 f"{percentage:.1f}%",
                 anchor=(0.5, 0.5),
-                color="black",
+                color=GRAPH_PALETTE.skill_ratio_label_text,
             )
             # 레이블 위치 설정
             text_item.setPos(label_x, label_y)
@@ -576,7 +560,7 @@ class SkillDpsRatioCanvas(pg.PlotWidget):
             legend_item: pg.TextItem = pg.TextItem(
                 label,
                 anchor=(0.0 if legend_x >= 0 else 1.0, 0.5),
-                color="black",
+                color=GRAPH_PALETTE.skill_ratio_label_text,
             )
             # 범례 레이블 위치 설정
             legend_item.setPos(legend_x, legend_y)
@@ -640,6 +624,7 @@ class DMGCanvas(pg.PlotWidget):
         aggregation_mode: DamageGraphMode,
     ) -> None:
         super().__init__(parent)
+        self.setObjectName("dmgCanvas")
 
         # 그래프 시간축 기본 단위 구성
         step: int = 1
@@ -719,7 +704,7 @@ class DMGCanvas(pg.PlotWidget):
         font = CustomFont(point_size=14)
         self.getAxis("top").label.setFont(font)
         # 제목 색상을 검정색으로 설정
-        self.getAxis("top").setTextPen("black")
+        self.getAxis("top").setTextPen(GRAPH_PALETTE.title_text)
 
         # 하단 축 텍스트 설정
         font_properties = {
@@ -736,12 +721,12 @@ class DMGCanvas(pg.PlotWidget):
         axis_font = CustomFont(point_size=10)
         axis_bottom.setStyle(tickFont=axis_font)
         # 축 라벨 색상을 검정색으로 설정
-        axis_bottom.setTextPen("black")
+        axis_bottom.setTextPen(GRAPH_PALETTE.axis_text)
 
         # 좌측 축 설정 (Y축)
         axis_left: pg.AxisItem = self.getAxis("left")
         axis_left.setStyle(tickFont=axis_font)
-        axis_left.setTextPen("black")
+        axis_left.setTextPen(GRAPH_PALETTE.axis_text)
         # Y축 선 숨기기 (숫자는 표시하되 축 선은 숨김)
         axis_left.setPen(None)
 
@@ -752,11 +737,8 @@ class DMGCanvas(pg.PlotWidget):
         axis_left.tickStrings = tickStrings
 
         # 배경 색상 설정
-        self.background_color = "#F8F8F8"
+        self.background_color = GRAPH_PALETTE.canvas_background
         self.setBackground(self.background_color)
-
-        # 테두리 색상 설정
-        self.setStyleSheet("border: 0px solid;")
 
         # 마우스 상호작용 비활성화 (드래그, 줌, 우클릭 메뉴 등)
         self.setMouseEnabled(x=False, y=False)
@@ -766,9 +748,9 @@ class DMGCanvas(pg.PlotWidget):
         self.hideButtons()
 
         self.colors: dict[str, str] = {
-            "max": "#F38181",
-            "mean": "#70AAF9",
-            "min": "#80C080",
+            "max": GRAPH_PALETTE.damage_max_line,
+            "mean": GRAPH_PALETTE.damage_mean_line,
+            "min": GRAPH_PALETTE.damage_min_line,
         }
 
         # 선 그래프 그리기
@@ -817,7 +799,7 @@ class DMGCanvas(pg.PlotWidget):
         self.tooltip_line = pg.InfiniteLine(
             angle=90,
             movable=False,
-            pen=pg.mkPen("gray", width=2, style=Qt.PenStyle.DashLine),
+            pen=pg.mkPen(GRAPH_PALETTE.guide_line, width=2, style=Qt.PenStyle.DashLine),
         )
         self.addItem(self.tooltip_line)
 
@@ -827,21 +809,13 @@ class DMGCanvas(pg.PlotWidget):
 
         # 툴팁 레이블 설정
         self.tooltip_label = QLabel(parent=self)
+        self.tooltip_label.setObjectName("graphTooltipLabel")
 
         # 플래그 설정
         # self.tooltip_label.setWindowFlags(Qt.WindowType.ToolTip)
         # 투명도 설정 (0.0~1.0, 1.0이 완전 불투명)
         # self.tooltip_label.setWindowOpacity(0.5)
 
-        # 스타일 시트 설정 (테두리 제거하고 배경만 사용)
-        self.tooltip_label.setStyleSheet(
-            """QLabel {
-                background-color: rgba(255, 255, 255, 0.8);
-                padding: 5px;
-                border: 1px solid gray;
-                border-radius: 10px;
-            }"""
-        )
         # 폰트 설정
         self.tooltip_label.setFont(CustomFont(point_size=10))
         self.tooltip_label.setAttribute(
@@ -859,7 +833,9 @@ class DMGCanvas(pg.PlotWidget):
         bottom_axis.setTicks([[(i, f"{i}초") for i in range(0, 61, 10)]])
 
         # 눈금 펜 설정
-        bottom_axis.setTickPen(pg.mkPen("gray", width=2, style=Qt.PenStyle.DashLine))
+        bottom_axis.setTickPen(
+            pg.mkPen(GRAPH_PALETTE.guide_line, width=2, style=Qt.PenStyle.DashLine)
+        )
 
     def mouseMoveEvent(self, event) -> None:  # type: ignore
         """
@@ -957,6 +933,7 @@ class SkillContributionCanvas(pg.PlotWidget):
         server_id: str,
     ) -> None:
         super().__init__(parent)
+        self.setObjectName("skillContributionCanvas")
 
         equipped_skill_ids: list[str] = [sid for sid in skill_ids if sid]
 
@@ -1040,7 +1017,7 @@ class SkillContributionCanvas(pg.PlotWidget):
         font = CustomFont(point_size=14)
         self.getAxis("top").label.setFont(font)
         # 제목 색상을 검정색으로 설정
-        self.getAxis("top").setTextPen("black")
+        self.getAxis("top").setTextPen(GRAPH_PALETTE.title_text)
 
         # 하단 축 텍스트 설정
         font_properties = {
@@ -1058,21 +1035,18 @@ class SkillContributionCanvas(pg.PlotWidget):
         axis_bottom.setStyle(tickFont=axis_font)
         # 축 라벨 색상을 검정색으로 설정
         axis_bottom.setPen(None)
-        axis_bottom.setTextPen("black")
+        axis_bottom.setTextPen(GRAPH_PALETTE.axis_text)
 
         # 좌측 축 설정 (Y축)
         axis_left: pg.AxisItem = self.getAxis("left")
         axis_left.setStyle(tickFont=axis_font)
-        axis_left.setTextPen("black")
+        axis_left.setTextPen(GRAPH_PALETTE.axis_text)
         # Y축 선 숨기기
         axis_left.setPen(None)
 
         # 배경 색상 설정
-        self.background_color = "#F8F8F8"
+        self.background_color = GRAPH_PALETTE.canvas_background
         self.setBackground(self.background_color)
-
-        # 테두리 색상 설정
-        self.setStyleSheet("border: 0px solid;")
 
         # 마우스 상호작용 비활성화 (드래그, 줌, 우클릭 메뉴 등)
         self.setMouseEnabled(x=False, y=False)
@@ -1082,15 +1056,7 @@ class SkillContributionCanvas(pg.PlotWidget):
         self.hideButtons()
 
         # 스킬 색상 설정
-        self.colors: list[str] = [
-            "#EF9A9A",
-            "#90CAF9",
-            "#A5D6A7",
-            "#FFEB3B",
-            "#CE93D8",
-            "#F0B070",
-            "#2196F3",
-        ]
+        self.colors: list[str] = [*GRAPH_PALETTE.contribution_series]
 
         # 눈금 설정
         self.set_ticks()
@@ -1152,31 +1118,25 @@ class SkillContributionCanvas(pg.PlotWidget):
 
         # 툴팁 선 (범위 지정 가능한 선)
         self.tooltip_line = pg.PlotCurveItem(
-            pen=pg.mkPen("gray", width=2, style=Qt.PenStyle.DashLine),
+            pen=pg.mkPen(GRAPH_PALETTE.guide_line, width=2, style=Qt.PenStyle.DashLine),
         )
         self.addItem(self.tooltip_line)
 
         # 툴팁 점
-        self.tooltip_point = pg.ScatterPlotItem(pen=pg.mkPen("gray", width=1), size=8)
+        self.tooltip_point = pg.ScatterPlotItem(
+            pen=pg.mkPen(GRAPH_PALETTE.guide_line, width=1), size=8
+        )
         self.addItem(self.tooltip_point)
 
         # 툴팁 레이블 설정
         self.tooltip_label = QLabel(parent=self)
+        self.tooltip_label.setObjectName("graphTooltipLabel")
 
         # 플래그 설정
         # self.tooltip_label.setWindowFlags(Qt.WindowType.ToolTip)
         # 투명도 설정 (0.0~1.0, 1.0이 완전 불투명)
         # self.tooltip_label.setWindowOpacity(0.5)
 
-        # 스타일 시트 설정 (테두리 제거하고 배경만 사용)
-        self.tooltip_label.setStyleSheet(
-            """QLabel {
-                background-color: rgba(255, 255, 255, 0.8);
-                padding: 5px;
-                border: 1px solid gray;
-                border-radius: 10px;
-            }"""
-        )
         # 폰트 설정
         self.tooltip_label.setFont(CustomFont(point_size=10))
 
@@ -1204,7 +1164,9 @@ class SkillContributionCanvas(pg.PlotWidget):
             grid_line = pg.PlotCurveItem(
                 x=[x, x],
                 y=[0, 100],
-                pen=pg.mkPen("gray", width=1, style=Qt.PenStyle.DashLine),
+                pen=pg.mkPen(
+                    GRAPH_PALETTE.guide_line, width=1, style=Qt.PenStyle.DashLine
+                ),
             )
             self.addItem(grid_line)
 
@@ -1213,7 +1175,9 @@ class SkillContributionCanvas(pg.PlotWidget):
             grid_line = pg.PlotCurveItem(
                 x=[0, 60],
                 y=[y, y],
-                pen=pg.mkPen("gray", width=1, style=Qt.PenStyle.DashLine),
+                pen=pg.mkPen(
+                    GRAPH_PALETTE.guide_line, width=1, style=Qt.PenStyle.DashLine
+                ),
             )
             self.addItem(grid_line)
 
@@ -1221,21 +1185,27 @@ class SkillContributionCanvas(pg.PlotWidget):
         grid_line = pg.PlotCurveItem(
             x=[0, 0],
             y=[0, 100],
-            pen=pg.mkPen("gray", width=1, style=Qt.PenStyle.SolidLine),
+            pen=pg.mkPen(
+                GRAPH_PALETTE.guide_line, width=1, style=Qt.PenStyle.SolidLine
+            ),
         )
         self.addItem(grid_line)
 
         grid_line = pg.PlotCurveItem(
             x=[60, 60],
             y=[0, 100],
-            pen=pg.mkPen("gray", width=1, style=Qt.PenStyle.SolidLine),
+            pen=pg.mkPen(
+                GRAPH_PALETTE.guide_line, width=1, style=Qt.PenStyle.SolidLine
+            ),
         )
         self.addItem(grid_line)
 
         grid_line = pg.PlotCurveItem(
             x=[0, 60],
             y=[100, 100],
-            pen=pg.mkPen("gray", width=1, style=Qt.PenStyle.SolidLine),
+            pen=pg.mkPen(
+                GRAPH_PALETTE.guide_line, width=1, style=Qt.PenStyle.SolidLine
+            ),
         )
         self.addItem(grid_line)
 
@@ -1243,7 +1213,9 @@ class SkillContributionCanvas(pg.PlotWidget):
         grid_line = pg.PlotCurveItem(
             x=[-1, 60],
             y=[0, 0],
-            pen=pg.mkPen("gray", width=2, style=Qt.PenStyle.SolidLine),
+            pen=pg.mkPen(
+                GRAPH_PALETTE.guide_line, width=2, style=Qt.PenStyle.SolidLine
+            ),
         )
         self.addItem(grid_line)
 
@@ -1312,7 +1284,10 @@ class SkillContributionCanvas(pg.PlotWidget):
             ]
             self.tooltip_point.setData(
                 pos=points_data,
-                brush=["white" for i in range(len(self.data["data"]) - 1)],
+                brush=[
+                    GRAPH_PALETTE.contribution_tooltip_point_fill
+                    for i in range(len(self.data["data"]) - 1)
+                ],
                 # brush=[self.colors[i] for i in range(len(self.data["data"]) - 1)],
             )
             self.tooltip_point.show()

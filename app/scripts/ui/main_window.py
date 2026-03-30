@@ -8,7 +8,7 @@ from webbrowser import open_new
 
 import requests
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QIcon, QKeyEvent, QPalette, QPixmap
+from PySide6.QtGui import QIcon, QKeyEvent, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -29,6 +29,7 @@ from app.scripts.ui.main_ui.main_ui import MainUI
 from app.scripts.ui.main_ui.sidebar import Sidebar
 from app.scripts.ui.popup import NoticeKind, PopupManager
 from app.scripts.ui.sim_ui.simul_ui import SimUI
+from app.scripts.ui.themes import LIGHT_THEME
 
 
 class MainWindow(QWidget):
@@ -183,6 +184,7 @@ class MainWindow(QWidget):
         프로그램 처음 UI 설정
         """
 
+        self.setObjectName("mainWindow")
         self.setWindowTitle("데이즈 스킬매크로 " + config.version)
         self.setMinimumSize(
             config.ui.DEFAULT_WINDOW_WIDTH,
@@ -190,23 +192,13 @@ class MainWindow(QWidget):
         )
         # self.setGeometry(0, 0, 960, 540)
 
-        # 포커스 시 테두리 제거
-        self.setStyleSheet("*:focus { outline: none; }")
-
-        # 배경 팔레트 설정
-        self.background_palette: QPalette = self.palette()
-        self.background_palette.setColor(
-            QPalette.ColorRole.Window, QColor(255, 255, 255)
-        )
-        self.setPalette(self.background_palette)
+        # 글로벌 테마 적용 (다크 모드 색상 반전 방지)
+        QApplication.instance().setStyleSheet(LIGHT_THEME)
 
         # 페이지 프레임 설정
         # 페이지1: 메인 매크로, 페이지2: 시뮬레이션
         self.page1: QFrame = QFrame(self)
         self.page2: QFrame = QFrame(self)
-
-        if config.ui.debug_colors:
-            self.page2.setStyleSheet("QFrame { background-color: yellow;}")
 
         # 팝업 매니저 초기화
         self.popup_manager: PopupManager = PopupManager(self)
@@ -303,10 +295,8 @@ class CreatorLabel(QPushButton):
     def __init__(self, parent: QWidget) -> None:
         super().__init__("  제작자: 프로데이즈  |  디스코드: prodays", parent)
 
+        self.setObjectName("creatorLabel")
         self.setFont(CustomFont(10))
-        self.setStyleSheet(
-            "QPushButton { background-color: transparent; text-align: left; border: 0px; }"
-        )
         self.clicked.connect(lambda: open_new("https://github.com/Pro-Days/SkillMacro"))
         self.setFixedSize(320, 24)
 
