@@ -1207,7 +1207,7 @@ QLabel#talismanPreviewLabel {{ color: #5C6B7A; border: 0px; }}
 /* ResultList 값 라벨 부호 색상 */
 QLabel#resultValueLabel[sign=positive] {{ color: #27AE60; }}
 QLabel#resultValueLabel[sign=negative] {{ color: #E74C3C; }}
-QLabel#resultValueLabel[sign=neutral]  {{ color: inherit; }}
+QLabel#resultValueLabel[sign=neutral]  {{ color: #2C3E50; }}
 
 /* PowerResultList 행 */
 QFrame#powerResultRow[selected=true] {{
@@ -1225,7 +1225,7 @@ QLabel#powerResultLabel {{ background: transparent; border: 0px; color: #2C3E50;
 
 /* RankedResultList */
 QLabel#rankedBadgeLabel {{ color: #F39C12; background: transparent; border: 0px; }}
-QLabel#rankedTitleLabel {{ background: transparent; border: 0px; }}
+QLabel#rankedTitleLabel {{ color: #2C3E50; background: transparent; border: 0px; }}
 QFrame#rankedBarContainer {{
     background-color: #E8E8E8;
     border-radius: 3px;
@@ -2527,7 +2527,7 @@ QLabel#talismanPreviewLabel {{ color: #6868A0; border: 0px; }}
 
 QLabel#resultValueLabel[sign=positive] {{ color: #4ECB71; }}
 QLabel#resultValueLabel[sign=negative] {{ color: #F06060; }}
-QLabel#resultValueLabel[sign=neutral]  {{ color: inherit; }}
+QLabel#resultValueLabel[sign=neutral]  {{ color: #C8C8E0; }}
 
 QFrame#powerResultRow[selected=true] {{
     background-color: #1E2845;
@@ -2542,7 +2542,7 @@ QFrame#powerResultRow[selected=false] {{
 QLabel#powerResultLabel {{ background: transparent; border: 0px; color: #C8C8E0; }}
 
 QLabel#rankedBadgeLabel {{ color: #E8A030; background: transparent; border: 0px; }}
-QLabel#rankedTitleLabel {{ background: transparent; border: 0px; }}
+QLabel#rankedTitleLabel {{ color: #C8C8E0; background: transparent; border: 0px; }}
 QFrame#rankedBarContainer {{
     background-color: #2A2A3E;
     border-radius: 3px;

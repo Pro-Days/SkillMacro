@@ -2229,7 +2229,13 @@ class LinkSkillEditor(QFrame):
         return QPixmap(get_theme_image_path("plus.png", dark))
 
     def _on_theme_changed(self, dark: bool) -> None:
+        # 부모 편집기 공용 버튼 아이콘 갱신
         self.add_skill_btn.setIcon(QIcon(self._load_plus_icon(dark)))
+
+        # 현재 화면에 살아 있는 스킬 아이템만 테마 반영
+        skill_widget: LinkSkillEditor.SkillItem
+        for skill_widget in self._skill_item_widgets:
+            skill_widget.apply_theme(dark)
 
     def cancel(self) -> None:
         """편집 취소"""
@@ -2318,13 +2324,10 @@ class LinkSkillEditor(QFrame):
             self.remove = QPushButton()
             self.remove.setObjectName("skillItemRemoveBtn")
             self.remove.clicked.connect(self._emit_remove)
-            self.remove.setIcon(QIcon(self._x_icon(theme_manager.is_dark)))
+            self.apply_theme(theme_manager.is_dark)
             self.remove.setIconSize(QSize(16, 16))
             self.remove.setFixedSize(32, 32)
             self.remove.setCursor(Qt.CursorShape.PointingHandCursor)
-            theme_manager.theme_changed.connect(
-                lambda dark: self.remove.setIcon(QIcon(self._x_icon(dark)))
-            )
 
             layout = QHBoxLayout()
             layout.addWidget(self.skill)
@@ -2332,6 +2335,10 @@ class LinkSkillEditor(QFrame):
             layout.addWidget(self.remove)
             layout.setContentsMargins(0, 0, 0, 0)
             self.setLayout(layout)
+
+        def apply_theme(self, dark: bool) -> None:
+            # 현재 테마 기준 삭제 버튼 아이콘 갱신
+            self.remove.setIcon(QIcon(self._x_icon(dark)))
 
         @staticmethod
         def _x_icon(dark: bool) -> QPixmap:
