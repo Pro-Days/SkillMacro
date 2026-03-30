@@ -466,11 +466,17 @@ QPushButton#linkRemoveBtn:hover {{
 /* ────────────────── 연계스킬 편집기 ────────────────── */
 QPushButton#addSkillBtn {{
     background-color: transparent;
-    border-radius: 18px;
+    border: none;
+    border-radius: 6px;
 }}
 QPushButton#addSkillBtn:hover {{ background-color: #cccccc; }}
 
 /* SettingItem 활성·비활성 버튼 (active 프로퍼티 사용) */
+QPushButton#settingItemBtn {{
+    min-width: 36px;
+    padding: 2px 14px;
+    border-radius: 6px;
+}}
 QPushButton#settingItemBtn[active=true]  {{ color: #000000; }}
 QPushButton#settingItemBtn[active=false] {{ color: #999999; }}
 
@@ -480,7 +486,11 @@ QPushButton#skillItemBtn {{
     border-radius: 10px;
     outline: none;
 }}
-QPushButton#skillItemRemoveBtn {{ background-color: transparent; border-radius: 16px; }}
+QPushButton#skillItemRemoveBtn {{
+    background-color: transparent;
+    border: none;
+    border-radius: 16px;
+}}
 QPushButton#skillItemRemoveBtn:hover {{ background-color: #eeeeee; }}
 
 
@@ -1806,10 +1816,16 @@ QPushButton#linkRemoveBtn:hover {{
 /* ────────────────── 연계스킬 편집기 ────────────────── */
 QPushButton#addSkillBtn {{
     background-color: transparent;
-    border-radius: 18px;
+    border: none;
+    border-radius: 6px;
 }}
 QPushButton#addSkillBtn:hover {{ background-color: #2E2E45; }}
 
+QPushButton#settingItemBtn {{
+    min-width: 36px;
+    padding: 2px 14px;
+    border-radius: 6px;
+}}
 QPushButton#settingItemBtn[active=true]  {{ color: #E8E8F0; }}
 QPushButton#settingItemBtn[active=false] {{ color: #555570; }}
 
@@ -1819,7 +1835,11 @@ QPushButton#skillItemBtn {{
     border-radius: 10px;
     outline: none;
 }}
-QPushButton#skillItemRemoveBtn {{ background-color: transparent; border-radius: 16px; }}
+QPushButton#skillItemRemoveBtn {{
+    background-color: transparent;
+    border: none;
+    border-radius: 16px;
+}}
 QPushButton#skillItemRemoveBtn:hover {{ background-color: #2E2E45; }}
 
 

@@ -1768,12 +1768,16 @@ class SkillGridSelectContent(QFrame):
 
         # 무공비급 영역
         scroll = QScrollArea(self)
+        # 공용 그리드 팝업 스타일 재사용 설정
+        scroll.setObjectName("popupGridScrollArea")
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
 
         container = QWidget(scroll)
+        # 공용 그리드 컨텐츠 배경 스타일 재사용 설정
+        container.setObjectName("popupGridContent")
         grid = QGridLayout(container)
         grid.setContentsMargins(0, 0, 0, 0)
         grid.setHorizontalSpacing(spacing)
