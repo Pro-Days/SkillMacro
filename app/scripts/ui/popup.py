@@ -407,35 +407,47 @@ class HoverCardTrigger(QObject):
 class NoticeContent(PopupContent):
 
     closed = Signal()
+    _CONTENT_WIDTH: int = 350
+    _CARD_MARGIN: int = 10
+    _ITEM_SPACING: int = 10
+    _ACCENT_WIDTH: int = 6
+    _ICON_SIZE: int = 24
+    _REMOVE_BUTTON_SIZE: int = 24
 
     def __init__(self, data: NoticeData) -> None:
-        super().__init__(350)
+        super().__init__(self._CONTENT_WIDTH)
 
         # 알림 카드 외곽선을 호스트 컨테이너에서 표현하도록 내부 배경 투명화
 
         # 카드 내부 여백과 요소 간 간격 구성
         layout: QHBoxLayout = QHBoxLayout()
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(10)
+        layout.setContentsMargins(
+            self._CARD_MARGIN,
+            self._CARD_MARGIN,
+            self._CARD_MARGIN,
+            self._CARD_MARGIN,
+        )
+        layout.setSpacing(self._ITEM_SPACING)
         self.setLayout(layout)
 
         # 배경과 구분되는 좌측 강조 바 구성
         accent_bar: QFrame = QFrame()
         accent_bar.setObjectName("noticeAccentBar")
         accent_bar.setProperty("kind", data.icon)
-        accent_bar.setFixedWidth(6)
+        accent_bar.setFixedWidth(self._ACCENT_WIDTH)
         accent_bar.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
         layout.addWidget(accent_bar)
 
         # 알림 아이콘 영역 구성
         icon: QLabel = QLabel()
-        icon.setFixedSize(24, 24)
+        icon.setFixedSize(self._ICON_SIZE, self._ICON_SIZE)
         pixmap: QPixmap = QPixmap(
             convert_resource_path(f"resources\\image\\{data.icon}.png")
         )
         icon.setPixmap(pixmap)
         icon.setScaledContents(True)
         icon_layout: QVBoxLayout = QVBoxLayout()
+        icon_layout.setContentsMargins(0, 0, 0, 0)
         icon_layout.addWidget(icon, alignment=Qt.AlignmentFlag.AlignTop)
         layout.addLayout(icon_layout)
 
@@ -444,13 +456,26 @@ class NoticeContent(PopupContent):
         label.setWordWrap(True)
         label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
         label.setFont(CustomFont(12))
-        label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
 
         # 본문과 추가 액션을 세로로 배치
         content_layout: QVBoxLayout = QVBoxLayout()
+        content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.addWidget(label)
-        content_layout.setSpacing(10)
+        content_layout.setSpacing(self._ITEM_SPACING)
         layout.addLayout(content_layout)
+
+        # 줄바꿈 본문 높이를 폭 기준으로 선계산하여 하단 잘림 방지
+        label_width: int = (
+            self._CONTENT_WIDTH
+            - (self._CARD_MARGIN * 2)
+            - self._ACCENT_WIDTH
+            - self._ICON_SIZE
+            - self._REMOVE_BUTTON_SIZE
+            - (self._ITEM_SPACING * 3)
+        )
+        label.setFixedWidth(label_width)
+        label.setMinimumHeight(label.heightForWidth(label_width))
 
         if data.extra_action:
             # 사용자가 즉시 반응할 수 있도록 액션 버튼 구성
@@ -469,7 +494,7 @@ class NoticeContent(PopupContent):
         # 닫기 버튼을 카드 배경 위에 자연스럽게 배치
         remove_btn: QPushButton = QPushButton()
         remove_btn.setObjectName("noticeRemoveBtn")
-        remove_btn.setFixedSize(24, 24)
+        remove_btn.setFixedSize(self._REMOVE_BUTTON_SIZE, self._REMOVE_BUTTON_SIZE)
         remove_btn.clicked.connect(self.closed.emit)
         # 현재 테마 기준 닫기 아이콘 경로 선택
         pixmap: QPixmap = QPixmap(get_theme_image_path("x.png", theme_manager.is_dark))
@@ -479,6 +504,7 @@ class NoticeContent(PopupContent):
 
         # 닫기 버튼을 우상단에 고정
         remove_layout: QVBoxLayout = QVBoxLayout()
+        remove_layout.setContentsMargins(0, 0, 0, 0)
         remove_layout.addWidget(remove_btn, alignment=Qt.AlignmentFlag.AlignTop)
         layout.addLayout(remove_layout)
 
