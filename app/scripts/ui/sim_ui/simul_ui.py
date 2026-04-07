@@ -5,9 +5,10 @@ from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QEvent, QObject, QSize, Qt, QThread, Signal
-from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtCore import QEvent, QObject, QSize, Qt, QThread, QTimer, Signal
+from PySide6.QtGui import QClipboard, QIcon, QPixmap
 from PySide6.QtWidgets import (
+    QApplication,
     QButtonGroup,
     QCheckBox,
     QFrame,
@@ -1388,6 +1389,16 @@ class ResultsPage(QFrame):
             base_card.add_layout(base_row)
 
             stats_card = SectionCard(self, "전체 스탯")
+            paste_btn: StyledButton = StyledButton(
+                self, "전체 스탯 붙여넣기", kind="normal", point_size=9
+            )
+            paste_btn.clicked.connect(self._paste_stats_from_clipboard)
+            paste_btn_row: QHBoxLayout = QHBoxLayout()
+            paste_btn_row.setContentsMargins(0, 0, 0, 0)
+            paste_btn_row.addStretch(1)
+            paste_btn_row.addWidget(paste_btn)
+            stats_card.add_layout(paste_btn_row)
+            self._paste_btn: StyledButton = paste_btn
             stats_card.add_widget(self.stats_inputs)
 
             scroll_card = SectionCard(self, "무공비급 레벨")
@@ -3937,6 +3948,54 @@ class ResultsPage(QFrame):
                 persist=True,
             )
 
+        def _paste_stats_from_clipboard(self) -> None:
+            """클립보드의 전체 스탯 텍스트를 입력칸에 붙여넣기"""
+
+            clipboard: QClipboard = QApplication.clipboard()
+            if clipboard is None:
+                return
+
+            text: str = clipboard.text()
+            if not text:
+                return
+
+            # STAT_SPECS 역매핑: 라벨 → StatKey
+            label_to_key: dict[str, StatKey] = {
+                label: key for key, label in STAT_SPECS.items()
+            }
+
+            # 탭 구분 형식 파싱
+            parsed_count: int = 0
+            for line in text.strip().splitlines():
+                parts: list[str] = line.split("\t")
+                if len(parts) != 2:
+                    continue
+
+                label: str = parts[0].strip()
+                value_str: str = parts[1].strip()
+                stat_key: StatKey | None = label_to_key.get(label)
+
+                if stat_key is None or stat_key not in self.stats_inputs.inputs:
+                    continue
+
+                try:
+                    float(value_str)
+                except ValueError:
+                    continue
+
+                self.stats_inputs.inputs[stat_key].setText(value_str)
+                parsed_count += 1
+
+            if parsed_count > 0:
+                self.on_base_input_changed()
+
+                # 붙여넣기 완료 피드백
+                self._paste_btn.setText("붙여넣기 완료!")
+
+                QTimer.singleShot(
+                    1500, lambda: self._paste_btn.setText("전체 스탯 붙여넣기")
+                )
+
         def on_base_input_changed(self) -> None:
             """기준 입력 변경 시 전체 효율 출력 갱신"""
 
@@ -4244,10 +4303,56 @@ class ResultsPage(QFrame):
                     QSizePolicy.Policy.Expanding,
                     QSizePolicy.Policy.Preferred,
                 )
-                self._grid: QGridLayout = QGridLayout(self)
+                self._current_final_stats: FinalStats | None = None
+
+                main_layout: QVBoxLayout = QVBoxLayout(self)
+                main_layout.setContentsMargins(0, 0, 0, 0)
+                main_layout.setSpacing(6)
+
+                # 스탯 셀 그리드
+                grid_frame: QFrame = QFrame(self)
+                self._grid: QGridLayout = QGridLayout(grid_frame)
                 self._grid.setVerticalSpacing(6)
                 self._grid.setHorizontalSpacing(12)
-                self.setLayout(self._grid)
+                grid_frame.setLayout(self._grid)
+                main_layout.addWidget(grid_frame)
+
+                # 복사 버튼
+                self._copy_btn: StyledButton = StyledButton(
+                    self, "전체 스탯 복사", kind="normal", point_size=9
+                )
+                self._copy_btn.clicked.connect(self._copy_stats_to_clipboard)
+                self._copy_btn.setVisible(False)
+                btn_row: QHBoxLayout = QHBoxLayout()
+                btn_row.setContentsMargins(0, 2, 0, 0)
+                btn_row.addStretch(1)
+                btn_row.addWidget(self._copy_btn)
+                main_layout.addLayout(btn_row)
+
+                self.setLayout(main_layout)
+
+            def _copy_stats_to_clipboard(self) -> None:
+                """현재 표시 중인 전체 스탯을 클립보드에 복사"""
+
+                if self._current_final_stats is None:
+                    return
+
+                lines: list[str] = []
+                for stat_key in OVERALL_STAT_ORDER:
+                    label: str = STAT_SPECS[stat_key]
+                    value: float = self._current_final_stats.values[stat_key]
+                    lines.append(f"{label}\t{value:g}")
+
+                clipboard: QClipboard = QApplication.clipboard()
+                if clipboard is not None:
+                    clipboard.setText("\n".join(lines))
+
+                # 복사 완료 피드백
+                self._copy_btn.setText("복사됨!")
+
+                QTimer.singleShot(
+                    1500, lambda: self._copy_btn.setText("전체 스탯 복사")
+                )
 
             def set_stats(self, base_stats: BaseStats | None) -> None:
                 # 이전 스탯 셀 즉시 제거
@@ -4255,6 +4360,8 @@ class ResultsPage(QFrame):
 
                 # 전체 스탯 표시 불가 상태 문구 출력
                 if base_stats is None:
+                    self._current_final_stats = None
+                    self._copy_btn.setVisible(False)
                     unavail: QLabel = QLabel("표시 불가", self)
                     unavail.setObjectName("statsGridUnavailLabel")
                     unavail.setFont(CustomFont(11))
@@ -4264,6 +4371,8 @@ class ResultsPage(QFrame):
 
                 # 베이스 스탯 해석 결과를 2열 그리드로 배치
                 final_stats: "FinalStats" = base_stats.resolve()
+                self._current_final_stats = final_stats
+                self._copy_btn.setVisible(True)
                 for row_idx, (left_key, right_key) in enumerate(OVERALL_STAT_GRID_ROWS):
                     for col_idx, stat_key in enumerate((left_key, right_key)):
                         if stat_key is None:

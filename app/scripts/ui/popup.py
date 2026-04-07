@@ -733,16 +733,16 @@ class PopupHost(QWidget):
 
         self.show_for()
 
-        # 앵커 위치 계산
+        # 앵커 기준 사각형 계산
         anchor_top_left: QPoint = anchor.mapTo(self.master, QPoint(0, 0))
-        anchor_rect = QRect(anchor_top_left, anchor.size())
+        anchor_rect: QRect = QRect(anchor_top_left, anchor.size())
 
-        # 팝업 크기 계산
+        # 팝업 실측 크기 계산
         popup_size: QSize = self.sizeHint()
         w: int = popup_size.width()
         h: int = popup_size.height()
 
-        # 위치 계산
+        # 배치 방향 기준 기본 좌표 계산
         if options.placement == PopupPlacement.BELOW:
             x: int = anchor_rect.left() + (anchor_rect.width() - w) // 2
             y: int = anchor_rect.bottom() + options.margin
@@ -758,7 +758,17 @@ class PopupHost(QWidget):
 
         x += options.x_offset
 
-        # 팝업 위치 설정 및 표시
+        # 부모 화면 경계 안으로 최종 좌표 보정
+        viewport_rect: QRect = self.master.rect()
+        min_x: int = viewport_rect.left()
+        min_y: int = viewport_rect.top()
+        max_x: int = min_x + max(viewport_rect.width() - w, 0)
+        max_y: int = min_y + max(viewport_rect.height() - h, 0)
+
+        x = min(max(x, min_x), max_x)
+        y = min(max(y, min_y), max_y)
+
+        # 팝업 위치 반영
         self.move(x, y)
 
     def eventFilter(self, obj, event: QEvent) -> bool:  # type: ignore
