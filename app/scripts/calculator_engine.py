@@ -1,3 +1,32 @@
+"""
+# 계산기 스탯 시스템 구조
+
+## 전체 스탯 입력 → 원시 스탯 역산
+
+사용자가 "전체 스탯"에 입력하는 값은 **게임에서 보이는 최종 스탯** (% 보정, 파생 효과 적용됨)이다.
+이 값은 저장 시 `build_internal_base_stats()` (`calculator_engine.py`)를 거쳐 **원시 스탯으로 역산**되어 `calculator_input.base_stats`에 저장된다.
+
+- 입력 경로: `simul_ui.py` → `_read_stats()` → `build_internal_base_stats(resolved_input)` (simul_ui.py:3534-3535)
+- 역산 로직: `build_internal_base_stats()` (calculator_engine.py:665) — % 제거, 파생 스탯(공격력, HP, 크리티컬 등) 역산
+
+## 모든 스탯 기여는 동일한 레벨에서 동작
+
+아래 항목들은 **전부 원시 스탯(`base_stats`)에 단순 가산** → `resolve()`로 최종 스탯 산출하는 동일한 경로를 탄다:
+
+| 입력 항목 | 적용 함수 | 적용 대상 |
+|---|---|---|
+| 분배 | `build_distribution_contribution()` | STR, DEX, VIT, LUCK |
+| 단전 | `build_danjeon_contribution()` | HP%, 저항%, 공격력%, 드랍률%, 경험치% |
+| 칭호 | `build_title_contribution()` | 칭호별 임의 스탯 |
+| 부적 | `build_talisman_contribution()` | 부적별 임의 스탯 |
+| 변화량 | `with_changes()` 직접 호출 | 사용자 지정 임의 스탯 |
+
+공통 경로: `with_changes()` (원시 스탯에 가산) → `resolve()` (% 보정 + 파생 효과 적용) → `FinalStats`
+
+따라서 **변화량에 분배 차이값을 입력하면 분배 변경 시뮬레이션이 정확하게 동작**한다.
+예: 분배를 힘 -10, 민첩 +10으로 바꾸고 싶으면 변화량에 `힘 -10, 민첩 +10`을 입력하면 된다.
+"""
+
 from __future__ import annotations
 
 import heapq
