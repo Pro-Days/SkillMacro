@@ -366,6 +366,7 @@ class SimUI:
             self.update_nav(2)
             self.stacked_layout.setCurrentIndex(2)
             self.adjust_main_frame_height()
+            QTimer.singleShot(0, self.adjust_main_frame_height)
             return
 
         # 계산 성공 결과 반영 후 결과 페이지 진입
@@ -373,6 +374,7 @@ class SimUI:
         self.update_nav(2)
         self.stacked_layout.setCurrentIndex(2)
         self.adjust_main_frame_height()
+        QTimer.singleShot(0, self.adjust_main_frame_height)
 
 
 class InputPage(QFrame):
