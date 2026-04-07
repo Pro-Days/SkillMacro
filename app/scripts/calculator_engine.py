@@ -273,6 +273,7 @@ POWER_FORMULA_GUIDE_LINES: tuple[str, ...] = (
     "변수 대입, += 같은 복합 대입, if / elif / else, pass 를 사용할 수 있습니다.",
     "level 은 int 이며, 나머지 변수는 float 입니다.",
     "오른쪽 변수/함수 항목을 클릭하면 현재 커서 위치에 삽입됩니다.",
+    "데미지 관련 변수는 모두 `boss_damage`와 `normal_damage`에 반영되어있으니, 체력이나 행운 등의 스탯들만을 이용하시는 것을 추천드립니다.",
 )
 
 
@@ -281,7 +282,9 @@ POWER_FORMULA_EXAMPLES: tuple[PowerFormulaExample, ...] = (
     PowerFormulaExample(
         title="보스형",
         description="보스 60초 피해와 체력을 함께 반영하는 예제",
-        source=("power = boss_damage\n" "power *= hp\n\n" "result = power"),
+        source=(
+            "power = boss_damage\n" "power *= hp\n" "power /= 2000\n\n" "result = power"
+        ),
     ),
     PowerFormulaExample(
         title="일반형",
@@ -302,7 +305,7 @@ POWER_FORMULA_EXAMPLES: tuple[PowerFormulaExample, ...] = (
         title="조건형",
         description="보스 60초 피해와 레벨에 따른 물약 회복량을 반영하는 예제",
         source=(
-            "power = boss_damage * hp\n\n"
+            "power = boss_damage * hp / 2000\n\n"
             "if level < 50:\n"
             "    power *= 20 * (1 + potion_heal_percent * 0.01)\n"
             "elif level < 100:\n"
@@ -311,6 +314,7 @@ POWER_FORMULA_EXAMPLES: tuple[PowerFormulaExample, ...] = (
             "    power *= 120 * (1 + potion_heal_percent * 0.01)\n"
             "else:\n"
             "    power *= 180 * (1 + potion_heal_percent * 0.01)\n\n"
+            "power /= 250\n\n"
             "result = power"
         ),
     ),

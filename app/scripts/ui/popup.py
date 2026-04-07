@@ -2117,7 +2117,6 @@ class CustomPowerFormulaEditDialog(QDialog):
         self._formula_input: QPlainTextEdit = self._create_formula_input(
             parent=editor_card,
             form_layout=editor_layout,
-            label_text="여러 줄 전투력 공식",
             initial_value=self._result_formula.formula,
         )
         left_layout.addWidget(editor_card, 1)
@@ -2449,17 +2448,11 @@ class CustomPowerFormulaEditDialog(QDialog):
     def _create_formula_input(
         parent: QWidget,
         form_layout: QVBoxLayout,
-        label_text: str,
         initial_value: str,
     ) -> QPlainTextEdit:
         """멀티라인 전투력 공식 입력 행 생성"""
 
-        # 라벨과 멀티라인 입력칸 구성
-        label_widget: QLabel = QLabel(label_text, parent)
-        label_widget.setObjectName("dialogFieldLabel")
-        label_widget.setFont(CustomFont(10))
-        form_layout.addWidget(label_widget)
-
+        # 멀티라인 입력칸 직접 구성
         input_widget: QPlainTextEdit = QPlainTextEdit(parent)
         input_widget.setObjectName("dialogCodeEdit")
         input_widget.setFont(CustomFont(10, font_name="Consolas"))
