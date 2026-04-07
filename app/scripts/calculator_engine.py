@@ -55,6 +55,7 @@ from app.scripts.calculator_models import (
     RealmSpec,
     RealmTier,
     StatKey,
+    TargetDistributionState,
 )
 from app.scripts.macro_models import EquippedSkillRef, LinkUseType
 from app.scripts.registry.skill_registry import (
@@ -3043,6 +3044,16 @@ def _build_distribution_search_root(
     dexterity_min: int = 0 if current_state.use_reset else current_state.dexterity
     vitality_min: int = 0 if current_state.use_reset else current_state.vitality
     luck_min: int = 0 if current_state.use_reset else current_state.luck
+
+    # 목표 분배 최소분배 모드 하한 적용 블록
+    target_dist: TargetDistributionState = calculator_input.target_distribution
+    if target_dist.mode == "minimum":
+        target: TargetDistributionState = target_dist
+        strength_min = max(strength_min, target.strength)
+        dexterity_min = max(dexterity_min, target.dexterity)
+        vitality_min = max(vitality_min, target.vitality)
+        luck_min = max(luck_min, target.luck)
+
     return DistributionSearchRange(
         strength_min=strength_min,
         strength_max=max_points,
