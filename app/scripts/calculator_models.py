@@ -284,6 +284,53 @@ class DistributionState:
 
 
 @dataclass(slots=True)
+class TargetDistributionState:
+    """목표 분배 입력 상태"""
+
+    # 목표 분배 포인트 상태
+    strength: int = 0
+    dexterity: int = 0
+    vitality: int = 0
+    luck: int = 0
+
+    # 모드 선택 ("preview" | "minimum")
+    mode: str = "preview"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, int | str]) -> "TargetDistributionState":
+        """저장 데이터로부터 목표 분배 상태 복원"""
+
+        strength: int = int(data["strength"])
+        dexterity: int = int(data["dexterity"])
+        vitality: int = int(data["vitality"])
+        luck: int = int(data["luck"])
+        mode: str = str(data.get("mode", "preview"))
+
+        if mode not in ("preview", "minimum"):
+            mode = "preview"
+
+        return cls(
+            strength=strength,
+            dexterity=dexterity,
+            vitality=vitality,
+            luck=luck,
+            mode=mode,
+        )
+
+    def to_dict(self) -> dict[str, int | str]:
+        """목표 분배 상태 직렬화"""
+
+        data: dict[str, int | str] = {
+            "strength": self.strength,
+            "dexterity": self.dexterity,
+            "vitality": self.vitality,
+            "luck": self.luck,
+            "mode": self.mode,
+        }
+        return data
+
+
+@dataclass(slots=True)
 class DanjeonState:
     """단전 입력 상태"""
 
@@ -577,6 +624,9 @@ class CalculatorPresetInput:
 
     # 현재 분배 상태 저장
     distribution: DistributionState = field(default_factory=DistributionState)
+    target_distribution: TargetDistributionState = field(
+        default_factory=TargetDistributionState
+    )
     danjeon: DanjeonState = field(default_factory=DanjeonState)
 
     # 보유 선택지 및 현재 장착 상태 저장
@@ -628,6 +678,16 @@ class CalculatorPresetInput:
             raise TypeError("distribution must be a dict")
         distribution: DistributionState = DistributionState.from_dict(distribution_data)
 
+        target_distribution_data: object = data.get("target_distribution")
+        if target_distribution_data is not None and isinstance(
+            target_distribution_data, dict
+        ):
+            target_distribution: TargetDistributionState = (
+                TargetDistributionState.from_dict(target_distribution_data)
+            )
+        else:
+            target_distribution = TargetDistributionState()
+
         danjeon_data: object = data["danjeon"]
         if not isinstance(danjeon_data, dict):
             raise TypeError("danjeon must be a dict")
@@ -671,6 +731,7 @@ class CalculatorPresetInput:
             realm_tier=realm_tier,
             selected_formula_id=selected_formula_id,
             distribution=distribution,
+            target_distribution=target_distribution,
             danjeon=danjeon,
             owned_titles=owned_titles,
             owned_talismans=owned_talismans,
@@ -687,6 +748,7 @@ class CalculatorPresetInput:
             "realm_tier": self.realm_tier.value,
             "selected_formula_id": self.selected_formula_id,
             "distribution": self.distribution.to_dict(),
+            "target_distribution": self.target_distribution.to_dict(),
             "danjeon": self.danjeon.to_dict(),
             "owned_titles": [title.to_dict() for title in self.owned_titles],
             "owned_talismans": [
