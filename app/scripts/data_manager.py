@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from datetime import datetime
+from typing import Any
 
 from app.scripts.app_state import app_state
 from app.scripts.config import config
@@ -18,7 +19,7 @@ from app.scripts.macro_models import (
 from app.scripts.registry.server_registry import ServerSpec, server_registry
 from app.scripts.registry.skill_registry import ScrollDef, SkillDef
 
-data_version = 2
+data_version = 3
 
 # todo: 라이브러리를 통해 경로를 설정하도록 변경
 local_appdata: str = os.environ.get("LOCALAPPDATA", default="")
@@ -56,28 +57,47 @@ def migrate_macro_data_file(file_path: str) -> None:
     """릴리스된 macros.json 저장 구조를 현재 버전으로 승격"""
 
     try:
-        # 원본 JSON 루트 객체 로드 블록
+        # 원본 JSON 루트 객체 로드
         with open(file_path, "r", encoding="utf-8") as f:
             raw_obj: object = json.load(f)
     except (OSError, json.JSONDecodeError):
         # 손상 파일은 기존 복구 흐름에서 처리되도록 즉시 반환
         return
 
-    # 루트 객체 타입 검증 블록
+    # 루트 객체 타입 검증
     if not isinstance(raw_obj, dict):
         return
 
-    raw: dict[str, object] = raw_obj
-    migrated: bool = False
-    stored_version_obj: object = raw.get("version")
+    # 저장 버전별 마이그레이션 적용
+    try:
+        raw: dict[str, Any] = raw_obj
+        migrated: bool = False
+        stored_version_obj: object = raw.get("version")
 
-    # v1 -> v2 테마 저장 필드 주입 블록
-    if stored_version_obj == 1:
-        raw["version"] = data_version
-        raw["theme_mode"] = ThemeMode.SYSTEM.value
-        migrated = True
+        # v1 -> v2 테마 저장 필드 주입
+        if stored_version_obj == 1:
+            raw["version"] = 2
+            raw["theme_mode"] = ThemeMode.SYSTEM.value
+            stored_version_obj = 2
+            migrated = True
 
-    # 마이그레이션 결과 즉시 파일 반영 블록
+        # v2 -> v3
+        if stored_version_obj == 2:
+            for raw_preset in raw["preset"]:
+                raw_info = raw_preset["info"]
+                raw_calculator = raw_info["calculator"]
+                raw_selected_metric = raw_calculator.pop("selected_metric")
+                raw_calculator["selected_formula_id"] = str(raw_selected_metric)
+
+            # 커스텀 공식 루트 필드
+            raw["custom_power_formulas"] = []
+            raw["version"] = data_version
+            migrated = True
+
+    except (KeyError, TypeError, ValueError):
+        return
+
+    # 마이그레이션 결과 파일 반영
     if not migrated:
         return
 
@@ -125,7 +145,7 @@ def read_custom_skills_data() -> dict[str, dict]:
             if not isinstance(import_data, dict):
                 raise TypeError("custom skill import must be a dict")
 
-            # 중복 무공비급은 첫 항목만 유지하는 블록
+            # 중복 무공비급은 첫 항목만 유지
             scrolls_obj: object = import_data.get("scrolls", [])
             if not isinstance(scrolls_obj, list):
                 raise TypeError("scrolls must be a list")
@@ -278,7 +298,7 @@ def sanitize_preset_registry_references(preset: MacroPreset) -> bool:
     valid_skill_ids: set[str] = set(server.skill_registry.get_all_skill_ids())
     changed: bool = False
 
-    # 존재하지 않는 장착 무공비급 참조 제거 블록
+    # 존재하지 않는 장착 무공비급 참조 제거
     scroll_index: int
     for scroll_index, scroll_id in enumerate(preset.skills.equipped_scrolls):
         if not scroll_id or scroll_id in valid_scroll_ids:
@@ -287,7 +307,7 @@ def sanitize_preset_registry_references(preset: MacroPreset) -> bool:
         preset.skills.equipped_scrolls[scroll_index] = ""
         changed = True
 
-    # 존재하지 않는 하단 배치 스킬 참조 제거 블록
+    # 존재하지 않는 하단 배치 스킬 참조 제거
     skill_index: int
     for skill_index, skill_id in enumerate(preset.skills.placed_skills):
         if not skill_id or skill_id in valid_skill_ids:
@@ -296,7 +316,7 @@ def sanitize_preset_registry_references(preset: MacroPreset) -> bool:
         preset.skills.placed_skills[skill_index] = ""
         changed = True
 
-    # 존재하지 않는 무공비급 레벨 저장값 제거 블록
+    # 존재하지 않는 무공비급 레벨 저장값 제거
     stale_scroll_ids: list[str] = [
         scroll_id
         for scroll_id in list(preset.info.scroll_levels.keys())
@@ -307,7 +327,7 @@ def sanitize_preset_registry_references(preset: MacroPreset) -> bool:
         preset.info.scroll_levels.pop(stale_scroll_id, None)
         changed = True
 
-    # 존재하지 않는 스킬 사용설정 제거 블록
+    # 존재하지 않는 스킬 사용설정 제거
     stale_skill_ids: list[str] = [
         skill_id
         for skill_id in list(preset.usage_settings.keys())
@@ -318,7 +338,7 @@ def sanitize_preset_registry_references(preset: MacroPreset) -> bool:
         preset.usage_settings.pop(stale_skill_id, None)
         changed = True
 
-    # 존재하지 않는 스킬이 포함된 연계스킬 정리 블록
+    # 존재하지 않는 스킬이 포함된 연계스킬 정리
     filtered_link_skills: list[LinkSkill] = []
     link_skill: LinkSkill
     for link_skill in preset.link_skills:
@@ -338,7 +358,7 @@ def sanitize_preset_registry_references(preset: MacroPreset) -> bool:
 
         filtered_link_skills.append(link_skill)
 
-    # 필터링 결과를 프리셋에 반영하는 블록
+    # 정리된 연계스킬 목록 반영
     if filtered_link_skills != preset.link_skills:
         preset.link_skills = filtered_link_skills
 
@@ -369,7 +389,7 @@ def load_data(num: int = -1) -> None:
     try:
         # 파일에 저장되지 않은 기본값 항목을 인-메모리로 복원
         for preset in preset_file.preset:
-            # 현재 레지스트리에 없는 고아 참조 정리 블록
+            # 현재 레지스트리에 없는 참조 정리
             if sanitize_preset_registry_references(preset):
                 preset_was_sanitized = True
 
@@ -391,12 +411,13 @@ def load_data(num: int = -1) -> None:
         preset_file = repo.load()
         target_index = 0
 
-    # 프리셋 업데이트
+    # 프리셋/전역 공식 메모리 반영
     app_state.macro.presets = preset_file.preset
+    app_state.macro.custom_power_formulas = preset_file.custom_power_formulas
     app_state.macro.current_preset_index = target_index
     app_state.ui.theme_mode = preset_file.theme_mode
 
-    # 정리된 프리셋/현재 선택 인덱스 저장 반영 블록
+    # 정리 결과와 현재 선택 인덱스 저장 반영
     if preset_was_sanitized or preset_file.recent_preset != target_index:
         preset_file.recent_preset = target_index
         repo.save(preset_file)
@@ -412,6 +433,7 @@ def create_default_data() -> None:
         version=data_version,
         theme_mode=app_state.ui.theme_mode,
         recent_preset=0,
+        custom_power_formulas=[],
         preset=[get_default_preset()],
     )
     repo.save(preset_file)
@@ -428,6 +450,7 @@ def save_data() -> None:
         version=data_version,
         theme_mode=app_state.ui.theme_mode,
         recent_preset=app_state.macro.current_preset_index,
+        custom_power_formulas=app_state.macro.custom_power_formulas.copy(),
         preset=app_state.macro.presets.copy(),
     )
 
@@ -508,7 +531,7 @@ def update_data() -> None:
         create_default_data()
         return
 
-    # 릴리스 버전 저장 포맷 승격 블록
+    # 릴리스 버전 저장 포맷 승격
     migrate_macro_data_file(file_dir)
 
     repo: MacroPresetRepository = MacroPresetRepository(file_dir)
@@ -534,9 +557,3 @@ def update_data() -> None:
         backup_data_file(file_dir)
         create_default_data()
         return
-
-
-"""
-데이터 버전 기록
-...
-"""

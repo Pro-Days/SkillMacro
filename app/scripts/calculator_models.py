@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from enum import Enum
+from uuid import uuid4
 
 from app.scripts.registry.resource_registry import convert_resource_path
 
@@ -534,6 +535,37 @@ class FinalStats:
 
 
 @dataclass(slots=True)
+class CustomPowerFormula:
+    """사용자 정의 전투력 공식"""
+
+    id: str = field(default_factory=lambda: str(uuid4()))
+    name: str = ""
+    formula: str = ""
+
+    @classmethod
+    def from_dict(cls, data: dict[str, object]) -> "CustomPowerFormula":
+        """저장 데이터로부터 사용자 정의 전투력 공식 복원"""
+
+        # 공식 식별자와 표시명, 수식 문자열 직접 복원
+        return cls(
+            id=str(data["id"]),
+            name=str(data["name"]),
+            formula=str(data["formula"]),
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        """사용자 정의 전투력 공식 직렬화"""
+
+        # 현재 공식 상태를 저장 가능한 원시 딕셔너리로 변환
+        data: dict[str, object] = {
+            "id": self.id,
+            "name": self.name,
+            "formula": self.formula,
+        }
+        return data
+
+
+@dataclass(slots=True)
 class CalculatorPresetInput:
     """계산기 입력 데이터 묶음"""
 
@@ -541,7 +573,7 @@ class CalculatorPresetInput:
     base_stats: BaseStats = field(default_factory=BaseStats.create_default)
     level: int = 0
     realm_tier: RealmTier = RealmTier.THIRD_RATE
-    selected_metric: PowerMetric = PowerMetric.BOSS_DAMAGE
+    selected_formula_id: str = PowerMetric.BOSS_DAMAGE.value
 
     # 현재 분배 상태 저장
     distribution: DistributionState = field(default_factory=DistributionState)
@@ -563,6 +595,7 @@ class CalculatorPresetInput:
         return cls(
             base_stats=BaseStats.create_default(),
             custom_stat_changes=custom_stat_changes,
+            selected_formula_id=PowerMetric.BOSS_DAMAGE.value,
         )
 
     @classmethod
@@ -586,9 +619,9 @@ class CalculatorPresetInput:
             for stat_key in OVERALL_STAT_ORDER
         }
 
-        # 경지/분배/보유 목록 구조 직접 복원
+        # 경지/선택 공식/분배 구조 직접 복원
         realm_tier: RealmTier = RealmTier(str(data["realm_tier"]))
-        selected_metric: PowerMetric = PowerMetric(str(data["selected_metric"]))
+        selected_formula_id: str = str(data["selected_formula_id"])
 
         distribution_data: object = data["distribution"]
         if not isinstance(distribution_data, dict):
@@ -636,7 +669,7 @@ class CalculatorPresetInput:
             base_stats=base_stats,
             level=level,
             realm_tier=realm_tier,
-            selected_metric=selected_metric,
+            selected_formula_id=selected_formula_id,
             distribution=distribution,
             danjeon=danjeon,
             owned_titles=owned_titles,
@@ -652,7 +685,7 @@ class CalculatorPresetInput:
             "base_stats": self.base_stats.to_dict(),
             "level": self.level,
             "realm_tier": self.realm_tier.value,
-            "selected_metric": self.selected_metric.value,
+            "selected_formula_id": self.selected_formula_id,
             "distribution": self.distribution.to_dict(),
             "danjeon": self.danjeon.to_dict(),
             "owned_titles": [title.to_dict() for title in self.owned_titles],

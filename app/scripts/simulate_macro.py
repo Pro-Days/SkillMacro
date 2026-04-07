@@ -4,16 +4,15 @@ import random
 from typing import TYPE_CHECKING
 
 from app.scripts.calculator_engine import (
-    DISPLAY_POWER_METRICS,
     DamageEvent,
-    EvaluationContext,
     GraphAnalysis,
     GraphDamageEvent,
     GraphReport,
-    build_calculator_context,
+    Timeline,
+    build_calculator_timeline,
     build_damage_events,
 )
-from app.scripts.calculator_models import BaseStats, PowerMetric
+from app.scripts.calculator_models import BaseStats, FinalStats, StatKey
 from app.scripts.macro_models import SkillUsageSetting
 
 if TYPE_CHECKING:
@@ -30,25 +29,26 @@ def simulate_random_from_calculator(
 ) -> GraphReport:
     """계산기 입력 기준 그래프용 시뮬레이션 결과 구성"""
 
-    # 계산기 기준 타임라인과 5종 전투력 요약 구성
-    context: EvaluationContext = build_calculator_context(
+    # 계산기 기준 최종 스탯 resolve 및 타임라인 구성
+    resolved_stats: FinalStats = base_stats.resolve()
+    timeline: Timeline = build_calculator_timeline(
         server_spec=server_spec,
         preset=preset,
         skills_info=skills_info,
         delay_ms=delay_ms,
-        base_stats=base_stats,
+        cooltime_reduction=resolved_stats.values[StatKey.SKILL_SPEED_PERCENT],
     )
 
     # 결정론 기준 보스/일반 공격 이벤트 생성
     deterministic_boss_events: list[DamageEvent] = build_damage_events(
-        timeline=context.timeline_artifacts.timeline,
-        resolved_stats=context.baseline_final_stats,
+        timeline=timeline,
+        resolved_stats=resolved_stats,
         is_boss=True,
         deterministic=True,
     )
     deterministic_normal_events: list[DamageEvent] = build_damage_events(
-        timeline=context.timeline_artifacts.timeline,
-        resolved_stats=context.baseline_final_stats,
+        timeline=timeline,
+        resolved_stats=resolved_stats,
         is_boss=False,
         deterministic=True,
     )
@@ -70,15 +70,15 @@ def simulate_random_from_calculator(
         boss_seed: float = random.random()
         normal_seed: float = random.random()
         boss_events: list[DamageEvent] = build_damage_events(
-            timeline=context.timeline_artifacts.timeline,
-            resolved_stats=context.baseline_final_stats,
+            timeline=timeline,
+            resolved_stats=resolved_stats,
             is_boss=True,
             deterministic=False,
             random_seed=boss_seed,
         )
         normal_events: list[DamageEvent] = build_damage_events(
-            timeline=context.timeline_artifacts.timeline,
-            resolved_stats=context.baseline_final_stats,
+            timeline=timeline,
+            resolved_stats=resolved_stats,
             is_boss=False,
             deterministic=False,
             random_seed=normal_seed,
@@ -186,13 +186,7 @@ def simulate_random_from_calculator(
         ),
     )
 
-    # 계산기 전투력 순서 기준 5종 지표 사본 구성
-    metrics: dict[PowerMetric, float] = {
-        power_metric: context.baseline_summary.metrics[power_metric]
-        for power_metric in DISPLAY_POWER_METRICS
-    }
     return GraphReport(
-        metrics=metrics,
         analysis=analysis,
         deterministic_boss_attacks=deterministic_boss_attacks,
         random_boss_attacks=tuple(random_boss_attacks),

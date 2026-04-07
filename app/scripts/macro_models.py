@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, ClassVar, cast
 
-from app.scripts.calculator_models import CalculatorPresetInput
+from app.scripts.calculator_models import CalculatorPresetInput, CustomPowerFormula
 from app.scripts.config import config
 
 if TYPE_CHECKING:
@@ -497,9 +497,10 @@ class MacroPreset:
 class MacroPresetFile:
     """json 파일을 저장하는 최상위 객체"""
 
-    version: int = 2
+    version: int = 3
     theme_mode: ThemeMode = ThemeMode.SYSTEM
     recent_preset: int = 0
+    custom_power_formulas: list[CustomPowerFormula] = field(default_factory=list)
     preset: list[MacroPreset] = field(default_factory=list)
 
     @classmethod
@@ -510,6 +511,10 @@ class MacroPresetFile:
             version=data["version"],
             theme_mode=ThemeMode(data["theme_mode"]),
             recent_preset=data["recent_preset"],
+            custom_power_formulas=[
+                CustomPowerFormula.from_dict(raw_formula)
+                for raw_formula in data["custom_power_formulas"]
+            ],
             preset=[MacroPreset.from_dict(p) for p in data["preset"]],
         )
 
@@ -520,6 +525,10 @@ class MacroPresetFile:
             "version": self.version,
             "theme_mode": self.theme_mode.value,
             "recent_preset": self.recent_preset,
+            "custom_power_formulas": [
+                custom_formula.to_dict()
+                for custom_formula in self.custom_power_formulas
+            ],
             "preset": [p.to_dict() for p in self.preset],
         }
 

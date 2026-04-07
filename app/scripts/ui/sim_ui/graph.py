@@ -1167,8 +1167,12 @@ class SkillContributionCanvas(pg.PlotWidget):
         # 자동 범위 조정 버튼 비활성화
         self.hideButtons()
 
-        # 스킬 색상 설정
-        self.colors: list[str] = [*self.graph_palette.contribution_series]
+        # 스킬 개수 기준 기여도 시리즈 색상 순환 확장
+        contribution_palette: tuple[str, ...] = self.graph_palette.contribution_series
+        self.colors: list[str] = [
+            contribution_palette[i % len(contribution_palette)]
+            for i in range(len(self.data["data"]))
+        ]
 
         # 눈금 설정
         self.set_ticks()
@@ -1207,8 +1211,12 @@ class SkillContributionCanvas(pg.PlotWidget):
         self.background_color = self.graph_palette.canvas_background
         self.setBackground(self.background_color)
 
-        # 영역 색상 집합 재구성
-        self.colors = [*self.graph_palette.contribution_series]
+        # 스킬 개수 기준 기여도 시리즈 색상 순환 확장
+        contribution_palette: tuple[str, ...] = self.graph_palette.contribution_series
+        self.colors = [
+            contribution_palette[i % len(contribution_palette)]
+            for i in range(len(self.data["data"]))
+        ]
 
         # 기존 범례와 그래프 아이템 제거
         if self.plotItem is not None and self.plotItem.legend is not None:

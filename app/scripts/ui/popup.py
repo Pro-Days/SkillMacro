@@ -5,6 +5,7 @@ import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum, auto
+from functools import partial
 from html import escape
 from typing import TYPE_CHECKING, Literal
 from webbrowser import open_new
@@ -20,7 +21,14 @@ from PySide6.QtCore import (
     Qt,
     Signal,
 )
-from PySide6.QtGui import QCursor, QGuiApplication, QIcon, QPixmap
+from PySide6.QtGui import (
+    QCursor,
+    QFontMetricsF,
+    QGuiApplication,
+    QIcon,
+    QPixmap,
+    QTextCursor,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -29,6 +37,9 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLayout,
+    QLayoutItem,
+    QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -37,7 +48,23 @@ from PySide6.QtWidgets import (
 )
 
 from app.scripts.app_state import app_state
-from app.scripts.calculator_models import StatKey, get_stat_label
+from app.scripts.calculator_engine import (
+    POWER_FORMULA_EXAMPLES,
+    POWER_FORMULA_GUIDE_LINES,
+    POWER_FORMULA_REFERENCE_GROUPS,
+    POWER_METRIC_LABELS,
+    PowerFormulaExample,
+    PowerFormulaReferenceEntry,
+    PowerFormulaReferenceGroup,
+    validate_custom_formula,
+)
+from app.scripts.calculator_models import (
+    STAT_SPECS,
+    CustomPowerFormula,
+    PowerMetric,
+    StatKey,
+    get_stat_label,
+)
 from app.scripts.config import config
 from app.scripts.custom_classes import CustomFont, CustomLineEdit, CustomShadowEffect
 from app.scripts.custom_skill_models import (
@@ -50,7 +77,11 @@ from app.scripts.custom_skill_models import (
     HealEffectPayload,
     SkillEffectType,
 )
-from app.scripts.data_manager import read_custom_skills_data, save_custom_skills
+from app.scripts.data_manager import (
+    read_custom_skills_data,
+    save_custom_skills,
+    save_data,
+)
 from app.scripts.macro_models import SkillUsageSetting
 from app.scripts.registry.key_registry import KeyRegistry
 from app.scripts.registry.resource_registry import (
@@ -1981,6 +2012,795 @@ class ScrollGridSelectContent(QFrame):
         return self.popup_manager.build_scroll_hover_card(scroll_def, level)
 
 
+class CustomPowerFormulaEditDialog(QDialog):
+    """사용자 정의 전투력 공식 추가/편집 다이얼로그"""
+
+    def __init__(
+        self,
+        existing_names: set[str],
+        formula_data: CustomPowerFormula | None = None,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+
+        # 이름 중복 검증 기준과 편집 결과 공식 객체 구성
+        self._existing_names: set[str] = set(existing_names)
+        if formula_data is None:
+            self._result_formula: CustomPowerFormula = CustomPowerFormula()
+        else:
+            self._result_formula = formula_data
+
+        if not self._result_formula.formula:
+            self._result_formula.formula = POWER_FORMULA_EXAMPLES[0].source
+
+        self.setObjectName("customSkillDialog")
+        self.setWindowTitle(
+            "전투력 공식 편집" if formula_data is not None else "전투력 공식 추가"
+        )
+        self.setFixedSize(980, 640)
+
+        # 다이얼로그 루트 레이아웃 구성
+        root_layout: QVBoxLayout = QVBoxLayout(self)
+        root_layout.setContentsMargins(20, 20, 20, 16)
+        root_layout.setSpacing(12)
+
+        # 본문 고정 높이 압축 방지용 스크롤 영역 구성
+        body_scroll: QScrollArea = QScrollArea(self)
+        body_scroll.setObjectName("dialogScrollArea")
+        body_scroll.setWidgetResizable(True)
+        body_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        body_viewport: QWidget = body_scroll.viewport()
+        body_viewport.setObjectName("dialogScrollViewport")
+
+        body_content: QWidget = QWidget(body_scroll)
+        body_content.setObjectName("dialogScrollContent")
+        body_scroll.setWidget(body_content)
+
+        body_layout: QVBoxLayout = QVBoxLayout(body_content)
+        body_layout.setContentsMargins(0, 0, 0, 0)
+        body_layout.setSpacing(12)
+
+        # 이름 입력 카드 구성
+        name_card: QFrame = QFrame(body_content)
+        name_card.setObjectName("dialogCard")
+        name_layout: QVBoxLayout = QVBoxLayout(name_card)
+        name_layout.setContentsMargins(14, 12, 14, 12)
+        name_layout.setSpacing(10)
+
+        title_label: QLabel = QLabel("공식 이름", name_card)
+        title_label.setObjectName("dialogSectionTitle")
+        title_label.setFont(CustomFont(11))
+        name_layout.addWidget(title_label)
+
+        self._name_input: CustomLineEdit = self._create_field_input(
+            parent=name_card,
+            form_layout=name_layout,
+            label_text="이름",
+            initial_value=self._result_formula.name,
+        )
+        body_layout.addWidget(name_card)
+
+        # 좌우 2단 편집 본문 레이아웃 구성
+        content_layout: QHBoxLayout = QHBoxLayout()
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(12)
+
+        left_column: QWidget = QWidget(body_content)
+        left_layout: QVBoxLayout = QVBoxLayout(left_column)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(12)
+
+        left_layout.addWidget(self._build_guide_card(left_column))
+        left_layout.addWidget(self._build_examples_card(left_column))
+
+        editor_card: QFrame = QFrame(left_column)
+        editor_card.setObjectName("dialogCard")
+        editor_layout: QVBoxLayout = QVBoxLayout(editor_card)
+        editor_layout.setContentsMargins(14, 12, 14, 12)
+        editor_layout.setSpacing(10)
+
+        editor_title: QLabel = QLabel("공식 입력", editor_card)
+        editor_title.setObjectName("dialogSectionTitle")
+        editor_title.setFont(CustomFont(11))
+        editor_layout.addWidget(editor_title)
+
+        self._formula_input: QPlainTextEdit = self._create_formula_input(
+            parent=editor_card,
+            form_layout=editor_layout,
+            label_text="여러 줄 전투력 공식",
+            initial_value=self._result_formula.formula,
+        )
+        left_layout.addWidget(editor_card, 1)
+
+        # 검증 결과 카드 구성
+        validation_card: QFrame = QFrame(left_column)
+        validation_card.setObjectName("dialogCard")
+        validation_layout: QVBoxLayout = QVBoxLayout(validation_card)
+        validation_layout.setContentsMargins(14, 12, 14, 12)
+        validation_layout.setSpacing(8)
+
+        validation_title: QLabel = QLabel("검증 결과", validation_card)
+        validation_title.setObjectName("dialogSectionTitle")
+        validation_title.setFont(CustomFont(11))
+        validation_layout.addWidget(validation_title)
+
+        self._validation_label: QLabel = QLabel(validation_card)
+        self._validation_label.setObjectName("dialogErrorLabel")
+        self._validation_label.setFont(CustomFont(10))
+        self._validation_label.setWordWrap(True)
+        validation_layout.addWidget(self._validation_label)
+        left_layout.addWidget(validation_card)
+
+        right_column: QWidget = QWidget(body_content)
+        right_layout: QVBoxLayout = QVBoxLayout(right_column)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(12)
+        right_layout.addWidget(self._build_reference_card(right_column))
+
+        content_layout.addWidget(left_column, 3)
+        content_layout.addWidget(right_column, 2)
+        body_layout.addLayout(content_layout)
+        body_layout.addStretch(1)
+        root_layout.addWidget(body_scroll, 1)
+
+        # 하단 취소/저장 버튼 행 구성
+        button_layout: QHBoxLayout = QHBoxLayout()
+        button_layout.setContentsMargins(0, 0, 0, 0)
+        button_layout.setSpacing(8)
+
+        cancel_button: QPushButton = QPushButton("취소", self)
+        cancel_button.setObjectName("dialogCancelBtn")
+        cancel_button.setFont(CustomFont(11))
+        cancel_button.setFixedHeight(36)
+        cancel_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        cancel_button.clicked.connect(self.reject)
+
+        self._save_button: QPushButton = QPushButton("저장", self)
+        self._save_button.setObjectName("dialogConfirmBtn")
+        self._save_button.setFont(CustomFont(11))
+        self._save_button.setFixedHeight(36)
+        self._save_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._save_button.clicked.connect(self._save_formula)
+
+        button_layout.addWidget(cancel_button)
+        button_layout.addWidget(self._save_button)
+        root_layout.addLayout(button_layout)
+
+        # 입력 변경 기반 실시간 검증 연결
+        self._name_input.textChanged.connect(self._refresh_validation_state)
+        self._formula_input.textChanged.connect(self._refresh_validation_state)
+        self._refresh_validation_state()
+
+    def _build_guide_card(self, parent: QWidget) -> QFrame:
+        """공식 작성 규칙 안내 카드 생성"""
+
+        # 상세 작성 규칙과 최종 값 지정 규칙 안내
+        guide_card: QFrame = QFrame(parent)
+        guide_card.setObjectName("dialogCard")
+        guide_layout: QVBoxLayout = QVBoxLayout(guide_card)
+        guide_layout.setContentsMargins(14, 12, 14, 12)
+        guide_layout.setSpacing(8)
+
+        guide_title: QLabel = QLabel("공식 작성 가이드", guide_card)
+        guide_title.setObjectName("dialogSectionTitle")
+        guide_title.setFont(CustomFont(11))
+        guide_layout.addWidget(guide_title)
+
+        guide_line: str
+        for guide_line in POWER_FORMULA_GUIDE_LINES:
+            guide_label: QLabel = QLabel(f"- {guide_line}", guide_card)
+            guide_label.setObjectName("dialogFieldLabel")
+            guide_label.setFont(CustomFont(10))
+            guide_label.setWordWrap(True)
+            guide_layout.addWidget(guide_label)
+
+        return guide_card
+
+    def _build_examples_card(self, parent: QWidget) -> QFrame:
+        """예제 공식 빠른 적용 카드 생성"""
+
+        # 예제 설명과 빠른 적용 버튼 목록 구성
+        examples_card: QFrame = QFrame(parent)
+        examples_card.setObjectName("dialogCard")
+        examples_layout: QVBoxLayout = QVBoxLayout(examples_card)
+        examples_layout.setContentsMargins(14, 12, 14, 12)
+        examples_layout.setSpacing(8)
+
+        examples_title: QLabel = QLabel("예제 빠르게 넣기", examples_card)
+        examples_title.setObjectName("dialogSectionTitle")
+        examples_title.setFont(CustomFont(11))
+        examples_layout.addWidget(examples_title)
+
+        buttons_layout: QHBoxLayout = QHBoxLayout()
+        buttons_layout.setContentsMargins(0, 0, 0, 0)
+        buttons_layout.setSpacing(8)
+
+        example: PowerFormulaExample
+        for example in POWER_FORMULA_EXAMPLES:
+            example_button: QPushButton = QPushButton(example.title, examples_card)
+            example_button.setObjectName("dialogToggleBtn")
+            example_button.setFont(CustomFont(10))
+            example_button.setCursor(Qt.CursorShape.PointingHandCursor)
+            example_button.setStyleSheet(
+                "QPushButton { padding: 2px 6px; text-align: center; }"
+            )
+            example_button.clicked.connect(partial(self._apply_example, example))
+            buttons_layout.addWidget(example_button)
+
+        buttons_layout.addStretch(1)
+        examples_layout.addLayout(buttons_layout)
+
+        self._example_description_label: QLabel = QLabel(examples_card)
+        self._example_description_label.setObjectName("dialogFieldLabel")
+        self._example_description_label.setFont(CustomFont(10))
+        self._example_description_label.setWordWrap(True)
+        self._example_description_label.setText(POWER_FORMULA_EXAMPLES[0].description)
+        examples_layout.addWidget(self._example_description_label)
+        return examples_card
+
+    def _build_reference_card(self, parent: QWidget) -> QFrame:
+        """변수/함수 참고 카드 생성"""
+
+        # 참고 카드 외곽과 스크롤 영역 구성
+        reference_card: QFrame = QFrame(parent)
+        reference_card.setObjectName("dialogCard")
+        reference_layout: QVBoxLayout = QVBoxLayout(reference_card)
+        reference_layout.setContentsMargins(14, 12, 14, 12)
+        reference_layout.setSpacing(10)
+
+        reference_title: QLabel = QLabel("사용 가능 변수 / 함수", reference_card)
+        reference_title.setObjectName("dialogSectionTitle")
+        reference_title.setFont(CustomFont(11))
+        reference_layout.addWidget(reference_title)
+
+        reference_description: QLabel = QLabel(
+            "항목을 클릭하면 현재 커서 위치에 바로 삽입됩니다.",
+            reference_card,
+        )
+        reference_description.setObjectName("dialogFieldLabel")
+        reference_description.setFont(CustomFont(10))
+        reference_description.setWordWrap(True)
+        reference_layout.addWidget(reference_description)
+
+        reference_scroll: QScrollArea = QScrollArea(reference_card)
+        reference_scroll.setObjectName("dialogScrollArea")
+        reference_scroll.setWidgetResizable(True)
+        reference_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        reference_scroll.setStyleSheet(
+            "QScrollArea#dialogScrollArea {"
+            " border: none;"
+            " background: transparent;"
+            "}"
+            "QWidget#dialogScrollViewport {"
+            " background: transparent;"
+            "}"
+            "QWidget#dialogScrollContent {"
+            " background: transparent;"
+            "}"
+        )
+        reference_viewport: QWidget = reference_scroll.viewport()
+        reference_viewport.setObjectName("dialogScrollViewport")
+
+        reference_content: QWidget = QWidget(reference_scroll)
+        reference_content.setObjectName("dialogScrollContent")
+        reference_scroll.setWidget(reference_content)
+
+        groups_layout: QVBoxLayout = QVBoxLayout(reference_content)
+        groups_layout.setContentsMargins(0, 0, 0, 0)
+        groups_layout.setSpacing(10)
+
+        reference_group: PowerFormulaReferenceGroup
+        for reference_group in POWER_FORMULA_REFERENCE_GROUPS:
+            groups_layout.addWidget(
+                self._build_reference_group_widget(reference_content, reference_group)
+            )
+
+        groups_layout.addStretch(1)
+        reference_layout.addWidget(reference_scroll)
+        return reference_card
+
+    def _build_reference_group_widget(
+        self,
+        parent: QWidget,
+        reference_group: PowerFormulaReferenceGroup,
+    ) -> QFrame:
+        """참고 변수 그룹 카드 생성"""
+
+        # 그룹 제목/설명과 항목 목록 카드 구성
+        group_card: QFrame = QFrame(parent)
+        group_card.setObjectName("dialogCard")
+        group_layout: QVBoxLayout = QVBoxLayout(group_card)
+        group_layout.setContentsMargins(12, 10, 12, 10)
+        group_layout.setSpacing(8)
+
+        # 접기/펼치기 토글 버튼 구성
+        toggle_button: QPushButton = QPushButton(group_card)
+        toggle_button.setObjectName("dialogToggleBtn")
+        toggle_button.setFont(CustomFont(10, bold=True))
+        toggle_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        toggle_button.setCheckable(True)
+        toggle_button.setChecked(reference_group.title != "전체 스탯")
+        toggle_button.setFlat(True)
+        toggle_button.setStyleSheet(
+            "QPushButton {"
+            " border: none;"
+            " background: transparent;"
+            " padding: 0px;"
+            " text-align: left;"
+            "}"
+        )
+        group_layout.addWidget(toggle_button)
+
+        # 그룹 설명 라벨 구성
+        group_description: QLabel = QLabel(reference_group.description, group_card)
+        group_description.setObjectName("dialogFieldLabel")
+        group_description.setFont(CustomFont(9))
+        group_description.setWordWrap(True)
+        group_layout.addWidget(group_description)
+
+        # 접힘 대상 항목 본문 위젯 구성
+        entries_widget: QWidget = QWidget(group_card)
+        entries_layout: QVBoxLayout = QVBoxLayout(entries_widget)
+        entries_layout.setContentsMargins(0, 0, 0, 0)
+        entries_layout.setSpacing(8)
+        group_layout.addWidget(entries_widget)
+
+        reference_entry: PowerFormulaReferenceEntry
+        for reference_entry in reference_group.entries:
+            entries_layout.addWidget(
+                self._build_reference_entry_widget(group_card, reference_entry)
+            )
+
+        # 토글 상태에 따른 버튼 문구와 본문 표시 반영
+        def _apply_expanded_state(is_expanded: bool) -> None:
+            arrow_text: str = "▼" if is_expanded else "▶"
+            toggle_button.setText(f"{reference_group.title} {arrow_text}")
+            group_description.setVisible(is_expanded)
+            entries_widget.setVisible(is_expanded)
+
+        _apply_expanded_state(toggle_button.isChecked())
+        toggle_button.toggled.connect(_apply_expanded_state)
+        return group_card
+
+    def _build_reference_entry_widget(
+        self,
+        parent: QWidget,
+        reference_entry: PowerFormulaReferenceEntry,
+    ) -> QFrame:
+        """삽입 가능한 참고 항목 행 위젯 생성"""
+
+        # 삽입 버튼과 타입/설명 라벨 행 구성
+        entry_widget: QFrame = QFrame(parent)
+        entry_layout: QHBoxLayout = QHBoxLayout(entry_widget)
+        entry_layout.setContentsMargins(0, 0, 0, 0)
+        entry_layout.setSpacing(8)
+
+        insert_button: QPushButton = QPushButton(reference_entry.symbol, entry_widget)
+        insert_button.setObjectName("dialogToggleBtn")
+        insert_button.setFont(CustomFont(9))
+        insert_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        insert_button.setSizePolicy(
+            QSizePolicy.Policy.Maximum,
+            QSizePolicy.Policy.Fixed,
+        )
+        insert_button.setStyleSheet(
+            "QPushButton { padding: 2px 6px; text-align: center; }"
+        )
+        insert_button.clicked.connect(
+            partial(self._insert_formula_text, reference_entry.insert_text)
+        )
+
+        description_label: QLabel = QLabel(reference_entry.description, entry_widget)
+        description_label.setObjectName("dialogFieldLabel")
+        description_label.setFont(CustomFont(9))
+        description_label.setWordWrap(True)
+
+        entry_layout.addWidget(insert_button)
+        entry_layout.addWidget(description_label, 1)
+        return entry_widget
+
+    @staticmethod
+    def _create_field_input(
+        parent: QWidget,
+        form_layout: QVBoxLayout,
+        label_text: str,
+        initial_value: str,
+    ) -> CustomLineEdit:
+        """라벨과 입력칸으로 이루어진 단일 행 생성"""
+
+        # 단일 필드 행 레이아웃과 라벨/입력 위젯 구성
+        row_layout: QHBoxLayout = QHBoxLayout()
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(10)
+
+        field_label: QLabel = QLabel(label_text, parent)
+        field_label.setObjectName("dialogFieldLabel")
+        field_label.setFont(CustomFont(10))
+        field_label.setFixedWidth(60)
+
+        input_widget: CustomLineEdit = CustomLineEdit(
+            parent,
+            text=initial_value,
+            point_size=11,
+            border_radius=6,
+        )
+        input_widget.setFixedHeight(32)
+        input_widget.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        input_widget.set_valid(True)
+
+        row_layout.addWidget(field_label)
+        row_layout.addWidget(input_widget)
+        form_layout.addLayout(row_layout)
+        return input_widget
+
+    @staticmethod
+    def _create_formula_input(
+        parent: QWidget,
+        form_layout: QVBoxLayout,
+        label_text: str,
+        initial_value: str,
+    ) -> QPlainTextEdit:
+        """멀티라인 전투력 공식 입력 행 생성"""
+
+        # 라벨과 멀티라인 입력칸 구성
+        label_widget: QLabel = QLabel(label_text, parent)
+        label_widget.setObjectName("dialogFieldLabel")
+        label_widget.setFont(CustomFont(10))
+        form_layout.addWidget(label_widget)
+
+        input_widget: QPlainTextEdit = QPlainTextEdit(parent)
+        input_widget.setObjectName("dialogCodeEdit")
+        input_widget.setFont(CustomFont(10, font_name="Consolas"))
+        input_widget.setPlainText(initial_value)
+        input_widget.setFixedHeight(220)
+        input_widget.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
+        # 4칸 들여쓰기 기준 탭 정지 거리 적용
+        font_metrics: QFontMetricsF = QFontMetricsF(input_widget.font())
+        input_widget.setTabStopDistance(font_metrics.horizontalAdvance("    "))
+        input_widget.setStyleSheet(
+            "QPlainTextEdit#dialogCodeEdit {"
+            " border: 1px solid #4B5563;"
+            " border-radius: 6px;"
+            " padding: 6px;"
+            "}"
+        )
+        form_layout.addWidget(input_widget)
+        return input_widget
+
+    def _apply_example(
+        self,
+        example: PowerFormulaExample,
+        _checked: bool = False,
+    ) -> None:
+        """선택한 예제 공식을 편집기에 즉시 적용"""
+
+        # 예제 설명 라벨과 코드 편집기 내용을 동기화하는
+        self._example_description_label.setText(example.description)
+        self._formula_input.setPlainText(example.source)
+        self._refresh_validation_state()
+
+    def _insert_formula_text(self, insert_text: str, _checked: bool = False) -> None:
+        """공식 편집기의 현재 커서 위치에 텍스트 삽입"""
+
+        # 함수 템플릿은 괄호 안으로 커서를 이동시키는
+        cursor: QTextCursor = self._formula_input.textCursor()
+        cursor.insertText(insert_text)
+        if insert_text.endswith("()"):
+            cursor.movePosition(cursor.MoveOperation.Left)
+            self._formula_input.setTextCursor(cursor)
+
+        self._formula_input.setFocus()
+
+    def _set_formula_input_valid(self, is_valid: bool) -> None:
+        """수식 입력칸 유효성 상태에 맞는 테두리 스타일 반영"""
+
+        # 수식 입력칸 유효성 기준 테두리 색상 동기화
+        border_color: str = "#4B5563"
+        if not is_valid:
+            border_color = "#EF5350"
+
+        self._formula_input.setStyleSheet(
+            "QPlainTextEdit#dialogCodeEdit {"
+            f" border: 1px solid {border_color};"
+            " border-radius: 6px;"
+            " padding: 6px;"
+            "}"
+        )
+
+    def _refresh_validation_state(self) -> None:
+        """이름/수식 검증 결과를 입력칸 스타일과 메시지에 반영"""
+
+        # 이름 필수 입력 및 중복 이름 검증
+        formula_name: str = self._name_input.text().strip()
+        if not formula_name:
+            self._name_input.set_valid(False)
+            self._set_formula_input_valid(True)
+            self._validation_label.setStyleSheet("color: #EF5350;")
+            self._validation_label.setText("이름을 입력해주세요.")
+            self._save_button.setEnabled(False)
+            return
+
+        if formula_name in self._existing_names:
+            self._name_input.set_valid(False)
+            self._set_formula_input_valid(True)
+            self._validation_label.setStyleSheet("color: #EF5350;")
+            self._validation_label.setText("동일한 이름의 공식이 이미 있습니다.")
+            self._save_button.setEnabled(False)
+            return
+
+        self._name_input.set_valid(True)
+
+        # AST 수식 문법과 허용 변수/함수 검증
+        formula_source: str = self._formula_input.toPlainText().strip()
+        error_message: str | None = validate_custom_formula(formula_source)
+        if error_message is not None:
+            self._set_formula_input_valid(False)
+            self._validation_label.setStyleSheet("color: #EF5350;")
+            self._validation_label.setText(error_message)
+            self._save_button.setEnabled(False)
+            return
+
+        self._set_formula_input_valid(True)
+        self._validation_label.setStyleSheet("color: #66BB6A;")
+        self._validation_label.setText("유효한 수식입니다.")
+        self._save_button.setEnabled(True)
+
+    def _save_formula(self) -> None:
+        """검증 완료 입력을 공식 객체에 반영하고 다이얼로그 종료"""
+
+        # 저장 직전 검증 상태 재확인
+        self._refresh_validation_state()
+        if not self._save_button.isEnabled():
+            return
+
+        # 기존 ID 유지 상태로 이름/수식만 갱신
+        self._result_formula.name = self._name_input.text().strip()
+        self._result_formula.formula = self._formula_input.toPlainText().strip()
+        self.accept()
+
+    def get_formula(self) -> CustomPowerFormula:
+        """저장된 공식 객체 반환"""
+
+        # 다이얼로그 저장 결과 공식 반환
+        return self._result_formula
+
+
+class CustomPowerFormulaManageDialog(QDialog):
+    """전역 사용자 정의 전투력 공식 목록 관리 다이얼로그"""
+
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setObjectName("customSkillDialog")
+        self.setWindowTitle("사용자 정의 전투력 공식")
+        self.setFixedSize(500, 520)
+
+        # 다이얼로그 루트 레이아웃 구성
+        root_layout: QVBoxLayout = QVBoxLayout(self)
+        root_layout.setContentsMargins(20, 20, 20, 16)
+        root_layout.setSpacing(12)
+
+        # 공식 목록 스크롤 영역 구성
+        self._list_scroll: QScrollArea = QScrollArea(self)
+        self._list_scroll.setObjectName("dialogScrollArea")
+        self._list_scroll.setWidgetResizable(True)
+        self._list_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        list_viewport: QWidget = self._list_scroll.viewport()
+        list_viewport.setObjectName("dialogScrollViewport")
+
+        self._list_content: QWidget = QWidget()
+        self._list_content.setObjectName("dialogScrollContent")
+        self._list_scroll.setWidget(self._list_content)
+
+        self._list_layout: QVBoxLayout = QVBoxLayout(self._list_content)
+        self._list_layout.setContentsMargins(0, 0, 0, 0)
+        self._list_layout.setSpacing(10)
+        self._list_content.setLayout(self._list_layout)
+        root_layout.addWidget(self._list_scroll)
+
+        # 공식 추가/닫기 버튼 행 구성
+        button_layout: QHBoxLayout = QHBoxLayout()
+        button_layout.setContentsMargins(0, 0, 0, 0)
+        button_layout.setSpacing(8)
+
+        add_button: QPushButton = QPushButton("+ 새 공식 추가", self)
+        add_button.setObjectName("dialogConfirmBtn")
+        add_button.setFont(CustomFont(11))
+        add_button.setFixedHeight(36)
+        add_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        add_button.clicked.connect(self._add_formula)
+
+        close_button: QPushButton = QPushButton("닫기", self)
+        close_button.setObjectName("dialogCancelBtn")
+        close_button.setFont(CustomFont(11))
+        close_button.setFixedHeight(36)
+        close_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        close_button.clicked.connect(self.accept)
+
+        button_layout.addWidget(add_button)
+        button_layout.addWidget(close_button)
+        root_layout.addLayout(button_layout)
+
+        self._rebuild_formula_rows()
+
+    @staticmethod
+    def _clear_layout(target_layout: QLayout) -> None:
+        """레이아웃의 기존 위젯과 중첩 레이아웃 제거"""
+
+        while target_layout.count():
+            # 현재 항목의 위젯/자식 레이아웃 재귀 정리
+            child_item: QLayoutItem = target_layout.takeAt(0)
+            child_widget: QWidget | None = child_item.widget()
+            child_layout: QLayout | None = child_item.layout()
+
+            if child_layout is not None:
+                CustomPowerFormulaManageDialog._clear_layout(child_layout)
+
+            if child_widget is not None:
+                child_widget.hide()
+                child_widget.setParent(None)
+                child_widget.deleteLater()
+
+    def _get_existing_names(self, formula_id_to_skip: str | None = None) -> set[str]:
+        """중복 이름 검증용 기존 커스텀 공식 이름 집합 반환"""
+
+        # 빌트인 공식 이름과 편집 대상 자신을 제외한 커스텀 공식 이름 수집
+        existing_names: set[str] = set(POWER_METRIC_LABELS.values())
+        custom_formula: CustomPowerFormula
+        for custom_formula in app_state.macro.custom_power_formulas:
+            if custom_formula.id == formula_id_to_skip:
+                continue
+
+            existing_names.add(custom_formula.name)
+
+        return existing_names
+
+    def _rebuild_formula_rows(self) -> None:
+        """저장된 커스텀 공식 목록 기준 행 UI 재구성"""
+
+        # 이전 공식 행 제거 후 빈 목록/목록 카드 재렌더링
+        self._clear_layout(self._list_layout)
+        if not app_state.macro.custom_power_formulas:
+            empty_label: QLabel = QLabel("등록된 공식이 없습니다.", self._list_content)
+            empty_label.setObjectName("dialogFieldLabel")
+            empty_label.setFont(CustomFont(11))
+            empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._list_layout.addWidget(empty_label)
+            self._list_layout.addStretch(1)
+            return
+
+        custom_formula: CustomPowerFormula
+        for custom_formula in app_state.macro.custom_power_formulas:
+            self._list_layout.addWidget(self._build_formula_row(custom_formula))
+
+        self._list_layout.addStretch(1)
+
+    def _build_formula_row(self, custom_formula: CustomPowerFormula) -> QFrame:
+        """커스텀 공식 한 개의 목록 행 위젯 생성"""
+
+        # 공식 이름/수식 미리보기와 편집/삭제 버튼 행 구성
+        row_frame: QFrame = QFrame(self._list_content)
+        row_frame.setObjectName("dialogCard")
+        row_layout: QHBoxLayout = QHBoxLayout(row_frame)
+        row_layout.setContentsMargins(14, 12, 14, 12)
+        row_layout.setSpacing(10)
+
+        text_layout: QVBoxLayout = QVBoxLayout()
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(4)
+
+        name_label: QLabel = QLabel(custom_formula.name, row_frame)
+        name_label.setObjectName("dialogSectionTitle")
+        name_label.setFont(CustomFont(11))
+
+        formula_label: QLabel = QLabel(custom_formula.formula, row_frame)
+        formula_label.setObjectName("dialogFieldLabel")
+        formula_label.setFont(CustomFont(10))
+        formula_label.setWordWrap(True)
+
+        text_layout.addWidget(name_label)
+        text_layout.addWidget(formula_label)
+
+        edit_button: QPushButton = QPushButton("편집", row_frame)
+        edit_button.setObjectName("dialogConfirmBtn")
+        edit_button.setFont(CustomFont(10))
+        edit_button.setFixedSize(54, 30)
+        edit_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        edit_button.clicked.connect(partial(self._edit_formula, custom_formula))
+
+        delete_button: QPushButton = QPushButton("삭제", row_frame)
+        delete_button.setObjectName("dialogCancelBtn")
+        delete_button.setFont(CustomFont(10))
+        delete_button.setFixedSize(54, 30)
+        delete_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        delete_button.clicked.connect(partial(self._delete_formula, custom_formula.id))
+
+        row_layout.addLayout(text_layout)
+        row_layout.addWidget(edit_button)
+        row_layout.addWidget(delete_button)
+        return row_frame
+
+    def _add_formula(self) -> None:
+        """신규 커스텀 공식 추가 다이얼로그 실행"""
+
+        # 기존 이름 집합 기준 신규 공식 검증/생성
+        edit_dialog: CustomPowerFormulaEditDialog = CustomPowerFormulaEditDialog(
+            existing_names=self._get_existing_names(),
+            parent=self,
+        )
+        if edit_dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        app_state.macro.custom_power_formulas.append(edit_dialog.get_formula())
+        save_data()
+        self._rebuild_formula_rows()
+
+    def _edit_formula(
+        self,
+        custom_formula: CustomPowerFormula,
+        _checked: bool = False,
+    ) -> None:
+        """기존 커스텀 공식 편집 다이얼로그 실행"""
+
+        # 편집 대상 ID 유지 상태로 이름/수식 변경
+        edit_dialog: CustomPowerFormulaEditDialog = CustomPowerFormulaEditDialog(
+            existing_names=self._get_existing_names(custom_formula.id),
+            formula_data=CustomPowerFormula(
+                id=custom_formula.id,
+                name=custom_formula.name,
+                formula=custom_formula.formula,
+            ),
+            parent=self,
+        )
+        if edit_dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        updated_formula: CustomPowerFormula = edit_dialog.get_formula()
+        formula_index: int
+        stored_formula: CustomPowerFormula
+        for formula_index, stored_formula in enumerate(
+            app_state.macro.custom_power_formulas
+        ):
+            if stored_formula.id != custom_formula.id:
+                continue
+
+            app_state.macro.custom_power_formulas[formula_index] = updated_formula
+            break
+
+        save_data()
+        self._rebuild_formula_rows()
+
+    def _delete_formula(self, formula_id: str, _checked: bool = False) -> None:
+        """커스텀 공식 삭제 및 선택 공식 기본값 복구"""
+
+        # 삭제 대상 전역 공식 제거
+        app_state.macro.custom_power_formulas = [
+            custom_formula
+            for custom_formula in app_state.macro.custom_power_formulas
+            if custom_formula.id != formula_id
+        ]
+
+        # 삭제된 공식을 선택한 모든 프리셋 기준 공식 복구
+        preset_index: int
+        for preset_index, preset in enumerate(app_state.macro.presets):
+            if preset.info.calculator.selected_formula_id != formula_id:
+                continue
+
+            app_state.macro.presets[
+                preset_index
+            ].info.calculator.selected_formula_id = PowerMetric.BOSS_DAMAGE.value
+
+        save_data()
+        self._rebuild_formula_rows()
+
+
 class CustomSkillAddDialog(QDialog):
     """커스텀 무공비급/스킬 추가·수정 폼 다이얼로그"""
 
@@ -2359,7 +3179,7 @@ class CustomSkillAddDialog(QDialog):
     ) -> bool:
         """이름 기반 중복 입력 검증"""
 
-        # 같은 무공비급 내부 스킬 이름 중복 차단 블록
+        # 같은 무공비급 내부 스킬 이름 중복 차단
         if skill1_name == skill2_name:
             self._skill1_name_input.set_valid(False)
             self._skill2_name_input.set_valid(False)
@@ -2369,7 +3189,7 @@ class CustomSkillAddDialog(QDialog):
         self._skill1_name_input.set_valid(True)
         self._skill2_name_input.set_valid(True)
 
-        # 동일 서버 내 커스텀 무공비급 이름 중복 차단 블록
+        # 동일 서버 내 커스텀 무공비급 이름 중복 차단
         server_spec: ServerSpec = server_registry.get(self.server_id)
         current_scroll_id: str = ""
         if self._existing_scroll is not None:
@@ -2438,7 +3258,7 @@ class CustomSkillAddDialog(QDialog):
         if not valid:
             return
 
-        # 이름 기반 ID 충돌을 유발하는 중복 입력 차단 블록
+        # 이름 기반 ID 충돌을 유발하는 중복 입력 차단
         if not self._validate_duplicate_names(scroll_name, skill1_name, skill2_name):
             return
 

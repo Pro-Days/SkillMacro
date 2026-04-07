@@ -3,15 +3,15 @@ from multiprocessing import freeze_support
 
 
 def main() -> None:
-    # Windows frozen 멀티프로세싱 재진입 차단 블록
+    # Windows frozen 멀티프로세싱 재진입 차단
     freeze_support()
 
-    # 워커 프로세스 UI 모듈 import 차단 블록
+    # 워커 프로세스 UI 모듈 import 차단
     from PySide6.QtWidgets import QApplication
 
     from app.scripts.ui.main_window import MainWindow
 
-    # Qt 애플리케이션 생성 블록
+    # Qt 애플리케이션 생성
     app: QApplication = QApplication(sys.argv)
     MainWindow()
 

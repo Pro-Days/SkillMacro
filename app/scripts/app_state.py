@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, ClassVar
+from typing import ClassVar
 
+from app.scripts.calculator_models import CustomPowerFormula
 from app.scripts.config import config
 from app.scripts.macro_models import (
     EquippedSkillRef,
@@ -27,6 +28,9 @@ class MacroState:
 
     # 매크로 프리셋 목록
     presets: list[MacroPreset] = field(default_factory=list)
+
+    # 전역 사용자 정의 전투력 공식 목록
+    custom_power_formulas: list[CustomPowerFormula] = field(default_factory=list)
 
     @property
     def current_preset(self) -> MacroPreset:

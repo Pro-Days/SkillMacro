@@ -29,20 +29,23 @@
 
 from __future__ import annotations
 
+import ast
 import heapq
 import os
 import random
 from collections.abc import Callable, Iterator
 from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wait
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, NoReturn, TypeVar, cast
 
 from app.scripts.calculator_models import (
     OVERALL_STAT_ORDER,
     REALM_TIER_SPECS,
+    STAT_SPECS,
     TALISMAN_SPECS,
     BaseStats,
     CalculatorPresetInput,
+    CustomPowerFormula,
     DanjeonState,
     DistributionState,
     FinalStats,
@@ -75,6 +78,11 @@ DISPLAY_POWER_METRICS: tuple[PowerMetric, ...] = (
     PowerMetric.BOSS,
     PowerMetric.NORMAL,
     PowerMetric.OFFICIAL,
+)
+
+# 전투력 표시 ID 집합 캐시
+DISPLAY_POWER_METRIC_IDS: frozenset[str] = frozenset(
+    power_metric.value for power_metric in DISPLAY_POWER_METRICS
 )
 
 
@@ -133,11 +141,941 @@ _BOSS_POTION_FACTOR_EXPONENT: float = 0.5
 _BOSS_DODGE_FACTOR_EXPONENT: float = 1.0
 _BOSS_RESIST_FACTOR_EXPONENT: float = 0.6
 
+# 내장 공식 추가 입력 변수 이름
+_POWER_FORMULA_LEVEL_NAME: str = "level"
+_POWER_FORMULA_BOSS_DAMAGE_NAME: str = "boss_damage"
+_POWER_FORMULA_NORMAL_DAMAGE_NAME: str = "normal_damage"
+_POWER_FORMULA_BOSS_MULTIPLIER_NAME: str = "boss_multiplier"
+_POWER_FORMULA_NORMAL_MULTIPLIER_NAME: str = "normal_multiplier"
+
+# 내장 전투력 공식 문자열
+_POWER_FORMULA_SOURCES: dict[PowerMetric, str] = {
+    PowerMetric.BOSS_DAMAGE: _POWER_FORMULA_BOSS_DAMAGE_NAME,
+    PowerMetric.NORMAL_DAMAGE: _POWER_FORMULA_NORMAL_DAMAGE_NAME,
+    PowerMetric.BOSS: (
+        f"{_POWER_FORMULA_BOSS_DAMAGE_NAME}" f" * {_POWER_FORMULA_BOSS_MULTIPLIER_NAME}"
+    ),
+    PowerMetric.NORMAL: (
+        f"{_POWER_FORMULA_NORMAL_DAMAGE_NAME}"
+        f" * {_POWER_FORMULA_NORMAL_MULTIPLIER_NAME}"
+    ),
+    PowerMetric.OFFICIAL: (
+        f"({_POWER_FORMULA_BOSS_DAMAGE_NAME}"
+        f" + {_POWER_FORMULA_NORMAL_DAMAGE_NAME}) * 0.5"
+    ),
+}
+
+# 전투력 공식에서 참조 가능한 입력 변수 이름
+_CUSTOM_POWER_FORMULA_VARIABLE_NAMES: frozenset[str] = frozenset(
+    stat_key.value for stat_key in OVERALL_STAT_ORDER
+) | frozenset(
+    (
+        _POWER_FORMULA_LEVEL_NAME,
+        _POWER_FORMULA_BOSS_DAMAGE_NAME,
+        _POWER_FORMULA_NORMAL_DAMAGE_NAME,
+    )
+)
+_BUILTIN_POWER_FORMULA_VARIABLE_NAMES: frozenset[str] = (
+    _CUSTOM_POWER_FORMULA_VARIABLE_NAMES
+    | frozenset(
+        (
+            _POWER_FORMULA_BOSS_MULTIPLIER_NAME,
+            _POWER_FORMULA_NORMAL_MULTIPLIER_NAME,
+        )
+    )
+)
+
+# 수식 엔진 허용 함수
+_POWER_FORMULA_FUNCTIONS: dict[str, Callable[..., float | int | bool]] = {
+    "abs": abs,  # type: ignore
+    "max": max,
+    "min": min,
+    "round": round,
+}
+
+# 수식 엔진 허용 이항/단항 연산자
+_POWER_FORMULA_BIN_OPS: tuple[type[ast.operator], ...] = (
+    ast.Add,
+    ast.Sub,
+    ast.Mult,
+    ast.Div,
+    ast.Pow,
+    ast.Mod,
+)
+_POWER_FORMULA_UNARY_OPS: tuple[type[ast.unaryop], ...] = (
+    ast.UAdd,
+    ast.USub,
+    ast.Not,
+)
+_POWER_FORMULA_BOOL_OPS: tuple[type[ast.boolop], ...] = (
+    ast.And,
+    ast.Or,
+)
+_POWER_FORMULA_COMPARE_OPS: tuple[type[ast.cmpop], ...] = (
+    ast.Eq,
+    ast.NotEq,
+    ast.Lt,
+    ast.LtE,
+    ast.Gt,
+    ast.GtE,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class CompiledPowerFormula:
+    """검증된 전투력 공식 스크립트"""
+
+    statements: tuple[ast.stmt, ...]
+    result_expression: ast.expr | None
+
+
+@dataclass(frozen=True, slots=True)
+class PowerFormulaReferenceEntry:
+    """전투력 공식 작성 가이드의 단일 항목"""
+
+    symbol: str
+    description: str
+    insert_text: str
+
+
+@dataclass(frozen=True, slots=True)
+class PowerFormulaReferenceGroup:
+    """전투력 공식 작성 가이드의 항목 그룹"""
+
+    title: str
+    description: str
+    entries: tuple[PowerFormulaReferenceEntry, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PowerFormulaExample:
+    """전투력 공식 작성 예제"""
+
+    title: str
+    description: str
+    source: str
+
+
+@dataclass(frozen=True, slots=True)
+class PowerFormulaFunctionSpec:
+    """전투력 공식 허용 함수 메타데이터"""
+
+    name: str
+    min_args: int
+    max_args: int | None = None
+
+
+# 전투력 공식 작성 가이드 문구
+POWER_FORMULA_GUIDE_LINES: tuple[str, ...] = (
+    "여러 줄로 된 공식을 작성할 수 있습니다.",
+    "마지막 줄에 계산식을 두거나 result 변수에 최종 값을 대입하세요.",
+    "변수 대입, += 같은 복합 대입, if / elif / else, pass 를 사용할 수 있습니다.",
+    "level 은 int 이며, 나머지 변수는 float 입니다.",
+    "오른쪽 변수/함수 항목을 클릭하면 현재 커서 위치에 삽입됩니다.",
+)
+
+
+# 전투력 공식 예제 목록
+POWER_FORMULA_EXAMPLES: tuple[PowerFormulaExample, ...] = (
+    PowerFormulaExample(
+        title="보스형",
+        description="보스 60초 피해와 체력을 함께 반영하는 예제",
+        source=("power = boss_damage\n" "power *= hp\n\n" "result = power"),
+    ),
+    PowerFormulaExample(
+        title="일반형",
+        description="일반 60초 피해와 경험치, 드랍률 배수를 함께 반영하는 예제",
+        source=(
+            "power = normal_damage\n"
+            "power *= 1.0 + (drop_rate_percent * 0.01)\n"
+            "power *= 1.0 + (exp_percent * 0.01)\n"
+            "result = power"
+        ),
+    ),
+    PowerFormulaExample(
+        title="균형형",
+        description="보스/일반 피해의 평균을 사용하는 예제",
+        source="result = (boss_damage * 0.5) + (normal_damage * 0.5)",
+    ),
+    PowerFormulaExample(
+        title="조건형",
+        description="보스 60초 피해와 레벨에 따른 물약 회복량을 반영하는 예제",
+        source=(
+            "power = boss_damage * hp\n\n"
+            "if level < 50:\n"
+            "    power *= 20 * (1 + potion_heal_percent * 0.01)\n"
+            "elif level < 100:\n"
+            "    power *= 70 * (1 + potion_heal_percent * 0.01)\n"
+            "elif level < 150:\n"
+            "    power *= 120 * (1 + potion_heal_percent * 0.01)\n"
+            "else:\n"
+            "    power *= 180 * (1 + potion_heal_percent * 0.01)\n\n"
+            "result = power"
+        ),
+    ),
+)
+
+
+# 전투력 공식 노출 변수/함수 목록
+POWER_FORMULA_REFERENCE_GROUPS: tuple[PowerFormulaReferenceGroup, ...] = (
+    PowerFormulaReferenceGroup(
+        title="60초 데미지",
+        description="60초 누적 피해량",
+        entries=(
+            PowerFormulaReferenceEntry(
+                symbol=_POWER_FORMULA_BOSS_DAMAGE_NAME,
+                description="보스 총 피해량",
+                insert_text=_POWER_FORMULA_BOSS_DAMAGE_NAME,
+            ),
+            PowerFormulaReferenceEntry(
+                symbol=_POWER_FORMULA_NORMAL_DAMAGE_NAME,
+                description="일반 총 피해량",
+                insert_text=_POWER_FORMULA_NORMAL_DAMAGE_NAME,
+            ),
+        ),
+    ),
+    PowerFormulaReferenceGroup(
+        title="전체 스탯",
+        description="레벨과 모든 % 보정이 반영된 최종 스탯 값",
+        entries=(
+            PowerFormulaReferenceEntry(
+                symbol=_POWER_FORMULA_LEVEL_NAME,
+                description="레벨",
+                insert_text=_POWER_FORMULA_LEVEL_NAME,
+            ),
+            *tuple(
+                PowerFormulaReferenceEntry(
+                    symbol=stat_key.value,
+                    description=f"최종 {STAT_SPECS[stat_key]} 값",
+                    insert_text=stat_key.value,
+                )
+                for stat_key in OVERALL_STAT_ORDER
+            ),
+        ),
+    ),
+    PowerFormulaReferenceGroup(
+        title="함수",
+        description="호출할 수 있는 내장 함수",
+        entries=(
+            PowerFormulaReferenceEntry(
+                symbol="abs(x)",
+                description="절댓값 반환",
+                insert_text="abs()",
+            ),
+            PowerFormulaReferenceEntry(
+                symbol="min(a, b, ...)",
+                description="가장 작은 값 반환",
+                insert_text="min()",
+            ),
+            PowerFormulaReferenceEntry(
+                symbol="max(a, b, ...)",
+                description="가장 큰 값 반환",
+                insert_text="max()",
+            ),
+            PowerFormulaReferenceEntry(
+                symbol="round(x, n)",
+                description="소수점 n자리 반올림",
+                insert_text="round()",
+            ),
+        ),
+    ),
+)
+
+
+# 입력 변수/함수와 충돌하면 안 되는 예약 이름 집합
+_CUSTOM_POWER_FORMULA_RESERVED_NAMES: frozenset[str] = (
+    _CUSTOM_POWER_FORMULA_VARIABLE_NAMES | frozenset(_POWER_FORMULA_FUNCTIONS.keys())
+)
+_BUILTIN_POWER_FORMULA_RESERVED_NAMES: frozenset[str] = (
+    _BUILTIN_POWER_FORMULA_VARIABLE_NAMES | frozenset(_POWER_FORMULA_FUNCTIONS.keys())
+)
+
+# 허용 함수별 인자 개수 메타데이터
+_POWER_FORMULA_FUNCTION_SPECS: dict[str, PowerFormulaFunctionSpec] = {
+    "abs": PowerFormulaFunctionSpec(
+        name="abs",
+        min_args=1,
+        max_args=1,
+    ),
+    "max": PowerFormulaFunctionSpec(
+        name="max",
+        min_args=1,
+    ),
+    "min": PowerFormulaFunctionSpec(
+        name="min",
+        min_args=1,
+    ),
+    "round": PowerFormulaFunctionSpec(
+        name="round",
+        min_args=1,
+        max_args=2,
+    ),
+}
+
+
+def _raise_power_formula_error(node: ast.AST, message: str) -> NoReturn:
+    """전투력 공식 검증 오류를 줄 번호와 함께 발생"""
+
+    # 줄 번호가 있는 AST 노드는 사용자 입력 기준 줄 위치를 함께 표기
+    line_number: int | None = getattr(node, "lineno", None)
+    if line_number is None:
+        raise ValueError(message)
+
+    raise ValueError(f"{line_number}번째 줄: {message}")
+
+
+def _validate_power_formula_call_arguments(node: ast.Call) -> None:
+    """허용 함수별 인자 개수와 특수 형식 검증"""
+
+    # 함수별 허용 인자 개수 범위 검증
+    function_name: str = cast(ast.Name, node.func).id
+    function_spec: PowerFormulaFunctionSpec = _POWER_FORMULA_FUNCTION_SPECS[
+        function_name
+    ]
+    argument_count: int = len(node.args)
+    if argument_count < function_spec.min_args:
+        _raise_power_formula_error(
+            node,
+            f"{function_name}() 함수 인자가 부족합니다.",
+        )
+
+    if function_spec.max_args is not None and argument_count > function_spec.max_args:
+        _raise_power_formula_error(
+            node,
+            f"{function_name}() 함수 인자가 너무 많습니다.",
+        )
+
+    # round 두 번째 인자의 정수 리터럴 제한 검증
+    if function_name != "round" or argument_count < 2:
+        return
+
+    second_argument: ast.expr = node.args[1]
+    if isinstance(second_argument, ast.Constant) and isinstance(
+        second_argument.value, int
+    ):
+        return
+
+    if isinstance(second_argument, ast.UnaryOp) and isinstance(
+        second_argument.op, (ast.UAdd, ast.USub)
+    ):
+        operand: ast.expr = second_argument.operand
+        if isinstance(operand, ast.Constant) and isinstance(operand.value, int):
+            return
+
+    _raise_power_formula_error(
+        second_argument,
+        "round() 함수의 두 번째 인자는 정수 리터럴만 사용할 수 있습니다.",
+    )
+
+
+def _validate_power_formula_expression(
+    node: ast.AST,
+    accessible_names: frozenset[str],
+) -> None:
+    """전투력 공식 표현식 AST 허용 문법 검증"""
+
+    # 산술 이항 연산 검증
+    if isinstance(node, ast.BinOp):
+        if not isinstance(node.op, _POWER_FORMULA_BIN_OPS):
+            _raise_power_formula_error(
+                node, "허용되지 않는 연산자가 포함되어 있습니다."
+            )
+
+        _validate_power_formula_expression(node.left, accessible_names)
+        _validate_power_formula_expression(node.right, accessible_names)
+        return
+
+    # 산술/논리 단항 연산 검증
+    if isinstance(node, ast.UnaryOp):
+        if not isinstance(node.op, _POWER_FORMULA_UNARY_OPS):
+            _raise_power_formula_error(
+                node,
+                "허용되지 않는 단항 연산자가 포함되어 있습니다.",
+            )
+
+        _validate_power_formula_expression(node.operand, accessible_names)
+        return
+
+    # 삼항 if 식 검증
+    if isinstance(node, ast.IfExp):
+        _validate_power_formula_expression(node.test, accessible_names)
+        _validate_power_formula_expression(node.body, accessible_names)
+        _validate_power_formula_expression(node.orelse, accessible_names)
+        return
+
+    # 비교식 검증
+    if isinstance(node, ast.Compare):
+        if not all(
+            isinstance(compare_op, _POWER_FORMULA_COMPARE_OPS)
+            for compare_op in node.ops
+        ):
+            _raise_power_formula_error(
+                node,
+                "허용되지 않는 비교 연산자가 포함되어 있습니다.",
+            )
+
+        _validate_power_formula_expression(node.left, accessible_names)
+        comparator: ast.expr
+        for comparator in node.comparators:
+            _validate_power_formula_expression(comparator, accessible_names)
+
+        return
+
+    # and/or 논리식 검증
+    if isinstance(node, ast.BoolOp):
+        if not isinstance(node.op, _POWER_FORMULA_BOOL_OPS):
+            _raise_power_formula_error(
+                node,
+                "허용되지 않는 논리 연산자가 포함되어 있습니다.",
+            )
+
+        bool_value: ast.expr
+        for bool_value in node.values:
+            _validate_power_formula_expression(bool_value, accessible_names)
+
+        return
+
+    # 허용 함수 호출 검증
+    if isinstance(node, ast.Call):
+        if not isinstance(node.func, ast.Name):
+            _raise_power_formula_error(
+                node,
+                "직접 함수 호출 형식만 사용할 수 있습니다.",
+            )
+
+        if node.func.id not in _POWER_FORMULA_FUNCTIONS:
+            _raise_power_formula_error(
+                node,
+                f"허용되지 않는 함수입니다: {node.func.id}",
+            )
+
+        if node.keywords:
+            _raise_power_formula_error(
+                node,
+                "키워드 인자는 사용할 수 없습니다.",
+            )
+
+        # 허용 함수별 인자 개수와 특수 인자 형식 검증
+        _validate_power_formula_call_arguments(node)
+
+        call_arg: ast.expr
+        for call_arg in node.args:
+            _validate_power_formula_expression(call_arg, accessible_names)
+
+        return
+
+    # 변수 참조/상수 리터럴 허용
+    if isinstance(node, ast.Name):
+        if node.id not in accessible_names:
+            _raise_power_formula_error(node, f"알 수 없는 변수입니다: {node.id}")
+
+        return
+
+    if isinstance(node, ast.Constant) and isinstance(node.value, int | float | bool):
+        return
+
+    _raise_power_formula_error(node, "허용되지 않는 문법이 포함되어 있습니다.")
+
+
+def _validate_power_formula_block(
+    statements: list[ast.stmt],
+    accessible_names: frozenset[str],
+    allow_terminal_expression: bool,
+    reserved_names: frozenset[str],
+) -> frozenset[str]:
+    """전투력 공식 스크립트 검증 및 종료 시점 변수 집합 계산"""
+
+    # 내부 순차 실행 기준 접근 가능 변수 집합 관리
+    current_names: set[str] = set(accessible_names)
+    statement_index: int
+    statement: ast.stmt
+    for statement_index, statement in enumerate(statements):
+        is_last_statement: bool = statement_index == len(statements) - 1
+
+        # 단순 대입문 검증
+        if isinstance(statement, ast.Assign):
+            if len(statement.targets) != 1 or not isinstance(
+                statement.targets[0], ast.Name
+            ):
+                _raise_power_formula_error(
+                    statement, "단순 변수 대입만 사용할 수 있습니다."
+                )
+
+            target_name: str = statement.targets[0].id
+            if target_name in reserved_names:
+                _raise_power_formula_error(
+                    statement,
+                    f"예약된 이름에는 대입할 수 없습니다: {target_name}",
+                )
+
+            _validate_power_formula_expression(
+                statement.value,
+                frozenset(current_names),
+            )
+            current_names.add(target_name)
+            continue
+
+        # 복합 대입문 검증
+        if isinstance(statement, ast.AugAssign):
+            if not isinstance(statement.target, ast.Name):
+                _raise_power_formula_error(
+                    statement, "단순 변수 대입만 사용할 수 있습니다."
+                )
+
+            target_name: str = statement.target.id
+            if target_name in reserved_names:
+                _raise_power_formula_error(
+                    statement,
+                    f"예약된 이름에는 대입할 수 없습니다: {target_name}",
+                )
+
+            if target_name not in current_names:
+                _raise_power_formula_error(
+                    statement,
+                    f"먼저 값을 대입한 뒤 사용할 수 있습니다: {target_name}",
+                )
+
+            if not isinstance(statement.op, _POWER_FORMULA_BIN_OPS):
+                _raise_power_formula_error(
+                    statement,
+                    "허용되지 않는 연산자가 포함되어 있습니다.",
+                )
+
+            _validate_power_formula_expression(
+                statement.value,
+                frozenset(current_names),
+            )
+            continue
+
+        # if 문 검증
+        if isinstance(statement, ast.If):
+            _validate_power_formula_expression(statement.test, frozenset(current_names))
+            body_names: frozenset[str] = _validate_power_formula_block(
+                statement.body,
+                frozenset(current_names),
+                False,
+                reserved_names,
+            )
+            orelse_names: frozenset[str] = _validate_power_formula_block(
+                statement.orelse,
+                frozenset(current_names),
+                False,
+                reserved_names,
+            )
+            current_names = set(body_names & orelse_names)
+            continue
+
+        # 의미 없는 pass 허용
+        if isinstance(statement, ast.Pass):
+            continue
+
+        # 마지막 줄 결과 표현식 허용
+        if isinstance(statement, ast.Expr):
+            if not (allow_terminal_expression and is_last_statement):
+                _raise_power_formula_error(
+                    statement,
+                    "마지막 줄을 제외한 단독 표현식은 사용할 수 없습니다.",
+                )
+
+            _validate_power_formula_expression(
+                statement.value,
+                frozenset(current_names),
+            )
+            continue
+
+        _raise_power_formula_error(statement, "허용되지 않는 문법이 포함되어 있습니다.")
+
+    return frozenset(current_names)
+
+
+def _build_power_formula_nodes() -> dict[PowerMetric, CompiledPowerFormula]:
+    """내장 전투력 공식 AST 사전 컴파일"""
+
+    # 전투력 종류 순서대로 공식 파싱 및 허용 문법 검증
+    formula_nodes: dict[PowerMetric, CompiledPowerFormula] = {}
+    power_metric: PowerMetric
+    for power_metric in DISPLAY_POWER_METRICS:
+        source: str = _POWER_FORMULA_SOURCES[power_metric]
+        # 내장 공식 전용 계수 변수 허용 검증 경로
+        formula_nodes[power_metric] = _compile_power_formula(
+            formula_source=source,
+            accessible_names=_BUILTIN_POWER_FORMULA_VARIABLE_NAMES,
+            reserved_names=_BUILTIN_POWER_FORMULA_RESERVED_NAMES,
+        )
+
+    return formula_nodes
+
+
+def _compile_power_formula(
+    formula_source: str,
+    accessible_names: frozenset[str],
+    reserved_names: frozenset[str],
+) -> CompiledPowerFormula:
+    """검증된 전투력 공식 스크립트 컴파일"""
+
+    # 빈 수식 입력 차단
+    normalized_source: str = formula_source.strip()
+    if not normalized_source:
+        raise ValueError("수식을 입력해주세요.")
+
+    try:
+        # 다중 문장 스크립트 AST 파싱 및 허용 문법 검증
+        parsed_formula: ast.Module = ast.parse(normalized_source, mode="exec")
+        if not parsed_formula.body:
+            raise ValueError("수식을 입력해주세요.")
+
+        # 허용 입력 변수 범위 기준 스크립트 AST 검증
+        validated_names: frozenset[str] = _validate_power_formula_block(
+            parsed_formula.body,
+            accessible_names,
+            True,
+            reserved_names,
+        )
+        last_statement: ast.stmt = parsed_formula.body[-1]
+        result_expression: ast.expr | None = None
+        if isinstance(last_statement, ast.Expr):
+            result_expression = last_statement.value
+            statements: tuple[ast.stmt, ...] = tuple(parsed_formula.body[:-1])
+        else:
+            if "result" not in validated_names:
+                raise ValueError(
+                    "마지막 줄에 계산식을 두거나 result 변수에 값을 대입해주세요."
+                )
+
+            statements = tuple(parsed_formula.body)
+
+        return CompiledPowerFormula(
+            statements=statements,
+            result_expression=result_expression,
+        )
+
+    except SyntaxError as exc:
+        line_number: int | None = exc.lineno
+        offset: int | None = exc.offset
+        if line_number is None or offset is None:
+            raise ValueError("수식 문법이 올바르지 않습니다.") from exc
+
+        raise ValueError(
+            f"{line_number}번째 줄 {offset}번째 문자 근처의 수식 문법이 올바르지 않습니다."
+        ) from exc
+
+
+def compile_custom_formula(formula_source: str) -> CompiledPowerFormula:
+    """검증된 사용자 정의 전투력 공식 스크립트 컴파일"""
+
+    # 커스텀 공식 전용 입력 변수 범위 검증 경로
+    return _compile_power_formula(
+        formula_source=formula_source,
+        accessible_names=_CUSTOM_POWER_FORMULA_VARIABLE_NAMES,
+        reserved_names=_CUSTOM_POWER_FORMULA_RESERVED_NAMES,
+    )
+
+
+def validate_custom_formula(formula_source: str) -> str | None:
+    """사용자 정의 전투력 공식 검증 오류 메시지 반환"""
+
+    try:
+        # 저장 전과 입력 중 검증에서 동일한 컴파일 경로 재사용
+        compile_custom_formula(formula_source)
+        return None
+
+    except ValueError as exc:
+        return str(exc)
+
+
+def _apply_power_formula_bin_op(
+    operator: ast.operator,
+    left_value: float,
+    right_value: float,
+) -> float:
+    """전투력 공식 이항 연산 적용"""
+
+    # 이항 연산 종류별 계산 분기
+    if isinstance(operator, ast.Add):
+        return left_value + right_value
+
+    if isinstance(operator, ast.Sub):
+        return left_value - right_value
+
+    if isinstance(operator, ast.Mult):
+        return left_value * right_value
+
+    if isinstance(operator, ast.Div):
+        return left_value / right_value
+
+    if isinstance(operator, ast.Pow):
+        return left_value**right_value
+
+    if isinstance(operator, ast.Mod):
+        return left_value % right_value
+
+    raise ValueError("허용되지 않는 연산자가 포함되어 있습니다.")
+
+
+def _evaluate_power_formula_expression(
+    node: ast.AST,
+    input_variables: dict[str, float | int | bool],
+    local_variables: dict[str, float | int | bool],
+) -> float | int | bool:
+    """검증된 전투력 공식 표현식 AST 평가"""
+
+    # 지역 변수 우선의 변수/상수 단말 노드 평가
+    if isinstance(node, ast.Name):
+        if node.id in local_variables:
+            return local_variables[node.id]
+
+        return input_variables[node.id]
+
+    if isinstance(node, ast.Constant) and isinstance(node.value, int | float | bool):
+        return node.value
+
+    # 산술 이항 연산 평가
+    if isinstance(node, ast.BinOp):
+        left_value: float = float(
+            _evaluate_power_formula_expression(
+                node.left, input_variables, local_variables
+            )
+        )
+        right_value: float = float(
+            _evaluate_power_formula_expression(
+                node.right,
+                input_variables,
+                local_variables,
+            )
+        )
+        return _apply_power_formula_bin_op(node.op, left_value, right_value)
+
+    # 산술/논리 단항 연산 평가
+    if isinstance(node, ast.UnaryOp):
+        operand_value: float | bool = _evaluate_power_formula_expression(
+            node.operand,
+            input_variables,
+            local_variables,
+        )
+        if isinstance(node.op, ast.UAdd):
+            return +float(operand_value)
+
+        if isinstance(node.op, ast.USub):
+            return -float(operand_value)
+
+        if isinstance(node.op, ast.Not):
+            return not bool(operand_value)
+
+    # 삼항 if 식 평가
+    if isinstance(node, ast.IfExp):
+        condition_value: bool = bool(
+            _evaluate_power_formula_expression(
+                node.test,
+                input_variables,
+                local_variables,
+            )
+        )
+        if condition_value:
+            return _evaluate_power_formula_expression(
+                node.body,
+                input_variables,
+                local_variables,
+            )
+
+        return _evaluate_power_formula_expression(
+            node.orelse,
+            input_variables,
+            local_variables,
+        )
+
+    # 비교식 평가
+    if isinstance(node, ast.Compare):
+        left_value: float = float(
+            _evaluate_power_formula_expression(
+                node.left,
+                input_variables,
+                local_variables,
+            )
+        )
+        compare_index: int
+        compare_op: ast.cmpop
+        for compare_index, compare_op in enumerate(node.ops):
+            right_value: float = float(
+                _evaluate_power_formula_expression(
+                    node.comparators[compare_index],
+                    input_variables,
+                    local_variables,
+                )
+            )
+            if isinstance(compare_op, ast.Eq) and left_value != right_value:
+                return False
+
+            if isinstance(compare_op, ast.NotEq) and left_value == right_value:
+                return False
+
+            if isinstance(compare_op, ast.Lt) and left_value >= right_value:
+                return False
+
+            if isinstance(compare_op, ast.LtE) and left_value > right_value:
+                return False
+
+            if isinstance(compare_op, ast.Gt) and left_value <= right_value:
+                return False
+
+            if isinstance(compare_op, ast.GtE) and left_value < right_value:
+                return False
+
+            left_value = right_value
+
+        return True
+
+    # and/or 논리식 평가
+    if isinstance(node, ast.BoolOp):
+        if isinstance(node.op, ast.And):
+            and_value: ast.expr
+            for and_value in node.values:
+                if not bool(
+                    _evaluate_power_formula_expression(
+                        and_value,
+                        input_variables,
+                        local_variables,
+                    )
+                ):
+                    return False
+
+            return True
+
+        if isinstance(node.op, ast.Or):
+            or_value: ast.expr
+            for or_value in node.values:
+                if bool(
+                    _evaluate_power_formula_expression(
+                        or_value,
+                        input_variables,
+                        local_variables,
+                    )
+                ):
+                    return True
+
+            return False
+
+    # 허용 함수 호출 평가
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+        formula_function: Callable[..., float | int | bool] = _POWER_FORMULA_FUNCTIONS[
+            node.func.id
+        ]
+        call_args: list[float | int | bool] = [
+            _evaluate_power_formula_expression(
+                call_arg,
+                input_variables,
+                local_variables,
+            )
+            for call_arg in node.args
+        ]
+        return formula_function(*call_args)
+
+    raise ValueError(f"unsupported compiled power formula node: {type(node)}")
+
+
+def _execute_power_formula_statements(
+    statements: tuple[ast.stmt, ...],
+    input_variables: dict[str, float | int | bool],
+    local_variables: dict[str, float | int | bool],
+) -> None:
+    """검증된 전투력 공식 스크립트 문장 실행"""
+
+    # 검증 완료된 문장을 순차 실행하는
+    statement: ast.stmt
+    for statement in statements:
+        if isinstance(statement, ast.Assign):
+            assign_target: ast.Name = cast(ast.Name, statement.targets[0])
+            target_name: str = assign_target.id
+            local_variables[target_name] = _evaluate_power_formula_expression(
+                statement.value,
+                input_variables,
+                local_variables,
+            )
+            continue
+
+        if isinstance(statement, ast.AugAssign):
+            assign_target: ast.Name = cast(ast.Name, statement.target)
+            target_name: str = assign_target.id
+            left_value: float = float(local_variables[target_name])
+            right_value: float = float(
+                _evaluate_power_formula_expression(
+                    statement.value,
+                    input_variables,
+                    local_variables,
+                )
+            )
+            local_variables[target_name] = _apply_power_formula_bin_op(
+                statement.op,
+                left_value,
+                right_value,
+            )
+            continue
+
+        if isinstance(statement, ast.If):
+            condition_value: bool = bool(
+                _evaluate_power_formula_expression(
+                    statement.test,
+                    input_variables,
+                    local_variables,
+                )
+            )
+            branch_statements: tuple[ast.stmt, ...]
+            if condition_value:
+                branch_statements = tuple(statement.body)
+            else:
+                branch_statements = tuple(statement.orelse)
+
+            _execute_power_formula_statements(
+                branch_statements,
+                input_variables,
+                local_variables,
+            )
+            continue
+
+        if isinstance(statement, ast.Pass):
+            continue
+
+        raise ValueError(
+            f"unsupported compiled power formula statement: {type(statement)}"
+        )
+
+
+def _evaluate_compiled_power_formula(
+    compiled_formula: CompiledPowerFormula,
+    input_variables: dict[str, float | int | bool],
+) -> float:
+    """검증된 전투력 공식 스크립트 전체 평가"""
+
+    # 지역 변수 스코프 구성 후 문장 실행
+    local_variables: dict[str, float | int | bool] = {}
+    _execute_power_formula_statements(
+        compiled_formula.statements,
+        input_variables,
+        local_variables,
+    )
+
+    # 마지막 표현식 또는 result 변수에서 최종 값 확정
+    if compiled_formula.result_expression is not None:
+        return float(
+            _evaluate_power_formula_expression(
+                compiled_formula.result_expression,
+                input_variables,
+                local_variables,
+            )
+        )
+
+    return float(local_variables["result"])
+
+
+# 내장 전투력 공식 AST 캐시
+_POWER_FORMULA_NODES: dict[PowerMetric, CompiledPowerFormula] = (
+    _build_power_formula_nodes()
+)
+
 
 def _get_boss_potion_base_heal(level: int) -> float:
     """레벨 구간별 5초 포션 기본 회복량 반환"""
 
-    # 레벨 구간별 포션 기본 회복량 결정 블록
+    # 레벨 구간별 포션 기본 회복량 결정
     if level >= 150:
         return 180.0
 
@@ -153,26 +1091,32 @@ def _get_boss_potion_base_heal(level: int) -> float:
 def _compute_power_gradient(
     timeline_artifacts: TimelineEvaluationArtifacts,
     base_changed_stats: dict[StatKey, float],
-    target_metric: PowerMetric,
+    target_formula_id: str,
+    compiled_custom_formula: CompiledPowerFormula | None,
     relevant_stat_keys: frozenset[StatKey],
 ) -> dict[StatKey, float]:
     """기준점에서의 전투력 기울기 (∂power/∂stat) 계산"""
 
     base_resolved: FinalStats = _fast_resolve(base_changed_stats)
-    base_power: PowerSummary = evaluate_calculator_power(
-        timeline_artifacts, base_resolved
+    base_value: float = evaluate_single_metric(
+        artifacts=timeline_artifacts,
+        resolved_stats=base_resolved,
+        target_formula_id=target_formula_id,
+        compiled_custom_formula=compiled_custom_formula,
     )
-    base_value: float = base_power.metrics[target_metric]
 
     gradient: dict[StatKey, float] = {}
     for stat_key in relevant_stat_keys:
         perturbed: dict[StatKey, float] = base_changed_stats.copy()
         perturbed[stat_key] = perturbed.get(stat_key, 0.0) + 1.0
         perturbed_resolved: FinalStats = _fast_resolve(perturbed)
-        perturbed_power: PowerSummary = evaluate_calculator_power(
-            timeline_artifacts, perturbed_resolved
+        perturbed_value: float = evaluate_single_metric(
+            artifacts=timeline_artifacts,
+            resolved_stats=perturbed_resolved,
+            target_formula_id=target_formula_id,
+            compiled_custom_formula=compiled_custom_formula,
         )
-        gradient[stat_key] = perturbed_power.metrics[target_metric] - base_value
+        gradient[stat_key] = perturbed_value - base_value
 
     return gradient
 
@@ -284,7 +1228,7 @@ class Timeline:
 
 @dataclass(frozen=True, slots=True)
 class TimelineSegment:
-    """전투력 평가를 위한 타임라인 세그먼트: 활성 버프 구간"""
+    """전투력 평가용 타임라인 세그먼트"""
 
     start_time: float
     end_time: float
@@ -294,7 +1238,7 @@ class TimelineSegment:
 
 @dataclass(frozen=True, slots=True)
 class TimelineEvaluationArtifacts:
-    """타임라인 사전 계산 결과"""
+    """타임라인 전투력 평가용 사전 계산 결과"""
 
     timeline: Timeline
 
@@ -380,8 +1324,6 @@ class GraphAnalysis:
 class GraphReport:
     """그래프/요약 화면 공용 리포트"""
 
-    # 5종 전투력 수치
-    metrics: dict[PowerMetric, float]
     # 그래프 분석 카드 데이터
     analysis: tuple[GraphAnalysis, ...] = ()
 
@@ -393,24 +1335,18 @@ class GraphReport:
 
 
 @dataclass(frozen=True, slots=True)
-class PowerSummary:
-    """계산기 전투력 요약"""
-
-    metrics: dict[PowerMetric, float]
-
-
-@dataclass(frozen=True, slots=True)
 class EvaluationContext:
     """평가 기준이 되는 초기 상태 컨텍스트"""
 
     timeline_artifacts: TimelineEvaluationArtifacts
     baseline_base_stats: BaseStats
     baseline_final_stats: FinalStats
-    baseline_summary: PowerSummary
+    baseline_power: float
     server_spec: "ServerSpec"
     preset: "MacroPreset"
     skills_info: dict[str, "SkillUsageSetting"]
     delay_ms: int
+    compiled_custom_formula: CompiledPowerFormula | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -421,7 +1357,7 @@ class LevelUpEvaluation:
     """
 
     stat_distribution: dict[StatKey, int]
-    deltas: dict[PowerMetric, float]
+    delta: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -433,7 +1369,7 @@ class RealmAdvanceEvaluation:
 
     target_realm: RealmTier
     danjeon_distribution: tuple[int, int, int]
-    deltas: dict[PowerMetric, float]
+    delta: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -443,7 +1379,7 @@ class ScrollUpgradeEvaluation:
     scroll_id: str
     scroll_name: str
     next_level: int
-    deltas: dict[PowerMetric, float]
+    delta: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -509,7 +1445,7 @@ class OptimizationResult:
     """최적화 최종 결과"""
 
     candidate: OptimizationCandidate
-    deltas: dict[PowerMetric, float]
+    delta: float
     base_stats: BaseStats
 
 
@@ -530,23 +1466,6 @@ class DistributionSearchRange:
 
 
 EntryPayload = TypeVar("EntryPayload")
-
-
-def calculate_power_deltas(
-    baseline_summary: PowerSummary,
-    target_summary: PowerSummary,
-) -> dict[PowerMetric, float]:
-    """기준 대비 전투력 변화량 계산"""
-
-    # 전투력 종류별 증감량 계산
-    deltas: dict[PowerMetric, float] = {}
-    for power_metric in DISPLAY_POWER_METRICS:
-        deltas[power_metric] = (
-            target_summary.metrics[power_metric]
-            - baseline_summary.metrics[power_metric]
-        )
-
-    return deltas
 
 
 def build_distribution_contribution(
@@ -634,7 +1553,7 @@ def _build_owned_talisman_stat_map(
     talisman_stat_map: dict[str, tuple[StatKey, float]] = {}
 
     for owned_talisman in owned_talismans:
-        # 부적 정의 조회 블록
+        # 부적 정의 조회
         talisman_spec: tuple[StatKey, dict[int, float]] | None = None
 
         for spec in TALISMAN_SPECS:
@@ -645,7 +1564,7 @@ def _build_owned_talisman_stat_map(
         if talisman_spec is None:
             continue
 
-        # 동일 이름 최고 레벨 유지 블록
+        # 동일 이름 최고 레벨 유지
         stat_key, level_stats = talisman_spec
         stat_value: float = level_stats[owned_talisman.level]
         current_entry: tuple[StatKey, float] | None = talisman_stat_map.get(
@@ -694,16 +1613,16 @@ def build_current_selected_contribution(
 def build_internal_base_stats(base_stats: BaseStats) -> BaseStats:
     """전체 스탯 입력값을 내부 계산용 원시 스탯으로 역산"""
 
-    # 최종 합산 입력값 기준 스탯 맵 복원 블록
+    # 최종 합산 입력값 기준 스탯 맵 복원
     resolved_values: dict[StatKey, float] = base_stats.to_stat_map()
 
-    # 주스탯 역산 비율 계산 블록
+    # 주스탯 역산 비율 계산
     strength_ratio: float = 1.0 + (resolved_values[StatKey.STR_PERCENT] * 0.01)
     dexterity_ratio: float = 1.0 + (resolved_values[StatKey.DEXTERITY_PERCENT] * 0.01)
     vitality_ratio: float = 1.0 + (resolved_values[StatKey.VITALITY_PERCENT] * 0.01)
     luck_ratio: float = 1.0 + (resolved_values[StatKey.LUCK_PERCENT] * 0.01)
 
-    # 최종 주스탯 기준 원시 주스탯 복원 블록
+    # 최종 주스탯 기준 원시 주스탯 복원
     final_strength: float = resolved_values[StatKey.STR]
     final_dexterity: float = resolved_values[StatKey.DEXTERITY]
     final_vitality: float = resolved_values[StatKey.VITALITY]
@@ -713,7 +1632,7 @@ def build_internal_base_stats(base_stats: BaseStats) -> BaseStats:
     raw_vitality: float = final_vitality / vitality_ratio
     raw_luck: float = final_luck / luck_ratio
 
-    # 주스탯 파생 항목 역산 블록
+    # 주스탯 파생 항목 역산
     raw_attack_percent: float = resolved_values[StatKey.ATTACK_PERCENT] - (
         final_dexterity * 0.3
     )
@@ -738,7 +1657,7 @@ def build_internal_base_stats(base_stats: BaseStats) -> BaseStats:
         final_vitality * 0.5
     )
 
-    # 내부 계산용 원시 스탯 맵 재구성 블록
+    # 내부 계산용 원시 스탯 맵 재구성
     raw_values: dict[StatKey, float] = resolved_values.copy()
     raw_values[StatKey.STR] = raw_strength
     raw_values[StatKey.DEXTERITY] = raw_dexterity
@@ -762,7 +1681,7 @@ def _normalize_inverse_stat_map(
 ) -> dict[StatKey, float]:
     """역산 및 제거 결과 스탯값 정규화"""
 
-    # 역산 잔차 정규화 블록
+    # 역산 잔차 정규화
     normalized_values: dict[StatKey, float] = {}
     stat_key: StatKey
     stat_value: float
@@ -1243,7 +2162,7 @@ def _build_timeline_evaluation_artifacts(
         )
         active_buffs_by_hit.append(active_buffs)
 
-    # 데미지가 아닌 전투력 평가용 시간 경계와 활성 버프 구간 계산
+    # 전투력 배수 시간가중 평균용 세그먼트 경계 계산
     boundary_values: set[float] = {0.0, TIMELINE_SECONDS}
     buff_window: BuffWindow
     for buff_window in timeline.buff_windows:
@@ -1258,7 +2177,7 @@ def _build_timeline_evaluation_artifacts(
         boundary_values.add(clamped_start_time)
         boundary_values.add(clamped_end_time)
 
-    # 반열린 구간 기준 비타격 전투력 평가 세그먼트 구성
+    # 세그먼트 시작 시점 활성 버프 기준 시간 구간 분해
     ordered_boundaries: tuple[float, ...] = tuple(sorted(boundary_values))
     timeline_segments: list[TimelineSegment] = []
     boundary_index: int
@@ -1266,7 +2185,7 @@ def _build_timeline_evaluation_artifacts(
         start_time: float = ordered_boundaries[boundary_index]
         end_time: float = ordered_boundaries[boundary_index + 1]
 
-        # 세그먼트 시작 시점 활성 버프 수집
+        # 세그먼트 시작 시점 기준 활성 버프 수집
         segment_active_buffs: tuple[BuffWindow, ...] = tuple(
             current_buff_window
             for current_buff_window in timeline.buff_windows
@@ -1440,42 +2359,26 @@ def _iterate_buffed_hit_events(
         yield hit_event, buffed_stats
 
 
-def evaluate_calculator_power(
+def _build_power_formula_variables(
     artifacts: TimelineEvaluationArtifacts,
     resolved_stats: FinalStats,
-) -> PowerSummary:
-    """사전 계산 타임라인 아티팩트 기준 5종 전투력 계산"""
+) -> dict[str, float | int | bool]:
+    """최종 스탯과 내장 전투력 공식 변수 구성"""
 
-    # enum 키 상수를 로컬 변수로 캐시하여 반복 descriptor 접근 제거
-    _ATTACK: StatKey = StatKey.ATTACK
-    _FINAL_ATTACK_PERCENT: StatKey = StatKey.FINAL_ATTACK_PERCENT
-    _BOSS_ATTACK_PERCENT: StatKey = StatKey.BOSS_ATTACK_PERCENT
-    _CRIT_RATE_PERCENT: StatKey = StatKey.CRIT_RATE_PERCENT
-    _CRIT_DAMAGE_PERCENT: StatKey = StatKey.CRIT_DAMAGE_PERCENT
-    _SKILL_DAMAGE_PERCENT: StatKey = StatKey.SKILL_DAMAGE_PERCENT
-    _HP: StatKey = StatKey.HP
-    _DODGE_PERCENT: StatKey = StatKey.DODGE_PERCENT
-    _RESIST_PERCENT: StatKey = StatKey.RESIST_PERCENT
-    _POTION_HEAL_PERCENT: StatKey = StatKey.POTION_HEAL_PERCENT
-    _DROP_RATE_PERCENT: StatKey = StatKey.DROP_RATE_PERCENT
-    _EXP_PERCENT: StatKey = StatKey.EXP_PERCENT
-    potion_base_heal: float = _get_boss_potion_base_heal(artifacts.level)
-
+    # 기본 최종 스탯과 타격/버프 스냅샷 조회
     base_values: dict[StatKey, float] = resolved_stats.values
     hit_events: tuple[HitEvent, ...] = artifacts.timeline.hit_events
     all_active_buffs: tuple[tuple[BuffWindow, ...], ...] = artifacts.active_buffs_by_hit
+    potion_base_heal: float = _get_boss_potion_base_heal(artifacts.level)
 
-    # 동일 버프 조합에 대한 스탯 캐시 (dict.copy 횟수 대폭 감소)
+    # 동일 버프 조합에 대한 스탯 스냅샷 캐시
     buff_stats_cache: dict[int, dict[StatKey, float]] = {}
 
-    # 타격별 활성 버프 스냅샷 재사용 기반 총데미지 누적
-    total_boss_damage: float = 0.0
-    total_normal_damage: float = 0.0
-
-    # 연속 동일 버프 참조 빠른 건너뛰기 (id() + dict.get 호출 제거)
+    # 60초 타격 데미지 누적
+    boss_damage: float = 0.0
+    normal_damage: float = 0.0
     prev_active_buffs: tuple[BuffWindow, ...] | None = None
     cached_buffed_stats: dict[StatKey, float] = base_values
-
     hit_index: int
     hit_event: HitEvent
     for hit_index, hit_event in enumerate(hit_events):
@@ -1486,36 +2389,31 @@ def evaluate_calculator_power(
             buffed_stats: dict[StatKey, float] | None = buff_stats_cache.get(buff_id)
             if buffed_stats is None:
                 buffed_stats = base_values.copy()
+                active_buff: BuffWindow
                 for active_buff in active_buffs:
                     buffed_stats[active_buff.stat_key] = (
                         buffed_stats[active_buff.stat_key] + active_buff.value
                     )
+
                 buff_stats_cache[buff_id] = buffed_stats
+
             cached_buffed_stats = buffed_stats
+
         buffed_stats = cached_buffed_stats
+        normal_hit_damage: float = _calculate_hit_damage(
+            resolved_stats=buffed_stats,
+            hit_event=hit_event,
+            is_boss=False,
+        )
+        boss_hit_damage: float = _calculate_hit_damage(
+            resolved_stats=buffed_stats,
+            hit_event=hit_event,
+            is_boss=True,
+        )
+        normal_damage += normal_hit_damage
+        boss_damage += boss_hit_damage
 
-        # 인라인된 데미지 계산 (함수 호출 오버헤드 제거)
-        multiplier: float = hit_event.multiplier
-        attack_power: float = buffed_stats[_ATTACK]
-        attack_power *= 1.0 + (buffed_stats[_FINAL_ATTACK_PERCENT] * 0.01)
-
-        # 치명타 기대 배율 계산
-        crit_rate: float = buffed_stats[_CRIT_RATE_PERCENT]
-        if crit_rate > 100.0:
-            crit_rate = 100.0
-
-        crit_damage: float = buffed_stats[_CRIT_DAMAGE_PERCENT]
-        crit_bonus_ratio: float = (crit_damage - 100.0) * 0.01
-        skill_damage_mult: float = 1.0 + (buffed_stats[_SKILL_DAMAGE_PERCENT] * 0.01)
-        crit_mult: float = 1.0 + ((crit_rate * 0.01) * crit_bonus_ratio)
-        base_damage: float = attack_power * multiplier * crit_mult * skill_damage_mult
-
-        # 보스 데미지: 보스 공격력% 추가 반영
-        boss_attack_mult: float = 1.0 + (buffed_stats[_BOSS_ATTACK_PERCENT] * 0.01)
-        total_boss_damage += base_damage * boss_attack_mult
-        total_normal_damage += base_damage
-
-    # 세그먼트별 비타격 전투력 배수 시간가중 평균 누적
+    # 세그먼트별 생존/획득 배수 시간가중 평균 계산
     weighted_boss_multiplier_sum: float = 0.0
     weighted_normal_multiplier_sum: float = 0.0
     timeline_segment: TimelineSegment
@@ -1525,22 +2423,22 @@ def evaluate_calculator_power(
         segment_stats: dict[StatKey, float] | None = buff_stats_cache.get(seg_buff_id)
         if segment_stats is None:
             segment_stats = base_values.copy()
+            active_buff: BuffWindow
             for active_buff in seg_buffs:
                 segment_stats[active_buff.stat_key] = (
                     segment_stats[active_buff.stat_key] + active_buff.value
                 )
+
             buff_stats_cache[seg_buff_id] = segment_stats
 
-        # 보스 전투력용 생존 배수 계산
-        hp_value: float = segment_stats[_HP]
-        dodge_value: float = segment_stats[_DODGE_PERCENT]
-        resist_value: float = segment_stats[_RESIST_PERCENT]
-        potion_heal_percent_value: float = segment_stats[_POTION_HEAL_PERCENT]
+        hp_value: float = segment_stats[StatKey.HP]
+        dodge_value: float = segment_stats[StatKey.DODGE_PERCENT]
+        resist_value: float = segment_stats[StatKey.RESIST_PERCENT]
+        potion_heal_percent_value: float = segment_stats[StatKey.POTION_HEAL_PERCENT]
         dodge_denominator: float = 1.0 - (dodge_value * 0.01)
         if dodge_denominator < 0.01:
             dodge_denominator = 0.01
 
-        # 음수 입력 방지
         resist_multiplier: float = 1.0 + (resist_value * 0.01)
         if resist_multiplier < 0.01:
             resist_multiplier = 0.01
@@ -1553,40 +2451,71 @@ def evaluate_calculator_power(
             max(potion_heal_value, 0.0) / _BOSS_POTION_FACTOR_DIVISOR
         )
 
-        # 체력과 포션의 역할을 분리한 보스 생존 배수 계산 블록
-        boss_multiplier: float = hp_factor_input**_BOSS_HP_FACTOR_EXPONENT
-        boss_multiplier *= potion_factor_input**_BOSS_POTION_FACTOR_EXPONENT
-        boss_multiplier *= (1.0 / dodge_denominator) ** _BOSS_DODGE_FACTOR_EXPONENT
-        boss_multiplier *= resist_multiplier**_BOSS_RESIST_FACTOR_EXPONENT
-        weighted_boss_multiplier_sum += boss_multiplier * timeline_segment.duration
+        # 체력과 포션의 역할을 분리한 보스 생존 배수 계산
+        segment_boss_multiplier: float = hp_factor_input**_BOSS_HP_FACTOR_EXPONENT
+        segment_boss_multiplier *= potion_factor_input**_BOSS_POTION_FACTOR_EXPONENT
+        segment_boss_multiplier *= (
+            1.0 / dodge_denominator
+        ) ** _BOSS_DODGE_FACTOR_EXPONENT
+        segment_boss_multiplier *= resist_multiplier**_BOSS_RESIST_FACTOR_EXPONENT
+        weighted_boss_multiplier_sum += (
+            segment_boss_multiplier * timeline_segment.duration
+        )
 
-        # 일반 전투력용 획득 배수 계산
-        drop_rate_value: float = segment_stats[_DROP_RATE_PERCENT]
-        exp_value: float = segment_stats[_EXP_PERCENT]
+        # 드랍률과 경험치 기반 일반 전투력 배수 계산
+        drop_rate_value: float = segment_stats[StatKey.DROP_RATE_PERCENT]
+        exp_value: float = segment_stats[StatKey.EXP_PERCENT]
+        segment_normal_multiplier: float = 1.0 + (drop_rate_value * 0.01)
+        segment_normal_multiplier *= 1.0 + (exp_value * 0.01)
+        weighted_normal_multiplier_sum += (
+            segment_normal_multiplier * timeline_segment.duration
+        )
 
-        normal_multiplier: float = 1.0 + (drop_rate_value * 0.01)
-        normal_multiplier *= 1.0 + (exp_value * 0.01)
-        weighted_normal_multiplier_sum += normal_multiplier * timeline_segment.duration
+    # 내장 전투력 공식 평가용 계수 계산
+    boss_multiplier: float = weighted_boss_multiplier_sum / TIMELINE_SECONDS
+    normal_multiplier: float = weighted_normal_multiplier_sum / TIMELINE_SECONDS
 
-    # 60초 기준 평균 배수로 최종 전투력 계산
-    averaged_boss_multiplier: float = weighted_boss_multiplier_sum / TIMELINE_SECONDS
-    averaged_normal_multiplier: float = (
-        weighted_normal_multiplier_sum / TIMELINE_SECONDS
-    )
-    boss_power: float = total_boss_damage * averaged_boss_multiplier
-    normal_power: float = total_normal_damage * averaged_normal_multiplier
-
-    official_power: float = (total_boss_damage + total_normal_damage) * 0.5
-
-    metrics: dict[PowerMetric, float] = {
-        PowerMetric.BOSS_DAMAGE: total_boss_damage,
-        PowerMetric.NORMAL_DAMAGE: total_normal_damage,
-        PowerMetric.BOSS: boss_power,
-        PowerMetric.NORMAL: normal_power,
-        PowerMetric.OFFICIAL: official_power,
+    # 최종 스탯과 내장 공식 평가 입력값 구성
+    formula_variables: dict[str, float | int | bool] = {
+        stat_key.value: resolved_stats.values[stat_key]
+        for stat_key in OVERALL_STAT_ORDER
     }
+    formula_variables[_POWER_FORMULA_LEVEL_NAME] = artifacts.level
+    formula_variables[_POWER_FORMULA_BOSS_DAMAGE_NAME] = boss_damage
+    formula_variables[_POWER_FORMULA_NORMAL_DAMAGE_NAME] = normal_damage
+    formula_variables[_POWER_FORMULA_BOSS_MULTIPLIER_NAME] = boss_multiplier
+    formula_variables[_POWER_FORMULA_NORMAL_MULTIPLIER_NAME] = normal_multiplier
+    return formula_variables
 
-    return PowerSummary(metrics=metrics)
+
+def evaluate_single_metric(
+    artifacts: TimelineEvaluationArtifacts,
+    resolved_stats: FinalStats,
+    target_formula_id: str,
+    compiled_custom_formula: CompiledPowerFormula | None,
+) -> float:
+    """선택된 단일 전투력 공식만 평가하여 값 반환"""
+
+    # 공식 변수 선행 구성 후 대상 공식 하나만 직접 평가
+    formula_variables: dict[str, float | int | bool] = _build_power_formula_variables(
+        artifacts,
+        resolved_stats,
+    )
+
+    if target_formula_id in DISPLAY_POWER_METRIC_IDS:
+        power_metric: PowerMetric = PowerMetric(target_formula_id)
+        return _evaluate_compiled_power_formula(
+            _POWER_FORMULA_NODES[power_metric],
+            formula_variables,
+        )
+
+    if compiled_custom_formula is None:
+        raise KeyError(target_formula_id)
+
+    return _evaluate_compiled_power_formula(
+        compiled_custom_formula,
+        formula_variables,
+    )
 
 
 def build_calculator_context(
@@ -1595,12 +2524,13 @@ def build_calculator_context(
     skills_info: dict[str, "SkillUsageSetting"],
     delay_ms: int,
     base_stats: BaseStats,
+    target_formula_id: str,
+    custom_formulas: tuple[CustomPowerFormula, ...],
 ) -> EvaluationContext:
     """현재 계산기 입력 기준 평가 컨텍스트 구성"""
 
+    # 기준 원시 스탯 resolve 및 기준 스킬속도 타임라인 구성
     baseline_final_stats: FinalStats = base_stats.resolve()
-
-    # 현재 스킬속도 기준 타임라인 구성
     timeline: Timeline = build_calculator_timeline(
         server_spec=server_spec,
         preset=preset,
@@ -1615,34 +2545,48 @@ def build_calculator_context(
         )
     )
 
-    # 기준 타임라인 아티팩트와 기준 스탯으로 기준 전투력 계산
-    baseline_summary: PowerSummary = evaluate_calculator_power(
+    # 선택된 사용자 정의 공식만 1회 컴파일하는
+    compiled_custom_formula: CompiledPowerFormula | None = None
+    if target_formula_id not in DISPLAY_POWER_METRIC_IDS:
+        custom_formula: CustomPowerFormula
+        for custom_formula in custom_formulas:
+            if custom_formula.id != target_formula_id:
+                continue
+
+            compiled_custom_formula = compile_custom_formula(custom_formula.formula)
+            break
+
+    # 선택 공식 기준 현재 전투력 1회 계산
+    baseline_power: float = evaluate_single_metric(
         artifacts=timeline_artifacts,
         resolved_stats=baseline_final_stats,
+        target_formula_id=target_formula_id,
+        compiled_custom_formula=compiled_custom_formula,
     )
 
     return EvaluationContext(
         timeline_artifacts=timeline_artifacts,
         baseline_base_stats=base_stats,
         baseline_final_stats=baseline_final_stats,
-        baseline_summary=baseline_summary,
+        baseline_power=baseline_power,
         server_spec=server_spec,
         preset=preset,
         skills_info=skills_info,
         delay_ms=delay_ms,
+        compiled_custom_formula=compiled_custom_formula,
     )
 
 
-def evaluate_stat_changes(
+def _resolve_stat_changes_with_timeline(
     context: EvaluationContext,
     stat_changes: dict[StatKey, float],
-) -> PowerSummary:
-    """베이스 스탯 변화량 반영 후 전투력 계산"""
+) -> tuple[FinalStats, TimelineEvaluationArtifacts]:
+    """베이스 스탯 변화량 반영 후 최종 스탯과 평가 타임라인 구성"""
 
-    # 기준 입력의 내부 원시 스탯 기준 변화량 적용 블록
+    # 기준 입력의 내부 원시 스탯 변화량 적용
     resolved_stats: FinalStats = context.baseline_base_stats.resolve(stat_changes)
 
-    # 스킬속도 변화 여부 기준 타임라인 재사용 분기 블록
+    # 스킬속도 변경 여부에 따라 타임라인 재사용 또는 재구성
     timeline_artifacts: TimelineEvaluationArtifacts = context.timeline_artifacts
     baseline_skill_speed: float = float(
         context.baseline_final_stats.values[StatKey.SKILL_SPEED_PERCENT]
@@ -1651,8 +2595,6 @@ def evaluate_stat_changes(
         resolved_stats.values[StatKey.SKILL_SPEED_PERCENT]
     )
     if resolved_skill_speed != baseline_skill_speed:
-
-        # 변경된 스킬속도 기준 타임라인 재구성 블록
         updated_timeline: Timeline = build_calculator_timeline(
             server_spec=context.server_spec,
             preset=context.preset,
@@ -1665,45 +2607,56 @@ def evaluate_stat_changes(
             level=context.timeline_artifacts.level,
         )
 
-    # 기준 타임라인 아티팩트 재사용 기반 전투력 재평가
-    summary: PowerSummary = evaluate_calculator_power(
-        artifacts=timeline_artifacts,
-        resolved_stats=resolved_stats,
-    )
-
-    return summary
+    return resolved_stats, timeline_artifacts
 
 
 def evaluate_single_stat_delta(
     context: EvaluationContext,
     stat_key: StatKey,
     amount: float,
-) -> dict[PowerMetric, float]:
-    """단일 스탯 변화량 기준 전투력 차이 계산"""
+    target_formula_id: str,
+) -> float:
+    """단일 스탯 변화량 기준 선택 공식 전투력 차이 계산"""
 
-    # 단일 스탯 변화량 맵 구성
+    # 단일 스탯 변화량과 선택 공식 기준 증감량 계산
     stat_changes: dict[StatKey, float] = {stat_key: amount}
-    target_summary: PowerSummary = evaluate_stat_changes(
-        context=context,
-        stat_changes=stat_changes,
+    resolved_stats: FinalStats
+    timeline_artifacts: TimelineEvaluationArtifacts
+    resolved_stats, timeline_artifacts = _resolve_stat_changes_with_timeline(
+        context,
+        stat_changes,
+    )
+    target_value: float = evaluate_single_metric(
+        artifacts=timeline_artifacts,
+        resolved_stats=resolved_stats,
+        target_formula_id=target_formula_id,
+        compiled_custom_formula=context.compiled_custom_formula,
     )
 
-    return calculate_power_deltas(context.baseline_summary, target_summary)
+    return target_value - context.baseline_power
 
 
 def evaluate_arbitrary_stat_delta(
     context: EvaluationContext,
     stat_changes: dict[StatKey, float],
-) -> dict[PowerMetric, float]:
-    """여러 스탯 변화량 기준 전투력 차이 계산"""
+    target_formula_id: str,
+) -> float:
+    """여러 스탯 변화량 기준 선택 공식 전투력 차이 계산"""
 
-    # 다중 스탯 변화량 전투력 계산
-    target_summary: PowerSummary = evaluate_stat_changes(
-        context=context,
-        stat_changes=stat_changes,
+    # 변화 적용 후 선택 공식만 평가하여 단일 delta 맵 반환
+    resolved_stats: FinalStats
+    timeline_artifacts: TimelineEvaluationArtifacts
+    resolved_stats, timeline_artifacts = _resolve_stat_changes_with_timeline(
+        context,
+        stat_changes,
     )
-
-    return calculate_power_deltas(context.baseline_summary, target_summary)
+    target_value: float = evaluate_single_metric(
+        artifacts=timeline_artifacts,
+        resolved_stats=resolved_stats,
+        target_formula_id=target_formula_id,
+        compiled_custom_formula=context.compiled_custom_formula,
+    )
+    return target_value - context.baseline_power
 
 
 def extract_skill_level_effects(
@@ -1757,7 +2710,7 @@ def build_skill_effect_maps(
 
 def evaluate_level_up_delta(
     context: EvaluationContext,
-    target_metric: PowerMetric,
+    target_formula_id: str,
 ) -> LevelUpEvaluation:
     """레벨 1업 시 최적 스탯 분배 기준 전투력 차이 계산"""
 
@@ -1768,10 +2721,7 @@ def evaluate_level_up_delta(
         StatKey.VITALITY: 0,
         StatKey.LUCK: 0,
     }
-    best_deltas: dict[PowerMetric, float] = {
-        power_metric: 0.0 for power_metric in DISPLAY_POWER_METRICS
-    }
-    best_metric_delta: float = 0.0
+    best_delta: float | None = None
     # 0~5 -> 6
     for strength in range(6):
         for dexterity in range(6 - strength):
@@ -1784,26 +2734,40 @@ def evaluate_level_up_delta(
                     StatKey.VITALITY: float(vitality),
                     StatKey.LUCK: float(luck),
                 }
-                deltas: dict[PowerMetric, float] = evaluate_arbitrary_stat_delta(
+                metric_delta: float = evaluate_arbitrary_stat_delta(
                     context=context,
                     stat_changes=stat_changes,
+                    target_formula_id=target_formula_id,
                 )
-                metric_delta: float = deltas[target_metric]
-                if metric_delta <= best_metric_delta:
+
+                # 첫 후보 시드 후 최대 delta만 유지하는
+                if best_delta is None:
+                    best_distribution = {
+                        StatKey.STR: strength,
+                        StatKey.DEXTERITY: dexterity,
+                        StatKey.VITALITY: vitality,
+                        StatKey.LUCK: luck,
+                    }
+                    best_delta = metric_delta
                     continue
 
-                best_metric_delta = metric_delta
+                if metric_delta <= best_delta:
+                    continue
+
                 best_distribution = {
                     StatKey.STR: strength,
                     StatKey.DEXTERITY: dexterity,
                     StatKey.VITALITY: vitality,
                     StatKey.LUCK: luck,
                 }
-                best_deltas = deltas
+                best_delta = metric_delta
+
+    # 분배 조합이 항상 존재하는 탐색 결과 보장
+    assert best_delta is not None
 
     return LevelUpEvaluation(
         stat_distribution=best_distribution,
-        deltas=best_deltas,
+        delta=best_delta,
     )
 
 
@@ -1824,7 +2788,7 @@ def evaluate_next_realm_delta(
     context: EvaluationContext,
     current_realm: RealmTier,
     level: int,
-    target_metric: PowerMetric,
+    target_formula_id: str,
 ) -> RealmAdvanceEvaluation | None:
     """현재 레벨 기준 다음 경지 상승 효율 계산"""
 
@@ -1843,10 +2807,7 @@ def evaluate_next_realm_delta(
 
     # 추가 단전 포인트 최적 분배 탐색
     best_distribution: tuple[int, int, int] = (0, 0, 0)
-    best_deltas: dict[PowerMetric, float] = {
-        power_metric: 0.0 for power_metric in DISPLAY_POWER_METRICS
-    }
-    best_metric_delta: float = 0.0
+    best_delta: float | None = None
     for upper in range(extra_points + 1):
         for middle in range(extra_points - upper + 1):
             lower: int = extra_points - upper - middle
@@ -1857,22 +2818,31 @@ def evaluate_next_realm_delta(
                 StatKey.DROP_RATE_PERCENT: float(lower * 1.5),
                 StatKey.EXP_PERCENT: float(lower * 0.5),
             }
-            deltas: dict[PowerMetric, float] = evaluate_arbitrary_stat_delta(
+            metric_delta: float = evaluate_arbitrary_stat_delta(
                 context=context,
                 stat_changes=stat_changes,
+                target_formula_id=target_formula_id,
             )
-            metric_delta: float = deltas[target_metric]
-            if metric_delta <= best_metric_delta:
+
+            # 첫 후보 시드 후 최대 delta만 유지하는
+            if best_delta is None:
+                best_distribution = (upper, middle, lower)
+                best_delta = metric_delta
                 continue
 
-            best_metric_delta = metric_delta
+            if metric_delta <= best_delta:
+                continue
+
             best_distribution = (upper, middle, lower)
-            best_deltas = deltas
+            best_delta = metric_delta
+
+    # 단전 분배 조합이 항상 존재하는 탐색 결과 보장
+    assert best_delta is not None
 
     return RealmAdvanceEvaluation(
         target_realm=next_realm,
         danjeon_distribution=best_distribution,
-        deltas=best_deltas,
+        delta=best_delta,
     )
 
 
@@ -1881,25 +2851,17 @@ def evaluate_scroll_upgrade_deltas(
     preset: "MacroPreset",
     skills_info: dict[str, "SkillUsageSetting"],
     delay_ms: int,
-    base_stats: BaseStats,
+    baseline_context: EvaluationContext,
+    target_formula_id: str,
 ) -> list[ScrollUpgradeEvaluation]:
     """각 무공비급 1레벨 상승 시 전투력 차이 계산"""
-
-    # 현재 레벨 기준 기준 전투력 컨텍스트 구성
-    baseline_context: EvaluationContext = build_calculator_context(
-        server_spec=server_spec,
-        preset=preset,
-        skills_info=skills_info,
-        delay_ms=delay_ms,
-        base_stats=base_stats,
-    )
 
     # 현재 프리셋 장착 순서 기준 계산 대상 무공비급 목록 구성
     equipped_scroll_ids: list[str] = []
     seen_scroll_ids: set[str] = set()
     scroll_id: str
     for scroll_id in preset.skills.equipped_scrolls:
-        # 빈 슬롯과 중복 저장 무공비급 제외
+        # 빈 슬롯과 중복 무공비급 제외
         if not scroll_id or scroll_id in seen_scroll_ids:
             continue
 
@@ -1910,35 +2872,47 @@ def evaluate_scroll_upgrade_deltas(
     evaluations: list[ScrollUpgradeEvaluation] = []
     scroll_def: "ScrollDef"
     for scroll_id in equipped_scroll_ids:
-        # 현재 장착 무공비급 정의 조회
+        # 현재 장착 무공비급 정의와 레벨 조회
         scroll_def = server_spec.skill_registry.get_scroll(scroll_id)
         current_level: int = preset.info.get_scroll_level(scroll_def.id)
         if current_level >= server_spec.max_skill_level:
             continue
 
-        # 현재 프리셋 레벨을 일시적으로 올려 상승 후 전투력 계산
+        # 레벨을 일시적으로 1 올린 상태의 타임라인 재계산
         preset.info.set_scroll_level(scroll_def.id, current_level + 1)
         try:
-            upgraded_context: EvaluationContext = build_calculator_context(
+            upgraded_timeline: Timeline = build_calculator_timeline(
                 server_spec=server_spec,
                 preset=preset,
                 skills_info=skills_info,
                 delay_ms=delay_ms,
-                base_stats=base_stats,
+                cooltime_reduction=baseline_context.baseline_final_stats.values[
+                    StatKey.SKILL_SPEED_PERCENT
+                ],
+            )
+            upgraded_timeline_artifacts: TimelineEvaluationArtifacts = (
+                _build_timeline_evaluation_artifacts(
+                    upgraded_timeline,
+                    level=baseline_context.timeline_artifacts.level,
+                )
             )
 
         finally:
             preset.info.set_scroll_level(scroll_def.id, current_level)
 
+        # 선택 공식 기준 단일 전투력 증감량만 계산
+        target_value: float = evaluate_single_metric(
+            artifacts=upgraded_timeline_artifacts,
+            resolved_stats=baseline_context.baseline_final_stats,
+            target_formula_id=target_formula_id,
+            compiled_custom_formula=baseline_context.compiled_custom_formula,
+        )
         evaluations.append(
             ScrollUpgradeEvaluation(
                 scroll_id=scroll_def.id,
                 scroll_name=scroll_def.name,
                 next_level=current_level + 1,
-                deltas=calculate_power_deltas(
-                    baseline_summary=baseline_context.baseline_summary,
-                    target_summary=upgraded_context.baseline_summary,
-                ),
+                delta=(target_value - baseline_context.baseline_power),
             )
         )
 
@@ -1968,7 +2942,7 @@ def build_base_state(
         is_add=False,
     )
 
-    # 현재 선택 제거 후 미세 음수 정규화 블록
+    # 현재 선택 제거 후 미세 음수 정규화
     normalized_base_without_selection: dict[StatKey, float] = (
         _normalize_inverse_stat_map(base_without_selection_raw.to_stat_map())
     )
@@ -2043,7 +3017,7 @@ def _build_distribution_search_root(
 
     current_state: DistributionState = calculator_input.distribution
     if current_state.is_locked:
-        # 잠금 상태 단일 노드 구성 블록
+        # 잠금 상태 단일 노드 구성
         used_points: int = (
             current_state.strength
             + current_state.dexterity
@@ -2063,7 +3037,7 @@ def _build_distribution_search_root(
             use_reset=current_state.use_reset,
         )
 
-    # 리셋 여부 기반 탐색 경계 구성 블록
+    # 리셋 여부 기반 탐색 경계 구성
     max_points: int = calculator_input.level * 5
     strength_min: int = 0 if current_state.use_reset else current_state.strength
     dexterity_min: int = 0 if current_state.use_reset else current_state.dexterity
@@ -2088,7 +3062,7 @@ def _is_distribution_search_range_feasible(
 ) -> bool:
     """스탯 분배 범위 실현 가능 여부 확인"""
 
-    # 최소 포인트 합 검증 블록
+    # 최소 포인트 합 검증
     minimum_allocated_points: int = (
         distribution_range.strength_min
         + distribution_range.dexterity_min
@@ -2105,7 +3079,7 @@ def _is_leaf_distribution_search_range(
 ) -> bool:
     """스탯 분배 범위 리프 여부 확인"""
 
-    # 각 축 단일값 여부 확인 블록
+    # 각 축 단일값 여부 확인
     return (
         distribution_range.strength_min == distribution_range.strength_max
         and distribution_range.dexterity_min == distribution_range.dexterity_max
@@ -2118,7 +3092,7 @@ def _build_leaf_distribution_state(
 ) -> DistributionState:
     """리프 범위의 실제 스탯 분배 상태 구성"""
 
-    # 남은 포인트 기반 행운 계산 블록
+    # 남은 포인트 기반 행운 계산
     luck: int = distribution_range.target_points - (
         distribution_range.strength_min
         + distribution_range.dexterity_min
@@ -2139,7 +3113,7 @@ def _build_optimistic_distribution_state(
 ) -> DistributionState:
     """범위 노드 상계 계산용 낙관 스탯 분배 구성"""
 
-    # 각 축 개별 최대치 계산 블록
+    # 각 축 개별 최대치 계산
     max_strength: int = min(
         distribution_range.strength_max,
         distribution_range.target_points
@@ -2181,7 +3155,7 @@ def _split_distribution_search_range(
 ) -> tuple[DistributionSearchRange, DistributionSearchRange]:
     """최대 폭 축 기준 스탯 분배 범위 분할"""
 
-    # 축별 폭 계산 블록
+    # 축별 폭 계산
     strength_span: int = (
         distribution_range.strength_max - distribution_range.strength_min
     )
@@ -2192,7 +3166,7 @@ def _split_distribution_search_range(
         distribution_range.vitality_max - distribution_range.vitality_min
     )
 
-    # 힘 축 우선 분할 블록
+    # 힘 축 우선 분할
     if strength_span >= dexterity_span and strength_span >= vitality_span:
         midpoint: int = (
             distribution_range.strength_min + distribution_range.strength_max
@@ -2224,7 +3198,7 @@ def _split_distribution_search_range(
             ),
         )
 
-    # 민첩 축 우선 분할 블록
+    # 민첩 축 우선 분할
     if dexterity_span >= vitality_span:
         midpoint: int = (
             distribution_range.dexterity_min + distribution_range.dexterity_max
@@ -2256,7 +3230,7 @@ def _split_distribution_search_range(
             ),
         )
 
-    # 생명력 축 우선 분할 블록
+    # 생명력 축 우선 분할
     midpoint: int = (
         distribution_range.vitality_min + distribution_range.vitality_max
     ) // 2
@@ -2360,7 +3334,7 @@ def _build_talisman_candidates(
     if not owned_talismans:
         return [[]]
 
-    # 동일 이름 제거 기반 후보 이름 구성 블록
+    # 동일 이름 제거 기반 후보 이름 구성
     seen_names: set[str] = set()
     owned_names: list[str] = []
     owned_talisman: OwnedTalisman
@@ -2403,7 +3377,7 @@ def _build_contribution_signature(
 ) -> tuple[tuple[str, float], ...]:
     """기여 정규화 시그니처 구성"""
 
-    # 0이 아닌 기여만 고정 순서로 직렬화 블록
+    # 0이 아닌 기여만 고정 순서로 직렬화
     ordered_items: list[tuple[str, float]] = sorted(
         (
             stat_key.value,
@@ -2421,7 +3395,7 @@ def _contribution_dominates(
 ) -> bool:
     """좌측 기여의 우월 관계 확인"""
 
-    # 비교 대상 스탯 키 집합 구성 블록
+    # 비교 대상 스탯 키 집합 구성
     target_stat_keys: set[StatKey] = set(left_contribution.values.keys()) | set(
         right_contribution.values.keys()
     )
@@ -2444,7 +3418,7 @@ def _prune_contribution_entries(
 ) -> list[tuple[EntryPayload, Contribution]]:
     """중복 및 지배 후보 제거"""
 
-    # 완전 동일 기여 제거 블록
+    # 완전 동일 기여 제거
     signature_to_entry: dict[
         tuple[tuple[str, float], ...], tuple[EntryPayload, Contribution]
     ] = {}
@@ -2459,7 +3433,7 @@ def _prune_contribution_entries(
 
         signature_to_entry[signature] = (payload, contribution)
 
-    # 지배 후보 제거 블록
+    # 지배 후보 제거
     unique_entries: list[tuple[EntryPayload, Contribution]] = list(
         signature_to_entry.values()
     )
@@ -2495,7 +3469,7 @@ def _build_distribution_cache_key(
 ) -> tuple[int, int, int, int]:
     """스탯 분배 평가 캐시 키 구성"""
 
-    # 4종 분배값 튜플화 블록
+    # 4종 분배값 튜플화
     return (
         distribution_state.strength,
         distribution_state.dexterity,
@@ -2516,11 +3490,11 @@ def _evaluate_distribution_selection(
     title_entries: list[tuple[str | None, Contribution]],
     talisman_entries: list[tuple[tuple[str, ...], Contribution]],
     timeline_cache: dict[float, TimelineEvaluationArtifacts],
-    target_metric: PowerMetric,
+    target_formula_id: str,
 ) -> OptimizationResult | None:
     """고정 스탯 분배 기준 내부 선택지 최적화"""
 
-    # 분배 기여 사전 계산 블록
+    # 분배 기여 사전 계산
     distribution_contribution: Contribution = build_distribution_contribution(
         distribution_state
     )
@@ -2536,7 +3510,7 @@ def _evaluate_distribution_selection(
             _sk, 0.0
         )
 
-    # 기준 타임라인 조회 (기울기 계산용)
+    # 기준 분배 스킬속도에 맞는 타임라인 아티팩트 확보
     dist_resolved: FinalStats = _fast_resolve(dist_base_stats)
     dist_skill_speed: float = float(dist_resolved.values[_FK_SKILL_SPEED_PERCENT])
     dist_speed_key: float = round(dist_skill_speed, 2)
@@ -2574,7 +3548,8 @@ def _evaluate_distribution_selection(
         gradient: dict[StatKey, float] = _compute_power_gradient(
             dist_timeline,
             dist_base_stats,
-            target_metric,
+            target_formula_id,
+            context.compiled_custom_formula,
             frozenset(relevant_stats),
         )
 
@@ -2611,7 +3586,7 @@ def _evaluate_distribution_selection(
             equipped_talisman_names: tuple[str, ...]
             talisman_contribution: Contribution
             for equipped_talisman_names, talisman_contribution in effective_talisman:
-                # 선택지 기여 병합 블록 (인라인)
+                # 선택지 기여 병합 (인라인)
                 merged_values: dict[StatKey, float] = (
                     distribution_contribution.values.copy()
                 )
@@ -2630,7 +3605,6 @@ def _evaluate_distribution_selection(
                     changed_stats[_sk] = _base_val + merged_values.get(_sk, 0.0)
 
                 optimized_resolved_stats: FinalStats = _fast_resolve(changed_stats)
-
                 candidate_skill_speed: float = float(
                     optimized_resolved_stats.values[_FK_SKILL_SPEED_PERCENT]
                 )
@@ -2652,15 +3626,14 @@ def _evaluate_distribution_selection(
                     )
                     timeline_cache[speed_cache_key] = cached_timeline_artifacts
 
-                optimized_summary: PowerSummary = evaluate_calculator_power(
+                target_value: float = evaluate_single_metric(
                     artifacts=cached_timeline_artifacts,
                     resolved_stats=optimized_resolved_stats,
+                    target_formula_id=target_formula_id,
+                    compiled_custom_formula=context.compiled_custom_formula,
                 )
-                deltas: dict[PowerMetric, float] = calculate_power_deltas(
-                    context.baseline_summary,
-                    optimized_summary,
-                )
-                metric_delta: float = deltas[target_metric]
+                metric_delta: float = target_value - context.baseline_power
+
                 if best_metric_delta is not None and metric_delta <= best_metric_delta:
                     continue
 
@@ -2673,7 +3646,7 @@ def _evaluate_distribution_selection(
                         equipped_title_name=equipped_title_name,
                         equipped_talisman_names=equipped_talisman_names,
                     ),
-                    deltas=deltas,
+                    delta=metric_delta,
                     base_stats=optimized_base_stats,
                 )
 
@@ -2690,7 +3663,7 @@ def _search_subtree(
     danjeon_entries: list[tuple[DanjeonState, Contribution]],
     title_entries: list[tuple[str | None, Contribution]],
     talisman_entries: list[tuple[tuple[str, ...], Contribution]],
-    target_metric: PowerMetric,
+    target_formula_id: str,
     sub_range: DistributionSearchRange,
     baseline_timeline_entry: tuple[float, TimelineEvaluationArtifacts],
 ) -> OptimizationResult | None:
@@ -2720,7 +3693,7 @@ def _search_subtree(
         title_entries=title_entries,
         talisman_entries=talisman_entries,
         timeline_cache=timeline_cache,
-        target_metric=target_metric,
+        target_formula_id=target_formula_id,
     )
     if root_result is None:
         return None
@@ -2729,7 +3702,7 @@ def _search_subtree(
 
     # 상계 우선 탐색 큐 초기화
     search_queue: list[tuple[float, int, DistributionSearchRange]] = []
-    root_upper_bound: float = root_result.deltas[target_metric]
+    root_upper_bound: float = root_result.delta
     heapq.heappush(search_queue, (-root_upper_bound, 0, sub_range))
 
     best_result: OptimizationResult | None = None
@@ -2768,13 +3741,13 @@ def _search_subtree(
                     title_entries=title_entries,
                     talisman_entries=talisman_entries,
                     timeline_cache=timeline_cache,
-                    target_metric=target_metric,
+                    target_formula_id=target_formula_id,
                 )
                 if leaf_result is None:
                     continue
                 distribution_result_cache[leaf_cache_key] = leaf_result
 
-            leaf_metric_delta: float = leaf_result.deltas[target_metric]
+            leaf_metric_delta: float = leaf_result.delta
             if best_metric_delta is not None and leaf_metric_delta <= best_metric_delta:
                 continue
 
@@ -2812,13 +3785,13 @@ def _search_subtree(
                     title_entries=title_entries,
                     talisman_entries=talisman_entries,
                     timeline_cache=timeline_cache,
-                    target_metric=target_metric,
+                    target_formula_id=target_formula_id,
                 )
                 if optimistic_result is None:
                     continue
                 distribution_result_cache[optimistic_cache_key] = optimistic_result
 
-            child_upper_bound: float = optimistic_result.deltas[target_metric]
+            child_upper_bound: float = optimistic_result.delta
             if best_metric_delta is not None and child_upper_bound <= best_metric_delta:
                 continue
 
@@ -2875,13 +3848,13 @@ def optimize_current_selection(
     context: EvaluationContext,
     base_stats: BaseStats,
     calculator_input: CalculatorPresetInput,
-    target_metric: PowerMetric,
+    target_formula_id: str,
     progress_callback: Callable[[str, int], None] | None = None,
     cancel_checker: Callable[[], None] | None = None,
 ) -> OptimizationResult | None:
     """현재 선택 조합 최적화"""
 
-    # 최적화 진입 직전 취소와 진행 상태 확인 블록
+    # 최적화 진입 직전 취소와 진행 상태 확인
     if cancel_checker is not None:
         cancel_checker()
 
@@ -2901,19 +3874,19 @@ def optimize_current_selection(
         calculator_input=calculator_input,
     )
 
-    # 스탯 분배 탐색 루트 구성 블록
+    # 스탯 분배 탐색 루트 구성
     distribution_root: DistributionSearchRange = _build_distribution_search_root(
         calculator_input
     )
     if not _is_distribution_search_range_feasible(distribution_root):
         return None
 
-    # 각 내부 선택지 후보 목록 구성 블록
+    # 각 내부 선택지 후보 목록 구성
     danjeon_candidates: list[DanjeonState] = _build_danjeon_candidates(calculator_input)
     title_candidates: list[str | None] = _build_title_candidates(calculator_input)
     talisman_candidates: list[list[str]] = _build_talisman_candidates(calculator_input)
 
-    # 보유 칭호/부적 사전 계산 블록
+    # 보유 칭호/부적 사전 계산
     owned_title_map: dict[str, OwnedTitle] = _build_owned_title_map(
         calculator_input.owned_titles
     )
@@ -2921,7 +3894,7 @@ def optimize_current_selection(
         _build_owned_talisman_stat_map(calculator_input.owned_talismans)
     )
 
-    # 내부 선택지 기여 사전 계산 및 정리 블록
+    # 내부 선택지 기여 사전 계산 및 정리
     danjeon_entries: list[tuple[DanjeonState, Contribution]] = (
         _prune_contribution_entries(
             [
@@ -2954,7 +3927,7 @@ def optimize_current_selection(
         )
     )
 
-    # 스킬속도 기준 타임라인 캐시 시드
+    # 기준 스킬속도 타임라인 캐시 시드
     baseline_speed_cache_key: float = round(
         context.baseline_final_stats.values[StatKey.SKILL_SPEED_PERCENT], 2
     )
@@ -2979,7 +3952,7 @@ def optimize_current_selection(
         danjeon_entries,
         title_entries,
         talisman_entries,
-        target_metric,
+        target_formula_id,
     )
 
     # 서브 범위가 적으면 직렬 실행, 충분하면 병렬 실행
@@ -2988,7 +3961,7 @@ def optimize_current_selection(
     total_sub_ranges: int = max(1, len(sub_ranges))
     completed_sub_ranges: int = 0
 
-    # 서브 범위 준비 완료 진행 상태 반영 블록
+    # 서브 범위 준비 완료 진행 상태 반영
     if progress_callback is not None:
         progress_callback("최적화 계산 중...", 5)
 
@@ -3006,19 +3979,20 @@ def optimize_current_selection(
             completed_sub_ranges += 1
 
             if result is not None:
-                delta: float = result.deltas[target_metric]
+                # 선택 공식 ID 기준 최적 후보 갱신
+                delta: float = result.delta
                 if best_metric_delta is None or delta > best_metric_delta:
                     best_metric_delta = delta
                     best_result = result
 
-            # 직렬 탐색 진행률 반영 블록
+            # 직렬 탐색 진행률 반영
             if progress_callback is not None:
                 progress_value: int = 5 + int(
                     (completed_sub_ranges / total_sub_ranges) * 90
                 )
                 progress_callback("최적화 계산 중...", progress_value)
     else:
-        # 병렬 탐색 중 취소 응답성 확보 블록
+        # 병렬 탐색 중 취소 응답성 확보
         pool: ProcessPoolExecutor = ProcessPoolExecutor(max_workers=worker_count)
         pending_futures: set[Future[OptimizationResult | None]] = set()
         should_wait_for_pool: bool = True
@@ -3051,12 +4025,12 @@ def optimize_current_selection(
                     result: OptimizationResult | None = future.result()
                     completed_sub_ranges += 1
                     if result is not None:
-                        delta: float = result.deltas[target_metric]
+                        delta: float = result.delta
                         if best_metric_delta is None or delta > best_metric_delta:
                             best_metric_delta = delta
                             best_result = result
 
-                    # 병렬 탐색 진행률 반영 블록
+                    # 병렬 탐색 진행률 반영
                     if progress_callback is not None:
                         progress_value: int = 5 + int(
                             (completed_sub_ranges / total_sub_ranges) * 90

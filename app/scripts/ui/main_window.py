@@ -175,7 +175,7 @@ class MainWindow(QWidget):
             app_state.ui.has_pending_backup_notice = False
             self.popup_manager.show_notice(NoticeKind.DATA_FILE_BACKED_UP)
 
-        # 커스텀 무공비급 중복 정리 알림 표시 블록
+        # 커스텀 무공비급 중복 정리 알림 표시
         if app_state.ui.has_pending_custom_skill_normalized_notice:
             app_state.ui.has_pending_custom_skill_normalized_notice = False
             self.popup_manager.show_notice(NoticeKind.CUSTOM_SKILLS_NORMALIZED)
@@ -385,13 +385,13 @@ class FooterBar(QFrame):
         if self._current_mode == mode:
             return
 
-        # 현재 선택 테마 상태 갱신 블록
+        # 현재 선택 테마 상태 갱신
         self._current_mode: ThemeMode = mode
         app_state.ui.theme_mode = mode
         self._update_btn_states()
         self._apply_stylesheet()
 
-        # 테마 변경 결과 영속화 블록
+        # 테마 변경 결과 영속화
         save_data()
 
     def _apply_stylesheet(self) -> None:
@@ -421,15 +421,15 @@ class FooterBar(QFrame):
 
 
 if __name__ == "__main__":
-    # Windows frozen 멀티프로세싱 재진입 차단 블록
+    # Windows frozen 멀티프로세싱 재진입 차단
     freeze_support()
 
-    # 고해상도 스케일 정책 적용 블록
+    # 고해상도 스케일 정책 적용
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
 
-    # Qt 애플리케이션 실행 블록
+    # Qt 애플리케이션 실행
     app: QApplication = QApplication(sys.argv)
 
     window: MainWindow = MainWindow()

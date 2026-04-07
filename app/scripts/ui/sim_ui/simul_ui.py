@@ -46,6 +46,7 @@ from app.scripts.calculator_models import (
     TALISMAN_SPECS,
     TITLE_STAT_SLOT_COUNT,
     BaseStats,
+    CustomPowerFormula,
     DanjeonState,
     DistributionState,
     EquippedState,
@@ -72,7 +73,11 @@ from app.scripts.registry.resource_registry import (
     resource_registry,
 )
 from app.scripts.simulate_macro import simulate_random_from_calculator
-from app.scripts.ui.popup import NoticeKind, PopupManager
+from app.scripts.ui.popup import (
+    CustomPowerFormulaManageDialog,
+    NoticeKind,
+    PopupManager,
+)
 from app.scripts.ui.sim_ui.graph import (
     DamageGraphMode,
     DMGCanvas,
@@ -96,7 +101,6 @@ if TYPE_CHECKING:
     )
     from app.scripts.calculator_models import (
         CalculatorPresetInput,
-        PowerMetric,
         RealmTier,
         TalismanSpec,
     )
@@ -105,6 +109,38 @@ if TYPE_CHECKING:
     from app.scripts.registry.skill_registry import ScrollDef
     from app.scripts.ui.main_window import MainWindow
     from app.scripts.ui.popup import HoverCardData
+
+
+def _build_formula_label_map(
+    custom_formulas: list[CustomPowerFormula],
+) -> dict[str, str]:
+    """전역 공식 목록 기준 빌트인/커스텀 공식 ID → 표시명 맵 구성"""
+
+    # 빌트인 공식 표시명을 먼저 고정 순서로 등록
+    formula_labels: dict[str, str] = {
+        power_metric.value: POWER_METRIC_LABELS[power_metric]
+        for power_metric in DISPLAY_POWER_METRICS
+    }
+
+    # 전역 저장된 커스텀 공식 표시명을 뒤에 추가
+    custom_formula: CustomPowerFormula
+    for custom_formula in custom_formulas:
+        formula_labels[custom_formula.id] = custom_formula.name
+
+    return formula_labels
+
+
+def _build_formula_options(
+    custom_formulas: list[CustomPowerFormula],
+) -> list[str]:
+    """전역 공식 목록 기준 공식 드롭다운 순서 목록 구성"""
+
+    # 빌트인 공식 뒤에 커스텀 공식을 저장 순서대로 연결
+    formula_ids: list[str] = [
+        power_metric.value for power_metric in DISPLAY_POWER_METRICS
+    ]
+    formula_ids.extend(custom_formula.id for custom_formula in custom_formulas)
+    return formula_ids
 
 
 class SimUI:
@@ -256,24 +292,27 @@ class SimUI:
     def _start_results_calculation(self) -> None:
         """현재 페이지 유지 상태로 결과 페이지 계산 시작"""
 
-        # 중복 계산 요청 차단 블록
+        # 중복 계산 요청 차단
         if self._calc_thread is not None and self._calc_thread.isRunning():
             return
 
-        # 저장된 계산기 입력 기준 계산 인자 복원 블록
+        # 저장된 계산기 입력 기준 계산 인자 복원
         preset: MacroPreset = app_state.macro.current_preset
         calculator_input: CalculatorPresetInput = preset.info.calculator
         base_stats: BaseStats = calculator_input.base_stats
         level: int = calculator_input.level
-        selected_metric: PowerMetric = calculator_input.selected_metric
+        selected_formula_id: str = calculator_input.selected_formula_id
+        custom_formulas: tuple[CustomPowerFormula, ...] = tuple(
+            app_state.macro.custom_power_formulas
+        )
 
-        # 결과 페이지 초기 상태와 진행 오버레이 표시 블록
+        # 결과 페이지 초기 상태와 진행 오버레이 표시
         self.results_page.set_loading_state()
         self._results_overlay.show_overlay(
             "스탯 계산기 결과 준비 중...", "대기 중...", 0
         )
 
-        # 백그라운드 계산 스레드 연결 블록
+        # 백그라운드 계산 스레드 연결
         self._calc_thread = _CalculatorThread(
             server_spec=app_state.macro.current_server,
             preset=preset,
@@ -281,7 +320,8 @@ class SimUI:
             base_stats=base_stats,
             calculator_input=calculator_input,
             level=level,
-            selected_metric=selected_metric,
+            selected_formula_id=selected_formula_id,
+            custom_formulas=custom_formulas,
         )
         self._calc_thread.progress_signal.connect(self._on_results_calculation_progress)
         self._calc_thread.finished_signal.connect(self._on_results_calculation_finished)
@@ -290,18 +330,18 @@ class SimUI:
     def _cancel_results_calculation(self) -> None:
         """진행 중인 결과 계산 취소 요청"""
 
-        # 실행 중인 계산이 없으면 취소 동작 무시 블록
+        # 실행 중인 계산이 없으면 취소 동작 무시
         if self._calc_thread is None or not self._calc_thread.isRunning():
             return
 
-        # 사용자 취소 의도 즉시 반영 블록
+        # 사용자 취소 의도 즉시 반영
         self._results_overlay.set_cancelling()
         self._calc_thread.cancel()
 
     def _on_results_calculation_progress(self, message: str, value: int) -> None:
         """오버레이 진행 상태 갱신"""
 
-        # 백그라운드 계산 단계 문구와 진행률 반영 블록
+        # 백그라운드 계산 단계 문구와 진행률 반영
         self._results_overlay.update_progress(message, value)
 
     def _on_results_calculation_finished(
@@ -311,15 +351,15 @@ class SimUI:
     ) -> None:
         """백그라운드 계산 종료 후 페이지 전환 처리"""
 
-        # 완료 스레드 참조 해제와 오버레이 정리 블록
+        # 완료 스레드 참조 해제와 오버레이 정리
         self._calc_thread = None
         self._results_overlay.hide()
 
-        # 사용자 취소 요청이면 현재 페이지 유지 블록
+        # 사용자 취소 요청이면 현재 페이지 유지
         if is_cancelled:
             return
 
-        # 계산 실패 시 오류 결과 표시 후 결과 페이지 진입 블록
+        # 계산 실패 시 오류 결과 표시 후 결과 페이지 진입
         if output_rows is None:
             self.results_page.set_error_state()
             self.update_nav(2)
@@ -327,7 +367,7 @@ class SimUI:
             self.adjust_main_frame_height()
             return
 
-        # 계산 성공 결과 반영 후 결과 페이지 진입 블록
+        # 계산 성공 결과 반영 후 결과 페이지 진입
         self.results_page.set_output_rows(output_rows)
         self.update_nav(2)
         self.stacked_layout.setCurrentIndex(2)
@@ -369,14 +409,14 @@ class _CalculationOverlay(QFrame):
     ) -> None:
         super().__init__(parent)
 
-        # 부모 전체를 덮는 반투명 오버레이 기본 설정 블록
+        # 부모 전체를 덮는 반투명 오버레이 기본 설정
         self.setObjectName("calcOverlay")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setGeometry(parent.rect())
         self.hide()
         parent.installEventFilter(self)
 
-        # 오버레이 중앙 카드 구성 블록
+        # 오버레이 중앙 카드 구성
         container: QFrame = QFrame(self)
         container.setObjectName("calcOverlayCard")
         container.setFixedWidth(360)
@@ -414,7 +454,7 @@ class _CalculationOverlay(QFrame):
         self._cancel_button.setFixedHeight(40)
         self._cancel_button.clicked.connect(cancel_handler)
 
-        # 중앙 카드 내부 정렬 블록
+        # 중앙 카드 내부 정렬
         container_layout: QVBoxLayout = QVBoxLayout(container)
         container_layout.setContentsMargins(24, 24, 24, 24)
         container_layout.setSpacing(12)
@@ -427,7 +467,7 @@ class _CalculationOverlay(QFrame):
         container_layout.addWidget(self._cancel_button)
         container.setLayout(container_layout)
 
-        # 오버레이 전체 중앙 배치 블록
+        # 오버레이 전체 중앙 배치
         overlay_layout: QVBoxLayout = QVBoxLayout(self)
         overlay_layout.setContentsMargins(24, 24, 24, 24)
         overlay_layout.addStretch(1)
@@ -438,7 +478,7 @@ class _CalculationOverlay(QFrame):
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
         """부모 리사이즈 시 오버레이 영역 동기화"""
 
-        # 부모 크기 변경 시 오버레이 전체 영역 재배치 블록
+        # 부모 크기 변경 시 오버레이 전체 영역 재배치
         if watched is self.parent() and event.type() == QEvent.Type.Resize:
             parent_widget: QWidget = self.parentWidget()
             self.setGeometry(parent_widget.rect())
@@ -448,19 +488,19 @@ class _CalculationOverlay(QFrame):
     def show_overlay(self, message: str, detail: str, value: int) -> None:
         """초기 진행 상태와 함께 오버레이 표시"""
 
-        # 취소 버튼 활성화와 초기 진행 상태 반영 블록
+        # 취소 버튼 활성화와 초기 진행 상태 반영
         self._cancel_button.setEnabled(True)
         self._message_label.setText(message)
         self.update_progress(detail, value)
 
-        # 최상단 오버레이 표시 블록
+        # 최상단 오버레이 표시
         self.show()
         self.raise_()
 
     def update_progress(self, detail: str, value: int) -> None:
         """진행 문구와 진행률 갱신"""
 
-        # 진행 문구와 백분율 레이블 동기화 블록
+        # 진행 문구와 백분율 레이블 동기화
         clamped_value: int = max(0, min(100, value))
         self._detail_label.setText(detail)
         self._progress_label.setText(f"{clamped_value}%")
@@ -469,7 +509,7 @@ class _CalculationOverlay(QFrame):
     def set_cancelling(self) -> None:
         """취소 요청 직후 오버레이 상태 갱신"""
 
-        # 중복 취소 방지와 취소 진행 상태 표기 블록
+        # 중복 취소 방지와 취소 진행 상태 표기
         self._cancel_button.setEnabled(False)
         self._detail_label.setText("취소 요청 처리 중...")
 
@@ -526,9 +566,6 @@ class GraphPage(QFrame):
             delay_ms=app_state.macro.current_delay,
             base_stats=calculator_input.base_stats,
         )
-        powers: list[float] = [
-            graph_report.metrics[power_metric] for power_metric in DISPLAY_POWER_METRICS
-        ]
         analysis: list[GraphAnalysis] = list(graph_report.analysis)
         deterministic_attacks: list[GraphDamageEvent] = list(
             graph_report.deterministic_boss_attacks
@@ -536,15 +573,8 @@ class GraphPage(QFrame):
         results: list[list[GraphDamageEvent]] = [
             list(result_row) for result_row in graph_report.random_boss_attacks
         ]
-        # 전투력 카드 숫자 문자열 천 단위 구분 포맷 적용
-        str_powers: list[str] = [f"{int(power):,}" for power in powers]
-        power_titles: list[str] = [
-            POWER_METRIC_LABELS[power_metric] for power_metric in DISPLAY_POWER_METRICS
-        ]
 
-        # 전투력/분석/그래프 위젯 재생성
-        power_title: Title = Title(self, "전투력")
-        power: PowerLabels = PowerLabels(self, power_titles, str_powers)
+        # 분석/그래프 위젯 재생성
         analysis_title: Title = Title(self, "분석")
         analysis_widget: AnalysisDetails = AnalysisDetails(self, analysis)
         dpm_graph: GraphPage.DPMGraph = self.DPMGraph(self, results)
@@ -564,8 +594,6 @@ class GraphPage(QFrame):
         sub_layout.setContentsMargins(10, 10, 10, 10)
 
         # 메인 레이아웃에 최신 위젯 트리 추가
-        self.main_layout.addWidget(power_title)
-        self.main_layout.addWidget(power)
         self.main_layout.addWidget(analysis_title)
         self.main_layout.addWidget(analysis_widget)
         self.main_layout.addLayout(sub_layout)
@@ -704,7 +732,8 @@ class _CalculatorThread(QThread):
         base_stats: BaseStats,
         calculator_input: "CalculatorPresetInput",
         level: int,
-        selected_metric: "PowerMetric",
+        selected_formula_id: str,
+        custom_formulas: tuple[CustomPowerFormula, ...],
     ) -> None:
         super().__init__()
         self._server_spec = server_spec
@@ -713,33 +742,34 @@ class _CalculatorThread(QThread):
         self._base_stats = base_stats
         self._calculator_input = calculator_input
         self._level = level
-        self._selected_metric = selected_metric
+        self._selected_formula_id = selected_formula_id
+        self._custom_formulas: tuple[CustomPowerFormula, ...] = custom_formulas
         self._is_cancel_requested: bool = False
 
     def cancel(self) -> None:
         """계산 취소 요청 기록"""
 
-        # 스레드 인터럽트와 내부 취소 플래그 동시 반영 블록
+        # 스레드 인터럽트와 내부 취소 플래그 동시 반영
         self._is_cancel_requested = True
         self.requestInterruption()
 
     def _emit_progress(self, message: str, value: int) -> None:
         """진행 상태 시그널 방출"""
 
-        # 취소 여부 확인 이후 진행 상태 전파 블록
+        # 취소 여부 확인 이후 진행 상태 전파
         self._ensure_not_cancelled()
         self.progress_signal.emit(message, value)
 
     def _ensure_not_cancelled(self) -> None:
         """취소 요청 시 내부 예외 발생"""
 
-        # 스레드 인터럽트 또는 명시적 취소 요청 감지 블록
+        # 스레드 인터럽트 또는 명시적 취소 요청 감지
         if self._is_cancel_requested or self.isInterruptionRequested():
             raise _CalculationCancelledError()
 
     def run(self) -> None:
         try:
-            # 계산 컨텍스트 선행 구성 블록
+            # 계산 컨텍스트 선행 구성
             self._emit_progress("컨텍스트 생성 중...", 0)
             context: EvaluationContext = build_calculator_context(
                 server_spec=self._server_spec,
@@ -747,9 +777,11 @@ class _CalculatorThread(QThread):
                 skills_info=self._preset.usage_settings,
                 delay_ms=self._delay_ms,
                 base_stats=self._base_stats,
+                target_formula_id=self._selected_formula_id,
+                custom_formulas=self._custom_formulas,
             )
 
-            # 결과 행 전체 계산 블록
+            # 결과 행 전체 계산
             self._emit_progress("결과 정리 준비 중...", 0)
             output_rows: ResultsPage.OutputRows = ResultsPage._build_output_rows(
                 server_spec=self._server_spec,
@@ -757,7 +789,7 @@ class _CalculatorThread(QThread):
                 delay_ms=self._delay_ms,
                 base_stats=self._base_stats,
                 level=self._level,
-                selected_metric=self._selected_metric,
+                selected_formula_id=self._selected_formula_id,
                 current_realm=self._calculator_input.realm_tier,
                 calculator_input=self._calculator_input,
                 context=context,
@@ -765,7 +797,7 @@ class _CalculatorThread(QThread):
                 cancel_checker=self._ensure_not_cancelled,
             )
 
-            # 완료 직전 취소 여부 재확인 블록
+            # 완료 직전 취소 여부 재확인
             self._ensure_not_cancelled()
             self.progress_signal.emit("완료됨", 100)
             self.finished_signal.emit(output_rows, False)
@@ -780,17 +812,15 @@ class ResultsPage(QFrame):
     class OutputRows:
         """계산기 결과 섹션별 출력 행 묶음"""
 
-        current_power: list[tuple[str, str]]
+        current_power: tuple[str, str]
         stat_efficiency: list[tuple[str, str]]
         level_up: list[tuple[str, str]]
         realm_up: list[tuple[str, str]]
         scroll_efficiency: list[tuple[str, str]]
-        custom_delta: list[tuple[str, str]]
+        custom_delta: tuple[str, str] | None
         optimization_result: list[tuple[str, str]]
-        has_custom_delta: bool
         custom_base_stats: BaseStats | None
         optimized_base_stats: BaseStats | None
-        selected_metric: "PowerMetric"
 
     def __init__(
         self,
@@ -814,19 +844,19 @@ class ResultsPage(QFrame):
     def set_loading_state(self) -> None:
         """결과 페이지 로딩 출력 반영"""
 
-        # 결과 카드 공통 로딩 상태 반영 블록
+        # 결과 카드 공통 로딩 상태 반영
         self.view.set_loading_outputs()
 
     def set_error_state(self) -> None:
         """결과 페이지 오류 출력 반영"""
 
-        # 결과 카드 공통 오류 상태 반영 블록
+        # 결과 카드 공통 오류 상태 반영
         self.view.set_error_outputs()
 
     def set_output_rows(self, output_rows: "ResultsPage.OutputRows") -> None:
         """계산 완료 결과 반영"""
 
-        # 계산 완료 결과 행을 결과 카드에 반영 블록
+        # 계산 완료 결과 행을 결과 카드에 반영
         self.view.set_output_rows(output_rows)
 
     @staticmethod
@@ -841,6 +871,13 @@ class ResultsPage(QFrame):
 
         return f"{value:,.2f}"
 
+    @staticmethod
+    def _result_sort_key(row: tuple[str, str]) -> float:
+        """결과 행의 숫자 문자열 정렬 키 반환"""
+
+        # 결과 문자열을 정렬용 숫자로 직접 변환
+        return float(row[1].replace(",", ""))
+
     @classmethod
     def _build_output_rows(
         cls,
@@ -849,7 +886,7 @@ class ResultsPage(QFrame):
         delay_ms: int,
         base_stats: BaseStats,
         level: int,
-        selected_metric: "PowerMetric",
+        selected_formula_id: str,
         current_realm: "RealmTier",
         calculator_input: CalculatorPresetInput,
         context: "EvaluationContext",
@@ -858,7 +895,7 @@ class ResultsPage(QFrame):
     ) -> "ResultsPage.OutputRows":
         """공용 계산기 결과 행 구성"""
 
-        # 현재 전투력 구성 직전 진행 단계 반영 블록
+        # 현재 전투력 구성 직전 진행 단계 반영
         if progress_callback is not None:
             progress_callback("현재 전투력 정리 중...", 0)
 
@@ -866,18 +903,15 @@ class ResultsPage(QFrame):
             cancel_checker()
 
         # 현재 전투력 출력 행 구성
-        current_power_rows: list[tuple[str, str]] = []
-        for power_metric in DISPLAY_POWER_METRICS:
-            current_power_rows.append(
-                (
-                    POWER_METRIC_LABELS[power_metric],
-                    cls._format_current_power(
-                        context.baseline_summary.metrics[power_metric]
-                    ),
-                )
-            )
+        formula_labels: dict[str, str] = _build_formula_label_map(
+            app_state.macro.custom_power_formulas
+        )
+        current_power_row: tuple[str, str] = (
+            formula_labels[selected_formula_id],
+            cls._format_current_power(context.baseline_power),
+        )
 
-        # 스탯 효율 계산 시작 단계 반영 블록
+        # 스탯 효율 계산 시작 단계 반영
         if progress_callback is not None:
             progress_callback("스탯 효율 계산 중...", 0)
 
@@ -893,25 +927,26 @@ class ResultsPage(QFrame):
             if cancel_checker is not None:
                 cancel_checker()
 
-            deltas: dict[PowerMetric, float] = evaluate_single_stat_delta(
+            metric_delta: float = evaluate_single_stat_delta(
                 context=context,
                 stat_key=stat_key,
                 amount=1.0,
+                target_formula_id=selected_formula_id,
             )
             label: str = f"{stat_label} +1"
 
-            stat_rows.append((label, cls._format_delta(deltas[selected_metric])))
+            stat_rows.append((label, cls._format_delta(metric_delta)))
 
             if progress_callback is not None:
                 stat_progress: int = 0
                 progress_callback("스탯 효율 계산 중...", stat_progress)
 
         stat_rows.sort(
-            key=lambda row: float(row[1].replace(",", "")),
+            key=cls._result_sort_key,
             reverse=True,
         )
 
-        # 레벨업 효율 계산 단계 반영 블록
+        # 레벨업 효율 계산 단계 반영
         if progress_callback is not None:
             progress_callback("레벨 효율 계산 중...", 0)
 
@@ -921,7 +956,7 @@ class ResultsPage(QFrame):
         # 레벨 1업 효율 출력 행 구성
         level_up: LevelUpEvaluation = evaluate_level_up_delta(
             context=context,
-            target_metric=selected_metric,
+            target_formula_id=selected_formula_id,
         )
         level_distribution_text: str = (
             f"힘 {level_up.stat_distribution[StatKey.STR]}, "
@@ -930,11 +965,14 @@ class ResultsPage(QFrame):
             f"행운 {level_up.stat_distribution[StatKey.LUCK]}"
         )
         level_up_rows: list[tuple[str, str]] = [
-            ("레벨 1업", cls._format_delta(level_up.deltas[selected_metric])),
+            (
+                "레벨 1업",
+                cls._format_delta(level_up.delta),
+            ),
             ("최적 분배", level_distribution_text),
         ]
 
-        # 경지 효율 계산 단계 반영 블록
+        # 경지 효율 계산 단계 반영
         if progress_callback is not None:
             progress_callback("경지 효율 계산 중...", 0)
 
@@ -946,7 +984,7 @@ class ResultsPage(QFrame):
             context=context,
             current_realm=current_realm,
             level=level,
-            target_metric=selected_metric,
+            target_formula_id=selected_formula_id,
         )
         if realm_result is None:
             realm_rows: list[tuple[str, str]] = [
@@ -962,12 +1000,12 @@ class ResultsPage(QFrame):
             realm_rows = [
                 (
                     REALM_TIER_SPECS[realm_result.target_realm].label,
-                    cls._format_delta(realm_result.deltas[selected_metric]),
+                    cls._format_delta(realm_result.delta),
                 ),
                 ("최적 분배", danjeon_text),
             ]
 
-        # 무공비급 효율 계산 단계 반영 블록
+        # 무공비급 효율 계산 단계 반영
         if progress_callback is not None:
             progress_callback("무공비급 효율 계산 중...", 0)
 
@@ -981,9 +1019,9 @@ class ResultsPage(QFrame):
             preset=preset,
             skills_info=preset.usage_settings,
             delay_ms=delay_ms,
-            base_stats=base_stats,
+            baseline_context=context,
+            target_formula_id=selected_formula_id,
         )
-        scroll_count: int = max(1, len(scroll_results))
         scroll_index: int
         scroll_result: ScrollUpgradeEvaluation
         for scroll_index, scroll_result in enumerate(scroll_results, start=1):
@@ -993,7 +1031,7 @@ class ResultsPage(QFrame):
             scroll_rows.append(
                 (
                     f"{scroll_result.scroll_name} Lv.{scroll_result.next_level}",
-                    cls._format_delta(scroll_result.deltas[selected_metric]),
+                    cls._format_delta(scroll_result.delta),
                 )
             )
 
@@ -1002,35 +1040,32 @@ class ResultsPage(QFrame):
                 progress_callback("무공비급 효율 계산 중...", scroll_progress)
 
         scroll_rows.sort(
-            key=lambda row: float(row[1].replace(",", "")),
+            key=cls._result_sort_key,
             reverse=True,
         )
 
-        # 사용자 지정 변화량 계산 단계 반영 블록
+        # 사용자 지정 변화량 계산 단계 반영
         if progress_callback is not None:
             progress_callback("사용자 지정 변화량 계산 중...", 0)
 
         if cancel_checker is not None:
             cancel_checker()
 
-        # 사용자 지정 변화량 결과 행 공용 구성
-        custom_rows: list[tuple[str, str]] = cls._build_custom_delta_rows(
-            calculator_input=calculator_input,
-            context=context,
+        # 사용자 지정 변화량 맵 1회 구성 및 빈 입력 분기
+        custom_changes: dict[StatKey, float] = cls._build_custom_stat_change_map(
+            calculator_input
         )
+        custom_delta_row: tuple[str, str] | None = None
+        custom_base_stats: BaseStats | None = None
+        if custom_changes:
+            custom_delta_row = cls._build_custom_delta_row(
+                context=context,
+                selected_formula_id=selected_formula_id,
+                custom_changes=custom_changes,
+            )
+            custom_base_stats = base_stats.with_changes(custom_changes)
 
-        # 사용자 지정 변화량 입력 여부
-        has_custom_delta: bool = any(
-            v != 0.0 for v in calculator_input.custom_stat_changes.values()
-        )
-
-        # 사용자 지정 변화량 반영 전체 스탯 구성
-        custom_base_stats: BaseStats | None = cls._build_custom_delta_base_stats(
-            calculator_input=calculator_input,
-            base_stats=base_stats,
-        )
-
-        # 최적화 결과 계산 단계 반영 블록
+        # 최적화 결과 계산 단계 반영
         if progress_callback is not None:
             progress_callback("최적화 결과 계산 중...", 0)
 
@@ -1046,7 +1081,7 @@ class ResultsPage(QFrame):
             context=context,
             base_stats=base_stats,
             calculator_input=calculator_input,
-            target_metric=selected_metric,
+            target_formula_id=selected_formula_id,
             progress_callback=progress_callback,
             cancel_checker=cancel_checker,
         )
@@ -1096,7 +1131,7 @@ class ResultsPage(QFrame):
             optimization_rows = [
                 (
                     "선택 전투력 증가",
-                    cls._format_delta(optimization_result.deltas[selected_metric]),
+                    cls._format_delta(optimization_result.delta),
                 ),
                 ("최적 스탯 분배", distribution_text),
                 ("최적 단전", danjeon_text),
@@ -1104,7 +1139,7 @@ class ResultsPage(QFrame):
                 ("최적 부적", talisman_text),
             ]
 
-        # 결과 반환 직전 완료 단계 반영 블록
+        # 결과 반환 직전 완료 단계 반영
         if progress_callback is not None:
             progress_callback("결과 화면 준비 중...", 100)
 
@@ -1112,21 +1147,19 @@ class ResultsPage(QFrame):
             cancel_checker()
 
         return cls.OutputRows(
-            current_power=current_power_rows,
+            current_power=current_power_row,
             stat_efficiency=stat_rows,
             level_up=level_up_rows,
             realm_up=realm_rows,
             scroll_efficiency=scroll_rows,
-            custom_delta=custom_rows,
+            custom_delta=custom_delta_row,
             optimization_result=optimization_rows,
-            has_custom_delta=has_custom_delta,
             custom_base_stats=custom_base_stats,
             optimized_base_stats=(
                 optimization_result.base_stats
                 if optimization_result is not None
                 else None
             ),
-            selected_metric=selected_metric,
         )
 
     @staticmethod
@@ -1148,52 +1181,27 @@ class ResultsPage(QFrame):
         return custom_changes
 
     @classmethod
-    def _build_custom_delta_rows(
+    def _build_custom_delta_row(
         cls,
-        calculator_input: CalculatorPresetInput,
         context: "EvaluationContext",
-    ) -> list[tuple[str, str]]:
+        selected_formula_id: str,
+        custom_changes: dict[StatKey, float],
+    ) -> tuple[str, str]:
         """사용자 지정 변화량 결과 행 공용 구성"""
 
-        # 저장된 사용자 지정 변화량 맵 재사용
-        custom_changes: dict[StatKey, float] = cls._build_custom_stat_change_map(
-            calculator_input
+        # 사용자 지정 변화량 기준 선택 공식 전투력 변화량 계산
+        formula_labels: dict[str, str] = _build_formula_label_map(
+            app_state.macro.custom_power_formulas
         )
-
-        # 사용자 지정 변화량 기준 5종 전투력 변화량 계산
-        custom_deltas: dict[PowerMetric, float] = evaluate_arbitrary_stat_delta(
+        custom_delta: float = evaluate_arbitrary_stat_delta(
             context=context,
             stat_changes=custom_changes,
+            target_formula_id=selected_formula_id,
         )
-        custom_rows: list[tuple[str, str]] = []
-        for power_metric in DISPLAY_POWER_METRICS:
-            custom_rows.append(
-                (
-                    POWER_METRIC_LABELS[power_metric],
-                    cls._format_delta(custom_deltas[power_metric]),
-                )
-            )
-
-        return custom_rows
-
-    @classmethod
-    def _build_custom_delta_base_stats(
-        cls,
-        calculator_input: CalculatorPresetInput,
-        base_stats: BaseStats,
-    ) -> BaseStats | None:
-        """사용자 지정 변화량 반영 전체 스탯 구성"""
-
-        # 저장된 사용자 지정 변화량 맵 재사용
-        custom_changes: dict[StatKey, float] = cls._build_custom_stat_change_map(
-            calculator_input
+        return (
+            formula_labels[selected_formula_id],
+            cls._format_delta(custom_delta),
         )
-        if not custom_changes:
-            return None
-
-        # 기준 베이스 스탯에 사용자 지정 변화량 적용
-        adjusted_base_stats: BaseStats = base_stats.with_changes(custom_changes)
-        return adjusted_base_stats
 
     class Efficiency(QFrame):
         def __init__(
@@ -1208,20 +1216,34 @@ class ResultsPage(QFrame):
             self._is_loading_state: bool = False
             self.popup_manager: PopupManager = popup_manager
 
-            # 전투력 선택지와 경지 선택지 순서 고정
-            self.metric_options: list[PowerMetric] = list(DISPLAY_POWER_METRICS)
+            # 전투력 선택지와 경지 선택지 순서 구성
+            calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
+            formula_labels: dict[str, str] = _build_formula_label_map(
+                app_state.macro.custom_power_formulas
+            )
+            self.metric_options: list[str] = _build_formula_options(
+                app_state.macro.custom_power_formulas
+            )
             self.realm_options: list[RealmTier] = list(REALM_TIER_SPECS.keys())
 
             # 기준 입력 위젯 구성 — KVComboInput 으로 KVInput(레벨)과 레이아웃 통일
             self.metric_input = KVComboInput(
                 self,
                 "기준 전투력",
-                [POWER_METRIC_LABELS[metric] for metric in self.metric_options],
+                [formula_labels[formula_id] for formula_id in self.metric_options],
                 self.on_base_input_changed,
             )
             self.metric_combobox = (
                 self.metric_input.combobox
             )  # load_from_preset_state 참조용
+
+            self.metric_manage_button: StyledButton = StyledButton(
+                self,
+                "공식 관리",
+                point_size=10,
+            )
+            self.metric_manage_button.setFixedHeight(32)
+            self.metric_manage_button.clicked.connect(self._open_formula_manager)
 
             self.level_input_widget: KVInput = KVInput(
                 self,
@@ -1288,6 +1310,7 @@ class ResultsPage(QFrame):
             base_row.setContentsMargins(0, 0, 0, 0)
             base_row.setSpacing(20)
             base_row.addWidget(self.metric_input)
+            base_row.addWidget(self.metric_manage_button)
             base_row.addWidget(self.level_input_widget)
             base_row.addWidget(self.realm_input)
             base_row.addStretch(1)
@@ -1336,22 +1359,22 @@ class ResultsPage(QFrame):
             stats_valid: bool
             base_stats: BaseStats
             level_valid: bool
-            # 기본 입력과 원시 베이스 스탯 복원 블록
+            # 기본 입력과 원시 베이스 스탯 복원
             stats_valid, base_stats = self._read_base_stats()
             level_valid, _ = self._read_level()
 
-            # 무공비급 레벨 입력 검증 블록
+            # 무공비급 레벨 입력 검증
             scroll_valid: bool = self._read_scroll_levels(save_levels=False)
             if not (stats_valid and level_valid and scroll_valid):
                 return False
 
-            # 시뮬레이터 그래프 분모 0 방지용 피해 계산 가능 여부 검증 블록
+            # 시뮬레이터 그래프 분모 0 방지용 피해 계산 가능 여부 검증
             return self._has_positive_simulation_damage(base_stats)
 
         def _has_positive_simulation_damage(self, base_stats: BaseStats) -> bool:
             """시뮬레이터 진입 가능한 최소 피해 조건 검증"""
 
-            # 최종 공격 관련 스탯과 배율 복원 블록
+            # 최종 공격 관련 스탯과 배율 복원
             resolved_stats: FinalStats = base_stats.resolve()
             attack_power: float = resolved_stats.values[StatKey.ATTACK]
             final_attack_multiplier: float = 1.0 + (
@@ -1364,7 +1387,7 @@ class ResultsPage(QFrame):
                 resolved_stats.values[StatKey.SKILL_DAMAGE_PERCENT] * 0.01
             )
 
-            # 공격 관련 입력칸 강조 상태 동기화 블록
+            # 공격 관련 입력칸 강조 상태 동기화
             attack_input_valid: bool = attack_power > 0.0
             final_attack_input_valid: bool = final_attack_multiplier > 0.0
             boss_attack_input_valid: bool = boss_attack_multiplier > 0.0
@@ -1380,7 +1403,7 @@ class ResultsPage(QFrame):
                 skill_damage_input_valid
             )
 
-            # 그래프 비율 계산용 총 피해량 0 방지 블록
+            # 그래프 비율 계산용 총 피해량 0 방지
             return (
                 attack_input_valid
                 and final_attack_input_valid
@@ -1394,15 +1417,16 @@ class ResultsPage(QFrame):
             # 프리셋 반영 중 입력 이벤트 기반 저장/재계산 억제
             self._is_loading_state = True
             calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
+            self._refresh_formula_options()
             self.metric_combobox.setCurrentIndex(
-                self.metric_options.index(calculator_input.selected_metric)
+                self.metric_options.index(calculator_input.selected_formula_id)
             )
             self.level_input.setText(str(calculator_input.level))
             self.realm_combobox.setCurrentIndex(
                 self.realm_options.index(calculator_input.realm_tier)
             )
 
-            # 저장된 원시 베이스 스탯의 최종 표시값 복원 블록
+            # 저장된 원시 베이스 스탯의 최종 표시값 복원
             display_base_stats: dict[StatKey, str] = self._get_initial_base_stats()
             for stat_key in STAT_SPECS.keys():
                 self.stats_inputs.inputs[stat_key].setText(display_base_stats[stat_key])
@@ -1422,7 +1446,7 @@ class ResultsPage(QFrame):
                     str(self._get_preset().info.get_scroll_level(entry.scroll_id))
                 )
 
-            # 로드된 입력값 기준 검증 스타일 동기화 블록
+            # 로드된 입력값 기준 검증 스타일 동기화
             stats_valid: bool
             base_stats: BaseStats
             stats_valid, base_stats = self._read_base_stats()
@@ -3333,7 +3357,7 @@ class ResultsPage(QFrame):
         def _get_initial_base_stats(self) -> dict[StatKey, str]:
             """저장된 베이스 스탯 입력 문자열 맵 반환"""
 
-            # 저장된 원시 베이스 스탯의 최종 표시값 복원 블록
+            # 저장된 원시 베이스 스탯의 최종 표시값 복원
             calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
             resolved_values: dict[StatKey, float] = (
                 calculator_input.base_stats.resolve().values
@@ -3357,13 +3381,62 @@ class ResultsPage(QFrame):
 
             return values
 
-        def _get_selected_metric(self) -> PowerMetric:
-            """현재 선택 전투력 종류 반환"""
+        def _refresh_formula_options(self) -> None:
+            """전역 빌트인/커스텀 공식 목록을 콤보박스에 재반영"""
 
-            selected_metric: PowerMetric = self.metric_options[
+            # 전역 공식 목록과 표시명 맵을 다시 구성하는
+            calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
+            formula_labels: dict[str, str] = _build_formula_label_map(
+                app_state.macro.custom_power_formulas
+            )
+            self.metric_options = _build_formula_options(
+                app_state.macro.custom_power_formulas
+            )
+
+            # 저장된 선택 공식 유지 상태로 콤보박스 항목 재구성
+            self.metric_combobox.blockSignals(True)
+            self.metric_combobox.clear()
+            formula_names: list[str] = [
+                formula_labels[formula_id] for formula_id in self.metric_options
+            ]
+            self.metric_combobox.addItems(formula_names)
+            self.metric_combobox.setCurrentIndex(
+                self.metric_options.index(calculator_input.selected_formula_id)
+            )
+
+            # 커스텀 공식 이름 길이를 반영한 콤보박스 최소 폭 재계산
+            longest_item_width: int = 0
+            formula_name: str
+            for formula_name in formula_names:
+                item_width: int = self.metric_combobox.fontMetrics().horizontalAdvance(
+                    formula_name
+                )
+                if item_width > longest_item_width:
+                    longest_item_width = item_width
+
+            minimum_combobox_width: int = longest_item_width + 44
+            self.metric_combobox.setMinimumWidth(minimum_combobox_width)
+            self.metric_input.setMinimumWidth(minimum_combobox_width)
+            self.metric_combobox.blockSignals(False)
+
+        def _open_formula_manager(self) -> None:
+            """사용자 정의 전투력 공식 관리 다이얼로그 열기"""
+
+            # 다이얼로그 저장 결과를 현재 콤보박스 목록에 즉시 반영
+            formula_dialog: CustomPowerFormulaManageDialog = (
+                CustomPowerFormulaManageDialog(parent=self)
+            )
+            formula_dialog.exec()
+            self._refresh_formula_options()
+
+        def _get_selected_formula_id(self) -> str:
+            """현재 선택 전투력 공식 ID 반환"""
+
+            # 콤보박스 현재 인덱스를 공식 ID 목록에 매핑
+            selected_formula_id: str = self.metric_options[
                 self.metric_combobox.currentIndex()
             ]
-            return selected_metric
+            return selected_formula_id
 
         def _load_optimization_inputs(self) -> None:
             """저장된 최적화 입력 상태 로드"""
@@ -3515,7 +3588,7 @@ class ResultsPage(QFrame):
         def _read_base_stats(self) -> tuple[bool, BaseStats]:
             """베이스 스탯 입력 복원 및 검증"""
 
-            # 모든 입력칸을 순회하며 최종 표시 스탯 복원 블록
+            # 모든 입력칸을 순회하며 최종 표시 스탯 복원
             parsed_stats: dict[str, float] = {}
             is_valid: bool = True
             for stat_key, input_widget in self.stats_inputs.inputs.items():
@@ -3530,7 +3603,7 @@ class ResultsPage(QFrame):
 
                 parsed_stats[stat_key.value] = value
 
-            # 최종 표시 스탯의 원시 베이스 스탯 환산 블록
+            # 최종 표시 스탯의 원시 베이스 스탯 환산
             resolved_input: BaseStats = BaseStats(values=parsed_stats)
             return is_valid, build_internal_base_stats(resolved_input)
 
@@ -3598,14 +3671,14 @@ class ResultsPage(QFrame):
         ) -> None:
             """기준 입력 상태 저장"""
 
-            # 계산기 입력 블록에 현재 기준 입력 반영
+            # 계산기 입력에 현재 기준 입력 반영
             calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
             calculator_input.base_stats = base_stats
             calculator_input.level = level
             calculator_input.realm_tier = self.realm_options[
                 self.realm_combobox.currentIndex()
             ]
-            calculator_input.selected_metric = self._get_selected_metric()
+            calculator_input.selected_formula_id = self._get_selected_formula_id()
             if persist:
                 save_data()
 
@@ -3809,7 +3882,7 @@ class ResultsPage(QFrame):
                 )
 
         class PowerResultList(QFrame):
-            """현재 전투력 전용 목록 — selected_metric 행 강조"""
+            """현재 전투력 전용 목록"""
 
             def __init__(self, parent: QWidget) -> None:
                 super().__init__(parent)
@@ -3822,50 +3895,46 @@ class ResultsPage(QFrame):
                 self._layout.setSpacing(4)
                 self.setLayout(self._layout)
 
-            def set_rows(
+            def set_row(
                 self,
-                rows: list[tuple[str, str]],
-                selected_label: str = "",
+                row: tuple[str, str],
             ) -> None:
                 # 이전 결과 행 즉시 제거
                 ResultsPage.ResultsView._clear_layout_widgets(self._layout)
 
-                for title, value in rows:
-                    is_selected: bool = title == selected_label
-                    font_size: int = 13 if is_selected else 11
+                title: str
+                value: str
+                title, value = row
+                row_widget: QFrame = QFrame(self)
+                row_widget.setObjectName("powerResultRow")
+                row_widget.setProperty("selected", True)
+                row_widget.style().unpolish(row_widget)
+                row_widget.style().polish(row_widget)
+                row_layout: QHBoxLayout = QHBoxLayout(row_widget)
+                row_layout.setContentsMargins(8, 8, 8, 8)
+                row_layout.setSpacing(10)
 
-                    row_widget: QFrame = QFrame(self)
-                    row_widget.setObjectName("powerResultRow")
-                    row_widget.setProperty("selected", is_selected)
-                    row_widget.style().unpolish(row_widget)
-                    row_widget.style().polish(row_widget)
-                    row_layout: QHBoxLayout = QHBoxLayout(row_widget)
-                    row_layout.setContentsMargins(
-                        8, 8 if is_selected else 5, 8, 8 if is_selected else 5
+                title_label: QLabel = QLabel(title, row_widget)
+                title_label.setObjectName("powerResultLabel")
+                title_label.setFont(CustomFont(13, bold=True))
+
+                value_label: QLabel = QLabel(value, row_widget)
+                value_label.setObjectName("powerResultLabel")
+                value_label.setFont(CustomFont(13, bold=True))
+                value_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+
+                # 행 최소 높이 확보
+                row_widget.setMinimumHeight(
+                    max(
+                        title_label.sizeHint().height(),
+                        value_label.sizeHint().height(),
                     )
-                    row_layout.setSpacing(10)
-
-                    title_label: QLabel = QLabel(title, row_widget)
-                    title_label.setObjectName("powerResultLabel")
-                    title_label.setFont(CustomFont(font_size, bold=is_selected))
-
-                    value_label: QLabel = QLabel(value, row_widget)
-                    value_label.setObjectName("powerResultLabel")
-                    value_label.setFont(CustomFont(font_size, bold=is_selected))
-                    value_label.setAlignment(Qt.AlignmentFlag.AlignRight)
-
-                    # 행 최소 높이 확보
-                    row_widget.setMinimumHeight(
-                        max(
-                            title_label.sizeHint().height(),
-                            value_label.sizeHint().height(),
-                        )
-                        + 16
-                    )
-                    row_layout.addWidget(title_label)
-                    row_layout.addStretch(1)
-                    row_layout.addWidget(value_label)
-                    self._layout.addWidget(row_widget)
+                    + 16
+                )
+                row_layout.addWidget(title_label)
+                row_layout.addStretch(1)
+                row_layout.addWidget(value_label)
+                self._layout.addWidget(row_widget)
 
                 # 결과 목록 높이 재고정
                 ResultsPage.ResultsView._refresh_widget_geometry(self)
@@ -4063,12 +4132,12 @@ class ResultsPage(QFrame):
             self._scroll_list: ResultsPage.ResultsView.RankedResultList = (
                 ResultsPage.ResultsView.RankedResultList(self)
             )
-            _vsep = QFrame(self)
+            _vsep: QFrame = QFrame(self)
             _vsep.setObjectName("resultsVSep")
             _vsep.setFixedWidth(1)
             _vsep.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
-            _scroll_wrapper = QWidget(self)
-            _scroll_wrapper_layout = QVBoxLayout(_scroll_wrapper)
+            _scroll_wrapper: QWidget = QWidget(self)
+            _scroll_wrapper_layout: QVBoxLayout = QVBoxLayout(_scroll_wrapper)
             _scroll_wrapper_layout.setContentsMargins(0, 0, 0, 0)
             _scroll_wrapper_layout.setSpacing(0)
             _scroll_wrapper_layout.addWidget(self._scroll_list)
@@ -4180,7 +4249,8 @@ class ResultsPage(QFrame):
             """결과 페이지 오류 상태 출력"""
 
             error_rows: list[tuple[str, str]] = [("상태", "오류")]
-            self._power_list.set_rows(error_rows)
+            error_row: tuple[str, str] = ("상태", "오류")
+            self._power_list.set_row(error_row)
             self._stat_list.set_rows(error_rows)
             self._level_up_list.set_rows(error_rows)
             self._realm_up_list.set_rows(error_rows)
@@ -4196,7 +4266,8 @@ class ResultsPage(QFrame):
             """계산 시작 시 로딩 상태 출력"""
 
             loading_rows: list[tuple[str, str]] = [("상태", "계산 중...")]
-            self._power_list.set_rows(loading_rows)
+            loading_row: tuple[str, str] = ("상태", "계산 중...")
+            self._power_list.set_row(loading_row)
             self._stat_list.set_rows(loading_rows)
             self._level_up_list.set_rows(loading_rows)
             self._realm_up_list.set_rows(loading_rows)
@@ -4211,17 +4282,16 @@ class ResultsPage(QFrame):
         def set_output_rows(self, output_rows: ResultsPage.OutputRows) -> None:
             """백그라운드 계산 완료 결과 UI 반영"""
 
-            # 완료된 결과 구조를 각 카드에 반영 블록
-            selected_label: str = POWER_METRIC_LABELS[output_rows.selected_metric]
-            self._power_list.set_rows(output_rows.current_power, selected_label)
+            # 완료된 결과 구조를 각 카드에 반영
+            self._power_list.set_row(output_rows.current_power)
             self._stat_list.set_rows(output_rows.stat_efficiency)
             self._level_up_list.set_rows(output_rows.level_up)
             self._realm_up_list.set_rows(output_rows.realm_up)
             self._scroll_list.set_rows(output_rows.scroll_efficiency)
-            self._custom_card.setVisible(output_rows.has_custom_delta)
-            if output_rows.has_custom_delta:
+            self._custom_card.setVisible(output_rows.custom_delta is not None)
+            if output_rows.custom_delta is not None:
                 # 사용자 지정 변화량 결과 카드 하위 섹션 동기화
-                self._custom_list.set_rows(output_rows.custom_delta)
+                self._custom_list.set_rows([output_rows.custom_delta])
                 self._custom_stats_grid.set_stats(output_rows.custom_base_stats)
             else:
                 # 사용자 지정 변화량 미입력 시 이전 전체 스탯 표시 제거
@@ -4419,90 +4489,6 @@ class SkillInputs(QFrame):
                 self.entry.scroll_id
             )
             return self.popup_manager.build_scroll_hover_card(scroll_def, level)
-
-
-class PowerLabels(QFrame):
-    def __init__(
-        self,
-        mainframe: QWidget,
-        titles: list[str],
-        texts: list[str] | str = "0",
-        font_size: int = 18,
-    ) -> None:
-        super().__init__(mainframe)
-
-        self.setObjectName("powerLabels")
-
-        # 레이아웃 설정
-        layout: QHBoxLayout = QHBoxLayout(self)
-
-        self.numbers: list[QLabel] = []
-        self.titles: list[str] = titles
-        # 단일 문자열 입력 시 현재 전투력 칸 수만큼 동일 값 확장
-        if isinstance(texts, str):
-            texts = [texts] * len(self.titles)
-
-        # 현재 전투력 종류 수만큼 카드 생성
-        for i, title in enumerate(self.titles):
-            power: PowerLabels.Power = self.Power(
-                self,
-                title,
-                texts[i],
-                str(i),
-                font_size,
-            )
-
-            layout.addWidget(power)
-            self.numbers.append(power.number)
-
-        # 레이아웃 여백과 간격 설정
-        layout.setSpacing(10)  # 위젯들 사이의 간격
-        layout.setContentsMargins(10, 10, 10, 10)  # 레이아웃의 여백
-        self.setLayout(layout)
-
-        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-
-    def set_texts(self, texts: list[str] | str) -> None:
-        # 단일 문자열 입력 시 현재 전투력 칸 수만큼 동일 값 확장
-        if isinstance(texts, str):
-            texts = [texts] * len(self.numbers)
-
-        for i in range(len(self.numbers)):
-            self.numbers[i].setText(texts[i])
-
-    class Power(QFrame):
-        def __init__(
-            self,
-            mainframe: QWidget,
-            name: str,
-            text: str,
-            slot: str,
-            font_size: int = 18,
-        ) -> None:
-            super().__init__(mainframe)
-
-            label: QLabel = QLabel(name, self)
-            label.setObjectName("powerLabelHeader")
-            label.setProperty("slot", slot)
-            label.setFont(CustomFont(14))
-            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            label.setFixedHeight(50)
-
-            self.number: QLabel = QLabel(text, self)
-            self.number.setObjectName("powerLabelNumber")
-            self.number.setProperty("slot", slot)
-            self.number.setFont(CustomFont(font_size))
-            self.number.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.number.setFixedHeight(90)
-
-            layout: QVBoxLayout = QVBoxLayout(self)
-            layout.addWidget(label)
-            layout.addWidget(self.number)
-            layout.setContentsMargins(0, 0, 0, 0)
-            layout.setSpacing(0)
-            self.setLayout(layout)
-
-            self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
 
 class AnalysisDetails(QFrame):
