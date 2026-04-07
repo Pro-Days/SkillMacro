@@ -293,39 +293,40 @@ class TargetDistributionState:
     vitality: int = 0
     luck: int = 0
 
-    # 모드 선택 ("preview" | "minimum")
-    mode: str = "preview"
+    # 최소분배 옵션 상태
+    is_minimum: bool = False
 
     @classmethod
-    def from_dict(cls, data: dict[str, int | str]) -> "TargetDistributionState":
+    def from_dict(cls, data: dict[str, int | bool]) -> "TargetDistributionState":
         """저장 데이터로부터 목표 분배 상태 복원"""
 
+        # 목표 분배 포인트 복원
         strength: int = int(data["strength"])
         dexterity: int = int(data["dexterity"])
         vitality: int = int(data["vitality"])
         luck: int = int(data["luck"])
-        mode: str = str(data.get("mode", "preview"))
 
-        if mode not in ("preview", "minimum"):
-            mode = "preview"
+        # 최소분배 옵션 복원
+        is_minimum: bool = bool(data["is_minimum"])
 
         return cls(
             strength=strength,
             dexterity=dexterity,
             vitality=vitality,
             luck=luck,
-            mode=mode,
+            is_minimum=is_minimum,
         )
 
-    def to_dict(self) -> dict[str, int | str]:
+    def to_dict(self) -> dict[str, int | bool]:
         """목표 분배 상태 직렬화"""
 
-        data: dict[str, int | str] = {
+        # 목표 분배 상태 저장 구조 구성
+        data: dict[str, int | bool] = {
             "strength": self.strength,
             "dexterity": self.dexterity,
             "vitality": self.vitality,
             "luck": self.luck,
-            "mode": self.mode,
+            "is_minimum": self.is_minimum,
         }
         return data
 

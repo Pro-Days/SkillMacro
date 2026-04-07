@@ -9,7 +9,6 @@ from PySide6.QtCore import QEvent, QObject, QSize, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QClipboard, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
-    QButtonGroup,
     QCheckBox,
     QFrame,
     QGridLayout,
@@ -19,7 +18,6 @@ from PySide6.QtWidgets import (
     QLayoutItem,
     QProgressBar,
     QPushButton,
-    QRadioButton,
     QScrollArea,
     QScrollBar,
     QSizePolicy,
@@ -824,6 +822,7 @@ class ResultsPage(QFrame):
         realm_up: list[tuple[str, str]]
         scroll_efficiency: list[tuple[str, str]]
         custom_delta: tuple[str, str] | None
+        target_distribution_summary: tuple[str, str] | None
         target_delta: tuple[str, str] | None
         optimization_result: list[tuple[str, str]]
         custom_base_stats: BaseStats | None
@@ -1076,15 +1075,25 @@ class ResultsPage(QFrame):
         target_changes: dict[StatKey, float] = cls._build_target_distribution_delta(
             calculator_input
         )
+        target_distribution_summary: tuple[str, str] | None = None
         target_delta_row: tuple[str, str] | None = None
         target_base_stats: BaseStats | None = None
 
+        # 목표 분배 결과 표시 행 구성
         if target_changes:
+            # 목표 분배 수치 요약 행 구성
+            target_distribution_summary = cls._build_target_distribution_summary_row(
+                calculator_input
+            )
+
+            # 목표 분배 기준 전투력 변화량 행 구성
             target_delta_row = cls._build_target_distribution_row(
                 context=context,
                 selected_formula_id=selected_formula_id,
                 target_changes=target_changes,
             )
+
+            # 목표 분배 적용 후 전체 스탯 구성
             target_base_stats = base_stats.with_changes(target_changes)
 
         # 최적화 결과 계산 단계 반영
@@ -1175,6 +1184,7 @@ class ResultsPage(QFrame):
             realm_up=realm_rows,
             scroll_efficiency=scroll_rows,
             custom_delta=custom_delta_row,
+            target_distribution_summary=target_distribution_summary,
             target_delta=target_delta_row,
             optimization_result=optimization_rows,
             custom_base_stats=custom_base_stats,
@@ -1272,6 +1282,24 @@ class ResultsPage(QFrame):
             formula_labels[selected_formula_id],
             cls._format_delta(target_delta),
         )
+
+    @staticmethod
+    def _build_target_distribution_summary_row(
+        calculator_input: "CalculatorPresetInput",
+    ) -> tuple[str, str]:
+        """목표 분배 수치 요약 행 구성"""
+
+        # 목표 분배 상태 참조
+        target: "TargetDistributionState" = calculator_input.target_distribution
+
+        # 목표 분배 표시 문자열 구성
+        summary: str = (
+            f"힘 {target.strength} / "
+            f"민첩 {target.dexterity} / "
+            f"생명력 {target.vitality} / "
+            f"행운 {target.luck}"
+        )
+        return ("목표 분배", summary)
 
     class Efficiency(QFrame):
         def __init__(
@@ -1412,8 +1440,16 @@ class ResultsPage(QFrame):
             opt_card = SectionCard(self, "현재 선택 입력")
             opt_card.add_sub_title("스탯 분배")
             opt_card.add_widget(self.distribution_inputs)
-            opt_card.add_sub_title("목표 분배")
+            opt_card.add_sub_title("목표 분배 미리보기")
             opt_card.add_widget(self.target_distribution_inputs)
+            target_distribution_guide: QLabel = QLabel(
+                "입력한 분배는 항상 결과 미리보기에 표시됩니다. 체크하면 최적화에도 최소분배 조건으로 반영됩니다.",
+                self,
+            )
+            target_distribution_guide.setWordWrap(True)
+            target_distribution_guide.setObjectName("sectionCardSubTitle")
+            target_distribution_guide.setFont(CustomFont(10))
+            opt_card.add_widget(target_distribution_guide)
             opt_card.add_separator()
             opt_card.add_sub_title("단전")
             opt_card.add_widget(self.danjeon_inputs)
@@ -1715,16 +1751,12 @@ class ResultsPage(QFrame):
                     self.inputs[field_name] = item_widget.input
                     layout.addWidget(item_widget)
 
-                # 미리보기/최소분배 라디오 버튼 구성
-                self._mode_group: QButtonGroup = QButtonGroup(self)
-                self.preview_radio: QRadioButton = QRadioButton("미리보기", self)
-                self.minimum_radio: QRadioButton = QRadioButton("최소분배", self)
-                self.preview_radio.setChecked(True)
-                self._mode_group.addButton(self.preview_radio)
-                self._mode_group.addButton(self.minimum_radio)
-                self._mode_group.buttonToggled.connect(lambda *_: connected_function())
-                layout.addWidget(self.preview_radio)
-                layout.addWidget(self.minimum_radio)
+                # 최소분배 옵션 체크박스 구성
+                self.minimum_checkbox: QCheckBox = QCheckBox(
+                    "최적화에 최소분배로 반영", self
+                )
+                self.minimum_checkbox.stateChanged.connect(connected_function)
+                layout.addWidget(self.minimum_checkbox)
                 layout.addStretch(1)
                 self.setLayout(layout)
 
@@ -3601,10 +3633,11 @@ class ResultsPage(QFrame):
             self.target_distribution_inputs.inputs["luck"].setText(
                 str(calculator_input.target_distribution.luck)
             )
-            if calculator_input.target_distribution.mode == "minimum":
-                self.target_distribution_inputs.minimum_radio.setChecked(True)
-            else:
-                self.target_distribution_inputs.preview_radio.setChecked(True)
+
+            # 최소분배 체크박스 상태 복원
+            self.target_distribution_inputs.minimum_checkbox.setChecked(
+                calculator_input.target_distribution.is_minimum
+            )
             self.danjeon_inputs.inputs["upper"].setText(
                 str(calculator_input.danjeon.upper)
             )
@@ -3676,18 +3709,18 @@ class ResultsPage(QFrame):
                 input_widget.set_valid(True)
                 values[field_name] = int(text)
 
-            mode: str = (
-                "minimum"
-                if self.target_distribution_inputs.minimum_radio.isChecked()
-                else "preview"
+            # 최소분배 체크 상태 확인
+            is_minimum: bool = (
+                self.target_distribution_inputs.minimum_checkbox.isChecked()
             )
+
             target_distribution_state: TargetDistributionState = (
                 TargetDistributionState(
                     strength=values["strength"],
                     dexterity=values["dexterity"],
                     vitality=values["vitality"],
                     luck=values["luck"],
-                    mode=mode,
+                    is_minimum=is_minimum,
                 )
             )
             return is_valid, target_distribution_state
@@ -4524,7 +4557,9 @@ class ResultsPage(QFrame):
             self._target_stats_grid: ResultsPage.ResultsView.OverallStatsGrid = (
                 ResultsPage.ResultsView.OverallStatsGrid(self)
             )
-            self._target_card: SectionCard = SectionCard(self, "목표 분배 결과")
+            self._target_card: SectionCard = SectionCard(
+                self, "목표 분배 미리보기"
+            )
             self._target_card.add_widget(self._target_list)
             self._target_card.add_separator()
             self._target_card.add_sub_title("목표 분배 적용 후 전체 스탯")
@@ -4612,10 +4647,29 @@ class ResultsPage(QFrame):
             else:
                 # 사용자 지정 변화량 미입력 시 이전 전체 스탯 표시 제거
                 self._custom_stats_grid.set_stats(None)
-            self._target_card.setVisible(output_rows.target_delta is not None)
-            if output_rows.target_delta is not None:
+            has_target_result: bool = (
+                output_rows.target_distribution_summary is not None
+                and output_rows.target_delta is not None
+            )
+            self._target_card.setVisible(has_target_result)
+            if has_target_result:
                 # 목표 분배 결과 카드 하위 섹션 동기화
-                self._target_list.set_rows([output_rows.target_delta])
+                target_summary_row_opt: tuple[str, str] | None = (
+                    output_rows.target_distribution_summary
+                )
+                target_delta_row_opt: tuple[str, str] | None = output_rows.target_delta
+
+                # 목표 분배 결과 행 타입 확정
+                if target_summary_row_opt is None or target_delta_row_opt is None:
+                    return
+
+                target_summary_row: tuple[str, str] = target_summary_row_opt
+                target_delta_row: tuple[str, str] = target_delta_row_opt
+                target_rows: list[tuple[str, str]] = [
+                    target_summary_row,
+                    target_delta_row,
+                ]
+                self._target_list.set_rows(target_rows)
                 self._target_stats_grid.set_stats(output_rows.target_base_stats)
             else:
                 # 목표 분배 미입력 시 이전 전체 스탯 표시 제거

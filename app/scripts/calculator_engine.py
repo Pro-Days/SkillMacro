@@ -3047,7 +3047,7 @@ def _build_distribution_search_root(
 
     # 목표 분배 최소분배 모드 하한 적용 블록
     target_dist: TargetDistributionState = calculator_input.target_distribution
-    if target_dist.mode == "minimum":
+    if target_dist.is_minimum:
         target: TargetDistributionState = target_dist
         strength_min = max(strength_min, target.strength)
         dexterity_min = max(dexterity_min, target.dexterity)
