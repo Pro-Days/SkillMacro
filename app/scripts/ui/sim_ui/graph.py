@@ -464,7 +464,7 @@ class SkillDpsRatioCanvas(pg.PlotWidget):
 
         # 레이블은 데이터가 있는 것만 필터링
         self.labels: list[str] = [
-            parse_skill_id(tracked_skill_ids[i])[1]
+            parse_skill_id(tracked_skill_ids[i])[1].split(":")[-1]
             for i, value in enumerate(ratio_data)
             if value
         ]
@@ -1099,7 +1099,7 @@ class SkillContributionCanvas(pg.PlotWidget):
         }
 
         self.skill_names: list[str] = [
-            parse_skill_id(sid)[1] for sid in tracked_skill_ids
+            parse_skill_id(sid)[1].split(":")[-1] for sid in tracked_skill_ids
         ]
 
         # 데미지가 0인 스킬 제거
