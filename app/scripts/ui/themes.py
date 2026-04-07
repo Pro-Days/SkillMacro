@@ -725,6 +725,7 @@ QFrame#noticeAccentBar[kind="error"] {{
 /* 알림 닫기 버튼 */
 QPushButton#noticeRemoveBtn {{
     background-color: transparent;
+    border: none;
     border-radius: 12px;
 }}
 QPushButton#noticeRemoveBtn:hover {{ background-color: rgba(0, 0, 0, 20); }}
@@ -2073,6 +2074,7 @@ QFrame#noticeAccentBar[kind="error"] {{
 
 QPushButton#noticeRemoveBtn {{
     background-color: transparent;
+    border: none;
     border-radius: 12px;
 }}
 QPushButton#noticeRemoveBtn:hover {{ background-color: rgba(255, 255, 255, 20); }}
