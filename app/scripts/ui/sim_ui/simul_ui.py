@@ -327,6 +327,7 @@ class SimUI:
         )
         self._calc_thread.progress_signal.connect(self._on_results_calculation_progress)
         self._calc_thread.finished_signal.connect(self._on_results_calculation_finished)
+        self._calc_thread.finished.connect(self._cleanup_calc_thread)
         self._calc_thread.start()
 
     def _cancel_results_calculation(self) -> None:
@@ -353,8 +354,7 @@ class SimUI:
     ) -> None:
         """백그라운드 계산 종료 후 페이지 전환 처리"""
 
-        # 완료 스레드 참조 해제와 오버레이 정리
-        self._calc_thread = None
+        # 오버레이 정리 (스레드 참조 해제는 finished 시그널에서 처리)
         self._results_overlay.hide()
 
         # 사용자 취소 요청이면 현재 페이지 유지
@@ -376,6 +376,13 @@ class SimUI:
         self.stacked_layout.setCurrentIndex(2)
         self.adjust_main_frame_height()
         QTimer.singleShot(0, self.adjust_main_frame_height)
+
+    def _cleanup_calc_thread(self) -> None:
+        """QThread 완전 종료 후 참조 해제"""
+
+        if self._calc_thread is not None:
+            self._calc_thread.deleteLater()
+            self._calc_thread = None
 
 
 class InputPage(QFrame):
