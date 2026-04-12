@@ -581,6 +581,15 @@ class FinalStats:
 
     values: dict[StatKey, float]
 
+    def __post_init__(self) -> None:
+        """최종 스탯 값을 소수 둘째 자리까지 표시하게 정규화"""
+
+        rounded_values: dict[StatKey, float] = {
+            stat_key: round(value, 2) for stat_key, value in self.values.items()
+        }
+
+        object.__setattr__(self, "values", rounded_values)
+
 
 @dataclass(slots=True)
 class CustomPowerFormula:

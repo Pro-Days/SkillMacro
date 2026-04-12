@@ -1221,13 +1221,13 @@ class ResultsPage(QFrame):
     def _format_delta(value: float) -> str:
         """전투력 변화량 표시 문자열 생성"""
 
-        return f"{value:+,.2f}"
+        return f"{value:+,.2f}".rstrip("0").rstrip(".")
 
     @staticmethod
     def _format_current_power(value: float) -> str:
         """현재 전투력 표시 문자열 생성"""
 
-        return f"{value:,.2f}"
+        return f"{value:,.2f}".rstrip("0").rstrip(".")
 
     @staticmethod
     def _result_sort_key(row: tuple[str, str]) -> float:
@@ -3882,7 +3882,9 @@ class ResultsPage(QFrame):
             )
             values: dict[StatKey, str] = {}
             for stat_key in STAT_SPECS.keys():
-                values[stat_key] = f"{resolved_values[stat_key]:g}"
+                values[stat_key] = f"{resolved_values[stat_key]}".rstrip("0").rstrip(
+                    "."
+                )
 
             return values
 
@@ -4842,7 +4844,8 @@ class ResultsPage(QFrame):
                 for stat_key in OVERALL_STAT_ORDER:
                     label: str = STAT_SPECS[stat_key]
                     value: float = self._current_final_stats.values[stat_key]
-                    lines.append(f"{label}\t{value:g}")
+                    value_text: str = f"{value}".rstrip("0").rstrip(".")
+                    lines.append(f"{label}\t{value_text}")
 
                 clipboard: QClipboard = QApplication.clipboard()
                 if clipboard is not None:
@@ -4879,7 +4882,9 @@ class ResultsPage(QFrame):
                         if stat_key is None:
                             continue
                         label_text: str = STAT_SPECS[stat_key]
-                        value_text: str = f"{final_stats.values[stat_key]:,.2f}"
+                        value_text: str = f"{final_stats.values[stat_key]:,}".rstrip(
+                            "0"
+                        ).rstrip(".")
 
                         cell: QFrame = QFrame(self)
                         cell.setObjectName("statsGridCell")
