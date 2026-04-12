@@ -26,8 +26,8 @@ from PySide6.QtGui import (
     QPainter,
     QPaintEvent,
     QPen,
-    QShowEvent,
     QPixmap,
+    QShowEvent,
 )
 from PySide6.QtWidgets import (
     QApplication,
@@ -1779,7 +1779,7 @@ class ResultsPage(QFrame):
             )
             paste_btn.clicked.connect(self._paste_stats_from_clipboard)
             ocr_btn: StyledButton = StyledButton(
-                self, "화면에서 읽기", kind="normal", point_size=9
+                self, "화면에서 불러오기", kind="normal", point_size=9
             )
             ocr_btn.clicked.connect(self._ocr_stats_from_screen)
             paste_btn_row: QHBoxLayout = QHBoxLayout()

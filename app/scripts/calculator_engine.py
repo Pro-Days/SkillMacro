@@ -266,32 +266,33 @@ POWER_FORMULA_EXAMPLES: tuple[PowerFormulaExample, ...] = (
     PowerFormulaExample(
         title="사냥 전투력",
         description=(
-            "데미지 1000까지만 찍고 나머지는 전부 행운에 투자하는 전투력 공식입니다.\n"
-            "이 예제에서 원하는 데미지 입력 후 사용하시면 됩니다.\n"
-            "드랍률 영향 없이 경험치 획득량만 계산하려면 drop_rate_percent을 제거하시면 됩니다."
+            "데미지를 1000까지만 찍고 나머지는 전부 행운에 투자하는 전투력 공식입니다.\n"
+            "이 예제에서 원하는 데미지를 입력하신 후 사용하시면 됩니다.\n"
+            "드랍률 영향 없이 경험치 획득량만 계산하려면 drop_rate_percent을 제거하세요."
         ),
         source=(
             "dmg = attack\n"
             "dmg *= 1 + skill_damage_percent * 0.01\n"
             "dmg *= 1 + final_attack_percent * 0.01\n"
             "dmg *= 1 + crit_rate_percent * (crit_damage_percent - 100) * 0.0001\n\n"
-            "if dmg < 1000:  # <- 원하는 데미지로 수정하세요\n"
+            "if dmg < 1000:  # <- 원하는 데미지로 수정하세요.\n"
             "    power = dmg * 0.01\n"
             "else:\n"
+            "    # 드랍률 영향 없이 계산하고 싶으시면 drop_rate_percent을 제거하세요.\n"
             "    power = exp_percent + drop_rate_percent + dmg * 0.01\n\n"
             "result = power"
         ),
     ),
     PowerFormulaExample(
         title="보스형",
-        description="보스 60초 피해와 체력을 함께 반영하는 예제",
+        description="보스 60초 피해와 체력을 함께 반영하는 예제입니다.",
         source=(
             "power = boss_damage\n" "power *= hp\n" "power /= 2000\n\n" "result = power"
         ),
     ),
     PowerFormulaExample(
         title="일반형",
-        description="일반 60초 피해와 경험치, 드랍률 배수를 함께 반영하는 예제",
+        description="일반 60초 피해와 경험치, 드랍률 배수를 함께 반영하는 예제입니다.",
         source=(
             "power = normal_damage\n"
             "power *= 1.0 + (drop_rate_percent * 0.01)\n"
@@ -301,12 +302,12 @@ POWER_FORMULA_EXAMPLES: tuple[PowerFormulaExample, ...] = (
     ),
     PowerFormulaExample(
         title="균형형",
-        description="보스/일반 피해의 평균을 사용하는 예제",
+        description="보스/일반 피해의 평균을 사용하는 예제입니다.",
         source="result = (boss_damage * 0.5) + (normal_damage * 0.5)",
     ),
     PowerFormulaExample(
         title="조건형",
-        description="보스 60초 피해와 레벨에 따른 물약 회복량을 반영하는 예제",
+        description="보스 60초 피해와 레벨에 따른 물약 회복량을 반영하는 예제입니다.",
         source=(
             "power = boss_damage * hp / 2000\n\n"
             "if level < 50:\n"
