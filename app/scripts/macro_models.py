@@ -497,7 +497,7 @@ class MacroPreset:
 class MacroPresetFile:
     """json 파일을 저장하는 최상위 객체"""
 
-    version: int = 3
+    version: int = 4
     theme_mode: ThemeMode = ThemeMode.SYSTEM
     recent_preset: int = 0
     custom_power_formulas: list[CustomPowerFormula] = field(default_factory=list)

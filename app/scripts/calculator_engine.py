@@ -36,6 +36,7 @@ import random
 from collections.abc import Callable, Iterator
 from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wait
 from dataclasses import dataclass, field
+from math import floor
 from typing import TYPE_CHECKING, NoReturn, TypeVar, cast
 
 from app.scripts.calculator_models import (
@@ -76,8 +77,6 @@ if TYPE_CHECKING:
 DISPLAY_POWER_METRICS: tuple[PowerMetric, ...] = (
     PowerMetric.BOSS_DAMAGE,
     PowerMetric.NORMAL_DAMAGE,
-    PowerMetric.BOSS,
-    PowerMetric.NORMAL,
     PowerMetric.OFFICIAL,
 )
 
@@ -91,8 +90,6 @@ DISPLAY_POWER_METRIC_IDS: frozenset[str] = frozenset(
 POWER_METRIC_LABELS: dict[PowerMetric, str] = {
     PowerMetric.BOSS_DAMAGE: "보스 데미지",
     PowerMetric.NORMAL_DAMAGE: "일반 데미지",
-    PowerMetric.BOSS: "보스 전투력",
-    PowerMetric.NORMAL: "일반 전투력",
     PowerMetric.OFFICIAL: "공식 전투력",
 }
 
@@ -134,35 +131,30 @@ _STAT_ORDER_VALUES: tuple[str, ...] = tuple(sk.value for sk in OVERALL_STAT_ORDE
 _GRADIENT_TOP_K: int = 15
 _GRADIENT_EXACT_THRESHOLD: int = 500
 
-# 보스 전투력 생존 계수 튜닝 상수
-_BOSS_HP_FACTOR_DIVISOR: float = 200.0
-_BOSS_HP_FACTOR_EXPONENT: float = 0.4
-_BOSS_POTION_FACTOR_DIVISOR: float = 25.0
-_BOSS_POTION_FACTOR_EXPONENT: float = 0.5
-_BOSS_DODGE_FACTOR_EXPONENT: float = 1.0
-_BOSS_RESIST_FACTOR_EXPONENT: float = 0.6
-
 # 내장 공식 추가 입력 변수 이름
 _POWER_FORMULA_LEVEL_NAME: str = "level"
 _POWER_FORMULA_BOSS_DAMAGE_NAME: str = "boss_damage"
 _POWER_FORMULA_NORMAL_DAMAGE_NAME: str = "normal_damage"
-_POWER_FORMULA_BOSS_MULTIPLIER_NAME: str = "boss_multiplier"
-_POWER_FORMULA_NORMAL_MULTIPLIER_NAME: str = "normal_multiplier"
 
 # 내장 전투력 공식 문자열
 _POWER_FORMULA_SOURCES: dict[PowerMetric, str] = {
     PowerMetric.BOSS_DAMAGE: _POWER_FORMULA_BOSS_DAMAGE_NAME,
     PowerMetric.NORMAL_DAMAGE: _POWER_FORMULA_NORMAL_DAMAGE_NAME,
-    PowerMetric.BOSS: (
-        f"{_POWER_FORMULA_BOSS_DAMAGE_NAME}" f" * {_POWER_FORMULA_BOSS_MULTIPLIER_NAME}"
-    ),
-    PowerMetric.NORMAL: (
-        f"{_POWER_FORMULA_NORMAL_DAMAGE_NAME}"
-        f" * {_POWER_FORMULA_NORMAL_MULTIPLIER_NAME}"
-    ),
     PowerMetric.OFFICIAL: (
-        f"({_POWER_FORMULA_BOSS_DAMAGE_NAME}"
-        f" + {_POWER_FORMULA_NORMAL_DAMAGE_NAME}) * 0.5"
+        "floor("
+        "10 * attack"
+        " + 0.5 * hp"
+        " + 20 * crit_rate_percent"
+        " + 10 * crit_damage_percent"
+        " + 10 * potion_heal_percent"
+        " + 40 * ("
+        "   skill_damage_percent"
+        " + final_attack_percent"
+        " + boss_attack_percent"
+        " + dodge_percent"
+        " + skill_speed_percent"
+        ")"
+        ")"
     ),
 }
 
@@ -176,19 +168,11 @@ _CUSTOM_POWER_FORMULA_VARIABLE_NAMES: frozenset[str] = frozenset(
         _POWER_FORMULA_NORMAL_DAMAGE_NAME,
     )
 )
-_BUILTIN_POWER_FORMULA_VARIABLE_NAMES: frozenset[str] = (
-    _CUSTOM_POWER_FORMULA_VARIABLE_NAMES
-    | frozenset(
-        (
-            _POWER_FORMULA_BOSS_MULTIPLIER_NAME,
-            _POWER_FORMULA_NORMAL_MULTIPLIER_NAME,
-        )
-    )
-)
 
 # 수식 엔진 허용 함수
 _POWER_FORMULA_FUNCTIONS: dict[str, Callable[..., float | int | bool]] = {
     "abs": abs,  # type: ignore
+    "floor": floor,
     "max": max,
     "min": min,
     "round": round,
@@ -280,6 +264,25 @@ POWER_FORMULA_GUIDE_LINES: tuple[str, ...] = (
 # 전투력 공식 예제 목록
 POWER_FORMULA_EXAMPLES: tuple[PowerFormulaExample, ...] = (
     PowerFormulaExample(
+        title="사냥 전투력",
+        description=(
+            "데미지 1000까지만 찍고 나머지는 전부 행운에 투자하는 전투력 공식입니다.\n"
+            "이 예제에서 원하는 데미지 입력 후 사용하시면 됩니다.\n"
+            "드랍률 영향 없이 경험치 획득량만 계산하려면 drop_rate_percent을 제거하시면 됩니다."
+        ),
+        source=(
+            "dmg = attack\n"
+            "dmg *= 1 + skill_damage_percent * 0.01\n"
+            "dmg *= 1 + final_attack_percent * 0.01\n"
+            "dmg *= 1 + crit_rate_percent * (crit_damage_percent - 100) * 0.0001\n\n"
+            "if dmg < 1000:  # <- 원하는 데미지로 수정하세요\n"
+            "    power = dmg * 0.01\n"
+            "else:\n"
+            "    power = exp_percent + drop_rate_percent + dmg * 0.01\n\n"
+            "result = power"
+        ),
+    ),
+    PowerFormulaExample(
         title="보스형",
         description="보스 60초 피해와 체력을 함께 반영하는 예제",
         source=(
@@ -368,6 +371,11 @@ POWER_FORMULA_REFERENCE_GROUPS: tuple[PowerFormulaReferenceGroup, ...] = (
                 insert_text="abs()",
             ),
             PowerFormulaReferenceEntry(
+                symbol="floor(x)",
+                description="소수점 이하 내림",
+                insert_text="floor()",
+            ),
+            PowerFormulaReferenceEntry(
                 symbol="min(a, b, ...)",
                 description="가장 작은 값 반환",
                 insert_text="min()",
@@ -391,14 +399,16 @@ POWER_FORMULA_REFERENCE_GROUPS: tuple[PowerFormulaReferenceGroup, ...] = (
 _CUSTOM_POWER_FORMULA_RESERVED_NAMES: frozenset[str] = (
     _CUSTOM_POWER_FORMULA_VARIABLE_NAMES | frozenset(_POWER_FORMULA_FUNCTIONS.keys())
 )
-_BUILTIN_POWER_FORMULA_RESERVED_NAMES: frozenset[str] = (
-    _BUILTIN_POWER_FORMULA_VARIABLE_NAMES | frozenset(_POWER_FORMULA_FUNCTIONS.keys())
-)
 
 # 허용 함수별 인자 개수 메타데이터
 _POWER_FORMULA_FUNCTION_SPECS: dict[str, PowerFormulaFunctionSpec] = {
     "abs": PowerFormulaFunctionSpec(
         name="abs",
+        min_args=1,
+        max_args=1,
+    ),
+    "floor": PowerFormulaFunctionSpec(
+        name="floor",
         min_args=1,
         max_args=1,
     ),
@@ -704,8 +714,8 @@ def _build_power_formula_nodes() -> dict[PowerMetric, CompiledPowerFormula]:
         # 내장 공식 전용 계수 변수 허용 검증 경로
         formula_nodes[power_metric] = _compile_power_formula(
             formula_source=source,
-            accessible_names=_BUILTIN_POWER_FORMULA_VARIABLE_NAMES,
-            reserved_names=_BUILTIN_POWER_FORMULA_RESERVED_NAMES,
+            accessible_names=_CUSTOM_POWER_FORMULA_VARIABLE_NAMES,
+            reserved_names=_CUSTOM_POWER_FORMULA_RESERVED_NAMES,
         )
 
     return formula_nodes
@@ -1077,22 +1087,6 @@ _POWER_FORMULA_NODES: dict[PowerMetric, CompiledPowerFormula] = (
 )
 
 
-def _get_boss_potion_base_heal(level: int) -> float:
-    """레벨 구간별 5초 포션 기본 회복량 반환"""
-
-    # 레벨 구간별 포션 기본 회복량 결정
-    if level >= 150:
-        return 180.0
-
-    if level >= 100:
-        return 120.0
-
-    if level >= 50:
-        return 70.0
-
-    return 20.0
-
-
 def _compute_power_gradient(
     timeline_artifacts: TimelineEvaluationArtifacts,
     base_changed_stats: dict[StatKey, float],
@@ -1232,26 +1226,15 @@ class Timeline:
 
 
 @dataclass(frozen=True, slots=True)
-class TimelineSegment:
-    """전투력 평가용 타임라인 세그먼트"""
-
-    start_time: float
-    end_time: float
-    duration: float
-    active_buffs: tuple[BuffWindow, ...]
-
-
-@dataclass(frozen=True, slots=True)
 class TimelineEvaluationArtifacts:
     """타임라인 전투력 평가용 사전 계산 결과"""
 
     timeline: Timeline
 
-    # 각 HitEvent 마다 활성화된 버프 구간들의 튜플 목록
-    # 동일한 HitEvent 를 구분하기 위해 dict를 사용하지 않음.
+    # 타격별 활성 버프 스냅샷 목록
+    # 동일한 HitEvent 구분용 인덱스 기반 접근 유지
     active_buffs_by_hit: tuple[tuple[BuffWindow, ...], ...]
 
-    timeline_segments: tuple[TimelineSegment, ...]
     level: int = 0
 
 
@@ -2167,53 +2150,10 @@ def _build_timeline_evaluation_artifacts(
         )
         active_buffs_by_hit.append(active_buffs)
 
-    # 전투력 배수 시간가중 평균용 세그먼트 경계 계산
-    boundary_values: set[float] = {0.0, TIMELINE_SECONDS}
-    buff_window: BuffWindow
-    for buff_window in timeline.buff_windows:
-        clamped_start_time: float = max(
-            0.0,
-            min(buff_window.start_time, TIMELINE_SECONDS),
-        )
-        clamped_end_time: float = max(
-            0.0,
-            min(buff_window.end_time, TIMELINE_SECONDS),
-        )
-        boundary_values.add(clamped_start_time)
-        boundary_values.add(clamped_end_time)
-
-    # 세그먼트 시작 시점 활성 버프 기준 시간 구간 분해
-    ordered_boundaries: tuple[float, ...] = tuple(sorted(boundary_values))
-    timeline_segments: list[TimelineSegment] = []
-    boundary_index: int
-    for boundary_index in range(len(ordered_boundaries) - 1):
-        start_time: float = ordered_boundaries[boundary_index]
-        end_time: float = ordered_boundaries[boundary_index + 1]
-
-        # 세그먼트 시작 시점 기준 활성 버프 수집
-        segment_active_buffs: tuple[BuffWindow, ...] = tuple(
-            current_buff_window
-            for current_buff_window in timeline.buff_windows
-            if (
-                current_buff_window.start_time
-                <= start_time
-                < current_buff_window.end_time
-            )
-        )
-        timeline_segments.append(
-            TimelineSegment(
-                start_time=start_time,
-                end_time=end_time,
-                duration=end_time - start_time,
-                active_buffs=segment_active_buffs,
-            )
-        )
-
     # 동일 타임라인 재평가 시 재사용할 불변 구조로 고정
     artifacts: TimelineEvaluationArtifacts = TimelineEvaluationArtifacts(
         timeline=timeline,
         active_buffs_by_hit=tuple(active_buffs_by_hit),
-        timeline_segments=tuple(timeline_segments),
         level=level,
     )
     return artifacts
@@ -2374,7 +2314,6 @@ def _build_power_formula_variables(
     base_values: dict[StatKey, float] = resolved_stats.values
     hit_events: tuple[HitEvent, ...] = artifacts.timeline.hit_events
     all_active_buffs: tuple[tuple[BuffWindow, ...], ...] = artifacts.active_buffs_by_hit
-    potion_base_heal: float = _get_boss_potion_base_heal(artifacts.level)
 
     # 동일 버프 조합에 대한 스탯 스냅샷 캐시
     buff_stats_cache: dict[int, dict[StatKey, float]] = {}
@@ -2418,68 +2357,6 @@ def _build_power_formula_variables(
         normal_damage += normal_hit_damage
         boss_damage += boss_hit_damage
 
-    # 세그먼트별 생존/획득 배수 시간가중 평균 계산
-    weighted_boss_multiplier_sum: float = 0.0
-    weighted_normal_multiplier_sum: float = 0.0
-    timeline_segment: TimelineSegment
-    for timeline_segment in artifacts.timeline_segments:
-        seg_buffs: tuple[BuffWindow, ...] = timeline_segment.active_buffs
-        seg_buff_id: int = id(seg_buffs)
-        segment_stats: dict[StatKey, float] | None = buff_stats_cache.get(seg_buff_id)
-        if segment_stats is None:
-            segment_stats = base_values.copy()
-            active_buff: BuffWindow
-            for active_buff in seg_buffs:
-                segment_stats[active_buff.stat_key] = (
-                    segment_stats[active_buff.stat_key] + active_buff.value
-                )
-
-            buff_stats_cache[seg_buff_id] = segment_stats
-
-        hp_value: float = segment_stats[StatKey.HP]
-        dodge_value: float = segment_stats[StatKey.DODGE_PERCENT]
-        resist_value: float = segment_stats[StatKey.RESIST_PERCENT]
-        potion_heal_percent_value: float = segment_stats[StatKey.POTION_HEAL_PERCENT]
-        dodge_denominator: float = 1.0 - (dodge_value * 0.01)
-        if dodge_denominator < 0.01:
-            dodge_denominator = 0.01
-
-        resist_multiplier: float = 1.0 + (resist_value * 0.01)
-        if resist_multiplier < 0.01:
-            resist_multiplier = 0.01
-
-        hp_factor_input: float = 1.0 + (max(hp_value, 0.0) / _BOSS_HP_FACTOR_DIVISOR)
-        potion_heal_value: float = potion_base_heal * (
-            1.0 + (potion_heal_percent_value * 0.01)
-        )
-        potion_factor_input: float = 1.0 + (
-            max(potion_heal_value, 0.0) / _BOSS_POTION_FACTOR_DIVISOR
-        )
-
-        # 체력과 포션의 역할을 분리한 보스 생존 배수 계산
-        segment_boss_multiplier: float = hp_factor_input**_BOSS_HP_FACTOR_EXPONENT
-        segment_boss_multiplier *= potion_factor_input**_BOSS_POTION_FACTOR_EXPONENT
-        segment_boss_multiplier *= (
-            1.0 / dodge_denominator
-        ) ** _BOSS_DODGE_FACTOR_EXPONENT
-        segment_boss_multiplier *= resist_multiplier**_BOSS_RESIST_FACTOR_EXPONENT
-        weighted_boss_multiplier_sum += (
-            segment_boss_multiplier * timeline_segment.duration
-        )
-
-        # 드랍률과 경험치 기반 일반 전투력 배수 계산
-        drop_rate_value: float = segment_stats[StatKey.DROP_RATE_PERCENT]
-        exp_value: float = segment_stats[StatKey.EXP_PERCENT]
-        segment_normal_multiplier: float = 1.0 + (drop_rate_value * 0.01)
-        segment_normal_multiplier *= 1.0 + (exp_value * 0.01)
-        weighted_normal_multiplier_sum += (
-            segment_normal_multiplier * timeline_segment.duration
-        )
-
-    # 내장 전투력 공식 평가용 계수 계산
-    boss_multiplier: float = weighted_boss_multiplier_sum / TIMELINE_SECONDS
-    normal_multiplier: float = weighted_normal_multiplier_sum / TIMELINE_SECONDS
-
     # 최종 스탯과 내장 공식 평가 입력값 구성
     formula_variables: dict[str, float | int | bool] = {
         stat_key.value: resolved_stats.values[stat_key]
@@ -2488,8 +2365,6 @@ def _build_power_formula_variables(
     formula_variables[_POWER_FORMULA_LEVEL_NAME] = artifacts.level
     formula_variables[_POWER_FORMULA_BOSS_DAMAGE_NAME] = boss_damage
     formula_variables[_POWER_FORMULA_NORMAL_DAMAGE_NAME] = normal_damage
-    formula_variables[_POWER_FORMULA_BOSS_MULTIPLIER_NAME] = boss_multiplier
-    formula_variables[_POWER_FORMULA_NORMAL_MULTIPLIER_NAME] = normal_multiplier
     return formula_variables
 
 

@@ -62,8 +62,6 @@ class StatKey(str, Enum):
 class PowerMetric(str, Enum):
     """계산기 전투력 종류"""
 
-    BOSS = "boss"
-    NORMAL = "normal"
     BOSS_DAMAGE = "boss_damage"
     NORMAL_DAMAGE = "normal_damage"
     OFFICIAL = "official"

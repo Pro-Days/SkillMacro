@@ -19,7 +19,7 @@ from app.scripts.macro_models import (
 from app.scripts.registry.server_registry import ServerSpec, server_registry
 from app.scripts.registry.skill_registry import ScrollDef, SkillDef
 
-data_version = 3
+DATA_VERSION: int = 4
 
 # todo: 라이브러리를 통해 경로를 설정하도록 변경
 local_appdata: str = os.environ.get("LOCALAPPDATA", default="")
@@ -81,17 +81,34 @@ def migrate_macro_data_file(file_path: str) -> None:
             stored_version_obj = 2
             migrated = True
 
-        # v2 -> v3
+        # v2 -> v3: 선택 공식 필드명 전환 및 커스텀 공식 저장소 초기화
         if stored_version_obj == 2:
+            raw_preset: dict[str, Any]
             for raw_preset in raw["preset"]:
-                raw_info = raw_preset["info"]
-                raw_calculator = raw_info["calculator"]
-                raw_selected_metric = raw_calculator.pop("selected_metric")
+                raw_info: dict[str, Any] = raw_preset["info"]
+                raw_calculator: dict[str, Any] = raw_info["calculator"]
+                raw_selected_metric: Any = raw_calculator.pop("selected_metric")
                 raw_calculator["selected_formula_id"] = str(raw_selected_metric)
 
-            # 커스텀 공식 루트 필드
+            # 커스텀 공식 루트 필드 생성
             raw["custom_power_formulas"] = []
-            raw["version"] = data_version
+            raw["version"] = 3
+            stored_version_obj = 3
+            migrated = True
+
+        # v3 -> v4: 제거된 보스/일반 전투력 선택값을 보스 데미지로 변경
+        if stored_version_obj == 3:
+            raw_preset: dict[str, Any]
+            for raw_preset in raw["preset"]:
+                raw_info: dict[str, Any] = raw_preset["info"]
+                raw_calculator: dict[str, Any] = raw_info["calculator"]
+                raw_selected_formula_id: str = str(
+                    raw_calculator["selected_formula_id"]
+                )
+                if raw_selected_formula_id in ("boss", "normal"):
+                    raw_calculator["selected_formula_id"] = "boss_damage"
+
+            raw["version"] = DATA_VERSION
             migrated = True
 
     except (KeyError, TypeError, ValueError):
@@ -430,7 +447,7 @@ def create_default_data() -> None:
 
     repo = MacroPresetRepository(file_dir)
     preset_file = MacroPresetFile(
-        version=data_version,
+        version=DATA_VERSION,
         theme_mode=app_state.ui.theme_mode,
         recent_preset=0,
         custom_power_formulas=[],
@@ -447,7 +464,7 @@ def save_data() -> None:
     repo: MacroPresetRepository = MacroPresetRepository(file_dir)
 
     preset_file: MacroPresetFile = MacroPresetFile(
-        version=data_version,
+        version=DATA_VERSION,
         theme_mode=app_state.ui.theme_mode,
         recent_preset=app_state.macro.current_preset_index,
         custom_power_formulas=app_state.macro.custom_power_formulas.copy(),
