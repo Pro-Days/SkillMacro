@@ -5,11 +5,33 @@ from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QEvent, QObject, QSize, Qt, QThread, QTimer, Signal
-from PySide6.QtGui import QClipboard, QIcon, QPixmap
+from PySide6.QtCore import (
+    QEvent,
+    QObject,
+    QPoint,
+    QRect,
+    QSize,
+    Qt,
+    QThread,
+    QTimer,
+    Signal,
+)
+from PySide6.QtGui import (
+    QClipboard,
+    QColor,
+    QGuiApplication,
+    QIcon,
+    QKeyEvent,
+    QMouseEvent,
+    QPainter,
+    QPaintEvent,
+    QPen,
+    QPixmap,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
+    QDialog,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -90,6 +112,8 @@ from app.scripts.ui.sim_ui.graph import (
 from app.scripts.ui.themes import theme_manager
 
 if TYPE_CHECKING:
+    from PIL import Image
+
     from app.scripts.calculator_engine import (
         EvaluationContext,
         FinalStats,
@@ -107,6 +131,7 @@ if TYPE_CHECKING:
         TalismanSpec,
     )
     from app.scripts.macro_models import MacroPreset
+    from app.scripts.ocr import OcrStatCandidate
     from app.scripts.registry.server_registry import ServerSpec
     from app.scripts.registry.skill_registry import ScrollDef
     from app.scripts.ui.main_window import MainWindow
@@ -231,7 +256,6 @@ class SimUI:
             and not self.input_page.editor.has_valid_navigation_inputs()
         ):
             self.master.get_popup_manager().show_notice(NoticeKind.SIM_INPUT_ERROR)
-
             return
 
         if index == self.stacked_layout.currentIndex():
@@ -410,6 +434,364 @@ class InputPage(QFrame):
         self.setLayout(layout)
 
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+
+class ScreenCaptureSelectionDialog(QDialog):
+    """사용자가 화면 영역을 드래그 선택하는 오버레이"""
+
+    _MIN_SELECTION_SIZE: int = 20
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+
+        self._drag_start_global: QPoint | None = None
+        self._drag_current_global: QPoint | None = None
+        self._selected_rect: QRect | None = None
+
+        self.setModal(True)
+        self.setCursor(Qt.CursorShape.CrossCursor)
+        self.setWindowFlags(
+            Qt.WindowType.Dialog
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.Tool
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setMouseTracking(True)
+        self.setGeometry(self._virtual_geometry())
+
+    def selected_rect(self) -> QRect | None:
+        """확정된 전역 화면 좌표 선택 영역 반환"""
+
+        return self._selected_rect
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # type: ignore
+        if event.key() == Qt.Key.Key_Escape:
+            self.reject()
+            return
+
+        super().keyPressEvent(event)
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        if event.button() == Qt.MouseButton.RightButton:
+            self.reject()
+            return
+
+        if event.button() != Qt.MouseButton.LeftButton:
+            super().mousePressEvent(event)
+            return
+
+        point = event.globalPosition().toPoint()
+        self._drag_start_global = point
+        self._drag_current_global = point
+        self._selected_rect = None
+        self.update()
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        if self._drag_start_global is None:
+            super().mouseMoveEvent(event)
+            return
+
+        self._drag_current_global = event.globalPosition().toPoint()
+        self.update()
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        if (
+            event.button() != Qt.MouseButton.LeftButton
+            or self._drag_start_global is None
+        ):
+            super().mouseReleaseEvent(event)
+            return
+
+        self._drag_current_global = event.globalPosition().toPoint()
+        selection_rect = self._current_selection_rect()
+        self._drag_start_global = None
+        self._drag_current_global = None
+
+        if selection_rect is None:
+            self.update()
+            return
+
+        if (
+            selection_rect.width() < self._MIN_SELECTION_SIZE
+            or selection_rect.height() < self._MIN_SELECTION_SIZE
+        ):
+            self.update()
+            return
+
+        self._selected_rect = selection_rect
+        self.accept()
+
+    def paintEvent(self, _event: QPaintEvent) -> None:  # type: ignore
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor(0, 0, 0, 90))
+
+        selection_rect = self._current_selection_rect()
+
+        if selection_rect is not None:
+            local_rect = QRect(
+                self.mapFromGlobal(selection_rect.topLeft()),
+                self.mapFromGlobal(selection_rect.bottomRight()),
+            ).normalized()
+            painter.fillRect(local_rect, QColor(255, 255, 255, 25))
+            painter.setPen(QPen(QColor(255, 255, 255), 2))
+            painter.drawRect(local_rect)
+
+        painter.setPen(QColor(255, 255, 255))
+        painter.setFont(CustomFont(11, bold=True))
+        painter.drawText(
+            self.rect().adjusted(24, 24, -24, -24),
+            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft,
+            "전체 스탯 영역을 드래그하세요. Esc 또는 우클릭으로 취소할 수 있습니다.",
+        )
+
+    def _current_selection_rect(self) -> QRect | None:
+        if self._drag_start_global is None or self._drag_current_global is None:
+            return self._selected_rect
+        return QRect(self._drag_start_global, self._drag_current_global).normalized()
+
+    @staticmethod
+    def _virtual_geometry() -> QRect:
+        geometry = QRect()
+        for screen in QGuiApplication.screens():
+            screen_geometry = screen.geometry()
+            geometry = (
+                screen_geometry
+                if geometry.isNull()
+                else geometry.united(screen_geometry)
+            )
+        return geometry
+
+
+class OcrReviewDialog(QDialog):
+    """OCR 인식 결과 적용 전 검토 다이얼로그"""
+
+    _AGREEMENT_COLORS: dict[str, str] = {
+        "high": "#48c774",
+        "medium": "#ffb020",
+        "low": "#ff6b6b",
+        "missing": "#7a7a7a",
+    }
+
+    def __init__(
+        self, parent: QWidget, candidates: dict[StatKey, OcrStatCandidate]
+    ) -> None:
+        super().__init__(parent)
+
+        self._retry_requested: bool = False
+        self._value_inputs: dict[StatKey, CustomLineEdit] = {}
+
+        self.setObjectName("customSkillDialog")
+        self.setWindowTitle("OCR 결과 확인")
+        self.setModal(True)
+        self.resize(620, 760)
+
+        outer: QVBoxLayout = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        summary_card: QFrame = QFrame(self)
+        summary_card.setObjectName("dialogCard")
+        summary_layout: QVBoxLayout = QVBoxLayout(summary_card)
+        summary_layout.setContentsMargins(20, 18, 20, 16)
+        summary_layout.setSpacing(8)
+
+        title_label: QLabel = QLabel("화면에서 읽은 전체 스탯", summary_card)
+        title_label.setObjectName("dialogSectionTitle")
+        title_label.setFont(CustomFont(12, bold=True))
+
+        summary_layout.addWidget(title_label)
+        outer.addWidget(summary_card)
+
+        self._status_label: QLabel = QLabel("", self)
+        self._status_label.setFont(CustomFont(9))
+        self._status_label.setWordWrap(True)
+        self._status_label.hide()
+
+        scroll_area: QScrollArea = QScrollArea(self)
+        scroll_area.setWidgetResizable(True)
+
+        scroll_widget: QWidget = QWidget(scroll_area)
+        scroll_layout: QVBoxLayout = QVBoxLayout(scroll_widget)
+        scroll_layout.setContentsMargins(20, 16, 20, 16)
+        scroll_layout.setSpacing(10)
+
+        result_card: QFrame = QFrame(scroll_widget)
+        result_card.setObjectName("dialogCard")
+        result_layout: QVBoxLayout = QVBoxLayout(result_card)
+        result_layout.setContentsMargins(16, 14, 16, 14)
+        result_layout.setSpacing(6)
+
+        section_label: QLabel = QLabel("인식 결과", result_card)
+        section_label.setObjectName("dialogSectionTitle")
+        section_label.setFont(CustomFont(11))
+        result_layout.addWidget(section_label)
+
+        stat_key: StatKey
+        for stat_key in OVERALL_STAT_ORDER:
+            candidate = candidates.get(stat_key)
+
+            row_widget: QFrame = QFrame(result_card)
+            row_layout: QHBoxLayout = QHBoxLayout(row_widget)
+            row_layout.setContentsMargins(0, 3, 0, 3)
+            row_layout.setSpacing(10)
+
+            label_widget: QLabel = QLabel(STAT_SPECS[stat_key], row_widget)
+            label_widget.setFont(CustomFont(10))
+
+            value_text: str = "0" if candidate is None else f"{candidate.value:,}"
+            value_input: CustomLineEdit = CustomLineEdit(
+                row_widget,
+                text=value_text,
+                point_size=10,
+            )
+            value_input.setAlignment(Qt.AlignmentFlag.AlignRight)
+            value_input.setFixedWidth(120)
+            value_input.setPlaceholderText("0")
+            value_input.textChanged.connect(
+                lambda _text, current_key=stat_key: self._on_value_changed(current_key)
+            )
+            self._value_inputs[stat_key] = value_input
+
+            agreement_color: str = self._AGREEMENT_COLORS["missing"]
+            if candidate is not None:
+                agreement_level: str = self._agreement_level(candidate)
+                agreement_color = self._AGREEMENT_COLORS[agreement_level]
+
+            source_widget: QLabel = QLabel(row_widget)
+            source_widget.setFixedSize(14, 14)
+            source_widget.setStyleSheet(
+                f"background-color: {agreement_color}; border-radius: 7px;"
+            )
+
+            row_layout.addWidget(label_widget, 1)
+            row_layout.addWidget(value_input)
+            row_layout.addWidget(source_widget)
+            result_layout.addWidget(row_widget)
+
+        scroll_layout.addWidget(result_card)
+        scroll_layout.addStretch(1)
+        scroll_widget.setLayout(scroll_layout)
+        scroll_area.setWidget(scroll_widget)
+        outer.addWidget(scroll_area, 1)
+        outer.addWidget(self._status_label)
+
+        btn_row: QHBoxLayout = QHBoxLayout()
+        btn_row.setSpacing(8)
+        btn_row.setContentsMargins(20, 8, 20, 16)
+
+        cancel_btn: QPushButton = QPushButton("취소", self)
+        cancel_btn.setObjectName("dialogCancelBtn")
+        cancel_btn.setFont(CustomFont(11))
+        cancel_btn.setFixedHeight(36)
+        cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        cancel_btn.clicked.connect(self.reject)
+
+        retry_btn: QPushButton = QPushButton("재시도", self)
+        retry_btn.setObjectName("dialogCancelBtn")
+        retry_btn.setFont(CustomFont(11))
+        retry_btn.setFixedHeight(36)
+        retry_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        retry_btn.clicked.connect(self._request_retry)
+
+        confirm_btn: QPushButton = QPushButton("적용", self)
+        confirm_btn.setObjectName("dialogConfirmBtn")
+        confirm_btn.setFont(CustomFont(11))
+        confirm_btn.setFixedHeight(36)
+        confirm_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        confirm_btn.clicked.connect(self._accept_with_validation)
+
+        btn_row.addWidget(cancel_btn)
+        btn_row.addWidget(retry_btn)
+        btn_row.addWidget(confirm_btn)
+        outer.addLayout(btn_row)
+
+    def confirmed_stats(self) -> dict[StatKey, float]:
+        """확정된 OCR 결과를 값 맵으로 반환"""
+
+        confirmed: dict[StatKey, float] = {}
+        for stat_key in OVERALL_STAT_ORDER:
+            value_text: str = self._value_inputs[stat_key].text().strip()
+            confirmed[stat_key] = self._parse_value_text(value_text)  # type: ignore[assignment]
+
+        return confirmed
+
+    def retry_requested(self) -> bool:
+        """OCR 재시도 요청 여부 반환"""
+
+        return self._retry_requested
+
+    def _request_retry(self) -> None:
+        """현재 다이얼로그를 닫고 OCR 을 다시 수행하도록 요청"""
+
+        self._retry_requested = True
+        self.reject()
+
+    def _accept_with_validation(self) -> None:
+        """선택된 행의 수치를 검증한 뒤 다이얼로그를 닫음"""
+
+        invalid_keys: list[StatKey] = []
+
+        for stat_key in OVERALL_STAT_ORDER:
+            value_input = self._value_inputs[stat_key]
+            value_input.set_valid(True)
+
+            if self._parse_value_text(value_input.text()) is not None:
+                continue
+
+            value_input.set_valid(False)
+            invalid_keys.append(stat_key)
+
+        if invalid_keys:
+            first_invalid: StatKey = invalid_keys[0]
+            self._value_inputs[first_invalid].setFocus()
+            self._show_status(f"{STAT_SPECS[first_invalid]} 값을 숫자로 입력하세요.")
+            return
+
+        self._status_label.hide()
+        self.accept()
+
+    def _on_value_changed(self, stat_key: StatKey) -> None:
+        """수동 수정 시 체크 상태와 입력 유효성 표시를 정리"""
+
+        value_input = self._value_inputs[stat_key]
+        value_input.set_valid(True)
+
+        if self._status_label.isHidden():
+            return
+
+        self._status_label.hide()
+
+    def _show_status(self, message: str) -> None:
+        """검토 다이얼로그 하단에 검증 메시지 표시"""
+
+        self._status_label.setText(message)
+        self._status_label.show()
+
+    @staticmethod
+    def _parse_value_text(text: str) -> float | None:
+        """사용자 입력 수치를 float 으로 정규화"""
+
+        sanitized_text: str = text.strip().replace(",", "")
+        if not sanitized_text:
+            return 0.0
+
+        try:
+            return float(sanitized_text)
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _agreement_level(candidate: OcrStatCandidate) -> str:
+        """여러 OCR 결과의 일치 횟수를 기반으로 색상 레벨 계산"""
+
+        agreement_count: int = candidate.agreement_count
+        attempt_count: int = candidate.attempt_count
+        if agreement_count >= min(4, attempt_count):
+            return "high"
+        if agreement_count >= 2:
+            return "medium"
+        return "low"
 
 
 class _CalculationOverlay(QFrame):
@@ -1430,12 +1812,18 @@ class ResultsPage(QFrame):
                 self, "전체 스탯 붙여넣기", kind="normal", point_size=9
             )
             paste_btn.clicked.connect(self._paste_stats_from_clipboard)
+            ocr_btn: StyledButton = StyledButton(
+                self, "화면에서 읽기", kind="normal", point_size=9
+            )
+            ocr_btn.clicked.connect(self._ocr_stats_from_screen)
             paste_btn_row: QHBoxLayout = QHBoxLayout()
             paste_btn_row.setContentsMargins(0, 0, 0, 0)
             paste_btn_row.addStretch(1)
+            paste_btn_row.addWidget(ocr_btn)
             paste_btn_row.addWidget(paste_btn)
             stats_card.add_layout(paste_btn_row)
             self._paste_btn: StyledButton = paste_btn
+            self._ocr_btn: StyledButton = ocr_btn
             stats_card.add_widget(self.stats_inputs)
 
             scroll_card = SectionCard(self, "무공비급 레벨")
@@ -3990,6 +4378,105 @@ class ResultsPage(QFrame):
                 persist=True,
             )
 
+        def _ocr_stats_from_screen(self) -> None:
+            """사용자가 드래그한 화면 영역을 OCR 로 인식해 검토창에 표시"""
+
+            self._ocr_btn.setEnabled(False)
+            self._ocr_btn.setText("영역 선택...")
+
+            selection_dialog: ScreenCaptureSelectionDialog = (
+                ScreenCaptureSelectionDialog(self)
+            )
+            if selection_dialog.exec() != QDialog.DialogCode.Accepted:
+                self._ocr_btn.setText("선택 취소")
+                self._ocr_btn.setEnabled(True)
+                QTimer.singleShot(2000, lambda: self._ocr_btn.setText("화면에서 읽기"))
+                return
+
+            selected_rect: QRect = selection_dialog.selected_rect()  # type: ignore[assignment]
+
+            from app.scripts.ocr import capture_screen_region
+
+            image = capture_screen_region(
+                selected_rect.x(),
+                selected_rect.y(),
+                selected_rect.width(),
+                selected_rect.height(),
+            )
+
+            self._ocr_btn.setText("인식 중...")
+
+            worker = self._OcrWorker(self, image)
+            worker.finished.connect(self._on_ocr_finished)
+            worker.error.connect(self._on_ocr_error)
+            self._ocr_worker: QThread = worker
+            worker.start()
+
+        def _on_ocr_finished(self, candidates: dict[StatKey, OcrStatCandidate]) -> None:
+            """OCR 성공 시 검토 다이얼로그를 띄우고 승인된 값만 반영"""
+
+            review_dialog: OcrReviewDialog = OcrReviewDialog(self, candidates)
+            if review_dialog.exec() != QDialog.DialogCode.Accepted:
+                if review_dialog.retry_requested():
+                    self._ocr_stats_from_screen()
+                    return
+
+                self._ocr_btn.setText("적용 취소")
+                self._ocr_btn.setEnabled(True)
+                QTimer.singleShot(2000, lambda: self._ocr_btn.setText("화면에서 읽기"))
+                return
+
+            stats = review_dialog.confirmed_stats()
+
+            parsed_count: int = 0
+            for stat_key, value in stats.items():
+                if stat_key not in self.stats_inputs.inputs:
+                    continue
+                value_str: str = f"{value:g}"
+                self.stats_inputs.inputs[stat_key].setText(value_str)
+                parsed_count += 1
+
+            if parsed_count > 0:
+                self.on_base_input_changed()
+                self._ocr_btn.setText(f"인식 완료! ({parsed_count}개)")
+            else:
+                self._ocr_btn.setText("인식된 스탯 없음")
+
+            self._ocr_btn.setEnabled(True)
+            QTimer.singleShot(2000, lambda: self._ocr_btn.setText("화면에서 읽기"))
+
+        def _on_ocr_error(self) -> None:
+            """OCR 실패 시 에러 피드백"""
+
+            self._ocr_btn.setText("인식 실패")
+            self._ocr_btn.setEnabled(True)
+            QTimer.singleShot(2000, lambda: self._ocr_btn.setText("화면에서 읽기"))
+
+        class _OcrWorker(QThread):
+            """게임 화면 OCR 을 백그라운드에서 수행하는 워커 스레드"""
+
+            finished = Signal(dict)
+            error = Signal()
+
+            def __init__(self, parent: QWidget, image: Image.Image) -> None:
+                super().__init__(parent)
+                self._image: Image.Image = image
+
+            def run(self) -> None:
+                try:
+                    from app.scripts.ocr import extract_stat_candidates_from_image
+
+                    candidates: dict[StatKey, OcrStatCandidate] = (
+                        extract_stat_candidates_from_image(self._image)
+                    )
+                    if not candidates:
+                        self.error.emit()
+                        return
+
+                    self.finished.emit(candidates)
+                except Exception:
+                    self.error.emit()
+
         def _paste_stats_from_clipboard(self) -> None:
             """클립보드의 전체 스탯 텍스트를 입력칸에 붙여넣기"""
 
@@ -4564,9 +5051,7 @@ class ResultsPage(QFrame):
             self._target_stats_grid: ResultsPage.ResultsView.OverallStatsGrid = (
                 ResultsPage.ResultsView.OverallStatsGrid(self)
             )
-            self._target_card: SectionCard = SectionCard(
-                self, "목표 분배 미리보기"
-            )
+            self._target_card: SectionCard = SectionCard(self, "목표 분배 미리보기")
             self._target_card.add_widget(self._target_list)
             self._target_card.add_separator()
             self._target_card.add_sub_title("목표 분배 적용 후 전체 스탯")
