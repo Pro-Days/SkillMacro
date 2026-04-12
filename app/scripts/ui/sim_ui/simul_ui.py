@@ -3882,9 +3882,9 @@ class ResultsPage(QFrame):
             )
             values: dict[StatKey, str] = {}
             for stat_key in STAT_SPECS.keys():
-                values[stat_key] = f"{resolved_values[stat_key]}".rstrip("0").rstrip(
-                    "."
-                )
+                values[stat_key] = f"{resolved_values[stat_key]:,.2f}".rstrip(
+                    "0"
+                ).rstrip(".")
 
             return values
 
@@ -4383,12 +4383,20 @@ class ResultsPage(QFrame):
             worker = self._OcrWorker(self, image)
             worker.finished.connect(self._on_ocr_finished)
             worker.error.connect(self._on_ocr_error)
-            self._ocr_worker: QThread = worker
+            self._ocr_worker: QThread | None = worker
             worker.start()
+
+        def _cleanup_ocr_worker(self) -> None:
+            """OCR 워커 스레드 완전 종료 후 참조 해제"""
+
+            if self._ocr_worker is not None:
+                self._ocr_worker.deleteLater()
+                self._ocr_worker = None
 
         def _on_ocr_finished(self, candidates: dict[StatKey, OcrStatCandidate]) -> None:
             """OCR 성공 시 검토 다이얼로그를 띄우고 승인된 값만 반영"""
 
+            self._cleanup_ocr_worker()
             review_dialog: OcrReviewDialog = OcrReviewDialog(self, candidates)
             if review_dialog.exec() != QDialog.DialogCode.Accepted:
                 if review_dialog.retry_requested():
@@ -4422,6 +4430,7 @@ class ResultsPage(QFrame):
         def _on_ocr_error(self) -> None:
             """OCR 실패 시 에러 피드백"""
 
+            self._cleanup_ocr_worker()
             self._ocr_btn.setText("인식 실패")
             self._ocr_btn.setEnabled(True)
             QTimer.singleShot(2000, lambda: self._ocr_btn.setText("화면에서 읽기"))
@@ -4844,7 +4853,7 @@ class ResultsPage(QFrame):
                 for stat_key in OVERALL_STAT_ORDER:
                     label: str = STAT_SPECS[stat_key]
                     value: float = self._current_final_stats.values[stat_key]
-                    value_text: str = f"{value}".rstrip("0").rstrip(".")
+                    value_text: str = f"{value:,.2f}".rstrip("0").rstrip(".")
                     lines.append(f"{label}\t{value_text}")
 
                 clipboard: QClipboard = QApplication.clipboard()
@@ -4882,7 +4891,7 @@ class ResultsPage(QFrame):
                         if stat_key is None:
                             continue
                         label_text: str = STAT_SPECS[stat_key]
-                        value_text: str = f"{final_stats.values[stat_key]:,}".rstrip(
+                        value_text: str = f"{final_stats.values[stat_key]:,.2f}".rstrip(
                             "0"
                         ).rstrip(".")
 
