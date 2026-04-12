@@ -26,6 +26,7 @@ from PySide6.QtGui import (
     QPainter,
     QPaintEvent,
     QPen,
+    QShowEvent,
     QPixmap,
 )
 from PySide6.QtWidgets import (
@@ -170,15 +171,6 @@ def _build_formula_options(
     return formula_ids
 
 
-class _StableScrollArea(QScrollArea):
-    """버튼 클릭 시 스크롤이 내려가는 문제 방지를 위한 클래스"""
-
-    def eventFilter(self, obj: QObject, event: QEvent) -> bool:  # type: ignore[override]
-        if event.type() == QEvent.Type.FocusIn:
-            return False
-        return super().eventFilter(obj, event)
-
-
 class SimUI:
     def __init__(self, master: MainWindow, parent: QFrame):
 
@@ -200,7 +192,7 @@ class SimUI:
         )
 
         # 무공비급바
-        self.scroll_area: QScrollArea = _StableScrollArea(self.parent)
+        self.scroll_area: QScrollArea = QScrollArea(self.parent)
         self.scroll_area.setObjectName("simScrollArea")
         self.scroll_area.setWidget(self.main_frame)
         # 위젯이 무공비급 영역에 맞춰 크기 조절되도록
@@ -474,6 +466,11 @@ class ScreenCaptureSelectionDialog(QDialog):
 
         return self._selected_rect
 
+    def showEvent(self, event: QShowEvent) -> None:  # type: ignore
+        super().showEvent(event)
+        self.activateWindow()
+        self.setFocus()
+
     def keyPressEvent(self, event: QKeyEvent) -> None:  # type: ignore
         if event.key() == Qt.Key.Key_Escape:
             self.reject()
@@ -590,11 +587,6 @@ class OcrReviewDialog(QDialog):
         root_layout: QVBoxLayout = QVBoxLayout(self)
         root_layout.setContentsMargins(20, 20, 20, 16)
         root_layout.setSpacing(12)
-
-        title_label: QLabel = QLabel("화면에서 읽은 전체 스탯", self)
-        title_label.setObjectName("dialogSectionTitle")
-        title_label.setFont(CustomFont(12, bold=True))
-        root_layout.addWidget(title_label)
 
         self._status_label: QLabel = QLabel("", self)
         self._status_label.setFont(CustomFont(9))
@@ -1683,6 +1675,9 @@ class ResultsPage(QFrame):
                 app_state.macro.custom_power_formulas
             )
             self.realm_options: list[RealmTier] = list(REALM_TIER_SPECS.keys())
+
+            # OCR 실행 중 중복 클릭 차단 플래그
+            self._is_ocr_running: bool = False
 
             # 기준 입력 위젯 구성 — KVComboInput 으로 KVInput(레벨)과 레이아웃 통일
             self.metric_input = KVComboInput(
@@ -4354,7 +4349,12 @@ class ResultsPage(QFrame):
         def _ocr_stats_from_screen(self) -> None:
             """사용자가 드래그한 화면 영역을 OCR 로 인식해 검토창에 표시"""
 
-            self._ocr_btn.setEnabled(False)
+            # OCR 중복 실행 방지 및 버튼 비활성화에 따른 포커스 이동 차단
+            if self._is_ocr_running:
+                return
+
+            # OCR 실행 상태 진입 및 사용자 피드백 갱신
+            self._is_ocr_running = True
             self._ocr_btn.setText("영역 선택...")
 
             selection_dialog: ScreenCaptureSelectionDialog = (
@@ -4362,7 +4362,7 @@ class ResultsPage(QFrame):
             )
             if selection_dialog.exec() != QDialog.DialogCode.Accepted:
                 self._ocr_btn.setText("선택 취소")
-                self._ocr_btn.setEnabled(True)
+                self._is_ocr_running = False
                 QTimer.singleShot(2000, lambda: self._ocr_btn.setText("화면에서 읽기"))
                 return
 
@@ -4409,11 +4409,12 @@ class ResultsPage(QFrame):
             review_dialog: OcrReviewDialog = OcrReviewDialog(self, candidates)
             if review_dialog.exec() != QDialog.DialogCode.Accepted:
                 if review_dialog.retry_requested():
+                    self._is_ocr_running = False
                     self._ocr_stats_from_screen()
                     return
 
                 self._ocr_btn.setText("적용 취소")
-                self._ocr_btn.setEnabled(True)
+                self._is_ocr_running = False
                 QTimer.singleShot(2000, lambda: self._ocr_btn.setText("화면에서 읽기"))
                 return
 
@@ -4433,7 +4434,7 @@ class ResultsPage(QFrame):
             else:
                 self._ocr_btn.setText("인식된 스탯 없음")
 
-            self._ocr_btn.setEnabled(True)
+            self._is_ocr_running = False
             QTimer.singleShot(2000, lambda: self._ocr_btn.setText("화면에서 읽기"))
 
         def _on_ocr_error(self) -> None:
@@ -4441,7 +4442,7 @@ class ResultsPage(QFrame):
 
             self._cleanup_ocr_worker()
             self._ocr_btn.setText("인식 실패")
-            self._ocr_btn.setEnabled(True)
+            self._is_ocr_running = False
             QTimer.singleShot(2000, lambda: self._ocr_btn.setText("화면에서 읽기"))
 
         class _OcrWorker(QThread):
