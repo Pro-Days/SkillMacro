@@ -170,6 +170,15 @@ def _build_formula_options(
     return formula_ids
 
 
+class _StableScrollArea(QScrollArea):
+    """버튼 클릭 시 스크롤이 내려가는 문제 방지를 위한 클래스"""
+
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:  # type: ignore[override]
+        if event.type() == QEvent.Type.FocusIn:
+            return False
+        return super().eventFilter(obj, event)
+
+
 class SimUI:
     def __init__(self, master: MainWindow, parent: QFrame):
 
@@ -191,7 +200,7 @@ class SimUI:
         )
 
         # 무공비급바
-        self.scroll_area: QScrollArea = QScrollArea(self.parent)
+        self.scroll_area: QScrollArea = _StableScrollArea(self.parent)
         self.scroll_area.setObjectName("simScrollArea")
         self.scroll_area.setWidget(self.main_frame)
         # 위젯이 무공비급 영역에 맞춰 크기 조절되도록
@@ -4381,7 +4390,7 @@ class ResultsPage(QFrame):
             self._ocr_btn.setText("인식 중...")
 
             worker = self._OcrWorker(self, image)
-            worker.finished.connect(self._on_ocr_finished)
+            worker.result_ready.connect(self._on_ocr_finished)
             worker.error.connect(self._on_ocr_error)
             self._ocr_worker: QThread | None = worker
             worker.start()
@@ -4438,7 +4447,7 @@ class ResultsPage(QFrame):
         class _OcrWorker(QThread):
             """게임 화면 OCR 을 백그라운드에서 수행하는 워커 스레드"""
 
-            finished = Signal(dict)
+            result_ready = Signal(dict)
             error = Signal()
 
             def __init__(self, parent: QWidget, image: Image.Image) -> None:
@@ -4456,7 +4465,7 @@ class ResultsPage(QFrame):
                         self.error.emit()
                         return
 
-                    self.finished.emit(candidates)
+                    self.result_ready.emit(candidates)
                 except Exception:
                     self.error.emit()
 
