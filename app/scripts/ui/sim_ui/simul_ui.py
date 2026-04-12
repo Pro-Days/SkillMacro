@@ -3882,7 +3882,7 @@ class ResultsPage(QFrame):
             )
             values: dict[StatKey, str] = {}
             for stat_key in STAT_SPECS.keys():
-                values[stat_key] = f"{resolved_values[stat_key]:,.2f}".rstrip(
+                values[stat_key] = f"{resolved_values[stat_key]:.2f}".rstrip(
                     "0"
                 ).rstrip(".")
 
@@ -4853,7 +4853,7 @@ class ResultsPage(QFrame):
                 for stat_key in OVERALL_STAT_ORDER:
                     label: str = STAT_SPECS[stat_key]
                     value: float = self._current_final_stats.values[stat_key]
-                    value_text: str = f"{value:,.2f}".rstrip("0").rstrip(".")
+                    value_text: str = f"{value:.2f}".rstrip("0").rstrip(".")
                     lines.append(f"{label}\t{value_text}")
 
                 clipboard: QClipboard = QApplication.clipboard()
