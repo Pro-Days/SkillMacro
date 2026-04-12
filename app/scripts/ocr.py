@@ -138,11 +138,14 @@ def _fill_missing_stats_by_row_order(
     results: dict[StatKey, OcrStatCandidate],
 ) -> None:
     title_index = _find_stats_title_index(lines)
-    if title_index is None:
-        return
+
+    # 타이틀이 있으면 그 다음 줄부터, 없으면 숫자가 있는 모든 줄 사용
+    search_lines: list[str] = (
+        lines[title_index + 1 :] if title_index is not None else lines
+    )
 
     stat_rows: list[str] = []
-    for line in lines[title_index + 1 :]:
+    for line in search_lines:
         if not _extract_numbers(line):
             continue
         stat_rows.append(line)

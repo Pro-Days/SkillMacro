@@ -566,13 +566,6 @@ class ScreenCaptureSelectionDialog(QDialog):
 class OcrReviewDialog(QDialog):
     """OCR 인식 결과 적용 전 검토 다이얼로그"""
 
-    _AGREEMENT_COLORS: dict[str, str] = {
-        "high": "#48c774",
-        "medium": "#ffb020",
-        "low": "#ff6b6b",
-        "missing": "#7a7a7a",
-    }
-
     def __init__(
         self, parent: QWidget, candidates: dict[StatKey, OcrStatCandidate]
     ) -> None:
@@ -584,39 +577,22 @@ class OcrReviewDialog(QDialog):
         self.setObjectName("customSkillDialog")
         self.setWindowTitle("OCR 결과 확인")
         self.setModal(True)
-        self.resize(620, 760)
 
-        outer: QVBoxLayout = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.setSpacing(0)
+        root_layout: QVBoxLayout = QVBoxLayout(self)
+        root_layout.setContentsMargins(20, 20, 20, 16)
+        root_layout.setSpacing(12)
 
-        summary_card: QFrame = QFrame(self)
-        summary_card.setObjectName("dialogCard")
-        summary_layout: QVBoxLayout = QVBoxLayout(summary_card)
-        summary_layout.setContentsMargins(20, 18, 20, 16)
-        summary_layout.setSpacing(8)
-
-        title_label: QLabel = QLabel("화면에서 읽은 전체 스탯", summary_card)
+        title_label: QLabel = QLabel("화면에서 읽은 전체 스탯", self)
         title_label.setObjectName("dialogSectionTitle")
         title_label.setFont(CustomFont(12, bold=True))
-
-        summary_layout.addWidget(title_label)
-        outer.addWidget(summary_card)
+        root_layout.addWidget(title_label)
 
         self._status_label: QLabel = QLabel("", self)
         self._status_label.setFont(CustomFont(9))
         self._status_label.setWordWrap(True)
         self._status_label.hide()
 
-        scroll_area: QScrollArea = QScrollArea(self)
-        scroll_area.setWidgetResizable(True)
-
-        scroll_widget: QWidget = QWidget(scroll_area)
-        scroll_layout: QVBoxLayout = QVBoxLayout(scroll_widget)
-        scroll_layout.setContentsMargins(20, 16, 20, 16)
-        scroll_layout.setSpacing(10)
-
-        result_card: QFrame = QFrame(scroll_widget)
+        result_card: QFrame = QFrame(self)
         result_card.setObjectName("dialogCard")
         result_layout: QVBoxLayout = QVBoxLayout(result_card)
         result_layout.setContentsMargins(16, 14, 16, 14)
@@ -627,58 +603,53 @@ class OcrReviewDialog(QDialog):
         section_label.setFont(CustomFont(11))
         result_layout.addWidget(section_label)
 
-        stat_key: StatKey
-        for stat_key in OVERALL_STAT_ORDER:
-            candidate = candidates.get(stat_key)
+        grid: QGridLayout = QGridLayout()
+        grid.setContentsMargins(0, 4, 0, 0)
+        grid.setHorizontalSpacing(16)
+        grid.setVerticalSpacing(6)
 
-            row_widget: QFrame = QFrame(result_card)
-            row_layout: QHBoxLayout = QHBoxLayout(row_widget)
-            row_layout.setContentsMargins(0, 3, 0, 3)
-            row_layout.setSpacing(10)
+        for row_index, (left_key, right_key) in enumerate(OVERALL_STAT_GRID_ROWS):
+            for col, stat_key in enumerate((left_key, right_key)):
+                if stat_key is None:
+                    continue
 
-            label_widget: QLabel = QLabel(STAT_SPECS[stat_key], row_widget)
-            label_widget.setFont(CustomFont(10))
+                candidate = candidates.get(stat_key)
 
-            value_text: str = "0" if candidate is None else f"{candidate.value:,}"
-            value_input: CustomLineEdit = CustomLineEdit(
-                row_widget,
-                text=value_text,
-                point_size=10,
-            )
-            value_input.setAlignment(Qt.AlignmentFlag.AlignRight)
-            value_input.setFixedWidth(120)
-            value_input.setPlaceholderText("0")
-            value_input.textChanged.connect(
-                lambda _text, current_key=stat_key: self._on_value_changed(current_key)
-            )
-            self._value_inputs[stat_key] = value_input
+                cell_widget: QFrame = QFrame(result_card)
+                cell_layout: QHBoxLayout = QHBoxLayout(cell_widget)
+                cell_layout.setContentsMargins(0, 3, 0, 3)
+                cell_layout.setSpacing(8)
 
-            agreement_color: str = self._AGREEMENT_COLORS["missing"]
-            if candidate is not None:
-                agreement_level: str = self._agreement_level(candidate)
-                agreement_color = self._AGREEMENT_COLORS[agreement_level]
+                label_widget: QLabel = QLabel(STAT_SPECS[stat_key], cell_widget)
+                label_widget.setFont(CustomFont(10))
 
-            source_widget: QLabel = QLabel(row_widget)
-            source_widget.setFixedSize(14, 14)
-            source_widget.setStyleSheet(
-                f"background-color: {agreement_color}; border-radius: 7px;"
-            )
+                value_text: str = "0" if candidate is None else f"{candidate.value:,}"
+                value_input: CustomLineEdit = CustomLineEdit(
+                    cell_widget,
+                    text=value_text,
+                    point_size=10,
+                )
+                value_input.setAlignment(Qt.AlignmentFlag.AlignRight)
+                value_input.setFixedWidth(100)
+                value_input.setPlaceholderText("0")
+                value_input.textChanged.connect(
+                    lambda _text, current_key=stat_key: self._on_value_changed(
+                        current_key
+                    )
+                )
+                self._value_inputs[stat_key] = value_input
 
-            row_layout.addWidget(label_widget, 1)
-            row_layout.addWidget(value_input)
-            row_layout.addWidget(source_widget)
-            result_layout.addWidget(row_widget)
+                cell_layout.addWidget(label_widget, 1)
+                cell_layout.addWidget(value_input)
+                grid.addWidget(cell_widget, row_index, col)
 
-        scroll_layout.addWidget(result_card)
-        scroll_layout.addStretch(1)
-        scroll_widget.setLayout(scroll_layout)
-        scroll_area.setWidget(scroll_widget)
-        outer.addWidget(scroll_area, 1)
-        outer.addWidget(self._status_label)
+        result_layout.addLayout(grid)
+        root_layout.addWidget(result_card)
+        root_layout.addWidget(self._status_label)
 
         btn_row: QHBoxLayout = QHBoxLayout()
+        btn_row.setContentsMargins(0, 0, 0, 0)
         btn_row.setSpacing(8)
-        btn_row.setContentsMargins(20, 8, 20, 16)
 
         cancel_btn: QPushButton = QPushButton("취소", self)
         cancel_btn.setObjectName("dialogCancelBtn")
@@ -704,7 +675,10 @@ class OcrReviewDialog(QDialog):
         btn_row.addWidget(cancel_btn)
         btn_row.addWidget(retry_btn)
         btn_row.addWidget(confirm_btn)
-        outer.addLayout(btn_row)
+        root_layout.addLayout(btn_row)
+
+        self.adjustSize()
+        self.setFixedSize(self.size())
 
     def confirmed_stats(self) -> dict[StatKey, float]:
         """확정된 OCR 결과를 값 맵으로 반환"""
@@ -780,18 +754,6 @@ class OcrReviewDialog(QDialog):
             return float(sanitized_text)
         except ValueError:
             return None
-
-    @staticmethod
-    def _agreement_level(candidate: OcrStatCandidate) -> str:
-        """여러 OCR 결과의 일치 횟수를 기반으로 색상 레벨 계산"""
-
-        agreement_count: int = candidate.agreement_count
-        attempt_count: int = candidate.attempt_count
-        if agreement_count >= min(4, attempt_count):
-            return "high"
-        if agreement_count >= 2:
-            return "medium"
-        return "low"
 
 
 class _CalculationOverlay(QFrame):
@@ -4395,13 +4357,23 @@ class ResultsPage(QFrame):
 
             selected_rect: QRect = selection_dialog.selected_rect()  # type: ignore[assignment]
 
+            screen = QGuiApplication.screenAt(selected_rect.center())
+            if screen is None:
+                screen = QGuiApplication.primaryScreen()
+            dpr: float = screen.devicePixelRatio() if screen else 1.0
+
+            margin: int = int(selected_rect.height() * 0.05)
+            padded_rect: QRect = selected_rect.adjusted(
+                -margin, -margin, margin, margin
+            )
+
             from app.scripts.ocr import capture_screen_region
 
             image = capture_screen_region(
-                selected_rect.x(),
-                selected_rect.y(),
-                selected_rect.width(),
-                selected_rect.height(),
+                int(padded_rect.x() * dpr),
+                int(padded_rect.y() * dpr),
+                int(padded_rect.width() * dpr),
+                int(padded_rect.height() * dpr),
             )
 
             self._ocr_btn.setText("인식 중...")
