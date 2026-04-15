@@ -37,6 +37,7 @@ from collections.abc import Callable, Iterator
 from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wait
 from dataclasses import dataclass, field
 from math import floor
+from multiprocessing.process import BaseProcess
 from typing import TYPE_CHECKING, NoReturn, TypeVar, cast
 
 from app.scripts.calculator_models import (
@@ -101,6 +102,29 @@ TIMELINE_MILLISECONDS: int = 60000
 
 # 역산 시 음수 허용 범위
 INVERSE_NEGATIVE_TOLERANCE: float = 0.01
+
+
+def _terminate_process_pool_workers(pool: ProcessPoolExecutor) -> None:
+    """실행 중인 병렬 계산 워커 프로세스 강제 종료"""
+
+    # ProcessPoolExecutor._processes: CPython 내부 속성 (Python 3.12 기준).
+    # 파이썬 업그레이드 시 이 접근이 깨지면 즉시 드러나도록 가드 없이 직접 접근.
+    worker_processes: dict[int, BaseProcess] = pool._processes  # type: ignore[attr-defined]
+
+    # 이미 시작된 최적화 작업의 즉시 중단 요청
+    process: BaseProcess
+    for process in worker_processes.values():
+        if process.is_alive():
+            process.terminate()
+
+    # 종료 신호 전달 후 좀비 프로세스 방지용 회수
+    for process in worker_processes.values():
+        process.join(timeout=0.2)
+        if process.is_alive():
+            # 종료 지연 워커의 남은 계산 강제 중단
+            process.kill()
+            process.join(timeout=0.2)
+
 
 # _fast_resolve 용 enum 키 모듈 수준 캐시 (매 호출마다 enum descriptor 접근 제거)
 _FK_STR: StatKey = StatKey.STR
@@ -3931,6 +3955,10 @@ def optimize_current_selection(
             should_wait_for_pool = False
             raise
         finally:
+            if not should_wait_for_pool:
+                # 취소 또는 예외 발생 시 실행 중인 워커 계산 즉시 종료
+                _terminate_process_pool_workers(pool)
+
             pool.shutdown(
                 wait=should_wait_for_pool,
                 cancel_futures=not should_wait_for_pool,

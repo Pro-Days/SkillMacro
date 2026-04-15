@@ -8,7 +8,7 @@ from webbrowser import open_new
 
 import requests
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QIcon, QKeyEvent, QPixmap
+from PySide6.QtGui import QCloseEvent, QIcon, QKeyEvent, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -289,6 +289,13 @@ class MainWindow(QWidget):
 
         self.popup_manager.update_notice_positions()
         return super().resizeEvent(event)
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        """프로그램 종료 시 백그라운드 계산 정리"""
+
+        # 창 종료 전에 계산기 백그라운드 작업 중단 요청
+        self.sim_ui.cancel_results_calculation_for_shutdown()
+        super().closeEvent(event)
 
     def _on_theme_changed(self, dark: bool) -> None:
         """테마 변경 시 아이콘 캐시 초기화 + 모든 탭·사이드바 아이콘 재갱신"""

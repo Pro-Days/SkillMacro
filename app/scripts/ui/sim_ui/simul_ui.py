@@ -366,6 +366,17 @@ class SimUI:
         self._results_overlay.set_cancelling()
         self._calc_thread.cancel()
 
+    def cancel_results_calculation_for_shutdown(self) -> None:
+        """프로그램 종료 중 진행 계산 취소 및 스레드 정리"""
+
+        # 종료 시 진행 중인 계산이 없으면 즉시 반환
+        if self._calc_thread is None or not self._calc_thread.isRunning():
+            return
+
+        # 종료 요청을 계산 스레드와 하위 프로세스 풀까지 전달
+        self._calc_thread.cancel()
+        self._calc_thread.wait(3000)
+
     def _on_results_calculation_progress(self, message: str, value: int) -> None:
         """오버레이 진행 상태 갱신"""
 
