@@ -135,6 +135,7 @@ class NoticeKind(Enum):
     # 동작 관련
     MACRO_IS_RUNNING = auto()  # 매크로 작동중
     EDITING_LINK_SKILL = auto()  # 연계스킬 수정중
+    AFK_STOPPED = auto()  # 잠수 방지 종료
 
     # 스킬 관련
     SKILL_NOT_SELECTED = auto()  # 스킬 미선택
@@ -916,6 +917,12 @@ class NoticeController:
             case NoticeKind.EDITING_LINK_SKILL:
                 return NoticeData(
                     "연계스킬을 수정중이기 때문에 장착스킬을 변경할 수 없습니다."
+                )
+
+            case NoticeKind.AFK_STOPPED:
+                return NoticeData(
+                    "잠수 방지를 위해 매크로를 자동으로 종료했습니다.",
+                    "warning",
                 )
 
             case NoticeKind.SKILL_NOT_SELECTED:

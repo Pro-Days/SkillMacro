@@ -97,6 +97,9 @@ class MacroState:
     # AFK 모드 시작 시간
     afk_started_time: float = 0.0
 
+    # 잠수 방지 종료 알림 대기 여부
+    has_pending_afk_notice: bool = False
+
     # 스킬 쿨타임 타이머
     skill_cooltime_timers: dict[EquippedSkillRef, float] = field(default_factory=dict)
 

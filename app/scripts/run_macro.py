@@ -261,6 +261,8 @@ def running_macro_thread(run_id: int) -> None:
             config.macro.is_afk_enabled
             and time.time() - app_state.macro.afk_started_time >= 10
         ):
+            # UI 스레드 알림 표시용 잠수 종료 상태 기록
+            app_state.macro.has_pending_afk_notice = True
             app_state.macro.is_running = False
 
         if not is_used_skill:
@@ -411,6 +413,7 @@ def init_macro() -> None:
     # 새 실행 사이클에 맞춘 런타임 상태 초기화
     _clear_injected_key_events()
     app_state.macro.afk_started_time = time.time()
+    app_state.macro.has_pending_afk_notice = False
     app_state.macro.current_line_index = 0
     app_state.macro.prepared_skills = set(placed_refs)
     app_state.macro.skill_sequence = _collect_priority_skill_sequence()

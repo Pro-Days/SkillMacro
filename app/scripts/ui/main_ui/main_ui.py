@@ -88,6 +88,11 @@ class MainUI(QFrame):
             self._was_macro_running = False
             self._update_current_tab_preview()
 
+            # 잠수 방지 종료 알림 소비
+            if app_state.macro.has_pending_afk_notice:
+                app_state.macro.has_pending_afk_notice = False
+                self.popup_manager.show_notice(NoticeKind.AFK_STOPPED)
+
     def _handle_data_changed(self) -> None:
         """데이터 변경 후 저장 및 프리뷰 반영"""
 
