@@ -2923,7 +2923,7 @@ def validate_base_state(
         return BaseValidation(
             is_valid=False,
             reason=OptimizationFailureReason.SELECTED_INPUT_EXCEEDS_TOTAL_STATS,
-            message="입력된 전체 스탯보다 `현재 상태 입력`의 입력값이 더 큽니다.",
+            message="입력된 전체 스탯보다 현재 선택 입력의 값이 더 큽니다.",
         )
 
     return BaseValidation(is_valid=True, reason=None, message="정상")
