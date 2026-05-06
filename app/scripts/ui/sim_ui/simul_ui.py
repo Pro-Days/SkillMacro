@@ -230,6 +230,12 @@ class SimUI:
             self.parent,
             self._cancel_results_calculation,
         )
+        self._input_confirm_overlay: _CalculationInputConfirmOverlay = (
+            _CalculationInputConfirmOverlay(
+                self.parent,
+                self._start_results_calculation,
+            )
+        )
         self._calc_thread: _CalculatorThread | None = None
 
         self.stacked_layout.setCurrentIndex(0)
@@ -252,11 +258,27 @@ class SimUI:
         self.input_page.editor.load_from_preset_state()
 
     def change_layout(self, index: int) -> None:
-        # 입력값 확인
+        # 결과 페이지 계산 중 중복 진입 차단
         if (
-            index in (1, 2, 3)
-            and not self.input_page.editor.has_valid_navigation_inputs()
+            index == 2
+            and self._calc_thread is not None
+            and self._calc_thread.isRunning()
         ):
+            return
+
+        # 결과 계산 전 현재 입력 검증 및 확인 오버레이 표시
+        if index == 2:
+            if not self.input_page.editor.prepare_results_inputs():
+                self.master.get_popup_manager().show_notice(NoticeKind.SIM_INPUT_ERROR)
+                return
+
+            self._input_confirm_overlay.show_confirmation(
+                app_state.macro.current_preset.info.calculator
+            )
+            return
+
+        # 입력값 확인
+        if index in (1, 3) and not self.input_page.editor.has_valid_navigation_inputs():
             self.master.get_popup_manager().show_notice(NoticeKind.SIM_INPUT_ERROR)
             return
 
@@ -266,11 +288,6 @@ class SimUI:
         # 그래프 페이지 진입 직전 현재 계산기 입력 기준 결과 재생성
         if index == 1:
             self.graph_page.refresh()
-
-        # 결과 페이지 진입 요청 시 현재 페이지 유지 상태로 백그라운드 계산 시작
-        if index == 2:
-            self._start_results_calculation()
-            return
 
         # 네비게이션 버튼 색 변경
         self.update_nav(index)
@@ -880,6 +897,200 @@ class _CalculationOverlay(QFrame):
         # 중복 취소 방지와 취소 진행 상태 표기
         self._cancel_button.setEnabled(False)
         self._detail_label.setText("취소 요청 처리 중...")
+
+
+class _CalculationInputConfirmOverlay(QFrame):
+    def __init__(
+        self,
+        parent: QWidget,
+        confirm_handler: Callable[[], None],
+    ) -> None:
+        super().__init__(parent)
+
+        # 부모 전체를 덮는 입력 확인 오버레이 기본 설정
+        self._confirm_handler: Callable[[], None] = confirm_handler
+        self.setObjectName("calcOverlay")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setGeometry(parent.rect())
+        self.hide()
+        parent.installEventFilter(self)
+
+        # 입력 확인 카드 구성
+        container: QFrame = QFrame(self)
+        container.setObjectName("calcOverlayCard")
+        container.setFixedWidth(400)
+
+        title_label: QLabel = QLabel("계산 전 입력 확인", container)
+        title_label.setObjectName("calcOverlayTitle")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_label.setFont(CustomFont(14, bold=True))
+
+        message_label: QLabel = QLabel(
+            "입력한 내용이 맞으면 계산을 시작하세요.", container
+        )
+        message_label.setObjectName("calcConfirmMessage")
+        message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        message_label.setFont(CustomFont(12))
+
+        # 주요 계산 입력 요약 그리드 구성
+        self._summary_grid: QGridLayout = QGridLayout()
+        self._summary_grid.setContentsMargins(0, 8, 0, 8)
+        self._summary_grid.setHorizontalSpacing(12)
+        self._summary_grid.setVerticalSpacing(12)
+        self._value_labels: dict[str, QLabel] = {}
+        self._add_summary_row(0, "레벨", "level", container)
+        self._add_summary_row(1, "경지", "realm", container)
+        self._add_summary_row(2, "스탯 분배", "distribution", container)
+        self._add_summary_row(3, "단전", "danjeon", container)
+
+        # 확인과 취소 버튼 구성
+        cancel_button: QPushButton = QPushButton("취소", container)
+        cancel_button.setObjectName("calcCancelBtn")
+        cancel_button.setFont(CustomFont(11, bold=True))
+        cancel_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        cancel_button.setFixedHeight(40)
+        cancel_button.clicked.connect(self.hide)
+
+        confirm_button: QPushButton = QPushButton("계산 시작", container)
+        confirm_button.setObjectName("calcConfirmBtn")
+        confirm_button.setFont(CustomFont(11, bold=True))
+        confirm_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        confirm_button.setFixedHeight(40)
+        confirm_button.clicked.connect(self._accept)
+
+        button_layout: QHBoxLayout = QHBoxLayout()
+        button_layout.setContentsMargins(0, 0, 0, 0)
+        button_layout.setSpacing(8)
+        button_layout.addWidget(cancel_button)
+        button_layout.addWidget(confirm_button)
+
+        # 카드 내부 레이아웃 구성
+        container_layout: QVBoxLayout = QVBoxLayout(container)
+        container_layout.setContentsMargins(24, 22, 24, 22)
+        container_layout.setSpacing(10)
+        container_layout.addWidget(title_label)
+        container_layout.addWidget(message_label)
+        container_layout.addLayout(self._summary_grid)
+        container_layout.addSpacing(4)
+        container_layout.addLayout(button_layout)
+        container.setLayout(container_layout)
+
+        # 오버레이 전체 중앙 배치
+        overlay_layout: QVBoxLayout = QVBoxLayout(self)
+        overlay_layout.setContentsMargins(24, 24, 24, 24)
+        overlay_layout.addStretch(1)
+        overlay_layout.addWidget(container, alignment=Qt.AlignmentFlag.AlignCenter)
+        overlay_layout.addStretch(1)
+        self.setLayout(overlay_layout)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        """부모 리사이즈 시 오버레이 영역 동기화"""
+
+        # 부모 크기 변경 시 오버레이 전체 영역 재배치
+        if watched is self.parent() and event.type() == QEvent.Type.Resize:
+            parent_widget: QWidget = self.parentWidget()
+            self.setGeometry(parent_widget.rect())
+
+        return super().eventFilter(watched, event)
+
+    def show_confirmation(self, calculator_input: "CalculatorPresetInput") -> None:
+        """현재 계산 입력 요약 표시"""
+
+        # 기준 입력 요약 문구 반영
+        realm_label: str = REALM_TIER_SPECS[calculator_input.realm_tier].label
+        self._value_labels["level"].setText(str(calculator_input.level))
+        self._value_labels["realm"].setText(realm_label)
+
+        # 최적화 입력 요약 문구 반영
+        self._value_labels["distribution"].setText(
+            self._format_distribution_state(calculator_input.distribution)
+        )
+        self._value_labels["danjeon"].setText(
+            self._format_danjeon_state(calculator_input.danjeon)
+        )
+
+        # 최상단 확인 오버레이 표시
+        self.show()
+        self.raise_()
+
+    def _accept(self) -> None:
+        """확인 후 결과 계산 시작"""
+
+        # 확인 오버레이 정리 후 기존 계산 흐름 실행
+        self.hide()
+        self._confirm_handler()
+
+    def _add_summary_row(
+        self,
+        row_index: int,
+        label_text: str,
+        value_key: str,
+        parent: QWidget,
+    ) -> None:
+        """입력 확인 요약 행 추가"""
+
+        # 요약 항목 이름 라벨 구성
+        key_label: QLabel = QLabel(label_text, parent)
+        key_label.setObjectName("calcConfirmKey")
+        key_label.setFont(CustomFont(11, bold=True))
+        key_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+        key_label.setFixedWidth(82)
+
+        # 요약 항목 값 라벨 구성
+        value_label: QLabel = QLabel(parent)
+        value_label.setObjectName("calcConfirmValue")
+        value_label.setFont(CustomFont(11))
+        value_label.setWordWrap(True)
+        value_label.setFixedWidth(250)
+        value_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
+        self._value_labels[value_key] = value_label
+
+        self._summary_grid.addWidget(key_label, row_index, 0)
+        self._summary_grid.addWidget(value_label, row_index, 1)
+
+    @staticmethod
+    def _format_distribution_state(distribution: DistributionState) -> str:
+        """스탯 분배 확인 문구 구성"""
+
+        # 스탯 분배 수치와 옵션 상태 결합
+        option_text: str = _CalculationInputConfirmOverlay._format_option_state(
+            distribution.is_locked,
+            distribution.use_reset,
+        )
+        summary: str = (
+            f"힘 {distribution.strength} / "
+            f"민첩 {distribution.dexterity}\n"
+            f"생명력 {distribution.vitality} / "
+            f"행운 {distribution.luck}\n"
+            f"{option_text}"
+        )
+        return summary
+
+    @staticmethod
+    def _format_danjeon_state(danjeon: DanjeonState) -> str:
+        """단전 확인 문구 구성"""
+
+        # 단전 수치와 옵션 상태 결합
+        option_text: str = _CalculationInputConfirmOverlay._format_option_state(
+            danjeon.is_locked,
+            danjeon.use_reset,
+        )
+        summary: str = (
+            f"상단전 {danjeon.upper} / "
+            f"중단전 {danjeon.middle} / "
+            f"하단전 {danjeon.lower}\n"
+            f"{option_text}"
+        )
+        return summary
+
+    @staticmethod
+    def _format_option_state(is_locked: bool, use_reset: bool) -> str:
+        """잠금과 초기화 옵션 확인 문구 구성"""
+
+        # 체크박스 상태를 사용자가 확인하기 쉬운 문구로 변환
+        lock_text: str = "잠금 켜짐" if is_locked else "잠금 꺼짐"
+        reset_text: str = "초기화 켜짐" if use_reset else "초기화 꺼짐"
+        return f"{lock_text} / {reset_text}"
 
 
 class GraphPage(QFrame):
@@ -1867,6 +2078,76 @@ class ResultsPage(QFrame):
 
             # 시뮬레이터 그래프 분모 0 방지용 피해 계산 가능 여부 검증
             return self._has_positive_simulation_damage(base_stats)
+
+        def prepare_results_inputs(self) -> bool:
+            """결과 계산에 사용할 현재 입력 검증 및 저장"""
+
+            # 기준 스탯과 레벨 입력 검증
+            stats_valid: bool
+            base_stats: BaseStats
+            stats_valid, base_stats = self._read_base_stats()
+
+            level_valid: bool
+            level: int
+            level_valid, level = self._read_level()
+
+            scroll_valid: bool = self._read_scroll_levels(save_levels=False)
+            if not (stats_valid and level_valid and scroll_valid):
+                return False
+
+            # 시뮬레이터와 동일한 최소 피해 조건 유지
+            if not self._has_positive_simulation_damage(base_stats):
+                return False
+
+            # 현재 선택 입력 전체 검증
+            optimization_valid: bool
+            distribution_state: DistributionState
+            target_distribution_state: TargetDistributionState
+            danjeon_state: DanjeonState
+            owned_titles: list[OwnedTitle]
+            equipped_state: EquippedState
+            owned_talismans: list[OwnedTalisman]
+            (
+                optimization_valid,
+                distribution_state,
+                target_distribution_state,
+                danjeon_state,
+                owned_titles,
+                equipped_state,
+                owned_talismans,
+            ) = self._read_optimization_state()
+            if not optimization_valid:
+                return False
+
+            # 사용자 지정 변화량 입력 검증
+            custom_valid: bool
+            custom_changes: dict[StatKey, float]
+            custom_valid, custom_changes = self._read_custom_stat_changes()
+            if not custom_valid:
+                return False
+
+            # 검증된 현재 입력을 계산 직전 상태로 일괄 저장
+            self._save_base_inputs(
+                base_stats=base_stats,
+                level=level,
+                persist=False,
+            )
+            self._read_scroll_levels(save_levels=True)
+            self._save_optimization_inputs(
+                distribution_state=distribution_state,
+                target_distribution_state=target_distribution_state,
+                danjeon_state=danjeon_state,
+                owned_titles=owned_titles,
+                equipped_state=equipped_state,
+                owned_talismans=owned_talismans,
+                persist=False,
+            )
+            self._save_custom_stat_changes(
+                custom_changes=custom_changes,
+                persist=False,
+            )
+            save_data()
+            return True
 
         def _has_positive_simulation_damage(self, base_stats: BaseStats) -> bool:
             """시뮬레이터 진입 가능한 최소 피해 조건 검증"""

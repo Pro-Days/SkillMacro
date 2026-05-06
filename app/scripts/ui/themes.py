@@ -932,6 +932,21 @@ QLabel#calcOverlayTitle   {{ background-color: transparent; border: 0px; color: 
 QLabel#calcOverlayMessage {{ background-color: transparent; border: 0px; color: #1F2937; }}
 QLabel#calcOverlayDetail  {{ background-color: transparent; border: 0px; color: #6B7280; }}
 QLabel#calcOverlayProgress {{ background-color: transparent; border: 0px; color: #4B5563; }}
+QLabel#calcConfirmMessage {{
+    background-color: transparent;
+    border: 0px;
+    color: #4B5563;
+}}
+QLabel#calcConfirmKey {{
+    background-color: transparent;
+    border: 0px;
+    color: #6B7280;
+}}
+QLabel#calcConfirmValue {{
+    background-color: transparent;
+    border: 0px;
+    color: #111827;
+}}
 
 QProgressBar#calcProgressBar {{
     background-color: #E5E7EB;
@@ -953,6 +968,13 @@ QPushButton#calcCancelBtn:disabled {{
     background-color: #E5E7EB;
     color: #9CA3AF;
 }}
+QPushButton#calcConfirmBtn {{
+    background-color: #9180F7;
+    border: 1px solid #7C6AED;
+    border-radius: 10px;
+    color: #FFFFFF;
+}}
+QPushButton#calcConfirmBtn:hover {{ background-color: #7C6AED; }}
 
 /* 그래프 카드 */
 QFrame#graphCard {{
@@ -2275,6 +2297,21 @@ QLabel#calcOverlayTitle   {{ background-color: transparent; border: 0px; color: 
 QLabel#calcOverlayMessage {{ background-color: transparent; border: 0px; color: #C8C8E8; }}
 QLabel#calcOverlayDetail  {{ background-color: transparent; border: 0px; color: #7878A0; }}
 QLabel#calcOverlayProgress {{ background-color: transparent; border: 0px; color: #9090B8; }}
+QLabel#calcConfirmMessage {{
+    background-color: transparent;
+    border: 0px;
+    color: #9090B8;
+}}
+QLabel#calcConfirmKey {{
+    background-color: transparent;
+    border: 0px;
+    color: #7878A0;
+}}
+QLabel#calcConfirmValue {{
+    background-color: transparent;
+    border: 0px;
+    color: #E0E0F0;
+}}
 
 QProgressBar#calcProgressBar {{
     background-color: #2A2A3E;
@@ -2296,6 +2333,13 @@ QPushButton#calcCancelBtn:disabled {{
     background-color: #1E1E2E;
     color: #444460;
 }}
+QPushButton#calcConfirmBtn {{
+    background-color: #9180F7;
+    border: 1px solid #7C6AED;
+    border-radius: 10px;
+    color: #FFFFFF;
+}}
+QPushButton#calcConfirmBtn:hover {{ background-color: #7C6AED; }}
 
 /* 그래프 카드 */
 QFrame#graphCard {{
