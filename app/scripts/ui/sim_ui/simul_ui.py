@@ -60,6 +60,7 @@ from app.scripts.calculator_engine import (
     evaluate_next_realm_delta,
     evaluate_scroll_upgrade_deltas,
     evaluate_single_stat_delta,
+    OptimizationFailure,
     optimize_current_selection,
 )
 from app.scripts.calculator_models import (
@@ -1467,21 +1468,27 @@ class ResultsPage(QFrame):
             cancel_checker()
 
         # 최적화 결과 행 구성
-        optimization_result: OptimizationResult | None = optimize_current_selection(
-            server_spec=server_spec,
-            preset=preset,
-            skills_info=preset.usage_settings,
-            delay_ms=delay_ms,
-            context=context,
-            base_stats=base_stats,
-            calculator_input=calculator_input,
-            target_formula_id=selected_formula_id,
-            progress_callback=progress_callback,
-            cancel_checker=cancel_checker,
+        optimization_result: OptimizationResult | OptimizationFailure = (
+            optimize_current_selection(
+                server_spec=server_spec,
+                preset=preset,
+                skills_info=preset.usage_settings,
+                delay_ms=delay_ms,
+                context=context,
+                base_stats=base_stats,
+                calculator_input=calculator_input,
+                target_formula_id=selected_formula_id,
+                progress_callback=progress_callback,
+                cancel_checker=cancel_checker,
+            )
         )
-        if optimization_result is None:
-            optimization_rows: list[tuple[str, str]] = [("상태", "불가")]
+        optimized_base_stats: BaseStats | None = None
+        if isinstance(optimization_result, OptimizationFailure):
+            optimization_rows: list[tuple[str, str]] = [
+                ("상태", optimization_result.message)
+            ]
         else:
+            optimized_base_stats = optimization_result.base_stats
             title_text: str = "없음"
             if optimization_result.candidate.equipped_title_name is not None:
                 for owned_title in calculator_input.owned_titles:
@@ -1552,11 +1559,7 @@ class ResultsPage(QFrame):
             optimization_result=optimization_rows,
             custom_base_stats=custom_base_stats,
             target_base_stats=target_base_stats,
-            optimized_base_stats=(
-                optimization_result.base_stats
-                if optimization_result is not None
-                else None
-            ),
+            optimized_base_stats=optimized_base_stats,
         )
 
     @staticmethod

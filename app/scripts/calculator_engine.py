@@ -36,6 +36,7 @@ import random
 from collections.abc import Callable, Iterator
 from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wait
 from dataclasses import dataclass, field
+from enum import Enum
 from math import floor
 from multiprocessing.process import BaseProcess
 from typing import TYPE_CHECKING, NoReturn, TypeVar, cast
@@ -1435,11 +1436,22 @@ class BaseState:
     contribution: Contribution
 
 
+class OptimizationFailureReason(Enum):
+    """최적화 불가 이유"""
+
+    STAT_DISTRIBUTION_EXCEEDS_LEVEL_CAP = "stat_distribution_exceeds_level_cap"
+    DANJEON_EXCEEDS_REALM_CAP = "danjeon_exceeds_realm_cap"
+    SELECTED_INPUT_EXCEEDS_TOTAL_STATS = "selected_input_exceeds_total_stats"
+    MINIMUM_DISTRIBUTION_EXCEEDS_LEVEL_CAP = "minimum_distribution_exceeds_level_cap"
+    NO_CALCULABLE_COMBINATION = "no_calculable_combination"
+
+
 @dataclass(frozen=True, slots=True)
 class BaseValidation:
     """기준 베이스 스탯 검증 결과"""
 
     is_valid: bool
+    reason: OptimizationFailureReason | None
     message: str
 
 
@@ -1460,6 +1472,14 @@ class OptimizationResult:
     candidate: OptimizationCandidate
     delta: float
     base_stats: BaseStats
+
+
+@dataclass(frozen=True, slots=True)
+class OptimizationFailure:
+    """최적화 불가 결과"""
+
+    reason: OptimizationFailureReason
+    message: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -2878,6 +2898,7 @@ def validate_base_state(
     if distribution_sum > calculator_input.level * 5:
         return BaseValidation(
             is_valid=False,
+            reason=(OptimizationFailureReason.STAT_DISTRIBUTION_EXCEEDS_LEVEL_CAP),
             message="스탯 분배 포인트가 레벨 기준 최대치를 초과합니다.",
         )
 
@@ -2890,6 +2911,7 @@ def validate_base_state(
     if danjeon_sum > realm_cap:
         return BaseValidation(
             is_valid=False,
+            reason=OptimizationFailureReason.DANJEON_EXCEEDS_REALM_CAP,
             message="단전 포인트가 현재 경지 최대치를 초과합니다.",
         )
 
@@ -2900,10 +2922,11 @@ def validate_base_state(
     ):
         return BaseValidation(
             is_valid=False,
-            message="현재 선택 기여를 제거하면 음수 베이스 스탯이 발생합니다.",
+            reason=OptimizationFailureReason.SELECTED_INPUT_EXCEEDS_TOTAL_STATS,
+            message="입력된 전체 스탯보다 `현재 상태 입력`의 입력값이 더 큽니다.",
         )
 
-    return BaseValidation(is_valid=True, message="정상")
+    return BaseValidation(is_valid=True, reason=None, message="정상")
 
 
 def _build_base_stats_from_base_and_contribution(
@@ -3766,7 +3789,7 @@ def optimize_current_selection(
     target_formula_id: str,
     progress_callback: Callable[[str, int], None] | None = None,
     cancel_checker: Callable[[], None] | None = None,
-) -> OptimizationResult | None:
+) -> OptimizationResult | OptimizationFailure:
     """현재 선택 조합 최적화"""
 
     # 최적화 진입 직전 취소와 진행 상태 확인
@@ -3782,7 +3805,15 @@ def optimize_current_selection(
         calculator_input=calculator_input,
     )
     if not validation.is_valid:
-        return None
+        # 검증 실패 분기 전용 사유 타입 확정
+        failure_reason: OptimizationFailureReason = cast(
+            OptimizationFailureReason,
+            validation.reason,
+        )
+        return OptimizationFailure(
+            reason=failure_reason,
+            message=f"최적화 불가: {validation.message}",
+        )
 
     base_state: BaseState = build_base_state(
         base_stats=base_stats,
@@ -3794,7 +3825,10 @@ def optimize_current_selection(
         calculator_input
     )
     if not _is_distribution_search_range_feasible(distribution_root):
-        return None
+        return OptimizationFailure(
+            reason=(OptimizationFailureReason.MINIMUM_DISTRIBUTION_EXCEEDS_LEVEL_CAP),
+            message="최적화 불가: 최소분배 포인트가 레벨 기준 최대치를 초과합니다.",
+        )
 
     # 각 내부 선택지 후보 목록 구성
     danjeon_candidates: list[DanjeonState] = _build_danjeon_candidates(calculator_input)
@@ -3963,5 +3997,11 @@ def optimize_current_selection(
                 wait=should_wait_for_pool,
                 cancel_futures=not should_wait_for_pool,
             )
+
+    if best_result is None:
+        return OptimizationFailure(
+            reason=OptimizationFailureReason.NO_CALCULABLE_COMBINATION,
+            message="최적화 불가: 계산 가능한 조합이 없습니다.",
+        )
 
     return best_result
