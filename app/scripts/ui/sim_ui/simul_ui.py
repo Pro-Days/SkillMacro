@@ -4379,11 +4379,6 @@ class ResultsPage(QFrame):
 
             selected_rect: QRect = selection_dialog.selected_rect()  # type: ignore[assignment]
 
-            screen = QGuiApplication.screenAt(selected_rect.center())
-            if screen is None:
-                screen = QGuiApplication.primaryScreen()
-            dpr: float = screen.devicePixelRatio() if screen else 1.0
-
             margin: int = int(selected_rect.height() * 0.05)
             padded_rect: QRect = selected_rect.adjusted(
                 -margin, -margin, margin, margin
@@ -4392,10 +4387,10 @@ class ResultsPage(QFrame):
             from app.scripts.ocr import capture_screen_region
 
             image = capture_screen_region(
-                int(padded_rect.x() * dpr),
-                int(padded_rect.y() * dpr),
-                int(padded_rect.width() * dpr),
-                int(padded_rect.height() * dpr),
+                padded_rect.x(),
+                padded_rect.y(),
+                padded_rect.width(),
+                padded_rect.height(),
             )
 
             self._ocr_btn.setText("인식 중...")

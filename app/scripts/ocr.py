@@ -3,9 +3,13 @@ from __future__ import annotations
 import asyncio
 import re
 from dataclasses import dataclass
+from typing import cast
+
 
 import winocr
-from PIL import Image, ImageEnhance, ImageFilter, ImageGrab, ImageOps
+from PIL import Image, ImageEnhance, ImageFilter, ImageOps
+from PySide6.QtCore import QPoint, QRect
+from PySide6.QtGui import QGuiApplication, QImage, QPixmap, QScreen
 
 from app.scripts.calculator_models import OVERALL_STAT_GRID_ROWS, STAT_SPECS, StatKey
 
@@ -16,10 +20,42 @@ def capture_screen_region(
     width: int,
     height: int,
 ) -> Image.Image:
-    """화면 캡처 후 PLI 이미지 리턴"""
+    """화면 캡처 후 PIL 이미지 리턴"""
 
-    bbox: tuple[int, int, int, int] = (left, top, left + width, top + height)
-    return ImageGrab.grab(bbox=bbox, all_screens=True)
+    # 선택 영역 기준 화면 확인
+    rect: QRect = QRect(left, top, width, height)
+    center: QPoint = rect.center()
+    screen_candidate: QScreen | None = QGuiApplication.screenAt(center)
+    if screen_candidate is None:
+        screen_candidate = QGuiApplication.primaryScreen()
+
+    screen: QScreen = cast(QScreen, screen_candidate)
+
+    # 전역 좌표에서 선택 화면 내부 좌표로 변환
+    screen_geometry: QRect = screen.geometry()
+    local_left: int = rect.left() - screen_geometry.left()
+    local_top: int = rect.top() - screen_geometry.top()
+
+    # Qt 화면 캡처 및 PIL 변환용 이미지 포맷 정규화
+    pixmap: QPixmap = screen.grabWindow(
+        0,
+        local_left,
+        local_top,
+        rect.width(),
+        rect.height(),
+    )
+    image: QImage = pixmap.toImage().convertToFormat(QImage.Format.Format_RGBA8888)
+    image_bytes: bytes = bytes(image.bits())
+
+    return Image.frombuffer(
+        "RGBA",
+        (image.width(), image.height()),
+        image_bytes,
+        "raw",
+        "RGBA",
+        image.bytesPerLine(),
+        1,
+    ).convert("RGB")
 
 
 _TARGET_OCR_WIDTH: int = 1600
