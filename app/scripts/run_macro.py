@@ -25,7 +25,7 @@ ATTACK_PAUSE_POLL_SECONDS = 0.01
 
 
 # 전역 입력 상태 추적
-pressed_keys: set[Key | KeyCode] = set()
+pressed_keys: set[KeySpec] = set()
 any_key_pressed = False
 
 # 프로그램 주입 입력 추적 상태
@@ -106,8 +106,13 @@ def on_press(key: Key | KeyCode | None) -> None:
     if _consume_injected_key_event(key, injected_press_counts):
         return
 
-    pressed_keys.add(key)
+    # 잠수 감지는 인식 불가 키도 사용자 입력으로 인정
     any_key_pressed = True
+
+    # 모디파이어 조합 등으로 변형된 키도 동일 KeySpec으로 정규화
+    key_spec: KeySpec | None = KeyRegistry.pynput_key_to_keyspec(key)
+    if key_spec is not None:
+        pressed_keys.add(key_spec)
 
 
 def on_release(key: Key | KeyCode | None) -> None:
@@ -122,7 +127,9 @@ def on_release(key: Key | KeyCode | None) -> None:
     if _consume_injected_key_event(key, injected_release_counts):
         return
 
-    pressed_keys.discard(key)
+    key_spec: KeySpec | None = KeyRegistry.pynput_key_to_keyspec(key)
+    if key_spec is not None:
+        pressed_keys.discard(key_spec)
 
 
 def is_key_pressed(key: KeySpec) -> bool:
@@ -130,7 +137,7 @@ def is_key_pressed(key: KeySpec) -> bool:
 
     global pressed_keys
 
-    return key.value in pressed_keys
+    return key in pressed_keys
 
 
 def checking_kb_thread() -> NoReturn:

@@ -79,6 +79,23 @@ class KeyRegistry:
         "page_down": KeySpec.from_key("PageDown", "page_down", Key.page_down),
         "delete": KeySpec.from_key("Delete", "delete", Key.delete),
         "end": KeySpec.from_key("End", "end", Key.end),
+        "caps_lock": KeySpec.from_key("CapsLock", "caps_lock", Key.caps_lock),
+    }
+
+    # Windows VK → SPECIAL_KEYS key_id (US/KR QWERTY 기준)
+    # Ctrl/Shift 등 모디파이어로 char가 변형됐을 때 vk로 역추적
+    OEM_VK_TO_KEY_ID: ClassVar[dict[int, str]] = {
+        0xBA: ";",  # VK_OEM_1
+        0xBB: "=",  # VK_OEM_PLUS
+        0xBC: ",",  # VK_OEM_COMMA
+        0xBD: "-",  # VK_OEM_MINUS
+        0xBE: ".",  # VK_OEM_PERIOD
+        0xBF: "/",  # VK_OEM_2
+        0xC0: "`",  # VK_OEM_3
+        0xDB: "[",  # VK_OEM_4
+        0xDC: "\\",  # VK_OEM_5
+        0xDD: "]",  # VK_OEM_6
+        0xDE: "'",  # VK_OEM_7
     }
 
     @classmethod
@@ -106,21 +123,28 @@ class KeyRegistry:
         # KeyCode: 일반 문자
         if isinstance(k, KeyCode):
             ch: str | None = k.char
-            if not ch:
-                return None
+            if ch:
+                # 대소문자 입력 통합 처리
+                normalized_char: str = ch.lower()
 
-            # 대소문자 입력 통합 처리
-            normalized_char: str = ch.lower()
+                if normalized_char in cls.ALPHABET_KEYS:
+                    return cls.ALPHABET_KEYS[normalized_char]
+                if normalized_char in cls.NUMBER_KEYS:
+                    return cls.NUMBER_KEYS[normalized_char]
+                if normalized_char in cls.SPECIAL_KEYS:
+                    return cls.SPECIAL_KEYS[normalized_char]
 
-            # 지원하지 않는 문자 입력 무시
-            if (
-                normalized_char not in cls.ALPHABET_KEYS
-                and normalized_char not in cls.NUMBER_KEYS
-                and normalized_char not in cls.SPECIAL_KEYS
-            ):
-                return None
+            # Ctrl+문자 등 모디파이어로 char가 변형된 경우 vk 폴백
+            vk: int | None = getattr(k, "vk", None)
+            if vk is not None:
+                if 0x41 <= vk <= 0x5A:
+                    return cls.ALPHABET_KEYS[chr(vk).lower()]
+                if 0x30 <= vk <= 0x39:
+                    return cls.NUMBER_KEYS[chr(vk)]
+                if vk in cls.OEM_VK_TO_KEY_ID:
+                    return cls.SPECIAL_KEYS[cls.OEM_VK_TO_KEY_ID[vk]]
 
-            return cls.get(normalized_char)
+            return None
 
         # Key: 특수키
         key_name: str | None = k.name
