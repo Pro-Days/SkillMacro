@@ -703,6 +703,9 @@ QLabel#hoverCardBody {{
 QFrame#popupContainer {{
     background-color: white;
     border-radius: 10px;
+    border: 1px solid #cccccc;
+}}
+QFrame#popupContainer[contentObjectName="skillScrollSelectPopup"] {{
     border: none;
 }}
 
@@ -2075,6 +2078,9 @@ QLabel#hoverCardBody {{
 QFrame#popupContainer {{
     background-color: #1C1C28;
     border-radius: 10px;
+    border: 1px solid #3A3A52;
+}}
+QFrame#popupContainer[contentObjectName="skillScrollSelectPopup"] {{
     border: none;
 }}
 

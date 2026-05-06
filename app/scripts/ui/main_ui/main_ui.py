@@ -19,6 +19,7 @@ from app.scripts.app_state import app_state
 from app.scripts.custom_classes import CustomFont, SkillImage
 from app.scripts.data_manager import (
     add_preset,
+    copy_preset,
     remove_preset,
     save_data,
     update_recent_preset,
@@ -31,7 +32,13 @@ from app.scripts.registry.resource_registry import (
 )
 from app.scripts.registry.skill_registry import ScrollDef
 from app.scripts.run_macro import build_preview_task_list
-from app.scripts.ui.popup import NoticeKind, PopupKind, PopupManager
+from app.scripts.ui.popup import (
+    NoticeKind,
+    PopupAction,
+    PopupKind,
+    PopupManager,
+    PopupPlacement,
+)
 from app.scripts.ui.themes import theme_manager
 
 if TYPE_CHECKING:
@@ -165,15 +172,58 @@ class MainUI(QFrame):
     def on_add_tab_clicked(self) -> None:
         """탭 추가 처리"""
 
+        def create_new_preset() -> None:
+            # 메뉴 표시 이후 매크로 실행 상태 재확인
+            if app_state.macro.is_running:
+                self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+                return
+
+            # 기본값 프리셋 생성 및 새 탭 전환
+            add_preset()
+            preset: MacroPreset = app_state.macro.presets[-1]
+            self.tab_widget.add_tab(preset)
+
+        def create_from_current_preset() -> None:
+            # 메뉴 표시 이후 매크로 실행 상태 재확인
+            if app_state.macro.is_running:
+                self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+                return
+
+            # 현재 선택 프리셋 복사 및 새 탭 전환
+            source_index: int = app_state.macro.current_preset_index
+            copy_preset(source_index)
+            preset: MacroPreset = app_state.macro.presets[-1]
+            self.tab_widget.add_tab(preset)
+
+        if self.popup_manager.is_popup_active(PopupKind.PRESET_ADD):
+            self.popup_manager.close_popup()
+            return
+
         self.popup_manager.close_popup()
 
         if app_state.macro.is_running:
             self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
             return
 
-        add_preset()
-        preset: MacroPreset = app_state.macro.presets[-1]
-        self.tab_widget.add_tab(preset)
+        # 프리셋 생성 방식 선택지 구성
+        actions: list[PopupAction] = [
+            PopupAction(
+                id="newPreset",
+                text="새 프리셋 만들기",
+                on_trigger=create_new_preset,
+            ),
+            PopupAction(
+                id="copyPreset",
+                text="현재 프리셋 복사",
+                on_trigger=create_from_current_preset,
+            ),
+        ]
+        self.popup_manager.make_action_list_popup(
+            kind=PopupKind.PRESET_ADD,
+            anchor=self.tab_widget.add_tab_button,
+            actions=actions,
+            placement=PopupPlacement.BELOW,
+        )
 
     def on_remove_tab_clicked(self, index: int) -> None:
         """탭 제거 처리"""

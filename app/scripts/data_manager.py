@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import os
 from datetime import datetime
@@ -542,6 +543,19 @@ def add_preset() -> None:
     app_state.macro.presets.append(new_preset)
 
     # 현재 메모리 상태 전체를 저장 파일에 반영
+    save_data()
+
+
+def copy_preset(source_index: int) -> None:
+    """
+    선택 프리셋 복사 생성
+    """
+
+    # 프리셋 상태 전체 딥카피
+    copied_preset: MacroPreset = copy.deepcopy(app_state.macro.presets[source_index])
+
+    app_state.macro.presets.append(copied_preset)
+
     save_data()
 
 

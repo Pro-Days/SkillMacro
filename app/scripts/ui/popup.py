@@ -123,6 +123,7 @@ class PopupKind(str, Enum):
     COOLTIME = "settingCooltime"
     START_KEY = "settingStartKey"
     TAB_NAME = "tabName"
+    PRESET_ADD = "presetAdd"
     SKILL_KEY = "skillKey"
     SCROLL_SELECT = "scrollSelect"
     LINK_SKILL_KEY = "linkSkillKey"
@@ -715,6 +716,14 @@ class PopupHost(QWidget):
         self._content = content
         content.setParent(self._container)
         self._container_layout.addWidget(content)
+
+        content_object_name: str = content.objectName()
+        self._container.setProperty("contentObjectName", content_object_name)
+
+        # 동적 속성 변경 후 스타일 재계산
+        self._container.style().unpolish(self._container)
+        self._container.style().polish(self._container)
+        self._container.update()
 
     def show_for(self) -> None:
         """팝업 표시 (기존 위치 유지)"""
