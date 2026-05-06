@@ -11,8 +11,10 @@ from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QCloseEvent, QIcon, QKeyEvent, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
+    QDialog,
     QFrame,
     QHBoxLayout,
+    QLabel,
     QPushButton,
     QStackedWidget,
     QVBoxLayout,
@@ -22,7 +24,11 @@ from PySide6.QtWidgets import (
 from app.scripts.app_state import app_state
 from app.scripts.config import config
 from app.scripts.custom_classes import CustomFont
-from app.scripts.data_manager import load_data, save_data
+from app.scripts.data_manager import (
+    has_future_macro_data_version,
+    load_data,
+    save_data,
+)
 from app.scripts.macro_models import ThemeMode
 from app.scripts.registry.resource_registry import convert_resource_path
 from app.scripts.run_macro import checking_kb_thread
@@ -51,6 +57,11 @@ class MainWindow(QWidget):
             QIcon(QPixmap(convert_resource_path("resources\\image\\icon.ico")))
         )
 
+        # 현재 프로그램보다 높은 저장 데이터 버전 실행 확인
+        if not self._confirm_future_data_execution():
+            self._quit_before_start()
+            return
+
         # 매크로 데이터 불러오기
         load_data()
 
@@ -59,6 +70,71 @@ class MainWindow(QWidget):
 
         # 서브 쓰레드 활성화
         self.activate_thread()
+
+    def _confirm_future_data_execution(self) -> bool:
+        """높은 저장 데이터 버전 실행 여부 확인"""
+
+        # 높은 저장 버전이 아니면 일반 시작 진행
+        if not has_future_macro_data_version():
+            return True
+
+        # 메인 UI 로드 전 확인 다이얼로그 구성
+        dialog: QDialog = QDialog(self)
+        dialog.setWindowTitle("이전 버전 실행 확인")
+        dialog.setWindowIcon(self.windowIcon())
+        dialog.setModal(True)
+        dialog.setFixedWidth(420)
+        dialog.setStyleSheet(LIGHT_THEME)
+
+        root_layout: QVBoxLayout = QVBoxLayout(dialog)
+        root_layout.setContentsMargins(22, 20, 22, 18)
+        root_layout.setSpacing(14)
+
+        title_label: QLabel = QLabel("이전 버전의 프로그램입니다.", dialog)
+        title_label.setFont(CustomFont(14, bold=True))
+        title_label.setWordWrap(True)
+        root_layout.addWidget(title_label)
+
+        message_label: QLabel = QLabel(
+            "이전 버전의 프로그램이 실행되었습니다.\n"
+            "그대로 열면 일부 설정을 읽지 못할 수 있습니다.\n\n"
+            "문제가 생기면 기존 데이터는 백업하고 새 데이터로 시작합니다.\n"
+            "계속 실행할까요?",
+            dialog,
+        )
+        message_label.setFont(CustomFont(11))
+        message_label.setWordWrap(True)
+        root_layout.addWidget(message_label)
+
+        button_layout: QHBoxLayout = QHBoxLayout()
+        button_layout.setContentsMargins(0, 4, 0, 0)
+        button_layout.setSpacing(8)
+        button_layout.addStretch()
+
+        cancel_button: QPushButton = QPushButton("종료", dialog)
+        cancel_button.setObjectName("dialogCancelBtn")
+        cancel_button.setFont(CustomFont(11))
+        cancel_button.setFixedSize(92, 34)
+        cancel_button.clicked.connect(dialog.reject)
+
+        confirm_button: QPushButton = QPushButton("계속 실행", dialog)
+        confirm_button.setObjectName("dialogConfirmBtn")
+        confirm_button.setFont(CustomFont(11))
+        confirm_button.setFixedSize(92, 34)
+        confirm_button.clicked.connect(dialog.accept)
+
+        button_layout.addWidget(cancel_button)
+        button_layout.addWidget(confirm_button)
+        root_layout.addLayout(button_layout)
+
+        return dialog.exec() == QDialog.DialogCode.Accepted
+
+    def _quit_before_start(self) -> None:
+        """메인 UI 로드 전 프로그램 종료 예약"""
+
+        # 이벤트 루프 시작 직후 종료되도록 예약
+        application: QApplication = QApplication.instance()  # type: ignore[assignment]
+        QTimer.singleShot(0, application.quit)
 
     def activate_thread(self) -> None:
         """

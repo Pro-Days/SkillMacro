@@ -29,6 +29,33 @@ file_dir: str = os.path.join(data_path, "macros.json")
 custom_skills_file_dir: str = os.path.join(data_path, "custom_skills.json")
 
 
+def has_future_macro_data_version() -> bool:
+    """현재 프로그램보다 높은 macros.json 저장 버전 여부 반환"""
+
+    # 최초 실행 또는 데이터 파일 부재 상태 확인
+    if not os.path.isfile(file_dir):
+        return False
+
+    try:
+        # 저장 데이터의 루트 버전 값만 확인
+        with open(file_dir, "r", encoding="utf-8") as f:
+            raw_obj: object = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return False
+
+    # 루트 객체가 아니면 기존 로드 복구 흐름 사용
+    if not isinstance(raw_obj, dict):
+        return False
+
+    stored_version_obj: object = raw_obj.get("version")
+
+    # 정수 버전이 아니면 기존 로드 복구 흐름 사용
+    if type(stored_version_obj) is not int:
+        return False
+
+    return stored_version_obj > DATA_VERSION
+
+
 def backup_data_file(file_path: str) -> None:
     """오류가 난 데이터 파일을 타임스탬프 백업으로 이동"""
 
