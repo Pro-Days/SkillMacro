@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import ClassVar, Literal
 
 from pynput.keyboard import Key, KeyCode
+from pynput.mouse import Button
 
 
 @dataclass(frozen=True)
@@ -13,9 +14,9 @@ class KeySpec:
     # 키 아이디
     key_id: str
     # 키 타입
-    type: Literal["key", "char"]
+    type: Literal["key", "char", "mouse"]
     # 키 값
-    value: Key | KeyCode
+    value: Key | KeyCode | Button
 
     @classmethod
     def from_key(cls, display: str, key_id: str, key: Key) -> "KeySpec":
@@ -30,6 +31,12 @@ class KeySpec:
         return cls(
             display=display, key_id=char, type="char", value=KeyCode.from_char(char)
         )
+
+    @classmethod
+    def from_mouse(cls, display: str, key_id: str, button: Button) -> "KeySpec":
+        """마우스 버튼으로 키 객체 생성"""
+
+        return cls(display=display, key_id=key_id, type="mouse", value=button)
 
 
 @dataclass(frozen=True)
@@ -82,6 +89,12 @@ class KeyRegistry:
         "caps_lock": KeySpec.from_key("CapsLock", "caps_lock", Key.caps_lock),
     }
 
+    # 마우스 버튼
+    MOUSE_KEYS: ClassVar[dict[str, KeySpec]] = {
+        "mouse_x1": KeySpec.from_mouse("마우스 1", "mouse_x1", Button.x1),
+        "mouse_x2": KeySpec.from_mouse("마우스 2", "mouse_x2", Button.x2),
+    }
+
     # Windows VK → SPECIAL_KEYS key_id (US/KR QWERTY 기준)
     # Ctrl/Shift 등 모디파이어로 char가 변형됐을 때 vk로 역추적
     OEM_VK_TO_KEY_ID: ClassVar[dict[int, str]] = {
@@ -108,6 +121,7 @@ class KeyRegistry:
             or cls.ALPHABET_KEYS.get(key_id)
             or cls.NUMBER_KEYS.get(key_id)
             or cls.SPECIAL_KEYS.get(key_id)
+            or cls.MOUSE_KEYS.get(key_id)
         )
 
         # 등록되지 않은 키 설정값 즉시 실패
@@ -156,3 +170,14 @@ class KeyRegistry:
             return None
 
         return cls.get(key_name)
+
+    @classmethod
+    def pynput_mouse_to_keyspec(cls, button: Button) -> KeySpec | None:
+        """pynput 마우스 버튼을 KeySpec으로 변환"""
+
+        # 등록된 마우스 버튼 기준 KeySpec 조회
+        for key_spec in cls.MOUSE_KEYS.values():
+            if button == key_spec.value:
+                return key_spec
+
+        return None

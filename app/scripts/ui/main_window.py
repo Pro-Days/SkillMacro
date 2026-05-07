@@ -355,10 +355,12 @@ class MainWindow(QWidget):
 
     ## 마우스 클릭하면 실행
     def mousePressEvent(self, event) -> None:
-        self.popup_manager.close_popup()
+        # 좌클릭 기준 팝업 닫기 및 하단 선택 취소
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.popup_manager.close_popup()
 
-        if self.page_navigator.currentIndex() == 0:
-            self.main_ui.cancel_skill_selection()
+            if self.page_navigator.currentIndex() == 0:
+                self.main_ui.cancel_skill_selection()
 
     def resizeEvent(self, event) -> None:
         """윈도우 크기 변경 시 실행"""

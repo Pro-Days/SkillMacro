@@ -3,10 +3,11 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from threading import Lock, Thread
-from typing import NoReturn
+from typing import NoReturn, cast
 
 from pynput import keyboard, mouse
 from pynput.keyboard import Key, KeyCode
+from pynput.mouse import Button
 
 from app.scripts.app_state import app_state
 from app.scripts.config import config
@@ -142,6 +143,39 @@ def on_release(key: Key | KeyCode | None) -> None:
         handled_key_ids.discard(key_spec.key_id)
 
 
+def on_click(
+    x: int,
+    y: int,
+    button: Button,
+    pressed: bool,
+) -> None:
+    """마우스 버튼 입력 시 호출되는 함수"""
+
+    global pressed_keys, pressed_key_started_at, handled_key_ids, any_key_pressed
+
+    # 지원하는 마우스 버튼 기준 KeySpec 정규화
+    key_spec: KeySpec | None = KeyRegistry.pynput_mouse_to_keyspec(button)
+    if key_spec is None:
+        return
+
+    # 마우스 버튼 press 상태 등록
+    if pressed:
+        # 매크로 실행 중 사용자 마우스 입력 감지
+        any_key_pressed = True
+
+        if key_spec not in pressed_keys:
+            pressed_key_started_at[key_spec.key_id] = time.perf_counter()
+            handled_key_ids.discard(key_spec.key_id)
+
+        pressed_keys.add(key_spec)
+        return
+
+    # 마우스 버튼 release 상태 해제
+    pressed_keys.discard(key_spec)
+    pressed_key_started_at.pop(key_spec.key_id, None)
+    handled_key_ids.discard(key_spec.key_id)
+
+
 def is_key_held(key: KeySpec, hold_seconds: float) -> bool:
     """특정 키가 설정 시간 이상 눌려있는지 확인"""
 
@@ -162,8 +196,15 @@ def checking_kb_thread() -> NoReturn:
     global any_key_pressed, handled_key_ids
 
     # 키보드 리스너 시작
-    listener = keyboard.Listener(on_press=on_press, on_release=on_release)
-    listener.start()
+    keyboard_listener: keyboard.Listener = keyboard.Listener(
+        on_press=on_press,
+        on_release=on_release,
+    )
+    keyboard_listener.start()
+
+    # 마우스 버튼 리스너 시작
+    mouse_listener: mouse.Listener = mouse.Listener(on_click=on_click)
+    mouse_listener.start()
 
     while True:
         # 다른 키 설정 중일 때는 패스
@@ -365,8 +406,9 @@ def _restore_first_line_state() -> None:
     # 종료 복귀용 스왑 입력 등록
     kbd_controller: keyboard.Controller = keyboard.Controller()
     _register_injected_key_event(swap_key)
-    kbd_controller.press(swap_key.value)
-    kbd_controller.release(swap_key.value)
+    keyboard_key: Key | KeyCode = cast(Key | KeyCode, swap_key.value)
+    kbd_controller.press(keyboard_key)
+    kbd_controller.release(keyboard_key)
     app_state.macro.current_line_index = 0
 
 
@@ -390,8 +432,9 @@ def _press_skill_keys(
 
         # 프로그램 주입 스왑 입력 등록
         _register_injected_key_event(swap_key)
-        kbd_controller.press(swap_key.value)
-        kbd_controller.release(swap_key.value)
+        swap_keyboard_key: Key | KeyCode = cast(Key | KeyCode, swap_key.value)
+        kbd_controller.press(swap_keyboard_key)
+        kbd_controller.release(swap_keyboard_key)
 
         app_state.macro.current_line_index = skill_ref.line_index
 
@@ -402,8 +445,9 @@ def _press_skill_keys(
 
     # 프로그램 주입 스킬 입력 등록
     _register_injected_key_event(skill_key)
-    kbd_controller.press(skill_key.value)
-    kbd_controller.release(skill_key.value)
+    skill_keyboard_key: Key | KeyCode = cast(Key | KeyCode, skill_key.value)
+    kbd_controller.press(skill_keyboard_key)
+    kbd_controller.release(skill_keyboard_key)
 
 
 def _collect_priority_skill_sequence() -> list[EquippedSkillRef]:
@@ -501,7 +545,12 @@ def use_skill(run_id: int) -> bool:
     skill_ref: EquippedSkillRef = app_state.macro.task_list.pop(0)
     app_state.macro.skill_cooltime_timers[skill_ref] = time.perf_counter()
 
-    _press_skill_keys(kbd_controller, skill_ref, run_id, require_running=True)
+    _press_skill_keys(
+        kbd_controller,
+        skill_ref,
+        run_id,
+        require_running=True,
+    )
 
     time.sleep(
         app_state.macro.current_delay * 0.001 * config.macro.SLEEP_COEFFICIENT_NORMAL
@@ -537,7 +586,12 @@ def use_link_skill(link_skill: LinkSkill, run_id: int) -> None:
     for skill_id in link_skill.skills:
         skill_ref: EquippedSkillRef = skill_ref_map[skill_id]
 
-        _press_skill_keys(kbd_controller, skill_ref, run_id, require_running=False)
+        _press_skill_keys(
+            kbd_controller,
+            skill_ref,
+            run_id,
+            require_running=False,
+        )
         time.sleep(
             app_state.macro.current_delay
             * 0.001

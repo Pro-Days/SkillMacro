@@ -10,7 +10,11 @@ from html import escape
 from typing import TYPE_CHECKING, Literal
 from webbrowser import open_new
 
+from pynput import mouse as pynput_mouse
+
 from pynput import keyboard as pynput_keyboard
+
+
 from PySide6.QtCore import (
     QCoreApplication,
     QEvent,
@@ -1097,8 +1101,9 @@ class PopupManager:
         # 알림 컨트롤러
         self._notice_controller: NoticeController = NoticeController(master)
 
-        # 시작키 입력 리스너(pynput)
+        # 키 입력 리스너(pynput)
         self._key_listener: pynput_keyboard.Listener | None = None
+        self._mouse_listener: pynput_mouse.Listener | None = None
 
     def is_popup_active(self, kind: PopupKind) -> bool:
         """특정 팝업이 활성화되어있는지 여부 반환"""
@@ -1122,10 +1127,13 @@ class PopupManager:
     def _stop_key_listener(self) -> None:
         """키 입력 리스너 중지"""
 
+        # 키보드 리스너 정리
         listener: pynput_keyboard.Listener | None = self._key_listener
+        mouse_listener: pynput_mouse.Listener | None = self._mouse_listener
 
         # 리스너를 None으로 설정
         self._key_listener = None
+        self._mouse_listener = None
 
         # 키 입력 중 플래그 해제
         app_state.ui.is_setting_key = False
@@ -1133,6 +1141,9 @@ class PopupManager:
         # 리스너가 동작 중이면 중지
         if listener is not None:
             listener.stop()
+
+        if mouse_listener is not None:
+            mouse_listener.stop()
 
     def show_notice(self, kind: NoticeKind) -> None:
         """알림 팝업 표시"""
@@ -1579,10 +1590,34 @@ class PopupManager:
 
             content.set_key(key)
 
-        listener = pynput_keyboard.Listener(on_press=_on_press)
+        def _on_click(
+            x: int,
+            y: int,
+            button: pynput_mouse.Button,
+            pressed: bool,
+        ) -> None:
+            if not pressed:
+                return
+
+            key: KeySpec | None = KeyRegistry.pynput_mouse_to_keyspec(button)
+
+            if not key:
+                return
+
+            content.set_key(key)
+
+        listener: pynput_keyboard.Listener = pynput_keyboard.Listener(
+            on_press=_on_press
+        )
+        mouse_listener: pynput_mouse.Listener = pynput_mouse.Listener(
+            on_click=_on_click
+        )
         listener.daemon = True
+        mouse_listener.daemon = True
         listener.start()
+        mouse_listener.start()
         self._key_listener = listener
+        self._mouse_listener = mouse_listener
         app_state.ui.is_setting_key = True
 
     def make_tab_name_popup(
@@ -1825,10 +1860,34 @@ class PopupManager:
 
             content.set_key(key)
 
-        listener = pynput_keyboard.Listener(on_press=_on_press)
+        def _on_click(
+            x: int,
+            y: int,
+            button: pynput_mouse.Button,
+            pressed: bool,
+        ) -> None:
+            if not pressed:
+                return
+
+            key: KeySpec | None = KeyRegistry.pynput_mouse_to_keyspec(button)
+
+            if not key:
+                return
+
+            content.set_key(key)
+
+        listener: pynput_keyboard.Listener = pynput_keyboard.Listener(
+            on_press=_on_press
+        )
+        mouse_listener: pynput_mouse.Listener = pynput_mouse.Listener(
+            on_click=_on_click
+        )
         listener.daemon = True
+        mouse_listener.daemon = True
         listener.start()
+        mouse_listener.start()
         self._key_listener = listener
+        self._mouse_listener = mouse_listener
         app_state.ui.is_setting_key = True
 
     def make_link_skill_select_popup(
