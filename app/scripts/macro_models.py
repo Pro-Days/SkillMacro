@@ -180,6 +180,10 @@ class MacroSettings:
     custom_start_key: str = config.specs.DEFAULT_START_KEY.key_id
     use_custom_start_key: bool = False
 
+    # 키 입력 유지 시간
+    custom_key_hold_seconds: float = config.specs.KEY_HOLD_SECONDS.default
+    use_custom_key_hold_seconds: bool = False
+
     # 스왑키
     custom_swap_key: str = config.specs.DEFAULT_SWAP_KEY.key_id
     use_custom_swap_key: bool = False
@@ -199,6 +203,8 @@ class MacroSettings:
             use_custom_cooltime_reduction=data["use_custom_cooltime_reduction"],
             custom_start_key=data["custom_start_key"],
             use_custom_start_key=data["use_custom_start_key"],
+            custom_key_hold_seconds=data["custom_key_hold_seconds"],
+            use_custom_key_hold_seconds=data["use_custom_key_hold_seconds"],
             custom_swap_key=data["custom_swap_key"],
             use_custom_swap_key=data["use_custom_swap_key"],
             use_default_attack=data["use_default_attack"],
@@ -215,6 +221,8 @@ class MacroSettings:
             "use_custom_cooltime_reduction": self.use_custom_cooltime_reduction,
             "custom_start_key": self.custom_start_key,
             "use_custom_start_key": self.use_custom_start_key,
+            "custom_key_hold_seconds": self.custom_key_hold_seconds,
+            "use_custom_key_hold_seconds": self.use_custom_key_hold_seconds,
             "custom_swap_key": self.custom_swap_key,
             "use_custom_swap_key": self.use_custom_swap_key,
             "use_default_attack": self.use_default_attack,
@@ -471,6 +479,8 @@ class MacroPreset:
                 use_custom_cooltime_reduction=False,
                 custom_start_key=default_start_key_id,
                 use_custom_start_key=False,
+                custom_key_hold_seconds=config.specs.KEY_HOLD_SECONDS.default,
+                use_custom_key_hold_seconds=False,
                 custom_swap_key=default_swap_key_id,
                 use_custom_swap_key=False,
                 use_default_attack=False,
@@ -497,7 +507,7 @@ class MacroPreset:
 class MacroPresetFile:
     """json 파일을 저장하는 최상위 객체"""
 
-    version: int = 4
+    version: int = 5
     theme_mode: ThemeMode = ThemeMode.SYSTEM
     recent_preset: int = 0
     custom_power_formulas: list[CustomPowerFormula] = field(default_factory=list)

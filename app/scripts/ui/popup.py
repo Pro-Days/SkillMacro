@@ -121,6 +121,7 @@ class PopupKind(str, Enum):
     SERVER = "settingServer"
     DELAY = "settingDelay"
     COOLTIME = "settingCooltime"
+    KEY_HOLD = "settingKeyHold"
     START_KEY = "settingStartKey"
     TAB_NAME = "tabName"
     PRESET_ADD = "presetAdd"
@@ -146,6 +147,7 @@ class NoticeKind(Enum):
     # 입력 검증
     DELAY_INPUT_ERROR = auto()  # 딜레이 입력 오류
     COOLTIME_INPUT_ERROR = auto()  # 쿨타임 입력 오류
+    KEY_HOLD_INPUT_ERROR = auto()  # 키 입력 유지 시간 입력 오류
     START_KEY_CHANGE_ERROR = auto()  # 매크로 시작키 변경 오류
     SWAP_KEY_CHANGE_ERROR = auto()  # 스왑키 변경 오류
 
@@ -1000,6 +1002,11 @@ class NoticeController:
                     f"{config.specs.COOLTIME_REDUCTION.label}은(는) {config.specs.COOLTIME_REDUCTION.min}~{config.specs.COOLTIME_REDUCTION.max}까지의 수를 입력해야 합니다."
                 )
 
+            case NoticeKind.KEY_HOLD_INPUT_ERROR:
+                return NoticeData(
+                    f"{config.specs.KEY_HOLD_SECONDS.label} 시간은 {config.specs.KEY_HOLD_SECONDS.min:g}~{config.specs.KEY_HOLD_SECONDS.max:g}초 사이의 수를 입력해야 합니다."
+                )
+
             case NoticeKind.REQUIRE_UPDATE:
                 msg: str = (
                     f"버전 불일치: {config.version} -> {app_state.ui.current_version}"
@@ -1473,6 +1480,48 @@ class PopupManager:
 
         self.make_input_popup(
             kind=PopupKind.COOLTIME,
+            anchor=anchor,
+            content=content,
+            placement=PopupPlacement.BELOW,
+        )
+
+    def make_key_hold_popup(
+        self,
+        anchor: QWidget,
+        on_selected: Callable[[float], None],
+    ) -> None:
+        """키 입력 유지 시간 입력 팝업"""
+
+        default_text: str = f"{app_state.macro.current_key_hold_seconds:g}"
+        content: InputConfirmContent = InputConfirmContent(default_text=default_text)
+
+        def _submit(raw: str) -> None:
+            self.close_popup()
+
+            try:
+                # 초 단위 입력값 소수점 두 자리 정리
+                value: float = round(float(raw), 2)
+
+            except ValueError:
+                self.show_notice(NoticeKind.KEY_HOLD_INPUT_ERROR)
+                return
+
+            # 설정 허용 범위 검증
+            if not (
+                config.specs.KEY_HOLD_SECONDS.min
+                <= value
+                <= config.specs.KEY_HOLD_SECONDS.max
+            ):
+                self.show_notice(NoticeKind.KEY_HOLD_INPUT_ERROR)
+                return
+
+            # 콜백 실행
+            on_selected(value)
+
+        content.submitted.connect(_submit)
+
+        self.make_input_popup(
+            kind=PopupKind.KEY_HOLD,
             anchor=anchor,
             content=content,
             placement=PopupPlacement.BELOW,

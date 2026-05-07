@@ -64,6 +64,15 @@ class MacroState:
         return config.specs.DEFAULT_START_KEY
 
     @property
+    def current_key_hold_seconds(self) -> float:
+        """실제로 사용되는 키 입력 유지 시간 반환"""
+
+        if self.current_preset.settings.use_custom_key_hold_seconds:
+            return self.current_preset.settings.custom_key_hold_seconds
+
+        return config.specs.KEY_HOLD_SECONDS.default
+
+    @property
     def current_swap_key(self) -> KeySpec:
         """실제로 사용되는 스왑 키 값을 반환"""
 

@@ -26,6 +26,8 @@ ATTACK_PAUSE_POLL_SECONDS = 0.01
 
 # 전역 입력 상태 추적
 pressed_keys: set[KeySpec] = set()
+pressed_key_started_at: dict[str, float] = {}
+handled_key_ids: set[str] = set()
 any_key_pressed = False
 
 # 프로그램 주입 입력 추적 상태
@@ -97,7 +99,7 @@ def _clear_injected_key_events() -> None:
 def on_press(key: Key | KeyCode | None) -> None:
     """키가 눌렸을 때 호출되는 함수"""
 
-    global pressed_keys, any_key_pressed
+    global pressed_keys, pressed_key_started_at, handled_key_ids, any_key_pressed
 
     if key is None:
         return
@@ -112,13 +114,18 @@ def on_press(key: Key | KeyCode | None) -> None:
     # 모디파이어 조합 등으로 변형된 키도 동일 KeySpec으로 정규화
     key_spec: KeySpec | None = KeyRegistry.pynput_key_to_keyspec(key)
     if key_spec is not None:
+        # 최초 입력 시점 기록 및 이전 처리 상태 초기화
+        if key_spec not in pressed_keys:
+            pressed_key_started_at[key_spec.key_id] = time.perf_counter()
+            handled_key_ids.discard(key_spec.key_id)
+
         pressed_keys.add(key_spec)
 
 
 def on_release(key: Key | KeyCode | None) -> None:
     """키가 떼어졌을 때 호출되는 함수"""
 
-    global pressed_keys
+    global pressed_keys, pressed_key_started_at, handled_key_ids
 
     if key is None:
         return
@@ -129,21 +136,30 @@ def on_release(key: Key | KeyCode | None) -> None:
 
     key_spec: KeySpec | None = KeyRegistry.pynput_key_to_keyspec(key)
     if key_spec is not None:
+        # 눌림 상태 및 1회 처리 상태 해제
         pressed_keys.discard(key_spec)
+        pressed_key_started_at.pop(key_spec.key_id, None)
+        handled_key_ids.discard(key_spec.key_id)
 
 
-def is_key_pressed(key: KeySpec) -> bool:
-    """특정 키가 눌려있는지 확인"""
+def is_key_held(key: KeySpec, hold_seconds: float) -> bool:
+    """특정 키가 설정 시간 이상 눌려있는지 확인"""
 
-    global pressed_keys
+    global pressed_keys, pressed_key_started_at
 
-    return key in pressed_keys
+    # 현재 눌리지 않은 키 제외
+    if key not in pressed_keys:
+        return False
+
+    # 키 입력 시작 이후 경과 시간 확인
+    started_at: float = pressed_key_started_at[key.key_id]
+    return time.perf_counter() - started_at >= hold_seconds
 
 
 def checking_kb_thread() -> NoReturn:
     """키보드 입력 감지 쓰레드"""
 
-    global any_key_pressed
+    global any_key_pressed, handled_key_ids
 
     # 키보드 리스너 시작
     listener = keyboard.Listener(on_press=on_press, on_release=on_release)
@@ -162,8 +178,18 @@ def checking_kb_thread() -> NoReturn:
             # 플래그 리셋
             any_key_pressed = False
 
+        # 시작키 유지 시간 기준 충족 여부 확인
+        key_hold_seconds: float = app_state.macro.current_key_hold_seconds
+        start_key: KeySpec = app_state.macro.current_start_key
+        is_start_key_ready: bool = (
+            is_key_held(start_key, key_hold_seconds)
+            and start_key.key_id not in handled_key_ids
+        )
+
         # 매크로 시작/중지
-        if is_key_pressed(app_state.macro.current_start_key):
+        if is_start_key_ready:
+            handled_key_ids.add(start_key.key_id)
+
             # 현재 중이면 즉시 종료 상태 전환
             if app_state.macro.is_running:
                 app_state.macro.is_running = False
@@ -199,7 +225,12 @@ def checking_kb_thread() -> NoReturn:
 
             # 연계스킬 키가 눌렸다면
             link_key: KeySpec = KeyRegistry.get(link_skill.key)
-            if is_key_pressed(link_key):
+            if (
+                is_key_held(link_key, key_hold_seconds)
+                and link_key.key_id not in handled_key_ids
+            ):
+                handled_key_ids.add(link_key.key_id)
+
                 # 연계스킬 쓰레드 시작
                 Thread(
                     target=use_link_skill,

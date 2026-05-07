@@ -39,6 +39,16 @@ class SettingSpec:
 
 
 @dataclass(frozen=True)
+class KeyHoldSpec:
+    """키 입력 유지 시간 기준을 담는 클래스"""
+
+    label: str
+    default: float
+    min: float
+    max: float
+
+
+@dataclass(frozen=True)
 class MacroSpecs:
     """모든 매크로 설정의 기준들을 모아둔 클래스"""
 
@@ -48,6 +58,9 @@ class MacroSpecs:
     )
     COOLTIME_REDUCTION: ClassVar[SettingSpec] = SettingSpec(
         label="스킬속도(%)", default=0, min=0, max=90
+    )
+    KEY_HOLD_SECONDS: ClassVar[KeyHoldSpec] = KeyHoldSpec(
+        label="키 입력 유지 시간", default=0.0, min=0.0, max=3.0
     )
 
     DEFAULT_START_KEY: ClassVar[KeySpec] = KeyRegistry.get("f9")

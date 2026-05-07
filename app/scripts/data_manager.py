@@ -20,7 +20,7 @@ from app.scripts.macro_models import (
 from app.scripts.registry.server_registry import ServerSpec, server_registry
 from app.scripts.registry.skill_registry import ScrollDef, SkillDef
 
-DATA_VERSION: int = 4
+DATA_VERSION: int = 5
 
 # todo: 라이브러리를 통해 경로를 설정하도록 변경
 local_appdata: str = os.environ.get("LOCALAPPDATA", default="")
@@ -135,6 +135,20 @@ def migrate_macro_data_file(file_path: str) -> None:
                 )
                 if raw_selected_formula_id in ("boss", "normal"):
                     raw_calculator["selected_formula_id"] = "boss_damage"
+
+            raw["version"] = 4
+            stored_version_obj = 4
+            migrated = True
+
+        # v4 -> v5: 키 입력 유지 시간 설정
+        if stored_version_obj == 4:
+            raw_preset: dict[str, Any]
+            for raw_preset in raw["preset"]:
+                raw_settings: dict[str, Any] = raw_preset["settings"]
+                raw_settings["custom_key_hold_seconds"] = (
+                    config.specs.KEY_HOLD_SECONDS.default
+                )
+                raw_settings["use_custom_key_hold_seconds"] = False
 
             raw["version"] = DATA_VERSION
             migrated = True

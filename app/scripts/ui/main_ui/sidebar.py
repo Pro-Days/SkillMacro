@@ -402,6 +402,20 @@ class GeneralSettings(QFrame):
             func1=self.on_user_start_key_clicked,
         )
 
+        self.key_hold_setting = self.SettingItem(
+            title=config.specs.KEY_HOLD_SECONDS.label,
+            tooltip=(
+                "시작키와 연계스킬 시작키를 몇 초 이상 눌러야 입력으로 처리할지 설정합니다.\n"
+                "0초로 설정하면 키를 누르는 즉시 입력됩니다."
+            ),
+            btn0_text=f"기본: {config.specs.KEY_HOLD_SECONDS.default:g}초",
+            btn0_enabled=True,
+            btn1_text="",
+            btn1_enabled=False,
+            func0=self.on_default_key_hold_clicked,
+            func1=self.on_user_key_hold_clicked,
+        )
+
         self.swap_key_setting = self.SettingItem(
             title="스왑키 설정",
             tooltip=(
@@ -438,6 +452,7 @@ class GeneralSettings(QFrame):
         layout.addWidget(self.delay_setting)
         layout.addWidget(self.cooltime_setting)
         layout.addWidget(self.start_key_setting)
+        layout.addWidget(self.key_hold_setting)
         layout.addWidget(self.swap_key_setting)
         layout.addWidget(self.click_setting)
 
@@ -479,6 +494,16 @@ class GeneralSettings(QFrame):
         )
         self.start_key_setting.set_buttons_enabled(
             not use_custom_start_key, use_custom_start_key
+        )
+
+        # 키 입력 유지
+        custom_key_hold_seconds: float = preset.settings.custom_key_hold_seconds
+        use_custom_key_hold_seconds: bool = (
+            preset.settings.use_custom_key_hold_seconds
+        )
+        self.key_hold_setting.set_right_button_text(f"{custom_key_hold_seconds:g}초")
+        self.key_hold_setting.set_buttons_enabled(
+            not use_custom_key_hold_seconds, use_custom_key_hold_seconds
         )
 
         # 스왑키 설정
@@ -716,6 +741,69 @@ class GeneralSettings(QFrame):
 
         # 유저 시작키로 변경 (입력 값 유지)
         app_state.macro.current_preset.settings.use_custom_start_key = True
+        self.update_from_preset(app_state.macro.current_preset)
+        self._on_data_changed()
+
+    def on_default_key_hold_clicked(self) -> None:
+        """기본 키 입력 유지 클릭시 실행"""
+
+        self.popup_manager.close_popup()
+
+        # 매크로 실행 중일 때는 무시
+        if app_state.macro.is_running:
+            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+            return
+
+        # 이미 기본 키 입력 유지라면 무시
+        if not app_state.macro.current_preset.settings.use_custom_key_hold_seconds:
+            return
+
+        # 기본 키 입력 유지로 변경
+        app_state.macro.current_preset.settings.use_custom_key_hold_seconds = False
+        self.update_from_preset(app_state.macro.current_preset)
+        self._on_data_changed()
+
+    def on_user_key_hold_clicked(self) -> None:
+        """유저 키 입력 유지 클릭시 실행"""
+
+        def apply(key_hold_seconds: float) -> None:
+            """적용 함수"""
+
+            # 변경 사항이 없으면 무시
+            if (
+                key_hold_seconds
+                == app_state.macro.current_preset.settings.custom_key_hold_seconds
+            ):
+                return
+
+            app_state.macro.current_preset.settings.custom_key_hold_seconds = (
+                key_hold_seconds
+            )
+            app_state.macro.current_preset.settings.use_custom_key_hold_seconds = True
+            self.update_from_preset(app_state.macro.current_preset)
+            self._on_data_changed()
+
+        # close_popup() 을 먼저 호출하면 코드가 실행되지 않음
+        if self.popup_manager.is_popup_active(PopupKind.KEY_HOLD):
+            self.popup_manager.close_popup()
+            return
+
+        self.popup_manager.close_popup()
+
+        # 매크로 실행 중일 때는 무시
+        if app_state.macro.is_running:
+            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+            return
+
+        # 이미 유저 키 입력 유지라면 키 입력 유지 입력 팝업 열기
+        if app_state.macro.current_preset.settings.use_custom_key_hold_seconds:
+            self.popup_manager.make_key_hold_popup(
+                self.key_hold_setting.right_button, apply
+            )
+            return
+
+        # 유저 키 입력 유지로 변경
+        app_state.macro.current_preset.settings.use_custom_key_hold_seconds = True
         self.update_from_preset(app_state.macro.current_preset)
         self._on_data_changed()
 
