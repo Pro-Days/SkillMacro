@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
@@ -172,6 +173,21 @@ def _build_formula_options(
     return formula_ids
 
 
+@dataclass(frozen=True, slots=True)
+class _CalculatorResultsCacheKey:
+    """계산 결과 페이지 캐시 식별자"""
+
+    server_id: str
+    delay_ms: int
+    calculator_input_data: str
+    equipped_scrolls: tuple[str, ...]
+    placed_skills: tuple[str, ...]
+    scroll_levels: tuple[tuple[str, int], ...]
+    usage_settings: tuple[tuple[str, tuple[bool, bool, bool, int]], ...]
+    link_skills: tuple[tuple[str, str, str | None, tuple[str, ...]], ...]
+    custom_formulas: tuple[tuple[str, str, str], ...]
+
+
 class SimUI:
     def __init__(self, master: MainWindow, parent: QFrame):
 
@@ -237,6 +253,9 @@ class SimUI:
             )
         )
         self._calc_thread: _CalculatorThread | None = None
+        self._results_cache_key: _CalculatorResultsCacheKey | None = None
+        self._results_cache_output_rows: ResultsPage.OutputRows | None = None
+        self._pending_results_cache_key: _CalculatorResultsCacheKey | None = None
 
         self.stacked_layout.setCurrentIndex(0)
         # 스택 레이아웃 설정
@@ -341,6 +360,21 @@ class SimUI:
         if self._calc_thread is not None and self._calc_thread.isRunning():
             return
 
+        # 현재 입력 기준 계산 결과 캐시 키 구성
+        cache_key: _CalculatorResultsCacheKey = self._build_results_cache_key()
+        cached_output_rows: ResultsPage.OutputRows | None = (
+            self._results_cache_output_rows
+        )
+
+        # 동일 입력 캐시가 있으면 백그라운드 계산 없이 결과 페이지 표시
+        if self._results_cache_key == cache_key and cached_output_rows is not None:
+            self.results_page.set_output_rows(cached_output_rows)
+            self.update_nav(2)
+            self.stacked_layout.setCurrentIndex(2)
+            self.adjust_main_frame_height()
+            QTimer.singleShot(0, self.adjust_main_frame_height)
+            return
+
         # 저장된 계산기 입력 기준 계산 인자 복원
         preset: MacroPreset = app_state.macro.current_preset
         calculator_input: CalculatorPresetInput = preset.info.calculator
@@ -352,6 +386,7 @@ class SimUI:
         )
 
         # 결과 페이지 초기 상태와 진행 오버레이 표시
+        self._pending_results_cache_key = cache_key
         self.results_page.set_loading_state()
         self._results_overlay.show_overlay(
             "스탯 계산기 결과 준비 중...", "대기 중...", 0
@@ -372,6 +407,65 @@ class SimUI:
         self._calc_thread.finished_signal.connect(self._on_results_calculation_finished)
         self._calc_thread.finished.connect(self._cleanup_calc_thread)
         self._calc_thread.start()
+
+    def _build_results_cache_key(self) -> _CalculatorResultsCacheKey:
+        """현재 계산 결과 페이지 입력 기준 캐시 키 구성"""
+
+        # 현재 프리셋과 계산기 입력 상태 복원
+        preset: MacroPreset = app_state.macro.current_preset
+        calculator_input: CalculatorPresetInput = preset.info.calculator
+
+        # 계산기 입력 저장 구조를 안정적인 문자열 키로 변환
+        calculator_input_data: str = json.dumps(
+            calculator_input.to_dict(),
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+
+        # 무공비급 레벨 맵을 순서 고정 튜플로 변환
+        scroll_levels: tuple[tuple[str, int], ...] = tuple(
+            (scroll_id, int(preset.info.scroll_levels[scroll_id]))
+            for scroll_id in sorted(preset.info.scroll_levels.keys())
+        )
+
+        # 스킬 사용 설정을 스킬 ID 순서로 고정
+        usage_settings: tuple[tuple[str, tuple[bool, bool, bool, int]], ...] = tuple(
+            (skill_id, preset.usage_settings[skill_id].to_tuple())
+            for skill_id in sorted(preset.usage_settings.keys())
+        )
+
+        # 자동 연계 계산에 쓰이는 연계스킬 상태 고정
+        link_skills: tuple[tuple[str, str, str | None, tuple[str, ...]], ...] = tuple(
+            (
+                link_skill.use_type.value,
+                link_skill.key_type.value,
+                link_skill.key,
+                tuple(link_skill.skills),
+            )
+            for link_skill in preset.link_skills
+        )
+
+        # 선택 공식 계산과 표시명에 영향을 주는 전역 공식 상태 고정
+        custom_formulas: tuple[tuple[str, str, str], ...] = tuple(
+            (
+                custom_formula.id,
+                custom_formula.name,
+                custom_formula.formula,
+            )
+            for custom_formula in app_state.macro.custom_power_formulas
+        )
+
+        return _CalculatorResultsCacheKey(
+            server_id=preset.settings.server_id,
+            delay_ms=app_state.macro.current_delay,
+            calculator_input_data=calculator_input_data,
+            equipped_scrolls=tuple(preset.skills.equipped_scrolls),
+            placed_skills=tuple(preset.skills.placed_skills),
+            scroll_levels=scroll_levels,
+            usage_settings=usage_settings,
+            link_skills=link_skills,
+            custom_formulas=custom_formulas,
+        )
 
     def _cancel_results_calculation(self) -> None:
         """진행 중인 결과 계산 취소 요청"""
@@ -413,16 +507,23 @@ class SimUI:
 
         # 사용자 취소 요청이면 현재 페이지 유지
         if is_cancelled:
+            self._pending_results_cache_key = None
             return
 
         # 계산 실패 시 오류 결과 표시 후 결과 페이지 진입
         if output_rows is None:
+            self._pending_results_cache_key = None
             self.results_page.set_error_state()
             self.update_nav(2)
             self.stacked_layout.setCurrentIndex(2)
             self.adjust_main_frame_height()
             QTimer.singleShot(0, self.adjust_main_frame_height)
             return
+
+        # 성공한 계산 결과를 동일 입력 재진입용 캐시에 저장
+        self._results_cache_key = self._pending_results_cache_key
+        self._results_cache_output_rows = output_rows
+        self._pending_results_cache_key = None
 
         # 계산 성공 결과 반영 후 결과 페이지 진입
         self.results_page.set_output_rows(output_rows)
