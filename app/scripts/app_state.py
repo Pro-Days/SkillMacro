@@ -138,6 +138,9 @@ class UiState:
     # 데이터 백업 알림 대기 여부 (팝업 매니저 로딩 전이라 임시)
     has_pending_backup_notice: bool = False
 
+    # 데이터 백업 알림에서 복사할 오류 로그 목록
+    backup_notice_logs: list[str] = field(default_factory=list)
+
     # 커스텀 무공비급 중복 정리 알림 대기 여부
     has_pending_custom_skill_normalized_notice: bool = False
 

@@ -25,6 +25,7 @@ from app.scripts.app_state import app_state
 from app.scripts.config import config
 from app.scripts.custom_classes import CustomFont
 from app.scripts.data_manager import (
+    DataRecoveryStartupError,
     has_future_macro_data_version,
     load_data,
     save_data,
@@ -62,8 +63,14 @@ class MainWindow(QWidget):
             self._quit_before_start()
             return
 
-        # 매크로 데이터 불러오기
-        load_data()
+        try:
+            # 매크로 데이터 불러오기
+            load_data()
+        except DataRecoveryStartupError as error:
+            # 기본 데이터 복구 실패 안내 후 시작 중단
+            self._show_data_recovery_error_dialog(error.log_text)
+            self._quit_before_start()
+            return
 
         # 프로그램 화면 설정
         self.init_UI()
@@ -128,6 +135,58 @@ class MainWindow(QWidget):
         root_layout.addLayout(button_layout)
 
         return dialog.exec() == QDialog.DialogCode.Accepted
+
+    def _show_data_recovery_error_dialog(self, log_text: str) -> None:
+        """데이터 복구 실패 안내 표시"""
+
+        # 메인 UI 로드 전 오류 안내 다이얼로그 구성
+        dialog: QDialog = QDialog(self)
+        dialog.setWindowTitle("데이터 복구 실패")
+        dialog.setWindowIcon(self.windowIcon())
+        dialog.setModal(True)
+        dialog.setFixedWidth(460)
+        dialog.setStyleSheet(LIGHT_THEME)
+
+        root_layout: QVBoxLayout = QVBoxLayout(dialog)
+        root_layout.setContentsMargins(22, 20, 22, 18)
+        root_layout.setSpacing(14)
+
+        title_label: QLabel = QLabel("프로그램을 시작할 수 없습니다.", dialog)
+        title_label.setFont(CustomFont(14, bold=True))
+        title_label.setWordWrap(True)
+        root_layout.addWidget(title_label)
+
+        message_label: QLabel = QLabel(
+            "데이터 파일을 읽지 못했고, 기본 데이터로 복구하는 작업도 실패했습니다.\n"
+            "로그를 복사한 뒤 문의할 때 함께 보내주세요.",
+            dialog,
+        )
+        message_label.setFont(CustomFont(11))
+        message_label.setWordWrap(True)
+        root_layout.addWidget(message_label)
+
+        button_layout: QHBoxLayout = QHBoxLayout()
+        button_layout.setContentsMargins(0, 4, 0, 0)
+        button_layout.setSpacing(8)
+        button_layout.addStretch()
+
+        copy_button: QPushButton = QPushButton("로그 복사", dialog)
+        copy_button.setObjectName("dialogConfirmBtn")
+        copy_button.setFont(CustomFont(11))
+        copy_button.setFixedSize(100, 34)
+        copy_button.clicked.connect(lambda: QApplication.clipboard().setText(log_text))
+
+        close_button: QPushButton = QPushButton("종료", dialog)
+        close_button.setObjectName("dialogCancelBtn")
+        close_button.setFont(CustomFont(11))
+        close_button.setFixedSize(92, 34)
+        close_button.clicked.connect(dialog.accept)
+
+        button_layout.addWidget(copy_button)
+        button_layout.addWidget(close_button)
+        root_layout.addLayout(button_layout)
+
+        dialog.exec()
 
     def _quit_before_start(self) -> None:
         """메인 UI 로드 전 프로그램 종료 예약"""

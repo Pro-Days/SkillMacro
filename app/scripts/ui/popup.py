@@ -920,6 +920,14 @@ class NoticeController:
         # 활성화된 알림 목록
         self._hosts: list[NoticeHost] = []
 
+    def _copy_backup_notice_log(self) -> bool:
+        """데이터 백업 오류 로그 클립보드 복사"""
+
+        # 백업 알림에 쌓인 로그를 문의용 텍스트로 복사
+        log_text: str = "\n\n".join(app_state.ui.backup_notice_logs)
+        QApplication.clipboard().setText(log_text)
+        return True
+
     def _get_notice_data(self, kind: NoticeKind) -> NoticeData:
         """알림 종류에 따른 데이터 반환"""
 
@@ -965,9 +973,14 @@ class NoticeController:
                 return NoticeData("프로그램 업데이트 확인에 실패하였습니다.", "warning")
 
             case NoticeKind.DATA_FILE_BACKED_UP:
+                action: tuple[str, Callable[[], bool]] | None = None
+                if app_state.ui.backup_notice_logs:
+                    action = ("로그 복사", self._copy_backup_notice_log)
+
                 return NoticeData(
                     "데이터 파일 오류가 발생하여 백업 파일을 생성했습니다.",
                     "warning",
+                    action,
                 )
 
             case NoticeKind.CUSTOM_SKILLS_NORMALIZED:

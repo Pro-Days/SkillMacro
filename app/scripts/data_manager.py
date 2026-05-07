@@ -30,6 +30,51 @@ file_dir: str = os.path.join(data_path, "macros.json")
 custom_skills_file_dir: str = os.path.join(data_path, "custom_skills.json")
 
 
+class DataRecoveryStartupError(Exception):
+    """기본 데이터 복구 실패로 시작을 중단해야 하는 오류"""
+
+    def __init__(self, log_text: str) -> None:
+        super().__init__(log_text)
+        self.log_text: str = log_text
+
+
+def _format_data_failure_log(
+    file_path: str,
+    stage: str,
+    error: BaseException,
+    backup_path: str | None,
+) -> str:
+    """데이터 파일 복구 실패 로그 문자열 구성"""
+
+    # 사용자가 복사해서 보낼 수 있는 최소 진단 정보 구성
+    backup_text: str = backup_path if backup_path is not None else "없음"
+    return (
+        f"프로그램 버전: {config.version}\n"
+        f"파일 경로: {file_path}\n"
+        f"단계: {stage}\n"
+        f"오류 종류: {type(error).__name__}\n"
+        f"오류 내용: {error}\n"
+        f"백업 파일: {backup_text}"
+    )
+
+
+def _append_backup_notice_log(
+    file_path: str,
+    stage: str,
+    error: BaseException,
+    backup_path: str | None,
+) -> None:
+    """백업 알림에서 복사할 오류 로그 추가"""
+
+    # 실제 백업이 만들어진 경우에만 알림 로그 축적
+    if backup_path is None:
+        return
+
+    app_state.ui.backup_notice_logs.append(
+        _format_data_failure_log(file_path, stage, error, backup_path)
+    )
+
+
 def has_future_macro_data_version() -> bool:
     """현재 프로그램보다 높은 macros.json 저장 버전 여부 반환"""
 
@@ -57,12 +102,12 @@ def has_future_macro_data_version() -> bool:
     return stored_version_obj > DATA_VERSION
 
 
-def backup_data_file(file_path: str) -> None:
+def backup_data_file(file_path: str) -> str | None:
     """오류가 난 데이터 파일을 타임스탬프 백업으로 이동"""
 
     # 실제 파일이 있을 때만 백업 수행
     if not os.path.isfile(file_path):
-        return
+        return None
 
     # 원본 이름을 유지한 타임스탬프 백업 경로 구성
     directory_path: str = os.path.dirname(file_path)
@@ -79,6 +124,7 @@ def backup_data_file(file_path: str) -> None:
 
     # UI 초기화 이후 표시할 백업 알림 대기 상태 반영
     app_state.ui.has_pending_backup_notice = True
+    return backup_path
 
 
 def migrate_macro_data_file(file_path: str) -> None:
@@ -161,8 +207,19 @@ def migrate_macro_data_file(file_path: str) -> None:
     if not migrated:
         return
 
-    with open(file_path, "w", encoding="utf-8") as f:
-        json.dump(raw, f, ensure_ascii=False, indent=4)
+    try:
+        # 마이그레이션 결과 저장
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(raw, f, ensure_ascii=False, indent=4)
+    except OSError as error:
+        # 저장 실패 시 시작 중단 오류 구성
+        log_text: str = _format_data_failure_log(
+            file_path,
+            "macros.json 마이그레이션 저장",
+            error,
+            None,
+        )
+        raise DataRecoveryStartupError(log_text) from error
 
 
 def create_default_custom_skills_data() -> None:
@@ -256,10 +313,56 @@ def read_custom_skills_data() -> dict[str, dict]:
                 json.dump(normalized_raw, f, ensure_ascii=False, indent=4)
 
         raw = normalized_raw
-    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
+    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
         # 손상된 커스텀 스킬 파일 백업 후 초기화
-        backup_data_file(custom_skills_file_dir)
-        create_default_custom_skills_data()
+        try:
+            backup_path: str | None = backup_data_file(custom_skills_file_dir)
+        except Exception as backup_error:
+            log_text: str = "\n\n".join(
+                [
+                    _format_data_failure_log(
+                        custom_skills_file_dir,
+                        "custom_skills.json 읽기",
+                        error,
+                        None,
+                    ),
+                    _format_data_failure_log(
+                        custom_skills_file_dir,
+                        "custom_skills.json 백업 생성",
+                        backup_error,
+                        None,
+                    ),
+                ]
+            )
+            raise DataRecoveryStartupError(log_text) from backup_error
+
+        _append_backup_notice_log(
+            custom_skills_file_dir,
+            "custom_skills.json 읽기",
+            error,
+            backup_path,
+        )
+        try:
+            create_default_custom_skills_data()
+        except Exception as default_error:
+            log_text = "\n\n".join(
+                [
+                    _format_data_failure_log(
+                        custom_skills_file_dir,
+                        "custom_skills.json 읽기",
+                        error,
+                        backup_path,
+                    ),
+                    _format_data_failure_log(
+                        custom_skills_file_dir,
+                        "custom_skills.json 기본 데이터 생성",
+                        default_error,
+                        None,
+                    ),
+                ]
+            )
+            raise DataRecoveryStartupError(log_text) from default_error
+
         return {}
 
     return raw
@@ -278,10 +381,56 @@ def load_custom_skills() -> None:
             server_spec: ServerSpec = server_registry.get(server_id)
             skill_import: CustomSkillImport = CustomSkillImport.from_dict(import_data)
             parsed_imports[server_id] = (server_spec, skill_import)
-    except (KeyError, TypeError, ValueError):
+    except (KeyError, TypeError, ValueError) as error:
         # 레지스트리에 반영할 수 없는 커스텀 스킬 파일 백업 후 초기화
-        backup_data_file(custom_skills_file_dir)
-        create_default_custom_skills_data()
+        try:
+            backup_path: str | None = backup_data_file(custom_skills_file_dir)
+        except Exception as backup_error:
+            log_text = "\n\n".join(
+                [
+                    _format_data_failure_log(
+                        custom_skills_file_dir,
+                        "custom_skills.json 레지스트리 반영",
+                        error,
+                        None,
+                    ),
+                    _format_data_failure_log(
+                        custom_skills_file_dir,
+                        "custom_skills.json 백업 생성",
+                        backup_error,
+                        None,
+                    ),
+                ]
+            )
+            raise DataRecoveryStartupError(log_text) from backup_error
+
+        _append_backup_notice_log(
+            custom_skills_file_dir,
+            "custom_skills.json 레지스트리 반영",
+            error,
+            backup_path,
+        )
+        try:
+            create_default_custom_skills_data()
+        except Exception as default_error:
+            log_text = "\n\n".join(
+                [
+                    _format_data_failure_log(
+                        custom_skills_file_dir,
+                        "custom_skills.json 레지스트리 반영",
+                        error,
+                        backup_path,
+                    ),
+                    _format_data_failure_log(
+                        custom_skills_file_dir,
+                        "custom_skills.json 기본 데이터 생성",
+                        default_error,
+                        None,
+                    ),
+                ]
+            )
+            raise DataRecoveryStartupError(log_text) from default_error
+
         return
 
     # 검증이 끝난 커스텀 스킬만 레지스트리에 반영
@@ -425,6 +574,73 @@ def sanitize_preset_registry_references(preset: MacroPreset) -> bool:
     return changed
 
 
+def _restore_macro_data_after_failure(
+    repo: MacroPresetRepository,
+    stage: str,
+    error: BaseException,
+) -> MacroPresetFile:
+    """macros.json 백업 및 기본 데이터 재읽기"""
+
+    try:
+        # 손상 파일 백업 시도
+        backup_path: str | None = backup_data_file(file_dir)
+    except Exception as backup_error:
+        # 백업을 만들 수 없으면 시작 중단 오류 구성
+        log_text: str = "\n\n".join(
+            [
+                _format_data_failure_log(file_dir, stage, error, None),
+                _format_data_failure_log(
+                    file_dir,
+                    "macros.json 백업 생성",
+                    backup_error,
+                    None,
+                ),
+            ]
+        )
+        raise DataRecoveryStartupError(log_text) from backup_error
+
+    # 백업 알림 로그 기록
+    _append_backup_notice_log(file_dir, stage, error, backup_path)
+
+    try:
+        # 현재 스키마 기본 데이터 생성
+        create_default_data()
+    except Exception as default_error:
+        # 기본 파일을 만들 수 없으면 시작 중단 오류 구성
+        log_text: str = "\n\n".join(
+            [
+                _format_data_failure_log(file_dir, stage, error, backup_path),
+                _format_data_failure_log(
+                    file_dir,
+                    "macros.json 기본 데이터 생성",
+                    default_error,
+                    None,
+                ),
+            ]
+        )
+        raise DataRecoveryStartupError(log_text) from default_error
+
+    try:
+        # 기본 데이터가 실제로 읽히는지 확인
+        preset_file: MacroPresetFile = repo.load()
+    except Exception as reload_error:
+        # 기본 파일 재읽기 실패 시 시작 중단 오류 구성
+        log_text = "\n\n".join(
+            [
+                _format_data_failure_log(file_dir, stage, error, backup_path),
+                _format_data_failure_log(
+                    file_dir,
+                    "macros.json 기본 데이터 재읽기",
+                    reload_error,
+                    None,
+                ),
+            ]
+        )
+        raise DataRecoveryStartupError(log_text) from reload_error
+
+    return preset_file
+
+
 def load_data(num: int = -1) -> None:
     """
     실행, 탭 변경 시 데이터 로드
@@ -440,11 +656,13 @@ def load_data(num: int = -1) -> None:
     try:
         # 매크로 프리셋 파일 로드
         preset_file: MacroPresetFile = repo.load()
-    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
+    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
         # 손상된 매크로 프리셋 파일 백업 후 초기화
-        backup_data_file(file_dir)
-        create_default_data()
-        preset_file = repo.load()
+        preset_file = _restore_macro_data_after_failure(
+            repo,
+            "macros.json 읽기",
+            error,
+        )
 
     try:
         # 파일에 저장되지 않은 기본값 항목을 인-메모리로 복원
@@ -464,11 +682,13 @@ def load_data(num: int = -1) -> None:
             target_index: int = preset_file.recent_preset
         else:
             target_index = num
-    except (KeyError, TypeError, ValueError):
+    except (KeyError, TypeError, ValueError) as error:
         # 후처리 불가능한 프리셋 파일 백업 후 초기화
-        backup_data_file(file_dir)
-        create_default_data()
-        preset_file = repo.load()
+        preset_file = _restore_macro_data_after_failure(
+            repo,
+            "macros.json 후처리",
+            error,
+        )
         target_index = 0
 
     # 프리셋/전역 공식 메모리 반영
@@ -480,7 +700,18 @@ def load_data(num: int = -1) -> None:
     # 정리 결과와 현재 선택 인덱스 저장 반영
     if preset_was_sanitized or preset_file.recent_preset != target_index:
         preset_file.recent_preset = target_index
-        repo.save(preset_file)
+        try:
+            # 시작 중 자동 정리된 프리셋 파일 저장
+            repo.save(preset_file)
+        except OSError as error:
+            # 정리 결과 저장 실패 시 시작 중단 오류 구성
+            log_text: str = _format_data_failure_log(
+                file_dir,
+                "macros.json 정리 결과 저장",
+                error,
+                None,
+            )
+            raise DataRecoveryStartupError(log_text) from error
 
 
 def create_default_data() -> None:
@@ -618,7 +849,19 @@ def update_data() -> None:
 
     # 데이터가 없을 때만 현재 스키마 기본 파일 생성
     if not os.path.isfile(file_dir):
-        create_default_data()
+        try:
+            # 최초 실행 기본 데이터 생성
+            create_default_data()
+        except Exception as error:
+            # 최초 기본 데이터 생성 실패 시 시작 중단 오류 구성
+            log_text: str = _format_data_failure_log(
+                file_dir,
+                "macros.json 최초 기본 데이터 생성",
+                error,
+                None,
+            )
+            raise DataRecoveryStartupError(log_text) from error
+
         return
 
     # 릴리스 버전 저장 포맷 승격
@@ -628,22 +871,31 @@ def update_data() -> None:
     try:
         # 기존 프리셋 파일 기본 구조 검증
         preset_file: MacroPresetFile = repo.load()
-    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError):
+    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
         # 손상된 프리셋 파일 백업 후 기본값 재생성
-        backup_data_file(file_dir)
-        create_default_data()
+        _restore_macro_data_after_failure(repo, "macros.json 구조 검증", error)
         return
 
     # 비어있는 프리셋 목록 복구
     if not preset_file.preset:
         # 비정상 프리셋 파일 백업 후 기본값 재생성
-        backup_data_file(file_dir)
-        create_default_data()
+        empty_preset_error: ValueError = ValueError("프리셋 목록이 비어 있습니다.")
+        _restore_macro_data_after_failure(
+            repo,
+            "macros.json 프리셋 목록 검증",
+            empty_preset_error,
+        )
         return
 
     # 최근 프리셋 인덱스 범위 복구
     if not (0 <= preset_file.recent_preset < len(preset_file.preset)):
         # 비정상 프리셋 파일 백업 후 기본값 재생성
-        backup_data_file(file_dir)
-        create_default_data()
+        recent_preset_error: ValueError = ValueError(
+            f"최근 프리셋 번호가 범위를 벗어났습니다: {preset_file.recent_preset}"
+        )
+        _restore_macro_data_after_failure(
+            repo,
+            "macros.json 최근 프리셋 번호 검증",
+            recent_preset_error,
+        )
         return
