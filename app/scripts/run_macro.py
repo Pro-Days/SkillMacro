@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import time
 from dataclasses import dataclass
 from threading import Lock, Thread
@@ -10,7 +9,7 @@ from pynput import keyboard, mouse
 from pynput.keyboard import Key, KeyCode
 from pynput.mouse import Button
 
-from app.scripts.app_state import RememberedMacroState, app_state
+from app.scripts.app_state import app_state
 from app.scripts.config import config
 from app.scripts.macro_models import (
     EquippedSkillRef,
@@ -350,7 +349,7 @@ def running_macro_thread(run_id: int) -> None:
 
     # 현재 실행 주기 종료 시 1줄 종료 상태 복구
     if app_state.macro.run_id == run_id:
-        _save_remembered_macro_state()
+        _settle_cooltime_state_after_stop()
         _restore_first_line_state()
 
 
@@ -485,17 +484,10 @@ def _collect_priority_skill_sequence() -> list[EquippedSkillRef]:
     return skill_sequence
 
 
-def _build_macro_state_signature() -> str:
-    """매크로 실행에 영향을 주는 시그니처 문자열 반환"""
-
-    return json.dumps(
-        app_state.macro.current_preset.to_dict(),
-        ensure_ascii=False,
-        sort_keys=True,
-    )
-
-
 def _reset_cooltime_state(placed_refs: list[EquippedSkillRef]) -> None:
+    """장착 스킬 기준 쿨타임 상태 초기화"""
+
+    # 모든 장착 스킬을 즉시 사용 가능 상태로 등록
     now: float = time.perf_counter()
     app_state.macro.prepared_skills = set(placed_refs)
     app_state.macro.skill_cooltime_timers = {
@@ -503,34 +495,26 @@ def _reset_cooltime_state(placed_refs: list[EquippedSkillRef]) -> None:
     }
 
 
-def _get_valid_remembered_state() -> RememberedMacroState | None:
-    settings = app_state.macro.current_preset.settings
-    remembered_state: RememberedMacroState | None = app_state.macro.remembered_state
+def _has_cooltime_state(placed_refs: list[EquippedSkillRef]) -> bool:
+    """장착 스킬 전체의 쿨타임 상태 존재 여부 반환"""
 
-    if not settings.remember_previous_state:
-        app_state.macro.remembered_state = None
-        return None
-
-    if remembered_state is None:
-        return None
-
-    if remembered_state.preset_index != app_state.macro.current_preset_index:
-        return None
-
-    if remembered_state.signature != _build_macro_state_signature():
-        app_state.macro.remembered_state = None
-        return None
-
-    return remembered_state
+    # 장착 스킬별 타이머가 모두 남아 있어야 재시작 상태 유지
+    placed_ref_set: set[EquippedSkillRef] = set(placed_refs)
+    timer_ref_set: set[EquippedSkillRef] = set(
+        app_state.macro.skill_cooltime_timers.keys()
+    )
+    return bool(placed_ref_set) and placed_ref_set.issubset(timer_ref_set)
 
 
-def _collect_ready_remembered_skills(
+def _collect_ready_cooltime_skills(
     placed_refs: list[EquippedSkillRef],
-    remembered_state: RememberedMacroState,
 ) -> set[EquippedSkillRef]:
+    """현재 타이머 기준 사용 가능 스킬 목록 반환"""
+
+    # 현재 장착 스킬만 준비 완료 후보로 유지
     placed_ref_set: set[EquippedSkillRef] = set(placed_refs)
     prepared_skills: set[EquippedSkillRef] = (
-        remembered_state.prepared_skills & placed_ref_set
+        app_state.macro.prepared_skills & placed_ref_set
     )
     now: float = time.perf_counter()
     cooltimes: dict[EquippedSkillRef, float] = {
@@ -542,40 +526,41 @@ def _collect_ready_remembered_skills(
         for skill_ref in placed_refs
     }
 
+    # 쿨타임이 지난 스킬을 준비 완료 상태로 반영
     for skill_ref in placed_refs:
         if skill_ref in prepared_skills:
             continue
 
-        started_at: float | None = remembered_state.skill_cooltime_timers.get(skill_ref)
-        if started_at is None or (now - started_at) >= cooltimes[skill_ref]:
+        started_at: float = app_state.macro.skill_cooltime_timers[skill_ref]
+        if (now - started_at) >= cooltimes[skill_ref]:
             prepared_skills.add(skill_ref)
 
     return prepared_skills
 
 
 def _restore_or_reset_cooltime_state(placed_refs: list[EquippedSkillRef]) -> None:
-    remembered_state: RememberedMacroState | None = _get_valid_remembered_state()
-    if remembered_state is None:
+    """설정에 맞춘 쿨타임 상태 복원 또는 초기화"""
+
+    # 상태 기억 비활성화 또는 보관 상태 없음이면 전체 쿨타임 초기화
+    if (
+        not app_state.macro.current_preset.settings.remember_previous_state
+        or not _has_cooltime_state(placed_refs)
+    ):
         _reset_cooltime_state(placed_refs)
         return
 
-    now: float = time.perf_counter()
-    placed_ref_set: set[EquippedSkillRef] = set(placed_refs)
-    app_state.macro.prepared_skills = _collect_ready_remembered_skills(
-        placed_refs,
-        remembered_state,
-    )
-    app_state.macro.skill_cooltime_timers = {
-        skill_ref: remembered_state.skill_cooltime_timers.get(skill_ref, now)
-        for skill_ref in placed_ref_set
-    }
+    app_state.macro.prepared_skills = _collect_ready_cooltime_skills(placed_refs)
 
 
-def _save_remembered_macro_state() -> None:
+def _settle_cooltime_state_after_stop() -> None:
+    """매크로 중지 후 재시작용 쿨타임 상태 정리"""
+
+    # 상태 기억 비활성화 시 다음 시작에서 전체 쿨타임 초기화
     if not app_state.macro.current_preset.settings.remember_previous_state:
-        app_state.macro.remembered_state = None
+        app_state.macro.clear_cooltime_state()
         return
 
+    # 장착 스킬 기준 대기열과 타이머 상태 보존
     placed_refs: list[EquippedSkillRef] = (
         app_state.macro.current_preset.skills.get_placed_skill_refs(
             app_state.macro.current_server
@@ -586,16 +571,9 @@ def _save_remembered_macro_state() -> None:
         app_state.macro.prepared_skills | set(app_state.macro.task_list)
     ) & placed_ref_set
 
-    app_state.macro.remembered_state = RememberedMacroState(
-        preset_index=app_state.macro.current_preset_index,
-        signature=_build_macro_state_signature(),
-        prepared_skills=prepared_skills,
-        skill_cooltime_timers={
-            skill_ref: app_state.macro.skill_cooltime_timers[skill_ref]
-            for skill_ref in placed_refs
-            if skill_ref in app_state.macro.skill_cooltime_timers
-        },
-    )
+    # 미사용 대기열만 준비 상태로 되돌리고 기존 타이머는 그대로 유지
+    app_state.macro.task_list.clear()
+    app_state.macro.prepared_skills = prepared_skills
 
 
 def init_macro() -> None:
@@ -929,15 +907,17 @@ def _build_preview_task_state() -> PreviewTaskState:
             [skill_ref_map[skill_id] for skill_id in link_skill.skills]
         )
 
-    remembered_state: RememberedMacroState | None = _get_valid_remembered_state()
     prepared_skills: set[EquippedSkillRef]
-    if remembered_state is None:
-        prepared_skills = set(placed_refs)
+    if (
+        app_state.macro.current_preset.settings.remember_previous_state
+        and _has_cooltime_state(placed_refs)
+    ):
+        prepared_skills = _collect_ready_cooltime_skills(placed_refs)
+        if prepared_skills == set(placed_refs):
+            app_state.macro.clear_cooltime_state()
+
     else:
-        prepared_skills = _collect_ready_remembered_skills(
-            placed_refs,
-            remembered_state,
-        )
+        prepared_skills = set(placed_refs)
 
     return PreviewTaskState(
         prepared_skills=prepared_skills,

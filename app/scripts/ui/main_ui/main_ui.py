@@ -100,6 +100,13 @@ class MainUI(QFrame):
                 app_state.macro.has_pending_afk_notice = False
                 self.popup_manager.show_notice(NoticeKind.AFK_STOPPED)
 
+        # 중지 중 기억된 쿨타임 기준 프리뷰 갱신
+        if (
+            app_state.macro.current_preset.settings.remember_previous_state
+            and app_state.macro.skill_cooltime_timers
+        ):
+            self._update_current_tab_preview()
+
     def _handle_data_changed(self) -> None:
         """데이터 변경 후 저장 및 프리뷰 반영"""
 

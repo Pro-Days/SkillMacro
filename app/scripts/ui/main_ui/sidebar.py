@@ -691,8 +691,9 @@ class GeneralSettings(QFrame):
         if not app_state.macro.current_preset.settings.remember_previous_state:
             return
 
+        # 기억 옵션 변경에 따른 기존 쿨타임 상태 제거
         app_state.macro.current_preset.settings.remember_previous_state = False
-        app_state.macro.remembered_state = None
+        app_state.macro.clear_cooltime_state()
         self.update_from_preset(app_state.macro.current_preset)
         self._on_data_changed()
 
@@ -706,8 +707,9 @@ class GeneralSettings(QFrame):
         if app_state.macro.current_preset.settings.remember_previous_state:
             return
 
+        # 기억 옵션 변경에 따른 기존 쿨타임 상태 제거
         app_state.macro.current_preset.settings.remember_previous_state = True
-        app_state.macro.remembered_state = None
+        app_state.macro.clear_cooltime_state()
         self.update_from_preset(app_state.macro.current_preset)
         self._on_data_changed()
 

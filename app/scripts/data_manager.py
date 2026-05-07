@@ -488,8 +488,9 @@ def create_default_data() -> None:
     오류 발생 또는 최초 실행 시 데이터 생성
     """
 
+    # 새 기본 데이터 생성 시 남아 있는 쿨타임 상태 제거
     if not app_state.macro.is_running:
-        app_state.macro.remembered_state = None
+        app_state.macro.clear_cooltime_state()
 
     repo = MacroPresetRepository(file_dir)
     preset_file = MacroPresetFile(
@@ -507,8 +508,9 @@ def save_data() -> None:
     데이터 저장
     """
 
+    # 비실행 중 저장되는 설정 변경은 다음 시작 쿨타임 초기화로 처리
     if not app_state.macro.is_running:
-        app_state.macro.remembered_state = None
+        app_state.macro.clear_cooltime_state()
 
     repo: MacroPresetRepository = MacroPresetRepository(file_dir)
 
@@ -526,7 +528,12 @@ def save_data() -> None:
 def update_recent_preset(recent_preset: int) -> None:
     """recent_preset 인덱스 저장"""
 
+    # 현재 프리셋 전환 상태 반영
     app_state.macro.current_preset_index = recent_preset
+
+    # 프리셋이 바뀌면 이전 프리셋의 쿨타임 상태 제거
+    if not app_state.macro.is_running:
+        app_state.macro.clear_cooltime_state()
 
     repo = MacroPresetRepository(file_dir)
     preset_file: MacroPresetFile = repo.load()
@@ -542,8 +549,9 @@ def remove_preset(
     탭 제거 시 데이터 삭제
     """
 
+    # 프리셋 삭제 시 남아 있는 쿨타임 상태 제거
     if not app_state.macro.is_running:
-        app_state.macro.remembered_state = None
+        app_state.macro.clear_cooltime_state()
 
     repo = MacroPresetRepository(file_dir)
     preset_file: MacroPresetFile = repo.load()
