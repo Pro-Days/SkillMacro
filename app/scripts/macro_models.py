@@ -209,7 +209,7 @@ class MacroSettings:
             custom_swap_key=data["custom_swap_key"],
             use_custom_swap_key=data["use_custom_swap_key"],
             use_default_attack=data["use_default_attack"],
-            remember_previous_state=data.get("remember_previous_state", False),
+            remember_previous_state=data["remember_previous_state"],
         )
 
     def to_dict(self) -> dict[str, Any]:

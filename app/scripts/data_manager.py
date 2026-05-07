@@ -200,6 +200,27 @@ def migrate_macro_data_file(file_path: str) -> None:
             raw["version"] = DATA_VERSION
             migrated = True
 
+        # v3 이상 저장 데이터의 목표 분배 필드 누락 보정
+        if (
+            isinstance(stored_version_obj, int)
+            and 3 <= stored_version_obj <= DATA_VERSION
+        ):
+            raw_preset: dict[str, Any]
+            for raw_preset in raw["preset"]:
+                raw_info: dict[str, Any] = raw_preset["info"]
+                raw_calculator: dict[str, Any] = raw_info["calculator"]
+                if "target_distribution" in raw_calculator:
+                    continue
+
+                raw_calculator["target_distribution"] = {
+                    "strength": 0,
+                    "dexterity": 0,
+                    "vitality": 0,
+                    "luck": 0,
+                    "is_minimum": False,
+                }
+                migrated = True
+
     except (KeyError, TypeError, ValueError):
         return
 

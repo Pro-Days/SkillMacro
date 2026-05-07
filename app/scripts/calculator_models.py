@@ -686,15 +686,14 @@ class CalculatorPresetInput:
             raise TypeError("distribution must be a dict")
         distribution: DistributionState = DistributionState.from_dict(distribution_data)
 
-        target_distribution_data: object = data.get("target_distribution")
-        if target_distribution_data is not None and isinstance(
-            target_distribution_data, dict
-        ):
-            target_distribution: TargetDistributionState = (
-                TargetDistributionState.from_dict(target_distribution_data)
-            )
-        else:
-            target_distribution = TargetDistributionState()
+        # 목표 분배 구조 복원
+        target_distribution_data: object = data["target_distribution"]
+        if not isinstance(target_distribution_data, dict):
+            raise TypeError("target_distribution must be a dict")
+
+        target_distribution: TargetDistributionState = (
+            TargetDistributionState.from_dict(target_distribution_data)
+        )
 
         danjeon_data: object = data["danjeon"]
         if not isinstance(danjeon_data, dict):
