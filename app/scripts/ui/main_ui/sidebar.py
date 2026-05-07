@@ -388,6 +388,20 @@ class GeneralSettings(QFrame):
         )
 
         # 시작키 설정
+        self.remember_state_setting = self.SettingItem(
+            title="이전 상태 기억하기",
+            tooltip=(
+                "매크로를 다시 시작할 때 마지막 중지 시점의 스킬 쿨타임을 이어서 계산합니다.\n"
+                "매크로 중지 이후 설정이 바뀌면 기억된 상태는 사용하지 않습니다."
+            ),
+            btn0_text="기억 안함",
+            btn0_enabled=True,
+            btn1_text="기억함",
+            btn1_enabled=False,
+            func0=self.on_forget_previous_state_clicked,
+            func1=self.on_remember_previous_state_clicked,
+        )
+
         self.start_key_setting = self.SettingItem(
             title="시작키 설정",
             tooltip=(
@@ -451,6 +465,7 @@ class GeneralSettings(QFrame):
         layout.addWidget(self.server_job_setting)
         layout.addWidget(self.delay_setting)
         layout.addWidget(self.cooltime_setting)
+        layout.addWidget(self.remember_state_setting)
         layout.addWidget(self.start_key_setting)
         layout.addWidget(self.key_hold_setting)
         layout.addWidget(self.swap_key_setting)
@@ -487,6 +502,11 @@ class GeneralSettings(QFrame):
         )
 
         # 시작키 설정
+        self.remember_state_setting.set_buttons_enabled(
+            not preset.settings.remember_previous_state,
+            preset.settings.remember_previous_state,
+        )
+
         custom_start_key: str = preset.settings.custom_start_key
         use_custom_start_key: bool = preset.settings.use_custom_start_key
         self.start_key_setting.set_right_button_text(
@@ -658,6 +678,36 @@ class GeneralSettings(QFrame):
 
         # 유저 쿨타임 감소로 변경 (입력 값 유지)
         app_state.macro.current_preset.settings.use_custom_cooltime_reduction = True
+        self.update_from_preset(app_state.macro.current_preset)
+        self._on_data_changed()
+
+    def on_forget_previous_state_clicked(self) -> None:
+        self.popup_manager.close_popup()
+
+        if app_state.macro.is_running:
+            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+            return
+
+        if not app_state.macro.current_preset.settings.remember_previous_state:
+            return
+
+        app_state.macro.current_preset.settings.remember_previous_state = False
+        app_state.macro.remembered_state = None
+        self.update_from_preset(app_state.macro.current_preset)
+        self._on_data_changed()
+
+    def on_remember_previous_state_clicked(self) -> None:
+        self.popup_manager.close_popup()
+
+        if app_state.macro.is_running:
+            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+            return
+
+        if app_state.macro.current_preset.settings.remember_previous_state:
+            return
+
+        app_state.macro.current_preset.settings.remember_previous_state = True
+        app_state.macro.remembered_state = None
         self.update_from_preset(app_state.macro.current_preset)
         self._on_data_changed()
 

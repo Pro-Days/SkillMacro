@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 from dataclasses import dataclass
 from threading import Lock, Thread
@@ -9,7 +10,7 @@ from pynput import keyboard, mouse
 from pynput.keyboard import Key, KeyCode
 from pynput.mouse import Button
 
-from app.scripts.app_state import app_state
+from app.scripts.app_state import RememberedMacroState, app_state
 from app.scripts.config import config
 from app.scripts.macro_models import (
     EquippedSkillRef,
@@ -349,6 +350,7 @@ def running_macro_thread(run_id: int) -> None:
 
     # 현재 실행 주기 종료 시 1줄 종료 상태 복구
     if app_state.macro.run_id == run_id:
+        _save_remembered_macro_state()
         _restore_first_line_state()
 
 
@@ -483,6 +485,119 @@ def _collect_priority_skill_sequence() -> list[EquippedSkillRef]:
     return skill_sequence
 
 
+def _build_macro_state_signature() -> str:
+    """매크로 실행에 영향을 주는 시그니처 문자열 반환"""
+
+    return json.dumps(
+        app_state.macro.current_preset.to_dict(),
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+
+
+def _reset_cooltime_state(placed_refs: list[EquippedSkillRef]) -> None:
+    now: float = time.perf_counter()
+    app_state.macro.prepared_skills = set(placed_refs)
+    app_state.macro.skill_cooltime_timers = {
+        skill_ref: now for skill_ref in placed_refs
+    }
+
+
+def _get_valid_remembered_state() -> RememberedMacroState | None:
+    settings = app_state.macro.current_preset.settings
+    remembered_state: RememberedMacroState | None = app_state.macro.remembered_state
+
+    if not settings.remember_previous_state:
+        app_state.macro.remembered_state = None
+        return None
+
+    if remembered_state is None:
+        return None
+
+    if remembered_state.preset_index != app_state.macro.current_preset_index:
+        return None
+
+    if remembered_state.signature != _build_macro_state_signature():
+        app_state.macro.remembered_state = None
+        return None
+
+    return remembered_state
+
+
+def _collect_ready_remembered_skills(
+    placed_refs: list[EquippedSkillRef],
+    remembered_state: RememberedMacroState,
+) -> set[EquippedSkillRef]:
+    placed_ref_set: set[EquippedSkillRef] = set(placed_refs)
+    prepared_skills: set[EquippedSkillRef] = (
+        remembered_state.prepared_skills & placed_ref_set
+    )
+    now: float = time.perf_counter()
+    cooltimes: dict[EquippedSkillRef, float] = {
+        skill_ref: app_state.macro.current_server.skill_registry.get(
+            app_state.macro.current_preset.skills.get_placed_skill_id(skill_ref)
+        ).cooltime
+        * (100 - app_state.macro.current_cooltime_reduction)
+        / 100.0
+        for skill_ref in placed_refs
+    }
+
+    for skill_ref in placed_refs:
+        if skill_ref in prepared_skills:
+            continue
+
+        started_at: float | None = remembered_state.skill_cooltime_timers.get(skill_ref)
+        if started_at is None or (now - started_at) >= cooltimes[skill_ref]:
+            prepared_skills.add(skill_ref)
+
+    return prepared_skills
+
+
+def _restore_or_reset_cooltime_state(placed_refs: list[EquippedSkillRef]) -> None:
+    remembered_state: RememberedMacroState | None = _get_valid_remembered_state()
+    if remembered_state is None:
+        _reset_cooltime_state(placed_refs)
+        return
+
+    now: float = time.perf_counter()
+    placed_ref_set: set[EquippedSkillRef] = set(placed_refs)
+    app_state.macro.prepared_skills = _collect_ready_remembered_skills(
+        placed_refs,
+        remembered_state,
+    )
+    app_state.macro.skill_cooltime_timers = {
+        skill_ref: remembered_state.skill_cooltime_timers.get(skill_ref, now)
+        for skill_ref in placed_ref_set
+    }
+
+
+def _save_remembered_macro_state() -> None:
+    if not app_state.macro.current_preset.settings.remember_previous_state:
+        app_state.macro.remembered_state = None
+        return
+
+    placed_refs: list[EquippedSkillRef] = (
+        app_state.macro.current_preset.skills.get_placed_skill_refs(
+            app_state.macro.current_server
+        )
+    )
+    placed_ref_set: set[EquippedSkillRef] = set(placed_refs)
+    prepared_skills: set[EquippedSkillRef] = (
+        app_state.macro.prepared_skills | set(app_state.macro.task_list)
+    ) & placed_ref_set
+
+    app_state.macro.remembered_state = RememberedMacroState(
+        preset_index=app_state.macro.current_preset_index,
+        signature=_build_macro_state_signature(),
+        prepared_skills=prepared_skills,
+        skill_cooltime_timers={
+            skill_ref: app_state.macro.skill_cooltime_timers[skill_ref]
+            for skill_ref in placed_refs
+            if skill_ref in app_state.macro.skill_cooltime_timers
+        },
+    )
+
+
 def init_macro() -> None:
     """매크로 초기 설정"""
 
@@ -497,7 +612,6 @@ def init_macro() -> None:
     app_state.macro.afk_started_time = time.time()
     app_state.macro.has_pending_afk_notice = False
     app_state.macro.current_line_index = 0
-    app_state.macro.prepared_skills = set(placed_refs)
     app_state.macro.skill_sequence = _collect_priority_skill_sequence()
     app_state.macro.using_link_skills.clear()
     app_state.macro.attack_pause_until = 0.0
@@ -525,11 +639,7 @@ def init_macro() -> None:
         for link_skill in app_state.macro.using_link_skills
     ]
     app_state.macro.task_list.clear()
-
-    now: float = time.perf_counter()
-    app_state.macro.skill_cooltime_timers = {
-        skill_ref: now for skill_ref in placed_refs
-    }
+    _restore_or_reset_cooltime_state(placed_refs)
 
 
 def use_skill(run_id: int) -> bool:
@@ -819,8 +929,18 @@ def _build_preview_task_state() -> PreviewTaskState:
             [skill_ref_map[skill_id] for skill_id in link_skill.skills]
         )
 
+    remembered_state: RememberedMacroState | None = _get_valid_remembered_state()
+    prepared_skills: set[EquippedSkillRef]
+    if remembered_state is None:
+        prepared_skills = set(placed_refs)
+    else:
+        prepared_skills = _collect_ready_remembered_skills(
+            placed_refs,
+            remembered_state,
+        )
+
     return PreviewTaskState(
-        prepared_skills=set(placed_refs),
+        prepared_skills=prepared_skills,
         task_list=[],
         preview_line_index=0,
         skill_sequence=_collect_priority_skill_sequence(),

@@ -18,6 +18,14 @@ from app.scripts.registry.server_registry import ServerSpec, server_registry
 # todo: preset에 종속된 인스턴스들 모두 옮기기
 
 
+@dataclass(slots=True)
+class RememberedMacroState:
+    preset_index: int
+    signature: str
+    prepared_skills: set[EquippedSkillRef]
+    skill_cooltime_timers: dict[EquippedSkillRef, float]
+
+
 @dataclass
 class MacroState:
     is_running: bool = False
@@ -111,6 +119,8 @@ class MacroState:
 
     # 스킬 쿨타임 타이머
     skill_cooltime_timers: dict[EquippedSkillRef, float] = field(default_factory=dict)
+
+    remembered_state: RememberedMacroState | None = None
 
     # 스킬 선입력 보호를 위한 평타 중지 종료 시각
     attack_pause_until: float = 0.0

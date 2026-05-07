@@ -190,6 +190,7 @@ class MacroSettings:
 
     # 마우스 클릭 타입
     use_default_attack: bool = False
+    remember_previous_state: bool = False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "MacroSettings":
@@ -208,6 +209,7 @@ class MacroSettings:
             custom_swap_key=data["custom_swap_key"],
             use_custom_swap_key=data["use_custom_swap_key"],
             use_default_attack=data["use_default_attack"],
+            remember_previous_state=data.get("remember_previous_state", False),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -226,6 +228,7 @@ class MacroSettings:
             "custom_swap_key": self.custom_swap_key,
             "use_custom_swap_key": self.use_custom_swap_key,
             "use_default_attack": self.use_default_attack,
+            "remember_previous_state": self.remember_previous_state,
         }
 
 
@@ -484,6 +487,7 @@ class MacroPreset:
                 custom_swap_key=default_swap_key_id,
                 use_custom_swap_key=False,
                 use_default_attack=False,
+                remember_previous_state=False,
             ),
             usage_settings={
                 skill_id: SkillUsageSetting(

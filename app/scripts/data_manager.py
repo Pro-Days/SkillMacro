@@ -149,6 +149,7 @@ def migrate_macro_data_file(file_path: str) -> None:
                     config.specs.KEY_HOLD_SECONDS.default
                 )
                 raw_settings["use_custom_key_hold_seconds"] = False
+                raw_settings["remember_previous_state"] = False
 
             raw["version"] = DATA_VERSION
             migrated = True
@@ -487,6 +488,9 @@ def create_default_data() -> None:
     오류 발생 또는 최초 실행 시 데이터 생성
     """
 
+    if not app_state.macro.is_running:
+        app_state.macro.remembered_state = None
+
     repo = MacroPresetRepository(file_dir)
     preset_file = MacroPresetFile(
         version=DATA_VERSION,
@@ -502,6 +506,9 @@ def save_data() -> None:
     """
     데이터 저장
     """
+
+    if not app_state.macro.is_running:
+        app_state.macro.remembered_state = None
 
     repo: MacroPresetRepository = MacroPresetRepository(file_dir)
 
@@ -532,8 +539,11 @@ def remove_preset(
     num: int,
 ) -> None:
     """
-    탭 제거시 데이터 삭제
+    탭 제거 시 데이터 삭제
     """
+
+    if not app_state.macro.is_running:
+        app_state.macro.remembered_state = None
 
     repo = MacroPresetRepository(file_dir)
     preset_file: MacroPresetFile = repo.load()
