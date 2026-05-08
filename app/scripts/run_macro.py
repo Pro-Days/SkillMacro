@@ -29,7 +29,7 @@ ATTACK_PAUSE_POLL_SECONDS = 0.01
 pressed_keys: set[KeySpec] = set()
 pressed_key_started_at: dict[str, float] = {}
 handled_key_ids: set[str] = set()
-any_key_pressed = False
+has_user_activity = False
 
 # 프로그램 주입 입력 추적 상태
 injected_press_counts: dict[str, int] = {}
@@ -100,7 +100,7 @@ def _clear_injected_key_events() -> None:
 def on_press(key: Key | KeyCode | None) -> None:
     """키가 눌렸을 때 호출되는 함수"""
 
-    global pressed_keys, pressed_key_started_at, handled_key_ids, any_key_pressed
+    global pressed_keys, pressed_key_started_at, handled_key_ids, has_user_activity
 
     if key is None:
         return
@@ -110,7 +110,7 @@ def on_press(key: Key | KeyCode | None) -> None:
         return
 
     # 잠수 감지는 인식 불가 키도 사용자 입력으로 인정
-    any_key_pressed = True
+    has_user_activity = True
 
     # 모디파이어 조합 등으로 변형된 키도 동일 KeySpec으로 정규화
     key_spec: KeySpec | None = KeyRegistry.pynput_key_to_keyspec(key)
@@ -151,7 +151,7 @@ def on_click(
 ) -> None:
     """마우스 버튼 입력 시 호출되는 함수"""
 
-    global pressed_keys, pressed_key_started_at, handled_key_ids, any_key_pressed
+    global pressed_keys, pressed_key_started_at, handled_key_ids
 
     # 지원하는 마우스 버튼 기준 KeySpec 정규화
     key_spec: KeySpec | None = KeyRegistry.pynput_mouse_to_keyspec(button)
@@ -160,9 +160,6 @@ def on_click(
 
     # 마우스 버튼 press 상태 등록
     if pressed:
-        # 매크로 실행 중 사용자 마우스 입력 감지
-        any_key_pressed = True
-
         if key_spec not in pressed_keys:
             pressed_key_started_at[key_spec.key_id] = time.perf_counter()
             handled_key_ids.discard(key_spec.key_id)
@@ -174,6 +171,15 @@ def on_click(
     pressed_keys.discard(key_spec)
     pressed_key_started_at.pop(key_spec.key_id, None)
     handled_key_ids.discard(key_spec.key_id)
+
+
+def on_move(x: int, y: int) -> None:
+    """마우스가 움직였을 때 호출되는 함수"""
+
+    global has_user_activity
+
+    # 잠수 감지용 사용자 마우스 이동 기록
+    has_user_activity = True
 
 
 def is_key_held(key: KeySpec, hold_seconds: float) -> bool:
@@ -193,7 +199,7 @@ def is_key_held(key: KeySpec, hold_seconds: float) -> bool:
 def checking_kb_thread() -> NoReturn:
     """키보드 입력 감지 쓰레드"""
 
-    global any_key_pressed, handled_key_ids
+    global has_user_activity, handled_key_ids
 
     # 키보드 리스너 시작
     keyboard_listener: keyboard.Listener = keyboard.Listener(
@@ -202,8 +208,8 @@ def checking_kb_thread() -> NoReturn:
     )
     keyboard_listener.start()
 
-    # 마우스 버튼 리스너 시작
-    mouse_listener: mouse.Listener = mouse.Listener(on_click=on_click)
+    # 마우스 버튼 및 이동 리스너 시작
+    mouse_listener: mouse.Listener = mouse.Listener(on_click=on_click, on_move=on_move)
     mouse_listener.start()
 
     while True:
@@ -212,12 +218,12 @@ def checking_kb_thread() -> NoReturn:
             time.sleep(0.1)
             continue
 
-        # 매크로 실행중일 때 어떤 키보드 입력이 있으면 잠수 시간 초기화
-        if app_state.macro.is_running and any_key_pressed:
+        # 매크로 실행중일 때 사용자 활동이 있으면 잠수 시간 초기화
+        if app_state.macro.is_running and has_user_activity:
             app_state.macro.afk_started_time = time.time()
 
             # 플래그 리셋
-            any_key_pressed = False
+            has_user_activity = False
 
         # 시작키 유지 시간 기준 충족 여부 확인
         key_hold_seconds: float = app_state.macro.current_key_hold_seconds
