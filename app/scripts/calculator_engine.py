@@ -79,6 +79,11 @@ if TYPE_CHECKING:
 DISPLAY_POWER_METRICS: tuple[PowerMetric, ...] = (
     PowerMetric.BOSS_DAMAGE,
     PowerMetric.NORMAL_DAMAGE,
+    PowerMetric.DAMAGE_CHECK,
+    PowerMetric.BOSS_DAMAGE_CHECK,
+    PowerMetric.SKILL_SPEED_DAMAGE_CHECK,
+    PowerMetric.SKILL_SPEED_BOSS_DAMAGE_CHECK,
+    PowerMetric.PATTERN_SKIP_DAMAGE_CHECK,
     PowerMetric.OFFICIAL,
 )
 
@@ -90,8 +95,13 @@ DISPLAY_POWER_METRIC_IDS: frozenset[str] = frozenset(
 
 # 전투력 한글 라벨
 POWER_METRIC_LABELS: dict[PowerMetric, str] = {
-    PowerMetric.BOSS_DAMAGE: "보스 데미지",
-    PowerMetric.NORMAL_DAMAGE: "일반 데미지",
+    PowerMetric.BOSS_DAMAGE: "60초 보스 데미지",
+    PowerMetric.NORMAL_DAMAGE: "60초 일반 데미지",
+    PowerMetric.DAMAGE_CHECK: "일반 데미지 기댓값",
+    PowerMetric.BOSS_DAMAGE_CHECK: "보스 데미지 기댓값",
+    PowerMetric.SKILL_SPEED_DAMAGE_CHECK: "스킬속도 반영 일반 데미지 기댓값",
+    PowerMetric.SKILL_SPEED_BOSS_DAMAGE_CHECK: "스킬속도 반영 보스 데미지 기댓값",
+    PowerMetric.PATTERN_SKIP_DAMAGE_CHECK: "패턴 스킵 데미지 확인",
     PowerMetric.OFFICIAL: "공식 전투력",
 }
 
@@ -165,6 +175,46 @@ _POWER_FORMULA_NORMAL_DAMAGE_NAME: str = "normal_damage"
 _POWER_FORMULA_SOURCES: dict[PowerMetric, str] = {
     PowerMetric.BOSS_DAMAGE: _POWER_FORMULA_BOSS_DAMAGE_NAME,
     PowerMetric.NORMAL_DAMAGE: _POWER_FORMULA_NORMAL_DAMAGE_NAME,
+    PowerMetric.DAMAGE_CHECK: (
+        "dmg = attack\n"
+        "dmg *= 1 + skill_damage_percent * 0.01\n"
+        "dmg *= 1 + final_attack_percent * 0.01\n"
+        "dmg *= 1 + crit_rate_percent * (crit_damage_percent - 100) * 0.0001\n\n"
+        "result = dmg"
+    ),
+    PowerMetric.BOSS_DAMAGE_CHECK: (
+        "dmg = attack\n"
+        "dmg *= 1 + skill_damage_percent * 0.01\n"
+        "dmg *= 1 + final_attack_percent * 0.01\n"
+        "dmg *= 1 + crit_rate_percent * (crit_damage_percent - 100) * 0.0001\n"
+        "dmg *= 1 + boss_attack_percent * 0.01\n\n"
+        "result = dmg"
+    ),
+    PowerMetric.SKILL_SPEED_DAMAGE_CHECK: (
+        "dmg = attack\n"
+        "dmg *= 1 + skill_damage_percent * 0.01\n"
+        "dmg *= 1 + final_attack_percent * 0.01\n"
+        "dmg *= 1 + crit_rate_percent * (crit_damage_percent - 100) * 0.0001\n"
+        "dmg /= 1 - skill_speed_percent * 0.01\n\n"
+        "result = dmg * 100"
+    ),
+    PowerMetric.SKILL_SPEED_BOSS_DAMAGE_CHECK: (
+        "dmg = attack\n"
+        "dmg *= 1 + skill_damage_percent * 0.01\n"
+        "dmg *= 1 + final_attack_percent * 0.01\n"
+        "dmg *= 1 + crit_rate_percent * (crit_damage_percent - 100) * 0.0001\n"
+        "dmg *= 1 + boss_attack_percent * 0.01\n"
+        "dmg /= 1 - skill_speed_percent * 0.01\n\n"
+        "result = dmg * 100"
+    ),
+    PowerMetric.PATTERN_SKIP_DAMAGE_CHECK: (
+        "dmg = attack\n"
+        "dmg *= 1 + skill_damage_percent * 0.01\n"
+        "dmg *= 1 + final_attack_percent * 0.01\n"
+        "dmg *= 1 + boss_attack_percent * 0.01\n"
+        "dmg *= 0.9\n\n"
+        "result = dmg"
+    ),
     PowerMetric.OFFICIAL: (
         "floor("
         "10 * attack"
@@ -309,42 +359,16 @@ POWER_FORMULA_EXAMPLES: tuple[PowerFormulaExample, ...] = (
         ),
     ),
     PowerFormulaExample(
-        title="보스형",
-        description="보스 60초 피해와 체력을 함께 반영하는 예제입니다.",
+        title="스킬 계수 포함 패턴 스킵 데미지 확인",
+        description="패턴 스킵을 위한 데미지를 계산할 때 사용하는 공식입니다. 스킬 계수를 입력하시면 보스에게 가하는 최소 데미지를 확인할 수 있습니다.",
         source=(
-            "power = boss_damage\n" "power *= hp\n" "power /= 2000\n\n" "result = power"
-        ),
-    ),
-    PowerFormulaExample(
-        title="일반형",
-        description="일반 60초 피해와 경험치, 드랍률 배수를 함께 반영하는 예제입니다.",
-        source=(
-            "power = normal_damage\n"
-            "power *= 1.0 + (drop_rate_percent * 0.01)\n"
-            "power *= 1.0 + (exp_percent * 0.01)\n"
-            "result = power"
-        ),
-    ),
-    PowerFormulaExample(
-        title="균형형",
-        description="보스/일반 피해의 평균을 사용하는 예제입니다.",
-        source="result = (boss_damage * 0.5) + (normal_damage * 0.5)",
-    ),
-    PowerFormulaExample(
-        title="조건형",
-        description="보스 60초 피해와 레벨에 따른 물약 회복량을 반영하는 예제입니다.",
-        source=(
-            "power = boss_damage * hp / 2000\n\n"
-            "if level < 50:\n"
-            "    power *= 20 * (1 + potion_heal_percent * 0.01)\n"
-            "elif level < 100:\n"
-            "    power *= 70 * (1 + potion_heal_percent * 0.01)\n"
-            "elif level < 150:\n"
-            "    power *= 120 * (1 + potion_heal_percent * 0.01)\n"
-            "else:\n"
-            "    power *= 180 * (1 + potion_heal_percent * 0.01)\n\n"
-            "power /= 250\n\n"
-            "result = power"
+            "dmg = attack\n"
+            "dmg *= 1 + skill_damage_percent * 0.01\n"
+            "dmg *= 1 + final_attack_percent * 0.01\n"
+            "dmg *= 1 + boss_attack_percent * 0.01\n"
+            "dmg *= 0.9\n\n"
+            "skill_damage_multiplier = 1  # <- 원하는 데미지 계수로 수정하세요.\n"
+            "result = dmg * skill_damage_multiplier"
         ),
     ),
 )

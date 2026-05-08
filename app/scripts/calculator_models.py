@@ -64,6 +64,11 @@ class PowerMetric(str, Enum):
 
     BOSS_DAMAGE = "boss_damage"
     NORMAL_DAMAGE = "normal_damage"
+    DAMAGE_CHECK = "damage_check"
+    BOSS_DAMAGE_CHECK = "boss_damage_check"
+    SKILL_SPEED_DAMAGE_CHECK = "skill_speed_damage_check"
+    SKILL_SPEED_BOSS_DAMAGE_CHECK = "skill_speed_boss_damage_check"
+    PATTERN_SKIP_DAMAGE_CHECK = "pattern_skip_damage_check"
     OFFICIAL = "official"
 
 
