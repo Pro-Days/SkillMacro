@@ -475,7 +475,7 @@ class FooterBar(QFrame):
         creator_btn.setObjectName("creatorLabel")
         creator_btn.setFont(CustomFont(10))
         creator_btn.clicked.connect(
-            lambda: open_new("https://github.com/Pro-Days/SkillMacro")
+            lambda: open_new("https://discord.com/users/407775594714103808")
         )
 
         # 테마 버튼 (오른쪽)
