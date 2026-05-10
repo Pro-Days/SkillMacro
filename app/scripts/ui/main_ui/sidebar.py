@@ -444,6 +444,21 @@ class GeneralSettings(QFrame):
             func1=self.on_user_swap_key_clicked,
         )
 
+        # 스킬 사용 후 1번 줄 복귀
+        self.always_return_first_line_setting = self.SettingItem(
+            title="1번 줄 자동 복귀",
+            tooltip=(
+                "매번 스킬을 사용한 후 자동으로 1번 줄로 돌아옵니다.\n"
+                "2번 줄 스킬을 사용하면 스왑→사용→스왑으로 1번 줄에 계속 머무릅니다."
+            ),
+            btn0_text="복귀 안함",
+            btn0_enabled=True,
+            btn1_text="복귀함",
+            btn1_enabled=False,
+            func0=self.on_always_return_first_line_off_clicked,
+            func1=self.on_always_return_first_line_on_clicked,
+        )
+
         # 마우스 클릭
         self.click_setting = self.SettingItem(
             title="마우스 클릭",
@@ -469,6 +484,7 @@ class GeneralSettings(QFrame):
         layout.addWidget(self.start_key_setting)
         layout.addWidget(self.key_hold_setting)
         layout.addWidget(self.swap_key_setting)
+        layout.addWidget(self.always_return_first_line_setting)
         layout.addWidget(self.click_setting)
 
         layout.setContentsMargins(10, 20, 10, 10)
@@ -518,9 +534,7 @@ class GeneralSettings(QFrame):
 
         # 키 입력 유지
         custom_key_hold_seconds: float = preset.settings.custom_key_hold_seconds
-        use_custom_key_hold_seconds: bool = (
-            preset.settings.use_custom_key_hold_seconds
-        )
+        use_custom_key_hold_seconds: bool = preset.settings.use_custom_key_hold_seconds
         self.key_hold_setting.set_right_button_text(f"{custom_key_hold_seconds:g}초")
         self.key_hold_setting.set_buttons_enabled(
             not use_custom_key_hold_seconds, use_custom_key_hold_seconds
@@ -534,6 +548,12 @@ class GeneralSettings(QFrame):
         )
         self.swap_key_setting.set_buttons_enabled(
             not use_custom_swap_key, use_custom_swap_key
+        )
+
+        # 1번 줄 자동 복귀
+        self.always_return_first_line_setting.set_buttons_enabled(
+            not preset.settings.always_return_to_first_line,
+            preset.settings.always_return_to_first_line,
         )
 
         # 마우스 클릭
@@ -946,6 +966,38 @@ class GeneralSettings(QFrame):
             return
 
         app_state.macro.current_preset.settings.use_custom_swap_key = True
+        self.update_from_preset(app_state.macro.current_preset)
+        self._on_data_changed()
+
+    def on_always_return_first_line_off_clicked(self) -> None:
+        """1번 줄 자동 복귀 끄기 클릭 시 실행"""
+
+        self.popup_manager.close_popup()
+
+        if app_state.macro.is_running:
+            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+            return
+
+        if not app_state.macro.current_preset.settings.always_return_to_first_line:
+            return
+
+        app_state.macro.current_preset.settings.always_return_to_first_line = False
+        self.update_from_preset(app_state.macro.current_preset)
+        self._on_data_changed()
+
+    def on_always_return_first_line_on_clicked(self) -> None:
+        """1번 줄 자동 복귀 켜기 클릭 시 실행"""
+
+        self.popup_manager.close_popup()
+
+        if app_state.macro.is_running:
+            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+            return
+
+        if app_state.macro.current_preset.settings.always_return_to_first_line:
+            return
+
+        app_state.macro.current_preset.settings.always_return_to_first_line = True
         self.update_from_preset(app_state.macro.current_preset)
         self._on_data_changed()
 

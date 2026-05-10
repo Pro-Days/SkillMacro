@@ -1980,6 +1980,10 @@ def build_skill_use_sequence(
             current_line_index = skill_ref.line_index
             skill_cooltime_timers_ms[skill_ref] = elapsed_time_ms
             elapsed_time_ms += int(delay_ms)
+
+            # 1번 줄 복귀 옵션
+            if preset.settings.always_return_to_first_line and current_line_index != 0:
+                current_line_index = 0
             continue
 
         # 모든 준비 스킬이 없으면 가장 빨리 돌아오는 스킬까지 점프

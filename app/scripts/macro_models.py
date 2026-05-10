@@ -192,6 +192,9 @@ class MacroSettings:
     use_default_attack: bool = False
     remember_previous_state: bool = False
 
+    # 스킬 사용 후 항상 1번 줄로 복귀
+    always_return_to_first_line: bool = False
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "MacroSettings":
         """딕셔너리로부터 MacroSettings 생성"""
@@ -210,6 +213,7 @@ class MacroSettings:
             use_custom_swap_key=data["use_custom_swap_key"],
             use_default_attack=data["use_default_attack"],
             remember_previous_state=data["remember_previous_state"],
+            always_return_to_first_line=data["always_return_to_first_line"],
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -229,6 +233,7 @@ class MacroSettings:
             "use_custom_swap_key": self.use_custom_swap_key,
             "use_default_attack": self.use_default_attack,
             "remember_previous_state": self.remember_previous_state,
+            "always_return_to_first_line": self.always_return_to_first_line,
         }
 
 
@@ -488,6 +493,7 @@ class MacroPreset:
                 use_custom_swap_key=False,
                 use_default_attack=False,
                 remember_previous_state=False,
+                always_return_to_first_line=False,
             ),
             usage_settings={
                 skill_id: SkillUsageSetting(

@@ -646,10 +646,31 @@ def use_skill(run_id: int) -> bool:
         require_running=True,
     )
 
-    time.sleep(
+    delay_seconds: float = (
         app_state.macro.current_delay * 0.001 * config.macro.SLEEP_COEFFICIENT_NORMAL
     )
 
+    # 옵션 활성화 시 스킬 사용 후 1번 줄로 복귀
+    # 복귀 스왑 앞뒤로 딜레이를 분할해 두 스왑 키 입력 간격을 확보 (총 딜레이는 유지)
+    if (
+        app_state.macro.current_preset.settings.always_return_to_first_line
+        and app_state.macro.current_line_index != 0
+    ):
+        time.sleep(delay_seconds * 0.5)
+
+        swap_key: KeySpec = app_state.macro.current_swap_key
+        _register_injected_key_event(swap_key)
+        swap_keyboard_key: Key | KeyCode = cast(Key | KeyCode, swap_key.value)
+
+        kbd_controller.press(swap_keyboard_key)
+        kbd_controller.release(swap_keyboard_key)
+
+        app_state.macro.current_line_index = 0
+
+        time.sleep(delay_seconds * 0.5)
+        return True
+
+    time.sleep(delay_seconds)
     return True
 
 
@@ -844,6 +865,10 @@ def build_preview_task_list() -> tuple[EquippedSkillRef, ...]:
         link_skills_requirements=preview_state.link_skills_requirements,
     )
 
+    always_return_to_first_line: bool = (
+        app_state.macro.current_preset.settings.always_return_to_first_line
+    )
+
     # 자동 연계가 준비된 경우 실제 실행 순서와 동일하게 먼저 추가
     for prepared_link_skill_index in prepared_link_skill_indices:
         for skill_ref in preview_state.using_link_skills[prepared_link_skill_index]:
@@ -863,7 +888,12 @@ def build_preview_task_list() -> tuple[EquippedSkillRef, ...]:
             break
 
         preview_state.task_list.append(next_regular_skill_ref)
-        preview_state.preview_line_index = next_regular_skill_ref.line_index
+
+        # 옵션 활성화 시 다음 선택 기준 줄을 1번으로 강제 복귀
+        if always_return_to_first_line:
+            preview_state.preview_line_index = 0
+        else:
+            preview_state.preview_line_index = next_regular_skill_ref.line_index
 
     return tuple(preview_state.task_list)
 

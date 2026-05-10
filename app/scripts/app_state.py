@@ -86,6 +86,11 @@ class MacroState:
         """기본 마우스 클릭 사용 여부 반환"""
         return self.current_preset.settings.use_default_attack
 
+    @property
+    def current_always_return_to_first_line(self) -> bool:
+        """스킬 사용 후 항상 1번 줄로 복귀할지 여부 반환"""
+        return self.current_preset.settings.always_return_to_first_line
+
     # 매크로 실행 중 바뀌는 변수들
     # 여러 곳에서 참조되므로 여기에 보관
     task_list: list[EquippedSkillRef] = field(default_factory=list)

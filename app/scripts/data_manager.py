@@ -205,7 +205,7 @@ def migrate_macro_data_file(file_path: str) -> None:
             stored_version_obj = 4
             migrated = True
 
-        # v4 -> v5: 키 입력 유지 시간 설정
+        # v4 -> v5: 키 입력 유지 시간 설정 및 1번 줄 자동 복귀 설정
         if stored_version_obj == 4:
             raw_preset: dict[str, Any]
             for raw_preset in raw["preset"]:
@@ -215,6 +215,7 @@ def migrate_macro_data_file(file_path: str) -> None:
                 )
                 raw_settings["use_custom_key_hold_seconds"] = False
                 raw_settings["remember_previous_state"] = False
+                raw_settings["always_return_to_first_line"] = False
 
             raw["version"] = DATA_VERSION
             migrated = True
