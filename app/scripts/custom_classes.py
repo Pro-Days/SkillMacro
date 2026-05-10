@@ -297,9 +297,9 @@ class SectionCard(QFrame):
         header = QWidget(self)
         header.setObjectName("SectionCardHeader")
 
-        layout = QHBoxLayout(header)
-        layout.setContentsMargins(14, 10, 14, 10)
-        layout.setSpacing(8)
+        self._header_layout = QHBoxLayout(header)
+        self._header_layout.setContentsMargins(14, 10, 14, 10)
+        self._header_layout.setSpacing(8)
 
         # 왼쪽 강조 바
         accent_bar = QFrame(header)
@@ -311,12 +311,16 @@ class SectionCard(QFrame):
         title_label.setObjectName("sectionCardTitle")
         title_label.setFont(CustomFont(12, bold=True))
 
-        layout.addWidget(accent_bar)
-        layout.addWidget(title_label)
-        layout.addStretch(1)
-        header.setLayout(layout)
+        self._header_layout.addWidget(accent_bar)
+        self._header_layout.addWidget(title_label)
+        self._header_layout.addStretch(1)
+        header.setLayout(self._header_layout)
 
         return header
+
+    def add_header_widget(self, widget: QWidget) -> None:
+        """헤더 오른쪽 영역에 추가 위젯 배치"""
+        self._header_layout.addWidget(widget)
 
     # 콘텐츠 추가 메서드
 

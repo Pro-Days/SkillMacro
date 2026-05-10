@@ -5107,6 +5107,7 @@ class ResultsPage(QFrame):
                     QSizePolicy.Policy.Preferred,
                 )
                 self._rows: list[tuple[str, str]] = []
+                self._relative_mode: bool = False
                 self._content_layout: QVBoxLayout = QVBoxLayout(self)
                 self._content_layout.setContentsMargins(0, 0, 0, 0)
                 self._content_layout.setSpacing(4)
@@ -5114,6 +5115,14 @@ class ResultsPage(QFrame):
 
             def set_rows(self, rows: list[tuple[str, str]]) -> None:
                 self._rows = rows
+                self._render()
+
+            def set_relative_mode(self, enabled: bool) -> None:
+                """최고 효율 100 기준 상대값 표시 모드 토글"""
+
+                if self._relative_mode == enabled:
+                    return
+                self._relative_mode = enabled
                 self._render()
 
             def _render(self) -> None:
@@ -5127,17 +5136,41 @@ class ResultsPage(QFrame):
 
                 # 값 파싱 및 최대 절대값 계산
                 numeric_vals: list[float] = []
+                is_numeric_flags: list[bool] = []
                 max_abs: float = 0.0
                 for _, value in self._rows:
                     try:
                         nv: float = float(value.replace(",", ""))
                         numeric_vals.append(nv)
+                        is_numeric_flags.append(True)
                         if abs(nv) > max_abs:
                             max_abs = abs(nv)
                     except ValueError:
                         numeric_vals.append(0.0)
+                        is_numeric_flags.append(False)
 
-                for i, (title, value) in enumerate(self._rows):
+                # 상대 효율 표시 모드 적용 가능 여부 판정
+                apply_relative: bool = (
+                    self._relative_mode
+                    and max_abs > 0
+                    and all(is_numeric_flags)
+                )
+
+                # 표시용 값 문자열 사전 구성
+                display_values: list[str] = []
+                for i, (_, original_value) in enumerate(self._rows):
+                    if apply_relative:
+                        relative_value: float = (
+                            numeric_vals[i] / max_abs
+                        ) * 100.0
+                        display_values.append(
+                            f"{relative_value:.2f}".rstrip("0").rstrip(".")
+                        )
+                    else:
+                        display_values.append(original_value)
+
+                for i, (title, _) in enumerate(self._rows):
+                    value: str = display_values[i]
                     nv = numeric_vals[i]
                     is_best: bool = i == 0 and len(self._rows) > 1
 
@@ -5364,6 +5397,17 @@ class ResultsPage(QFrame):
             self._stat_scroll_card: SectionCard = SectionCard(self, "효율 비교")
             self._stat_scroll_card.add_layout(_eff_row)
 
+            # 스탯/스킬 효율 상대 표시 토글 체크박스 — 헤더 오른쪽에 배치
+            self._relative_efficiency_checkbox: QCheckBox = QCheckBox(
+                "최고 효율을 100으로 표시", self._stat_scroll_card
+            )
+            self._relative_efficiency_checkbox.stateChanged.connect(
+                self._on_relative_efficiency_toggled
+            )
+            self._stat_scroll_card.add_header_widget(
+                self._relative_efficiency_checkbox
+            )
+
             # 성장 효율 카드 (레벨업 + 경지)
             self._level_up_list: ResultsPage.Efficiency.ResultList = (
                 ResultsPage.Efficiency.ResultList(self)
@@ -5508,6 +5552,13 @@ class ResultsPage(QFrame):
             self._target_stats_grid.set_stats(None)
             self._opt_result_list.set_rows(loading_rows)
             self._opt_stats_grid.set_stats(None)
+
+        def _on_relative_efficiency_toggled(self) -> None:
+            """스탯/스킬 효율 상대 표시 체크박스 토글 반영"""
+
+            enabled: bool = self._relative_efficiency_checkbox.isChecked()
+            self._stat_list.set_relative_mode(enabled)
+            self._scroll_list.set_relative_mode(enabled)
 
         def set_output_rows(self, output_rows: ResultsPage.OutputRows) -> None:
             """백그라운드 계산 완료 결과 UI 반영"""
