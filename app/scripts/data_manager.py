@@ -205,7 +205,7 @@ def migrate_macro_data_file(file_path: str) -> None:
             stored_version_obj = 4
             migrated = True
 
-        # v4 -> v5: 키 입력 유지 시간 설정 및 1번 줄 자동 복귀 설정
+        # v4 -> v5: 키 입력 유지 시간 설정, 1번 줄 자동 복귀 설정, 단독 스왑 제거
         if stored_version_obj == 4:
             raw_preset: dict[str, Any]
             for raw_preset in raw["preset"]:
@@ -216,6 +216,11 @@ def migrate_macro_data_file(file_path: str) -> None:
                 raw_settings["use_custom_key_hold_seconds"] = False
                 raw_settings["remember_previous_state"] = False
                 raw_settings["always_return_to_first_line"] = False
+
+                # 단독 스왑 옵션 제거 (항상 켜진 동작이 기본이 됨)
+                raw_usage_settings: dict[str, Any] = raw_preset["usage_settings"]
+                for raw_usage_setting in raw_usage_settings.values():
+                    raw_usage_setting.pop("use_solo_swap", None)
 
             raw["version"] = DATA_VERSION
             migrated = True

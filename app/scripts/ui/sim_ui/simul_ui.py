@@ -429,7 +429,7 @@ class SimUI:
         )
 
         # 스킬 사용 설정을 스킬 ID 순서로 고정
-        usage_settings: tuple[tuple[str, tuple[bool, bool, bool, int]], ...] = tuple(
+        usage_settings: tuple[tuple[str, tuple[bool, bool, int]], ...] = tuple(
             (skill_id, preset.usage_settings[skill_id].to_tuple())
             for skill_id in sorted(preset.usage_settings.keys())
         )

@@ -1808,7 +1808,6 @@ def _build_next_task_list(
     link_skill_requirements: list[list[EquippedSkillRef]],
     auto_link_skills: list[list[EquippedSkillRef]],
     skill_sequence: tuple[EquippedSkillRef, ...],
-    current_line_index: int,
 ) -> list[EquippedSkillRef]:
     """현재 시점 기준 실행 가능한 다음 작업 목록 구성"""
 
@@ -1834,61 +1833,25 @@ def _build_next_task_list(
         for requirement_group in link_skill_requirements
         for skill_ref in requirement_group
     }
-    first_usable_skill_ref: EquippedSkillRef | None = None
-    first_usable_allows_solo_swap: bool = False
-    first_current_line_skill_ref: EquippedSkillRef | None = None
 
-    # 우선순위 순서대로 사용 가능한 일반 스킬 후보 탐색
+    # 우선순위 순서대로 사용 가능한 첫 스킬 선택
     for skill_ref in skill_sequence:
         if skill_ref not in prepared_skills:
             continue
 
         skill_id: str = preset.skills.get_placed_skill_id(skill_ref)
         setting: "SkillUsageSetting" = skills_info[skill_id]
-        can_use_linked_skill_alone: bool = (
-            skill_ref in linked_skill_refs and setting.use_alone
+        in_link: bool = skill_ref in linked_skill_refs
+        can_use: bool = (in_link and setting.use_alone) or (
+            not in_link and setting.use_skill
         )
-        can_use_regular_skill: bool = (
-            skill_ref not in linked_skill_refs and setting.use_skill
-        )
-
-        # 일반 스킬 선택 조건을 만족하는 후보만 유지
-        if not can_use_linked_skill_alone and not can_use_regular_skill:
+        if not can_use:
             continue
 
-        # 전체 최상위 후보와 현재 줄 후보를 각각 기록
-        if first_usable_skill_ref is None:
-            first_usable_skill_ref = skill_ref
-            first_usable_allows_solo_swap = setting.use_solo_swap
+        prepared_skills.discard(skill_ref)
+        return [skill_ref]
 
-        if (
-            skill_ref.line_index == current_line_index
-            and first_current_line_skill_ref is None
-        ):
-            first_current_line_skill_ref = skill_ref
-
-    # 일반 스킬 후보가 없으면 빈 목록 반환
-    if first_usable_skill_ref is None:
-        return []
-
-    # 현재 줄 스킬은 즉시 선택
-    if first_usable_skill_ref.line_index == current_line_index:
-        prepared_skills.discard(first_usable_skill_ref)
-        return [first_usable_skill_ref]
-
-    # 단독 스왑 허용 스킬은 우선순위대로 즉시 선택
-    if first_usable_allows_solo_swap:
-        prepared_skills.discard(first_usable_skill_ref)
-        return [first_usable_skill_ref]
-
-    # 현재 줄 스킬이 있으면 스왑을 미루고 먼저 선택
-    if first_current_line_skill_ref is not None:
-        prepared_skills.discard(first_current_line_skill_ref)
-        return [first_current_line_skill_ref]
-
-    # 현재 줄에 남은 스킬이 없으면 다른 줄 최상위 스킬 선택
-    prepared_skills.discard(first_usable_skill_ref)
-    return [first_usable_skill_ref]
+    return []
 
 
 def build_skill_use_sequence(
@@ -1947,7 +1910,6 @@ def build_skill_use_sequence(
     task_list: list[EquippedSkillRef] = []
     used_skills: list[SkillUseEvent] = []
     elapsed_time_ms: int = 0
-    current_line_index: int = 0
     while elapsed_time_ms < TIMELINE_MILLISECONDS:
         if not task_list:
             _update_prepared_skills(
@@ -1964,7 +1926,6 @@ def build_skill_use_sequence(
                 link_skill_requirements=link_skill_requirements,
                 auto_link_skills=auto_link_skills,
                 skill_sequence=skill_sequence,
-                current_line_index=current_line_index,
             )
 
         if task_list:
@@ -1976,14 +1937,8 @@ def build_skill_use_sequence(
                     time=round(elapsed_time_ms * 0.001, 2),
                 )
             )
-            # 사용한 스킬 줄 상태를 다음 선택 조건에 반영
-            current_line_index = skill_ref.line_index
             skill_cooltime_timers_ms[skill_ref] = elapsed_time_ms
             elapsed_time_ms += int(delay_ms)
-
-            # 1번 줄 복귀 옵션
-            if preset.settings.always_return_to_first_line and current_line_index != 0:
-                current_line_index = 0
             continue
 
         # 모든 준비 스킬이 없으면 가장 빨리 돌아오는 스킬까지 점프

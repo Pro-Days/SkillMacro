@@ -43,7 +43,6 @@ class PreviewTaskState:
 
     prepared_skills: set[EquippedSkillRef]
     task_list: list[EquippedSkillRef]
-    preview_line_index: int
     skill_sequence: list[EquippedSkillRef]
     using_link_skills: list[list[EquippedSkillRef]]
     link_skills_requirements: list[list[EquippedSkillRef]]
@@ -653,7 +652,7 @@ def use_skill(run_id: int) -> bool:
     # 옵션 활성화 시 스킬 사용 후 1번 줄로 복귀
     # 복귀 스왑 앞뒤로 딜레이를 분할해 두 스왑 키 입력 간격을 확보 (총 딜레이는 유지)
     if (
-        app_state.macro.current_preset.settings.always_return_to_first_line
+        app_state.macro.current_always_return_to_first_line
         and app_state.macro.current_line_index != 0
     ):
         time.sleep(delay_seconds * 0.5)
@@ -716,11 +715,10 @@ def use_link_skill(link_skill: LinkSkill, run_id: int) -> None:
 
 def _pop_next_regular_task(
     prepared_skills: set[EquippedSkillRef],
-    current_line_index: int,
     skill_sequence: list[EquippedSkillRef],
     link_skills_requirements: list[list[EquippedSkillRef]],
 ) -> EquippedSkillRef | None:
-    """현재 줄 상태를 반영한 다음 일반 스킬 선택"""
+    """우선순위 기준 다음 일반 스킬 선택"""
 
     # 자동 연계에 속한 스킬 참조 집합 구성
     linked_skill_refs: set[EquippedSkillRef] = {
@@ -728,63 +726,29 @@ def _pop_next_regular_task(
         for requirements in link_skills_requirements
         for skill_ref in requirements
     }
-    first_usable_skill_ref: EquippedSkillRef | None = None
-    first_usable_allows_solo_swap: bool = False
-    first_current_line_skill_ref: EquippedSkillRef | None = None
 
-    # 우선순위 순서대로 사용 가능한 일반 스킬 후보 탐색
+    # 우선순위 순서대로 사용 가능한 첫 스킬 선택
     for skill_ref in skill_sequence:
+        if skill_ref not in prepared_skills:
+            continue
+
         skill_id: str = app_state.macro.current_preset.skills.get_placed_skill_id(
             skill_ref
         )
         setting: SkillUsageSetting = app_state.macro.current_preset.usage_settings[
             skill_id
         ]
-        is_ready: bool = skill_ref in prepared_skills
         in_link_skill: bool = skill_ref in linked_skill_refs
-        can_use_linked_skill_alone: bool = in_link_skill and setting.use_alone
-        can_use_regular_skill: bool = (not in_link_skill) and setting.use_skill
-
-        # 준비되지 않았거나 일반 스킬 조건을 만족하지 않으면 제외
-        if not is_ready:
+        can_use: bool = (in_link_skill and setting.use_alone) or (
+            not in_link_skill and setting.use_skill
+        )
+        if not can_use:
             continue
 
-        if not can_use_linked_skill_alone and not can_use_regular_skill:
-            continue
+        prepared_skills.discard(skill_ref)
+        return skill_ref
 
-        # 전체 최상위 후보와 현재 줄 후보를 각각 기록
-        if first_usable_skill_ref is None:
-            first_usable_skill_ref = skill_ref
-            first_usable_allows_solo_swap = setting.use_solo_swap
-
-        if (
-            skill_ref.line_index == current_line_index
-            and first_current_line_skill_ref is None
-        ):
-            first_current_line_skill_ref = skill_ref
-
-    # 일반 스킬 후보가 없으면 선택 종료
-    if first_usable_skill_ref is None:
-        return None
-
-    # 현재 줄 스킬은 즉시 사용
-    if first_usable_skill_ref.line_index == current_line_index:
-        prepared_skills.discard(first_usable_skill_ref)
-        return first_usable_skill_ref
-
-    # 단독 스왑 허용 스킬은 우선순위대로 즉시 스왑 허용
-    if first_usable_allows_solo_swap:
-        prepared_skills.discard(first_usable_skill_ref)
-        return first_usable_skill_ref
-
-    # 현재 줄에 사용 가능한 스킬이 있으면 스왑을 미루고 먼저 소모
-    if first_current_line_skill_ref is not None:
-        prepared_skills.discard(first_current_line_skill_ref)
-        return first_current_line_skill_ref
-
-    # 현재 줄 스킬이 없으면 다른 줄 최상위 스킬 진행
-    prepared_skills.discard(first_usable_skill_ref)
-    return first_usable_skill_ref
+    return None
 
 
 def build_task_list(show_info: bool = False) -> float:
@@ -827,10 +791,9 @@ def build_task_list(show_info: bool = False) -> float:
             app_state.macro.task_list.append(skill_ref)
 
     else:
-        # 현재 줄 상태와 단독 스왑 규칙을 반영한 일반 스킬 1개 선택
+        # 우선순위 기준 일반 스킬 1개 선택
         next_regular_skill_ref: EquippedSkillRef | None = _pop_next_regular_task(
             prepared_skills=app_state.macro.prepared_skills,
-            current_line_index=app_state.macro.current_line_index,
             skill_sequence=app_state.macro.skill_sequence,
             link_skills_requirements=app_state.macro.link_skills_requirements,
         )
@@ -865,22 +828,16 @@ def build_preview_task_list() -> tuple[EquippedSkillRef, ...]:
         link_skills_requirements=preview_state.link_skills_requirements,
     )
 
-    always_return_to_first_line: bool = (
-        app_state.macro.current_preset.settings.always_return_to_first_line
-    )
-
     # 자동 연계가 준비된 경우 실제 실행 순서와 동일하게 먼저 추가
     for prepared_link_skill_index in prepared_link_skill_indices:
         for skill_ref in preview_state.using_link_skills[prepared_link_skill_index]:
             preview_state.prepared_skills.discard(skill_ref)
             preview_state.task_list.append(skill_ref)
-            preview_state.preview_line_index = skill_ref.line_index
 
-    # 남은 일반 스킬은 단독 스왑 규칙을 반영하며 순서대로 추가
+    # 남은 일반 스킬을 우선순위대로 추가
     while True:
         next_regular_skill_ref: EquippedSkillRef | None = _pop_next_regular_task(
             prepared_skills=preview_state.prepared_skills,
-            current_line_index=preview_state.preview_line_index,
             skill_sequence=preview_state.skill_sequence,
             link_skills_requirements=preview_state.link_skills_requirements,
         )
@@ -888,12 +845,6 @@ def build_preview_task_list() -> tuple[EquippedSkillRef, ...]:
             break
 
         preview_state.task_list.append(next_regular_skill_ref)
-
-        # 옵션 활성화 시 다음 선택 기준 줄을 1번으로 강제 복귀
-        if always_return_to_first_line:
-            preview_state.preview_line_index = 0
-        else:
-            preview_state.preview_line_index = next_regular_skill_ref.line_index
 
     return tuple(preview_state.task_list)
 
@@ -906,7 +857,6 @@ def _build_preview_task_state() -> PreviewTaskState:
         return PreviewTaskState(
             prepared_skills=app_state.macro.prepared_skills.copy(),
             task_list=app_state.macro.task_list.copy(),
-            preview_line_index=app_state.macro.current_line_index,
             skill_sequence=app_state.macro.skill_sequence.copy(),
             using_link_skills=[
                 link_skill.copy() for link_skill in app_state.macro.using_link_skills
@@ -958,7 +908,6 @@ def _build_preview_task_state() -> PreviewTaskState:
     return PreviewTaskState(
         prepared_skills=prepared_skills,
         task_list=[],
-        preview_line_index=0,
         skill_sequence=_collect_priority_skill_sequence(),
         using_link_skills=using_link_skills,
         link_skills_requirements=[

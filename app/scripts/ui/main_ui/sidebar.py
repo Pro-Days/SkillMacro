@@ -73,7 +73,7 @@ def get_current_scroll_skill_ids(preset: MacroPreset) -> list[str]:
 # 스킬 사용설정 옵션 메타데이터 정의
 @dataclass(frozen=True)
 class SkillSettingOptionDef:
-    key: Literal["usage", "sole", "priority", "solo_swap"]
+    key: Literal["usage", "sole", "priority"]
     title: str
     tooltip: str
 
@@ -87,7 +87,6 @@ class SkillSettingCardWidgets:
     usage_btn: QPushButton
     sole_btn: QPushButton
     priority_btn: QPushButton
-    solo_swap_btn: QPushButton
 
 
 # 스킬 사용설정 옵션 정의
@@ -120,21 +119,12 @@ SKILL_SETTING_OPTION_DEFS: tuple[SkillSettingOptionDef, ...] = (
             "연계스킬은 우선순위가 적용되지 않습니다."
         ),
     ),
-    SkillSettingOptionDef(
-        key="solo_swap",
-        title="단독 스왑",
-        tooltip=(
-            "스킬을 사용하기 위해 바로 스왑할지 결정합니다.\n"
-            "사용하려는 스킬이 다른 줄에 있고 이 옵션이 활성화되어 있다면 즉시 스왑합니다.\n"
-            "연계스킬에는 적용되지 않습니다."
-        ),
-    ),
 )
 
 
 # 스킬 사용설정 옵션 조회 맵 구성
 SKILL_SETTING_OPTION_MAP: dict[
-    Literal["usage", "sole", "priority", "solo_swap"], SkillSettingOptionDef
+    Literal["usage", "sole", "priority"], SkillSettingOptionDef
 ] = {option.key: option for option in SKILL_SETTING_OPTION_DEFS}
 
 
@@ -1410,17 +1400,6 @@ class SkillSettings(QFrame):
             )
             priority_btn.setCursor(Qt.CursorShape.PointingHandCursor)
 
-            # 스킬 단독 스왑 여부 버튼 구성
-            solo_swap_btn: QPushButton = QPushButton()
-            solo_swap_btn.setObjectName("checkBtn")
-            solo_swap_btn.setIconSize(QSize(40, 40))
-            solo_swap_btn.setFixedSize(30, 30)
-            solo_swap_btn.setToolTip(SKILL_SETTING_OPTION_MAP["solo_swap"].tooltip)
-            solo_swap_btn.clicked.connect(
-                partial(lambda x: self.change_use_solo_swap(x), idx)
-            )
-            solo_swap_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-
             # 스킬 설정 옵션 그리드 구성
             option_grid: QGridLayout = QGridLayout()
             option_grid.setContentsMargins(0, 0, 0, 0)
@@ -1455,15 +1434,6 @@ class SkillSettings(QFrame):
                 1,
                 0,
             )
-            option_grid.addWidget(
-                self._build_option_card(
-                    SKILL_SETTING_OPTION_MAP["solo_swap"].title,
-                    SKILL_SETTING_OPTION_MAP["solo_swap"].tooltip,
-                    solo_swap_btn,
-                ),
-                1,
-                1,
-            )
 
             # 스킬 카드 프레임 구성
             card_layout: QVBoxLayout = QVBoxLayout()
@@ -1490,7 +1460,6 @@ class SkillSettings(QFrame):
                     usage_btn=usage_btn,
                     sole_btn=sole_btn,
                     priority_btn=priority_btn,
-                    solo_swap_btn=solo_swap_btn,
                 )
             )
 
@@ -1535,16 +1504,13 @@ class SkillSettings(QFrame):
             # 토글 버튼 아이콘과 활성 상태 프로퍼티 동기화
             usage_active: bool = bool(setting.use_skill)
             sole_active: bool = bool(setting.use_alone)
-            solo_swap_active: bool = bool(setting.use_solo_swap)
             priority_active: bool = int(setting.priority) > 0
 
             card.usage_btn.setIcon(self._build_check_icon(usage_active))
             card.sole_btn.setIcon(self._build_check_icon(sole_active))
-            card.solo_swap_btn.setIcon(self._build_check_icon(solo_swap_active))
 
             self._apply_button_state(card.usage_btn, usage_active)
             self._apply_button_state(card.sole_btn, sole_active)
-            self._apply_button_state(card.solo_swap_btn, solo_swap_active)
 
             # 우선순위 숫자 텍스트 반영
             p: int = int(setting.priority)
@@ -1749,19 +1715,6 @@ class SkillSettings(QFrame):
         setting: SkillUsageSetting = preset.usage_settings[skill_id]
 
         setting.use_alone = not setting.use_alone
-        self.update_from_preset(preset)
-        self._on_data_changed()
-
-    def change_use_solo_swap(self, skill_idx: int) -> None:
-        """단독 스왑 변경"""
-
-        # 현재 선택된 스킬의 단독 스왑 여부 토글
-        preset: MacroPreset = self._get_preset()
-        skill_id: str = self._skill_ids[skill_idx]
-
-        setting: SkillUsageSetting = preset.usage_settings[skill_id]
-
-        setting.use_solo_swap = not setting.use_solo_swap
         self.update_from_preset(preset)
         self._on_data_changed()
 
