@@ -33,7 +33,7 @@ import ast
 import heapq
 import os
 import random
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wait
 from dataclasses import dataclass, field
 from enum import Enum
@@ -61,18 +61,13 @@ from app.scripts.calculator_models import (
     TargetDistributionState,
 )
 from app.scripts.macro_models import EquippedSkillRef, LinkUseType
-from app.scripts.registry.skill_registry import (
-    BuffEffect,
-    DamageEffect,
-    LevelEffect,
-    get_builtin_skill_id,
-)
+from app.scripts.registry.skill_registry import get_builtin_skill_id
 from app.scripts.run_macro import get_prepared_link_skill_indices
 
 if TYPE_CHECKING:
     from app.scripts.macro_models import MacroPreset, SkillUsageSetting
     from app.scripts.registry.server_registry import ServerSpec
-    from app.scripts.registry.skill_registry import ScrollDef
+    from app.scripts.registry.skill_registry import ScrollDef, SkillDef
 
 
 # 전투력 표시 순서 고정
@@ -170,6 +165,17 @@ _GRADIENT_EXACT_THRESHOLD: int = 500
 _POWER_FORMULA_LEVEL_NAME: str = "level"
 _POWER_FORMULA_BOSS_DAMAGE_NAME: str = "boss_damage"
 _POWER_FORMULA_NORMAL_DAMAGE_NAME: str = "normal_damage"
+_POWER_FORMULA_SKILL_SLOT_COUNT: int = 14
+_POWER_FORMULA_SKILL_VARIABLE_NAMES: tuple[str, ...] = tuple(
+    variable_name
+    for slot_number in range(1, _POWER_FORMULA_SKILL_SLOT_COUNT + 1)
+    for variable_name in (
+        f"skill_{slot_number}_damage",
+        f"skill_{slot_number}_cooltime",
+        f"skill_{slot_number}_target_count",
+    )
+)
+
 
 # 내장 전투력 공식 문자열
 _POWER_FORMULA_SOURCES: dict[PowerMetric, str] = {
@@ -234,14 +240,16 @@ _POWER_FORMULA_SOURCES: dict[PowerMetric, str] = {
 }
 
 # 전투력 공식에서 참조 가능한 입력 변수 이름
-_CUSTOM_POWER_FORMULA_VARIABLE_NAMES: frozenset[str] = frozenset(
-    stat_key.value for stat_key in OVERALL_STAT_ORDER
-) | frozenset(
-    (
-        _POWER_FORMULA_LEVEL_NAME,
-        _POWER_FORMULA_BOSS_DAMAGE_NAME,
-        _POWER_FORMULA_NORMAL_DAMAGE_NAME,
+_CUSTOM_POWER_FORMULA_VARIABLE_NAMES: frozenset[str] = (
+    frozenset(stat_key.value for stat_key in OVERALL_STAT_ORDER)
+    | frozenset(
+        (
+            _POWER_FORMULA_LEVEL_NAME,
+            _POWER_FORMULA_BOSS_DAMAGE_NAME,
+            _POWER_FORMULA_NORMAL_DAMAGE_NAME,
+        )
     )
+    | frozenset(_POWER_FORMULA_SKILL_VARIABLE_NAMES)
 )
 
 # 수식 엔진 허용 함수
@@ -330,7 +338,7 @@ POWER_FORMULA_GUIDE_LINES: tuple[str, ...] = (
     "여러 줄로 된 공식을 작성할 수 있습니다.",
     "마지막 줄에 계산식을 두거나 result 변수에 최종 값을 대입하세요.",
     "변수 대입, += 같은 복합 대입, if / elif / else, pass 를 사용할 수 있습니다.",
-    "level 은 int 이며, 나머지 변수는 float 입니다.",
+    "level 과 skill_N_target_count 는 int 이며, 나머지 변수는 float 입니다.",
     "오른쪽 변수/함수 항목을 클릭하면 현재 커서 위치에 삽입됩니다.",
     "데미지 관련 변수는 모두 `boss_damage`와 `normal_damage`에 반영되어있으니, 체력이나 행운 등의 스탯들만을 이용하시는 것을 추천드립니다.",
 )
@@ -409,6 +417,23 @@ POWER_FORMULA_REFERENCE_GROUPS: tuple[PowerFormulaReferenceGroup, ...] = (
                 )
                 for stat_key in OVERALL_STAT_ORDER
             ),
+        ),
+    ),
+    PowerFormulaReferenceGroup(
+        title="스킬",
+        description="빈 슬롯은 데미지, 쿨타임, 타겟 수가 모두 0",
+        entries=tuple(
+            PowerFormulaReferenceEntry(
+                symbol=variable_name,
+                description=f"{slot_number}번 슬롯 {label}",
+                insert_text=variable_name,
+            )
+            for slot_number in range(1, _POWER_FORMULA_SKILL_SLOT_COUNT + 1)
+            for variable_name, label in (
+                (f"skill_{slot_number}_damage", "데미지 계수"),
+                (f"skill_{slot_number}_cooltime", "쿨타임"),
+                (f"skill_{slot_number}_target_count", "타겟 수"),
+            )
         ),
     ),
     PowerFormulaReferenceGroup(
@@ -1249,16 +1274,6 @@ INVERSE_ROUND_DIGITS: int = 6
 
 
 @dataclass(frozen=True, slots=True)
-class BuffWindow:
-    """버프 활성 구간"""
-
-    stat_key: StatKey
-    start_time: float
-    end_time: float
-    value: float
-
-
-@dataclass(frozen=True, slots=True)
 class HitEvent:
     """단일 타격 이벤트"""
 
@@ -1268,24 +1283,12 @@ class HitEvent:
 
 
 @dataclass(frozen=True, slots=True)
-class Timeline:
-    """타임라인: 타격 이벤트, 버프 활성 구간 정보"""
-
-    hit_events: tuple[HitEvent, ...]
-    buff_windows: tuple[BuffWindow, ...]
-
-
-@dataclass(frozen=True, slots=True)
 class TimelineEvaluationArtifacts:
     """타임라인 전투력 평가용 사전 계산 결과"""
 
-    timeline: Timeline
-
-    # 타격별 활성 버프 스냅샷 목록
-    # 동일한 HitEvent 구분용 인덱스 기반 접근 유지
-    active_buffs_by_hit: tuple[tuple[BuffWindow, ...], ...]
-
-    level: int = 0
+    hit_events: tuple[HitEvent, ...]
+    skill_slot_variables: dict[str, float | int]
+    level: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -1294,17 +1297,6 @@ class SkillUseEvent:
 
     skill_id: str
     time: float
-
-
-@dataclass(frozen=True, slots=True)
-class BuffEvent:
-    """버프 이벤트"""
-
-    skill_id: str
-    stat_key: StatKey
-    start_time: float
-    end_time: float
-    value: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -1753,53 +1745,6 @@ def _normalize_inverse_stat_map(
     return normalized_values
 
 
-def _merge_buff_windows(
-    buff_windows: list[BuffWindow],
-) -> tuple[BuffWindow, ...]:
-    """동일 스탯/값 버프 구간 병합"""
-
-    # 동일 스탯/값 버프 구간끼리 그룹화
-    grouped: dict[tuple[StatKey, float], list[BuffWindow]] = {}
-    for buff_window in buff_windows:
-        group_key: tuple[StatKey, float] = (buff_window.stat_key, buff_window.value)
-
-        if group_key not in grouped:
-            grouped[group_key] = []
-
-        grouped[group_key].append(buff_window)
-
-    # 그룹별로 구간 병합 후 전체 구간 리스트에 추가
-    merged_windows: list[BuffWindow] = []
-    for group_key, group_windows in grouped.items():
-        sorted_windows: list[BuffWindow] = sorted(
-            group_windows,
-            key=lambda item: item.start_time,
-        )
-        current_window: BuffWindow = sorted_windows[0]
-
-        for target_window in sorted_windows[1:]:
-            # 현재 구간과 겹치는 구간은 병합
-            if target_window.start_time <= current_window.end_time:
-                current_window = BuffWindow(
-                    stat_key=current_window.stat_key,
-                    start_time=current_window.start_time,
-                    end_time=max(current_window.end_time, target_window.end_time),
-                    value=current_window.value,
-                )
-                continue
-
-            # 겹치지 않는 구간은 현재 구간을 결과에 추가하고 다음 구간으로 이동
-            merged_windows.append(current_window)
-            current_window = target_window
-
-        merged_windows.append(current_window)
-
-    ordered_windows: tuple[BuffWindow, ...] = tuple(
-        sorted(merged_windows, key=lambda item: item.start_time)
-    )
-    return ordered_windows
-
-
 def _build_skill_sequence(
     server_spec: "ServerSpec",
     preset: "MacroPreset",
@@ -2060,8 +2005,8 @@ def build_simulation_events(
     skills_info: dict[str, "SkillUsageSetting"],
     delay_ms: int,
     cooltime_reduction: float,
-) -> tuple[tuple[HitEvent, ...], tuple[BuffEvent, ...]]:
-    """공유 스케줄러 기준 공격/버프 이벤트 구성"""
+) -> tuple[HitEvent, ...]:
+    """공유 스케줄러 기준 공격 이벤트 구성"""
 
     # 평타 간격과 배치 스킬 사용 기록을 각각 이벤트로 확장
     basic_attack_skill_id: str = get_builtin_skill_id(server_spec.id, "평타")
@@ -2087,52 +2032,28 @@ def build_simulation_events(
         cooltime_reduction=cooltime_reduction,
     )
 
-    # 현재 무공비급 레벨 기준 데미지/버프 효과 테이블 조회
-    placed_skill_ids: list[str] = preset.skills.get_placed_skill_ids()
-    damage_effects_map: dict[str, list[DamageEffect]]
-    buff_effects_map: dict[str, list[BuffEffect]]
-    damage_effects_map, buff_effects_map = build_skill_effect_maps(
-        server_spec=server_spec,
-        preset=preset,
-        placed_skill_ids=placed_skill_ids,
-    )
-
-    # 사용 시점과 효과 테이블을 조합해 최종 이벤트 생성
-    buff_events: list[BuffEvent] = []
+    # 사용 시점과 현재 레벨 스킬 계수를 조합해 최종 이벤트 생성
     for skill_use in skill_uses:
-        damage_effects: list[DamageEffect] = damage_effects_map[skill_use.skill_id]
-        buff_effects: list[BuffEffect] = buff_effects_map[skill_use.skill_id]
-        for damage_effect in damage_effects:
-            hit_events.append(
-                HitEvent(
-                    skill_id=skill_use.skill_id,
-                    time=round(skill_use.time + damage_effect.time, 2),
-                    multiplier=damage_effect.damage,
-                )
+        skill_level: int = preset.info.get_skill_level(
+            server_spec,
+            skill_use.skill_id,
+        )
+        skill_damage: float = float(
+            server_spec.skill_registry.get(skill_use.skill_id).levels[skill_level]
+        )
+        hit_events.append(
+            HitEvent(
+                skill_id=skill_use.skill_id,
+                time=skill_use.time,
+                multiplier=skill_damage,
             )
-
-        for buff_effect in buff_effects:
-            buff_events.append(
-                BuffEvent(
-                    skill_id=skill_use.skill_id,
-                    stat_key=StatKey(str(buff_effect.stat)),
-                    start_time=round(skill_use.time + buff_effect.time, 2),
-                    end_time=round(
-                        skill_use.time + buff_effect.time + buff_effect.duration,
-                        2,
-                    ),
-                    value=float(buff_effect.value),
-                )
-            )
+        )
 
     # 시각화/평가 일관성을 위한 시간순 정렬
     ordered_hit_events: tuple[HitEvent, ...] = tuple(
         sorted(hit_events, key=lambda item: item.time)
     )
-    ordered_buff_events: tuple[BuffEvent, ...] = tuple(
-        sorted(buff_events, key=lambda item: item.start_time)
-    )
-    return ordered_hit_events, ordered_buff_events
+    return ordered_hit_events
 
 
 def build_calculator_timeline(
@@ -2141,88 +2062,31 @@ def build_calculator_timeline(
     skills_info: dict[str, "SkillUsageSetting"],
     delay_ms: int,
     cooltime_reduction: float,
-) -> Timeline:
+) -> tuple[HitEvent, ...]:
     """메인 화면 스킬 상태 기준 계산기용 60초 타임라인 생성"""
 
-    # 공유 스케줄러가 생성한 이벤트를 계산기 타임라인으로 정규화
-    hit_events: tuple[HitEvent, ...]
-    buff_events: tuple[BuffEvent, ...]
-    hit_events, buff_events = build_simulation_events(
+    # 공유 스케줄러가 생성한 타격 이벤트를 계산기 타임라인으로 고정
+    hit_events: tuple[HitEvent, ...] = build_simulation_events(
         server_spec=server_spec,
         preset=preset,
         skills_info=skills_info,
         delay_ms=delay_ms,
         cooltime_reduction=cooltime_reduction,
     )
-    converted_buff_windows: list[BuffWindow] = []
-    for buff_event in buff_events:
-        converted_buff_windows.append(
-            BuffWindow(
-                stat_key=buff_event.stat_key,
-                start_time=buff_event.start_time,
-                end_time=buff_event.end_time,
-                value=buff_event.value,
-            )
-        )
-
-    merged_buff_windows: tuple[BuffWindow, ...] = _merge_buff_windows(
-        converted_buff_windows
-    )
-    timeline: Timeline = Timeline(
-        hit_events=hit_events,
-        buff_windows=merged_buff_windows,
-    )
-    return timeline
-
-
-def _apply_active_buffs(
-    resolved_stats: FinalStats,
-    active_buffs: tuple[BuffWindow, ...],
-) -> dict[StatKey, float]:
-    """현재 시점 활성 버프 반영 스탯 구성"""
-
-    buffed_values: dict[StatKey, float] = resolved_stats.values.copy()
-    for active_buff in active_buffs:
-        current_value: float = float(buffed_values[active_buff.stat_key])
-        buffed_values[active_buff.stat_key] = current_value + active_buff.value
-
-    return buffed_values
-
-
-def _collect_active_buffs(
-    buff_windows: tuple[BuffWindow, ...],
-    target_time: float,
-) -> tuple[BuffWindow, ...]:
-    """특정 시점 활성 버프 목록 수집"""
-
-    active_buffs: tuple[BuffWindow, ...] = tuple(
-        buff_window
-        for buff_window in buff_windows
-        if buff_window.start_time <= target_time <= buff_window.end_time
-    )
-    return active_buffs
+    return hit_events
 
 
 def _build_timeline_evaluation_artifacts(
-    timeline: Timeline,
-    level: int = 0,
+    hit_events: tuple[HitEvent, ...],
+    level: int,
+    skill_slot_variables: dict[str, float | int],
 ) -> TimelineEvaluationArtifacts:
-    """타임라인 평가 반복용 활성 버프 스냅샷 구성"""
-
-    # 타격 이벤트 순서 기준 활성 버프 튜플 1회 계산
-    active_buffs_by_hit: list[tuple[BuffWindow, ...]] = []
-    hit_event: HitEvent
-    for hit_event in timeline.hit_events:
-        active_buffs: tuple[BuffWindow, ...] = _collect_active_buffs(
-            timeline.buff_windows,
-            hit_event.time,
-        )
-        active_buffs_by_hit.append(active_buffs)
+    """타임라인 평가 반복용 불변 데이터 구성"""
 
     # 동일 타임라인 재평가 시 재사용할 불변 구조로 고정
     artifacts: TimelineEvaluationArtifacts = TimelineEvaluationArtifacts(
-        timeline=timeline,
-        active_buffs_by_hit=tuple(active_buffs_by_hit),
+        hit_events=hit_events,
+        skill_slot_variables=skill_slot_variables,
         level=level,
     )
     return artifacts
@@ -2288,30 +2152,23 @@ def _calculate_random_hit_damage(
 
 
 def build_damage_events(
-    timeline: Timeline,
+    hit_events: tuple[HitEvent, ...],
     resolved_stats: FinalStats,
     is_boss: bool,
     deterministic: bool,
     random_seed: float | None = None,
 ) -> list[DamageEvent]:
-    """타임라인과 스탯 기준 최종 피해 이벤트 목록 구성"""
+    """타격 이벤트와 스탯 기준 최종 피해 이벤트 목록 구성"""
 
-    artifacts: TimelineEvaluationArtifacts = _build_timeline_evaluation_artifacts(
-        timeline
-    )
     damage_events: list[DamageEvent] = []
 
     # 결정론 기준 타격 이벤트 순회 및 피해량 누적
     if deterministic:
         hit_event: HitEvent
-        buffed_stats: dict[StatKey, float]
-        for hit_event, buffed_stats in _iterate_buffed_hit_events(
-            artifacts,
-            resolved_stats,
-        ):
+        for hit_event in hit_events:
             # 기대 치명타 기반 단일 타격 피해량 계산
             damage: float = _calculate_hit_damage(
-                resolved_stats=buffed_stats,
+                resolved_stats=resolved_stats.values,
                 hit_event=hit_event,
                 is_boss=is_boss,
             )
@@ -2332,14 +2189,10 @@ def build_damage_events(
 
     # 확률론 기준 타격 이벤트 순회 및 피해량 누적
     hit_event: HitEvent
-    buffed_stats: dict[StatKey, float]
-    for hit_event, buffed_stats in _iterate_buffed_hit_events(
-        artifacts,
-        resolved_stats,
-    ):
+    for hit_event in hit_events:
         # 동일 시뮬레이션의 연속 난수 상태를 반영한 단일 타격 피해량 계산
         damage: float = _calculate_random_hit_damage(
-            resolved_stats=buffed_stats,
+            resolved_stats=resolved_stats.values,
             hit_event=hit_event,
             is_boss=is_boss,
             rng=rng,
@@ -2357,69 +2210,28 @@ def build_damage_events(
     return damage_events
 
 
-def _iterate_buffed_hit_events(
-    artifacts: TimelineEvaluationArtifacts,
-    resolved_stats: FinalStats,
-) -> Iterator[tuple[HitEvent, dict[StatKey, float]]]:
-    """타임라인 아티팩트 기준 버프 반영 타격 순회"""
-
-    hit_index: int
-    hit_event: HitEvent
-    for hit_index, hit_event in enumerate(artifacts.timeline.hit_events):
-        active_buffs: tuple[BuffWindow, ...] = artifacts.active_buffs_by_hit[hit_index]
-        buffed_stats: dict[StatKey, float] = _apply_active_buffs(
-            resolved_stats, active_buffs
-        )
-        yield hit_event, buffed_stats
-
-
 def _build_power_formula_variables(
     artifacts: TimelineEvaluationArtifacts,
     resolved_stats: FinalStats,
 ) -> dict[str, float | int | bool]:
     """최종 스탯과 내장 전투력 공식 변수 구성"""
 
-    # 기본 최종 스탯과 타격/버프 스냅샷 조회
+    # 기본 최종 스탯과 타격 이벤트 조회
     base_values: dict[StatKey, float] = resolved_stats.values
-    hit_events: tuple[HitEvent, ...] = artifacts.timeline.hit_events
-    all_active_buffs: tuple[tuple[BuffWindow, ...], ...] = artifacts.active_buffs_by_hit
-
-    # 동일 버프 조합에 대한 스탯 스냅샷 캐시
-    buff_stats_cache: dict[int, dict[StatKey, float]] = {}
+    hit_events: tuple[HitEvent, ...] = artifacts.hit_events
 
     # 60초 타격 데미지 누적
     boss_damage: float = 0.0
     normal_damage: float = 0.0
-    prev_active_buffs: tuple[BuffWindow, ...] | None = None
-    cached_buffed_stats: dict[StatKey, float] = base_values
-    hit_index: int
     hit_event: HitEvent
-    for hit_index, hit_event in enumerate(hit_events):
-        active_buffs: tuple[BuffWindow, ...] = all_active_buffs[hit_index]
-        if active_buffs is not prev_active_buffs:
-            prev_active_buffs = active_buffs
-            buff_id: int = id(active_buffs)
-            buffed_stats: dict[StatKey, float] | None = buff_stats_cache.get(buff_id)
-            if buffed_stats is None:
-                buffed_stats = base_values.copy()
-                active_buff: BuffWindow
-                for active_buff in active_buffs:
-                    buffed_stats[active_buff.stat_key] = (
-                        buffed_stats[active_buff.stat_key] + active_buff.value
-                    )
-
-                buff_stats_cache[buff_id] = buffed_stats
-
-            cached_buffed_stats = buffed_stats
-
-        buffed_stats = cached_buffed_stats
+    for hit_event in hit_events:
         normal_hit_damage: float = _calculate_hit_damage(
-            resolved_stats=buffed_stats,
+            resolved_stats=base_values,
             hit_event=hit_event,
             is_boss=False,
         )
         boss_hit_damage: float = _calculate_hit_damage(
-            resolved_stats=buffed_stats,
+            resolved_stats=base_values,
             hit_event=hit_event,
             is_boss=True,
         )
@@ -2434,6 +2246,7 @@ def _build_power_formula_variables(
     formula_variables[_POWER_FORMULA_LEVEL_NAME] = artifacts.level
     formula_variables[_POWER_FORMULA_BOSS_DAMAGE_NAME] = boss_damage
     formula_variables[_POWER_FORMULA_NORMAL_DAMAGE_NAME] = normal_damage
+    formula_variables.update(artifacts.skill_slot_variables)
     return formula_variables
 
 
@@ -2480,17 +2293,22 @@ def build_calculator_context(
 
     # 기준 원시 스탯 resolve 및 기준 스킬속도 타임라인 구성
     baseline_final_stats: FinalStats = base_stats.resolve()
-    timeline: Timeline = build_calculator_timeline(
+    hit_events: tuple[HitEvent, ...] = build_calculator_timeline(
         server_spec=server_spec,
         preset=preset,
         skills_info=skills_info,
         delay_ms=delay_ms,
         cooltime_reduction=baseline_final_stats.values[StatKey.SKILL_SPEED_PERCENT],
     )
+    skill_slot_variables: dict[str, float | int] = _build_skill_slot_formula_variables(
+        server_spec,
+        preset,
+    )
     timeline_artifacts: TimelineEvaluationArtifacts = (
         _build_timeline_evaluation_artifacts(
-            timeline,
+            hit_events,
             level=preset.info.calculator.level,
+            skill_slot_variables=skill_slot_variables,
         )
     )
 
@@ -2544,7 +2362,7 @@ def _resolve_stat_changes_with_timeline(
         resolved_stats.values[StatKey.SKILL_SPEED_PERCENT]
     )
     if resolved_skill_speed != baseline_skill_speed:
-        updated_timeline: Timeline = build_calculator_timeline(
+        updated_hit_events: tuple[HitEvent, ...] = build_calculator_timeline(
             server_spec=context.server_spec,
             preset=context.preset,
             skills_info=context.skills_info,
@@ -2552,8 +2370,9 @@ def _resolve_stat_changes_with_timeline(
             cooltime_reduction=resolved_skill_speed,
         )
         timeline_artifacts = _build_timeline_evaluation_artifacts(
-            updated_timeline,
+            updated_hit_events,
             level=context.timeline_artifacts.level,
+            skill_slot_variables=context.timeline_artifacts.skill_slot_variables,
         )
 
     return resolved_stats, timeline_artifacts
@@ -2608,53 +2427,35 @@ def evaluate_arbitrary_stat_delta(
     return target_value - context.baseline_power
 
 
-def extract_skill_level_effects(
+def _build_skill_slot_formula_variables(
     server_spec: "ServerSpec",
     preset: "MacroPreset",
-    skill_id: str,
-) -> list[LevelEffect]:
-    """현재 무공비급 레벨 기준 스킬 효과 목록 조회"""
+) -> dict[str, float | int]:
+    """스킬 슬롯 기준 전투력 공식 변수 구성"""
 
-    # 무공비급 레벨과 실제 효과 테이블 연결
-    skill_level: int = preset.info.get_skill_level(server_spec, skill_id)
-    skill_effects: list[LevelEffect] = server_spec.skill_registry.get(skill_id).levels[
-        skill_level
-    ]
+    # 전체 슬롯을 기본 0 값으로 초기화
+    variables: dict[str, float | int] = {}
+    slot_number: int
+    for slot_number in range(1, _POWER_FORMULA_SKILL_SLOT_COUNT + 1):
+        variables[f"skill_{slot_number}_damage"] = 0.0
+        variables[f"skill_{slot_number}_cooltime"] = 0.0
+        variables[f"skill_{slot_number}_target_count"] = 0
 
-    return skill_effects
+    # 실제 배치 스킬의 현재 레벨 계수와 공통 스킬 정보 반영
+    for skill_index, skill_id in enumerate(preset.skills.placed_skills, start=1):
+        if skill_index > _POWER_FORMULA_SKILL_SLOT_COUNT:
+            break
 
+        if not skill_id:
+            continue
 
-def build_skill_effect_maps(
-    server_spec: "ServerSpec",
-    preset: "MacroPreset",
-    placed_skill_ids: list[str],
-) -> tuple[dict[str, list[DamageEffect]], dict[str, list[BuffEffect]]]:
-    """현재 배치 스킬의 레벨별 데미지/버프 효과 맵 구성"""
+        skill_level: int = preset.info.get_skill_level(server_spec, skill_id)
+        skill_def: "SkillDef" = server_spec.skill_registry.get(skill_id)
+        variables[f"skill_{skill_index}_damage"] = float(skill_def.levels[skill_level])
+        variables[f"skill_{skill_index}_cooltime"] = float(skill_def.cooltime)
+        variables[f"skill_{skill_index}_target_count"] = int(skill_def.target_count)
 
-    # 무공비급 레벨 반영 효과를 데미지/버프별로 미리 분리
-    damage_effects_map: dict[str, list[DamageEffect]] = {}
-    buff_effects_map: dict[str, list[BuffEffect]] = {}
-
-    for skill_id in placed_skill_ids:
-        level_effects: list[LevelEffect] = extract_skill_level_effects(
-            server_spec=server_spec,
-            preset=preset,
-            skill_id=skill_id,
-        )
-        damage_effects: list[DamageEffect] = []
-        buff_effects: list[BuffEffect] = []
-
-        for level_effect in level_effects:
-            if isinstance(level_effect, DamageEffect):
-                damage_effects.append(level_effect)
-
-            elif isinstance(level_effect, BuffEffect):
-                buff_effects.append(level_effect)
-
-        damage_effects_map[skill_id] = damage_effects
-        buff_effects_map[skill_id] = buff_effects
-
-    return damage_effects_map, buff_effects_map
+    return variables
 
 
 def evaluate_level_up_delta(
@@ -2830,7 +2631,7 @@ def evaluate_scroll_upgrade_deltas(
         # 레벨을 일시적으로 1 올린 상태의 타임라인 재계산
         preset.info.set_scroll_level(scroll_def.id, current_level + 1)
         try:
-            upgraded_timeline: Timeline = build_calculator_timeline(
+            upgraded_hit_events: tuple[HitEvent, ...] = build_calculator_timeline(
                 server_spec=server_spec,
                 preset=preset,
                 skills_info=skills_info,
@@ -2841,8 +2642,12 @@ def evaluate_scroll_upgrade_deltas(
             )
             upgraded_timeline_artifacts: TimelineEvaluationArtifacts = (
                 _build_timeline_evaluation_artifacts(
-                    upgraded_timeline,
+                    upgraded_hit_events,
                     level=baseline_context.timeline_artifacts.level,
+                    skill_slot_variables=_build_skill_slot_formula_variables(
+                        server_spec,
+                        preset,
+                    ),
                 )
             )
 
@@ -3489,6 +3294,7 @@ def _evaluate_distribution_selection(
                 cooltime_reduction=dist_skill_speed,
             ),
             level=preset.info.calculator.level,
+            skill_slot_variables=context.timeline_artifacts.skill_slot_variables,
         )
         timeline_cache[dist_speed_key] = dist_timeline
 
@@ -3575,7 +3381,7 @@ def _evaluate_distribution_selection(
                     timeline_cache.get(speed_cache_key)
                 )
                 if cached_timeline_artifacts is None:
-                    cached_timeline: Timeline = build_calculator_timeline(
+                    cached_hit_events: tuple[HitEvent, ...] = build_calculator_timeline(
                         server_spec=server_spec,
                         preset=preset,
                         skills_info=skills_info,
@@ -3583,8 +3389,11 @@ def _evaluate_distribution_selection(
                         cooltime_reduction=candidate_skill_speed,
                     )
                     cached_timeline_artifacts = _build_timeline_evaluation_artifacts(
-                        cached_timeline,
+                        cached_hit_events,
                         level=preset.info.calculator.level,
+                        skill_slot_variables=(
+                            context.timeline_artifacts.skill_slot_variables
+                        ),
                     )
                     timeline_cache[speed_cache_key] = cached_timeline_artifacts
 

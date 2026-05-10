@@ -141,9 +141,6 @@ class UiState:
     # 데이터 백업 알림에서 복사할 오류 로그 목록
     backup_notice_logs: list[str] = field(default_factory=list)
 
-    # 커스텀 무공비급 중복 정리 알림 대기 여부
-    has_pending_custom_skill_normalized_notice: bool = False
-
     # 현재 활성화된 사이드바 페이지 인덱스
     current_sidebar_page: int = 0
 

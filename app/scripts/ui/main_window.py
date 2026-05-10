@@ -26,6 +26,7 @@ from app.scripts.config import config
 from app.scripts.custom_classes import CustomFont
 from app.scripts.data_manager import (
     DataRecoveryStartupError,
+    has_future_custom_skills_data_version,
     has_future_macro_data_version,
     load_data,
     save_data,
@@ -82,7 +83,9 @@ class MainWindow(QWidget):
         """높은 저장 데이터 버전 실행 여부 확인"""
 
         # 높은 저장 버전이 아니면 일반 시작 진행
-        if not has_future_macro_data_version():
+        if not (
+            has_future_macro_data_version() or has_future_custom_skills_data_version()
+        ):
             return True
 
         # 메인 UI 로드 전 확인 다이얼로그 구성
@@ -309,11 +312,6 @@ class MainWindow(QWidget):
         if app_state.ui.has_pending_backup_notice:
             app_state.ui.has_pending_backup_notice = False
             self.popup_manager.show_notice(NoticeKind.DATA_FILE_BACKED_UP)
-
-        # 커스텀 무공비급 중복 정리 알림 표시
-        if app_state.ui.has_pending_custom_skill_normalized_notice:
-            app_state.ui.has_pending_custom_skill_normalized_notice = False
-            self.popup_manager.show_notice(NoticeKind.CUSTOM_SKILLS_NORMALIZED)
 
     def init_UI(self) -> None:
         """

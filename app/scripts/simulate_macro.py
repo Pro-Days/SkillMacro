@@ -8,7 +8,7 @@ from app.scripts.calculator_engine import (
     GraphAnalysis,
     GraphDamageEvent,
     GraphReport,
-    Timeline,
+    HitEvent,
     build_calculator_timeline,
     build_damage_events,
 )
@@ -31,7 +31,7 @@ def simulate_random_from_calculator(
 
     # 계산기 기준 최종 스탯 resolve 및 타임라인 구성
     resolved_stats: FinalStats = base_stats.resolve()
-    timeline: Timeline = build_calculator_timeline(
+    hit_events: tuple[HitEvent, ...] = build_calculator_timeline(
         server_spec=server_spec,
         preset=preset,
         skills_info=skills_info,
@@ -41,13 +41,13 @@ def simulate_random_from_calculator(
 
     # 결정론 기준 보스/일반 공격 이벤트 생성
     deterministic_boss_events: list[DamageEvent] = build_damage_events(
-        timeline=timeline,
+        hit_events=hit_events,
         resolved_stats=resolved_stats,
         is_boss=True,
         deterministic=True,
     )
     deterministic_normal_events: list[DamageEvent] = build_damage_events(
-        timeline=timeline,
+        hit_events=hit_events,
         resolved_stats=resolved_stats,
         is_boss=False,
         deterministic=True,
@@ -70,14 +70,14 @@ def simulate_random_from_calculator(
         boss_seed: float = random.random()
         normal_seed: float = random.random()
         boss_events: list[DamageEvent] = build_damage_events(
-            timeline=timeline,
+            hit_events=hit_events,
             resolved_stats=resolved_stats,
             is_boss=True,
             deterministic=False,
             random_seed=boss_seed,
         )
         normal_events: list[DamageEvent] = build_damage_events(
-            timeline=timeline,
+            hit_events=hit_events,
             resolved_stats=resolved_stats,
             is_boss=False,
             deterministic=False,

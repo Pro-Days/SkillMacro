@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
 from typing import Any
 
 
@@ -35,106 +34,6 @@ def _require_float(data: dict[str, Any], key: str) -> float:
     return value
 
 
-class SkillEffectType(str, Enum):
-    """스킬 효과 타입"""
-
-    DAMAGE = "damage"
-    HEAL = "heal"
-    BUFF = "buff"
-
-
-@dataclass(frozen=True, slots=True)
-class DamageEffectPayload:
-    """데미지 효과 입력 데이터"""
-
-    time: float
-    damage: float
-    type: SkillEffectType = SkillEffectType.DAMAGE
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "DamageEffectPayload":
-        # 데미지 효과 필수 필드 검증
-        time: float = _require_float(data, "time")
-        damage: float = _require_float(data, "damage")
-
-        return cls(time=time, damage=damage)
-
-    def to_dict(self) -> dict[str, Any]:
-        # 저장용 표준 딕셔너리 직렬화
-        payload: dict[str, Any] = {
-            "time": self.time,
-            "type": self.type.value,
-            "damage": self.damage,
-        }
-        return payload
-
-
-@dataclass(frozen=True, slots=True)
-class HealEffectPayload:
-    """회복 효과 입력 데이터"""
-
-    time: float
-    heal: float
-    type: SkillEffectType = SkillEffectType.HEAL
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "HealEffectPayload":
-        # 회복 효과 필수 필드 검증
-        time: float = _require_float(data, "time")
-        heal: float = _require_float(data, "heal")
-
-        return cls(time=time, heal=heal)
-
-    def to_dict(self) -> dict[str, Any]:
-        # 저장용 표준 딕셔너리 직렬화
-        payload: dict[str, Any] = {
-            "time": self.time,
-            "type": self.type.value,
-            "heal": self.heal,
-        }
-        return payload
-
-
-@dataclass(frozen=True, slots=True)
-class BuffEffectPayload:
-    """버프 효과 입력 데이터"""
-
-    time: float
-    stat: str
-    value: float
-    duration: float
-    type: SkillEffectType = SkillEffectType.BUFF
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "BuffEffectPayload":
-        # 버프 효과 필수 필드 검증
-        time: float = _require_float(data, "time")
-        stat: str = _require_text(data, "stat")
-        value: float = _require_float(data, "value")
-        duration: float = _require_float(data, "duration")
-
-        return cls(
-            time=time,
-            stat=stat,
-            value=value,
-            duration=duration,
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        # 저장용 표준 딕셔너리 직렬화
-        payload: dict[str, Any] = {
-            "time": self.time,
-            "type": self.type.value,
-            "stat": self.stat,
-            "value": self.value,
-            "duration": self.duration,
-        }
-        return payload
-
-
-SkillEffectPayload = DamageEffectPayload | HealEffectPayload | BuffEffectPayload
-
-
 @dataclass(frozen=True, slots=True)
 class CustomSkillDefinition:
     """커스텀 스킬 입력 데이터"""
@@ -142,7 +41,8 @@ class CustomSkillDefinition:
     skill_id: str
     name: str
     cooltime: float
-    levels: dict[int, tuple[SkillEffectPayload, ...]]
+    target_count: int
+    levels: dict[int, float]
 
     @classmethod
     def from_dict(
@@ -153,8 +53,14 @@ class CustomSkillDefinition:
         # 스킬 기본 필수 필드 검증
         name: str = _require_text(data, "name")
         cooltime: float = _require_float(data, "cooltime")
+        target_count: int = data["target_count"]
+        if type(target_count) is not int:
+            raise CustomSkillImportError("target_count must be an integer")
 
-        # 레벨 효과 선택 필드 정규화
+        if target_count < 1:
+            raise CustomSkillImportError("target_count must be greater than 0")
+
+        # 레벨별 계수 선택 필드 정규화
         raw_levels: Any = data["levels"] if "levels" in data else {}
         if raw_levels in ("", None):
             raw_levels = {}
@@ -162,71 +68,37 @@ class CustomSkillDefinition:
         if not isinstance(raw_levels, dict):
             raise CustomSkillImportError("levels must be a dictionary when provided")
 
-        levels: dict[int, tuple[SkillEffectPayload, ...]] = {}
+        levels: dict[int, float] = {}
 
-        # 레벨별 효과 목록 정규화
-        for raw_level, raw_effects in raw_levels.items():
+        # 레벨별 계수 숫자 정규화
+        for raw_level, raw_level_detail in raw_levels.items():
             level: int = int(raw_level)
+            try:
+                levels[level] = float(raw_level_detail)
 
-            if raw_effects in ("", None):
-                raw_effects = []
-
-            if not isinstance(raw_effects, list):
-                raise CustomSkillImportError(
-                    "level effects must be a list when provided"
-                )
-
-            effects: list[SkillEffectPayload] = []
-            for raw_effect in raw_effects:
-                if not isinstance(raw_effect, dict):
-                    raise CustomSkillImportError("skill effect must be a dictionary")
-
-                # 효과 타입 문자열 검증 및 enum 변환
-                effect_type_text: str = _require_text(raw_effect, "type")
-                try:
-                    effect_type: SkillEffectType = SkillEffectType(effect_type_text)
-
-                except ValueError as exc:
-                    raise CustomSkillImportError(
-                        f"unsupported skill effect type: {effect_type_text}"
-                    ) from exc
-
-                effect: SkillEffectPayload
-
-                # 효과 타입별 세부 페이로드 파싱
-                if effect_type == SkillEffectType.DAMAGE:
-                    effect = DamageEffectPayload.from_dict(raw_effect)
-                elif effect_type == SkillEffectType.HEAL:
-                    effect = HealEffectPayload.from_dict(raw_effect)
-                else:
-                    effect = BuffEffectPayload.from_dict(raw_effect)
-
-                effects.append(effect)
-
-            levels[level] = tuple(effects)
+            except (TypeError, ValueError) as exc:
+                raise CustomSkillImportError("level damage must be a number") from exc
 
         return cls(
             skill_id=skill_id,
             name=name,
             cooltime=cooltime,
+            target_count=target_count,
             levels=levels,
         )
 
     def to_dict(self) -> dict[str, Any]:
         # 저장용 스킬 상세 데이터 직렬화
-        level_payload: dict[str, list[dict[str, Any]]] = {}
+        level_payload: dict[str, float] = {}
 
         # 레벨 번호를 문자열 키로 변환하여 저장 형식 유지
-        for level, effects in sorted(self.levels.items()):
-            serialized_effects: list[dict[str, Any]] = []
-            for effect in effects:
-                serialized_effects.append(effect.to_dict())
-
-            level_payload[str(level)] = serialized_effects
+        for level, damage in sorted(self.levels.items()):
+            level_payload[str(level)] = damage
 
         payload: dict[str, Any] = {
             "name": self.name,
             "cooltime": self.cooltime,
+            "target_count": self.target_count,
             "levels": level_payload,
         }
         return payload

@@ -7,8 +7,9 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from functools import partial
 from html import escape
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 from webbrowser import open_new
+
 
 from pynput import mouse as pynput_mouse
 
@@ -35,7 +36,6 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QApplication,
-    QComboBox,
     QDialog,
     QFrame,
     QGridLayout,
@@ -66,20 +66,14 @@ from app.scripts.calculator_models import (
     STAT_SPECS,
     CustomPowerFormula,
     PowerMetric,
-    StatKey,
-    get_stat_label,
 )
 from app.scripts.config import config
 from app.scripts.custom_classes import CustomFont, CustomLineEdit, CustomShadowEffect
 from app.scripts.custom_skill_models import (
-    BuffEffectPayload,
     CustomScrollDefinition,
     CustomSkillDefinition,
     CustomSkillImport,
     CustomSkillImportError,
-    DamageEffectPayload,
-    HealEffectPayload,
-    SkillEffectType,
 )
 from app.scripts.data_manager import (
     read_custom_skills_data,
@@ -96,10 +90,6 @@ from app.scripts.registry.resource_registry import (
 from app.scripts.registry.server_registry import ServerSpec, server_registry
 from app.scripts.registry.skill_registry import (
     CUSTOM_SKILL_PREFIX,
-    BuffEffect,
-    DamageEffect,
-    HealEffect,
-    LevelEffect,
     ScrollDef,
     SkillDef,
 )
@@ -159,7 +149,6 @@ class NoticeKind(Enum):
     REQUIRE_UPDATE = auto()  # 업데이트 필요
     FAILED_UPDATE_CHECK = auto()  # 업데이트 확인 실패
     DATA_FILE_BACKED_UP = auto()  # 데이터 파일 백업 완료
-    CUSTOM_SKILLS_NORMALIZED = auto()  # 커스텀 무공비급 중복 정리 완료
 
     # 시뮬레이션
     SIM_INPUT_ERROR = auto()  # 시뮬레이션 정보 입력 오류
@@ -218,16 +207,6 @@ class PopupAction:
     enabled: bool = True
     is_selected: bool = False
     on_trigger: Callable[[], None] | None = None
-
-
-@dataclass(frozen=True)
-class SkillLevelInputRow:
-    """레벨별 효과 입력 행 위젯 묶음"""
-
-    type_combo: QComboBox
-    amount_input: CustomLineEdit
-    stat_combo: QComboBox
-    duration_input: CustomLineEdit
 
 
 class PopupContent(QFrame):
@@ -983,12 +962,6 @@ class NoticeController:
                     action,
                 )
 
-            case NoticeKind.CUSTOM_SKILLS_NORMALIZED:
-                return NoticeData(
-                    "중복된 커스텀 무공비급이 발견되어 자동 정리했습니다.",
-                    "warning",
-                )
-
             case NoticeKind.SIM_INPUT_ERROR:
                 return NoticeData("시뮬레이션 정보가 올바르게 입력되지 않았습니다.")
 
@@ -1273,77 +1246,26 @@ class PopupManager:
 
     def _build_effect_hover_lines(
         self,
-        effects: list[LevelEffect],
+        damage: float,
     ) -> list[HoverCardLine]:
-        """효과 목록을 카드 본문 라인으로 변환"""
+        """스킬 레벨 데이터를 카드 본문 라인으로 변환"""
 
-        # 현재 레벨의 각 효과를 한 줄씩 가독성 있게 구성
-        lines: list[HoverCardLine] = []
-
-        for effect in effects:
-            text: str
-            color: str
-
-            if isinstance(effect, DamageEffect):
-                text = (
-                    f"{self._format_number(effect.time)}초: "
-                    f"데미지 {self._format_number(effect.damage)}"
-                )
-                color = "#FFB36A"
-
-            elif isinstance(effect, HealEffect):
-                text = (
-                    f"{self._format_number(effect.time)}초: "
-                    f"회복 {self._format_number(effect.heal)}"
-                )
-                color = "#8FE9FF"
-
-            elif isinstance(effect, BuffEffect):
-                buff_effect: BuffEffect = effect
-                stat_label: str = get_stat_label(buff_effect.stat)
-
-                text = (
-                    f"{self._format_number(buff_effect.time)}초: "
-                    f"{stat_label} {self._format_number(buff_effect.value)} "
-                    f"({self._format_number(buff_effect.duration)}초)"
-                )
-                color = "#9DDF8B"
-
-            else:
-                continue
-
-            lines.append(HoverCardLine(text=text, color=color))
+        # 데미지 계수 라인 구성
+        lines: list[HoverCardLine] = [
+            HoverCardLine(
+                text=f"데미지 {self._format_number(damage)}",
+                color="#FFB36A",
+            )
+        ]
 
         return lines
 
-    def _build_effect_summary(self, effects: list[LevelEffect]) -> str:
-        """무공비급 카드용 짧은 효과 요약 구성"""
+    def _build_effect_summary(self, damage: float) -> str:
+        """무공비급 카드용 짧은 데미지 계수 요약 구성"""
 
-        # 여러 효과를 한 줄 요약으로 합쳐 무공비급 카드 높이 최소화
-        summaries: list[str] = []
-
-        for effect in effects:
-            if isinstance(effect, DamageEffect):
-                summaries.append(
-                    f"{self._format_number(effect.time)}초 데미지 {self._format_number(effect.damage)}"
-                )
-
-            elif isinstance(effect, HealEffect):
-                summaries.append(
-                    f"{self._format_number(effect.time)}초 회복 {self._format_number(effect.heal)}"
-                )
-
-            elif isinstance(effect, BuffEffect):
-                buff_effect: BuffEffect = effect
-                stat_label: str = get_stat_label(buff_effect.stat)
-                summaries.append(
-                    f"{self._format_number(buff_effect.time)}초 {stat_label} {self._format_number(buff_effect.value)}"
-                )
-
-            else:
-                continue
-
-        return " / ".join(summaries)
+        # 데미지 계수 요약 구성
+        summary: str = f"데미지 {self._format_number(damage)}"
+        return summary
 
     def _format_number(self, value: int | float) -> str:
         """정수형 표기는 간결하게, 실수형 표기는 필요한 자리만 유지"""
@@ -2974,8 +2896,14 @@ class CustomSkillAddDialog(QDialog):
         skill2_name_init: str = skill2_def.name if skill2_def else ""
         skill1_ct_init: str = str(skill1_def.cooltime) if skill1_def else ""
         skill2_ct_init: str = str(skill2_def.cooltime) if skill2_def else ""
-        skill1_levels_init = skill1_def.levels if skill1_def else {}
-        skill2_levels_init = skill2_def.levels if skill2_def else {}
+        skill1_target_count_init: str = (
+            str(skill1_def.target_count) if skill1_def else ""
+        )
+        skill2_target_count_init: str = (
+            str(skill2_def.target_count) if skill2_def else ""
+        )
+        skill1_levels_init: dict[int, float] = skill1_def.levels if skill1_def else {}
+        skill2_levels_init: dict[int, float] = skill2_def.levels if skill2_def else {}
 
         # ── 전체 컨텐츠를 QScrollArea로 감쌈 ──
         outer: QVBoxLayout = QVBoxLayout(self)
@@ -3013,9 +2941,15 @@ class CustomSkillAddDialog(QDialog):
             skill1_card,
             self._skill1_name_input,
             self._skill1_ct_input,
+            self._skill1_target_count_input,
             self._skill1_level_inputs,
         ) = self._make_skill_card(
-            "스킬 1", skill1_name_init, skill1_ct_init, 1, skill1_levels_init
+            "스킬 1",
+            skill1_name_init,
+            skill1_ct_init,
+            skill1_target_count_init,
+            1,
+            skill1_levels_init,
         )
         root.addWidget(skill1_card)
 
@@ -3024,9 +2958,15 @@ class CustomSkillAddDialog(QDialog):
             skill2_card,
             self._skill2_name_input,
             self._skill2_ct_input,
+            self._skill2_target_count_input,
             self._skill2_level_inputs,
         ) = self._make_skill_card(
-            "스킬 2", skill2_name_init, skill2_ct_init, 7, skill2_levels_init
+            "스킬 2",
+            skill2_name_init,
+            skill2_ct_init,
+            skill2_target_count_init,
+            7,
+            skill2_levels_init,
         )
         root.addWidget(skill2_card)
         root.addStretch()
@@ -3108,10 +3048,17 @@ class CustomSkillAddDialog(QDialog):
         title: str,
         name_init: str,
         ct_init: str,
+        target_count_init: str,
         level_start: int,
-        existing_levels: dict | None = None,
-    ) -> tuple[QFrame, CustomLineEdit, CustomLineEdit, dict[int, SkillLevelInputRow]]:
-        """스킬 카드 + 레벨별 효과 입력 (기본 숨김) 생성."""
+        existing_levels: dict[int, float],
+    ) -> tuple[
+        QFrame,
+        CustomLineEdit,
+        CustomLineEdit,
+        CustomLineEdit,
+        dict[int, CustomLineEdit],
+    ]:
+        """스킬 카드 + 레벨별 데미지 계수 입력 생성"""
         card: QFrame = QFrame(self)
         card.setObjectName("dialogCard")
 
@@ -3144,24 +3091,25 @@ class CustomSkillAddDialog(QDialog):
 
         name_input: CustomLineEdit = _make_row("이름", name_init)
         ct_input: CustomLineEdit = _make_row("쿨타임 (초)", ct_init)
+        target_count_input: CustomLineEdit = _make_row("타겟 수", target_count_init)
 
-        # ── 레벨별 효과 토글 버튼 ──
-        toggle_btn: QPushButton = QPushButton("레벨별 효과 설정 ▼", card)
+        # 레벨별 데미지 계수 영역 열기 버튼
+        toggle_btn: QPushButton = QPushButton("레벨별 데미지 설정 ▼", card)
         toggle_btn.setFont(CustomFont(10))
         toggle_btn.setFixedHeight(26)
         toggle_btn.setObjectName("dialogToggleBtn")
         toggle_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         layout.addWidget(toggle_btn)
 
-        # ── 레벨 입력 영역 (기본 숨김) ──
+        # 레벨 입력 영역 기본 숨김
         level_widget: QWidget = QWidget(card)
         level_widget.setVisible(False)
         level_layout: QVBoxLayout = QVBoxLayout(level_widget)
         level_layout.setContentsMargins(0, 2, 0, 2)
         level_layout.setSpacing(3)
 
-        # 레벨별 입력 위젯 묶음 구성
-        level_inputs: dict[int, SkillLevelInputRow] = {}
+        # 레벨별 데미지 계수 입력 위젯 묶음 구성
+        level_inputs: dict[int, CustomLineEdit] = {}
 
         for lvl in range(level_start, self.max_skill_level + 1):
             row: QHBoxLayout = QHBoxLayout()
@@ -3173,86 +3121,22 @@ class CustomSkillAddDialog(QDialog):
             lv_lbl.setFont(CustomFont(9))
             lv_lbl.setFixedWidth(30)
 
-            type_combo: QComboBox = QComboBox(level_widget)
-            type_combo.addItems(["데미지", "힐", "버프"])
-            type_combo.setFont(CustomFont(9))
-            type_combo.setFixedHeight(24)
-            type_combo.setFixedWidth(58)
-
-            amount_inp: CustomLineEdit = CustomLineEdit(
+            damage_input: CustomLineEdit = CustomLineEdit(
                 level_widget, text="0", point_size=9
             )
-            amount_inp.setFixedHeight(24)
-            amount_inp.setFixedWidth(56)
-            amount_inp.set_valid(True)
+            damage_input.setFixedHeight(24)
+            damage_input.setFixedWidth(82)
+            damage_input.set_valid(True)
 
-            # 버프 대상 스탯 선택 콤보 구성
-            stat_combo: QComboBox = QComboBox(level_widget)
-            stat_key: StatKey
-            for stat_key in StatKey:
-                stat_combo.addItem(get_stat_label(stat_key), stat_key.value)
-
-            stat_combo.setFont(CustomFont(9))
-            stat_combo.setFixedHeight(24)
-            stat_combo.setFixedWidth(118)
-            stat_combo.setVisible(False)
-
-            duration_inp: CustomLineEdit = CustomLineEdit(
-                level_widget, text="0", point_size=9
-            )
-            duration_inp.setPlaceholderText("지속(초)")
-            duration_inp.setFixedHeight(24)
-            duration_inp.setFixedWidth(52)
-            duration_inp.set_valid(True)
-            duration_inp.setVisible(False)
-
-            # 기존 레벨 데이터 로드
+            # 기존 레벨 데미지 계수 복원
             if existing_levels and lvl in existing_levels:
-                effects = existing_levels[lvl]
-                if effects:
-                    effect = effects[0]
-                    if effect.type == SkillEffectType.HEAL:
-                        type_combo.setCurrentIndex(1)
-                        amount_inp.setText(str(effect.heal))  # type: ignore[union-attr]
-                    elif effect.type == SkillEffectType.BUFF:
-                        type_combo.setCurrentIndex(2)
-                        amount_inp.setText(str(effect.value))  # type: ignore[union-attr]
-                        # 저장된 스탯 키 기반 선택 상태 복원
-                        buff_stat_key: StatKey = StatKey(str(effect.stat))  # type: ignore[union-attr]
-                        stat_combo.setCurrentIndex(
-                            stat_combo.findData(buff_stat_key.value)
-                        )
-                        duration_inp.setText(str(effect.duration))  # type: ignore[union-attr]
-                        stat_combo.setVisible(True)
-                        duration_inp.setVisible(True)
-                    else:
-                        amount_inp.setText(str(effect.damage))  # type: ignore[union-attr]
-
-            def _on_type_change(
-                idx: int,
-                sc: QComboBox = stat_combo,
-                di: CustomLineEdit = duration_inp,
-            ) -> None:
-                # 버프 타입 선택 시 추가 입력 위젯 노출
-                is_buff = idx == 2
-                sc.setVisible(is_buff)
-                di.setVisible(is_buff)
-
-            type_combo.currentIndexChanged.connect(_on_type_change)
+                damage_input.setText(str(existing_levels[lvl]))
 
             row.addWidget(lv_lbl)
-            row.addWidget(type_combo)
-            row.addWidget(amount_inp)
-            row.addWidget(stat_combo)
-            row.addWidget(duration_inp)
+            row.addWidget(damage_input)
             row.addStretch()
             level_layout.addLayout(row)
-            level_inputs[lvl] = SkillLevelInputRow(
-                type_combo=type_combo,
-                amount_input=amount_inp,
-                stat_combo=stat_combo,
-                duration_input=duration_inp,
-            )
+            level_inputs[lvl] = damage_input
 
         layout.addWidget(level_widget)
 
@@ -3260,55 +3144,47 @@ class CustomSkillAddDialog(QDialog):
             visible: bool = not level_widget.isVisible()
             level_widget.setVisible(visible)
             toggle_btn.setText(
-                "레벨별 효과 설정 ▲" if visible else "레벨별 효과 설정 ▼"
+                "레벨별 데미지 설정 ▲" if visible else "레벨별 데미지 설정 ▼"
             )
 
         toggle_btn.clicked.connect(_toggle_levels)
 
-        return card, name_input, ct_input, level_inputs
+        return card, name_input, ct_input, target_count_input, level_inputs
 
     def _build_levels(
         self,
-        level_inputs: dict[int, SkillLevelInputRow],
+        level_inputs: dict[int, CustomLineEdit],
         level_start: int,
-    ) -> dict:
-        """레벨 입력 위젯에서 levels dict 생성. level_start 미만은 데미지 0 고정."""
-        levels: dict = {}
+        skill_label: str,
+    ) -> dict[str, float]:
+        """레벨 입력 위젯에서 레벨별 데미지 계수 데이터 생성"""
+        levels: dict[str, float] = {}
 
-        # 시작 레벨 이전 구간 기본 데미지 효과 구성
+        # 시작 레벨 이전 구간 기본 데미지 계수 구성
         for lvl in range(1, level_start):
-            levels[str(lvl)] = [{"time": 0.0, "type": "damage", "damage": 0.0}]
+            levels[str(lvl)] = 0.0
 
-        # 레벨별 선택 타입에 맞는 저장 페이로드 구성
-        for lvl, input_row in level_inputs.items():
-            type_idx: int = input_row.type_combo.currentIndex()
+        # 레벨별 입력값을 단일 데미지 계수로 저장
+        invalid_level: int | None = None
+        for lvl, damage_input in level_inputs.items():
             try:
-                amount: float = float(input_row.amount_input.text().strip() or "0")
-            except ValueError:
-                amount = 0.0
+                damage: float = float(damage_input.text().strip() or "0")
 
-            if type_idx == 1:  # 힐
-                levels[str(lvl)] = [{"time": 0.0, "type": "heal", "heal": amount}]
-            elif type_idx == 2:  # 버프
-                # 선택형 콤보의 현재 스탯 키 저장
-                stat: str = str(input_row.stat_combo.currentData())
-                try:
-                    duration: float = float(
-                        input_row.duration_input.text().strip() or "0"
-                    )
-                except ValueError:
-                    duration = 0.0
-                levels[str(lvl)] = [
-                    {
-                        "time": 0.0,
-                        "type": "buff",
-                        "stat": stat,
-                        "value": amount,
-                        "duration": duration,
-                    }
-                ]
-            else:  # 데미지
-                levels[str(lvl)] = [{"time": 0.0, "type": "damage", "damage": amount}]
+            except ValueError:
+                damage_input.set_valid(False)
+                if invalid_level is None:
+                    invalid_level = lvl
+
+                continue
+
+            damage_input.set_valid(True)
+            levels[str(lvl)] = damage
+
+        if invalid_level is not None:
+            raise CustomSkillImportError(
+                f"{skill_label} Lv.{invalid_level} 데미지는 숫자여야 합니다."
+            )
+
         return levels
 
     def _validate_duplicate_names(
@@ -3357,8 +3233,10 @@ class CustomSkillAddDialog(QDialog):
         scroll_name: str = self._scroll_name_input.text().strip()
         skill1_name: str = self._skill1_name_input.text().strip()
         skill1_ct_text: str = self._skill1_ct_input.text().strip()
+        skill1_target_count_text: str = self._skill1_target_count_input.text().strip()
         skill2_name: str = self._skill2_name_input.text().strip()
         skill2_ct_text: str = self._skill2_ct_input.text().strip()
+        skill2_target_count_text: str = self._skill2_target_count_input.text().strip()
 
         # 필드 유효성 검사
         valid: bool = True
@@ -3377,6 +3255,8 @@ class CustomSkillAddDialog(QDialog):
 
         skill1_ct: float = 0.0
         skill2_ct: float = 0.0
+        skill1_target_count: int = 1
+        skill2_target_count: int = 1
         try:
             skill1_ct = float(skill1_ct_text)
             self._skill1_ct_input.set_valid(True)
@@ -3387,12 +3267,48 @@ class CustomSkillAddDialog(QDialog):
             valid = False
 
         try:
+            skill1_target_count = int(skill1_target_count_text)
+            self._skill1_target_count_input.set_valid(True)
+
+        except ValueError:
+            self._skill1_target_count_input.set_valid(False)
+            if valid:
+                self._show_error("스킬 1 타겟 수는 정수여야 합니다.")
+
+            valid = False
+
+        if skill1_target_count < 1:
+            self._skill1_target_count_input.set_valid(False)
+            if valid:
+                self._show_error("스킬 1 타겟 수는 1 이상의 정수여야 합니다.")
+
+            valid = False
+
+        try:
             skill2_ct = float(skill2_ct_text)
             self._skill2_ct_input.set_valid(True)
         except ValueError:
             self._skill2_ct_input.set_valid(False)
             if valid:
                 self._show_error("스킬 2 쿨타임은 숫자여야 합니다.")
+            valid = False
+
+        try:
+            skill2_target_count = int(skill2_target_count_text)
+            self._skill2_target_count_input.set_valid(True)
+
+        except ValueError:
+            self._skill2_target_count_input.set_valid(False)
+            if valid:
+                self._show_error("스킬 2 타겟 수는 정수여야 합니다.")
+
+            valid = False
+
+        if skill2_target_count < 1:
+            self._skill2_target_count_input.set_valid(False)
+            if valid:
+                self._show_error("스킬 2 타겟 수는 1 이상의 정수여야 합니다.")
+
             valid = False
 
         if not valid:
@@ -3412,10 +3328,23 @@ class CustomSkillAddDialog(QDialog):
             skill1_id = f"custom:{self.server_id}:{scroll_name}:{skill1_name}"
             skill2_id = f"custom:{self.server_id}:{scroll_name}:{skill2_name}"
 
-        skill1_levels: dict = self._build_levels(self._skill1_level_inputs, 1)
-        skill2_levels: dict = self._build_levels(self._skill2_level_inputs, 7)
+        try:
+            skill1_levels: dict[str, float] = self._build_levels(
+                self._skill1_level_inputs,
+                1,
+                "스킬 1",
+            )
+            skill2_levels: dict[str, float] = self._build_levels(
+                self._skill2_level_inputs,
+                7,
+                "스킬 2",
+            )
 
-        raw: dict = {
+        except CustomSkillImportError as exc:
+            self._show_error(str(exc))
+            return
+
+        raw: dict[str, Any] = {
             "skills": [skill1_id, skill2_id],
             "scrolls": [
                 {
@@ -3428,11 +3357,13 @@ class CustomSkillAddDialog(QDialog):
                 skill1_id: {
                     "name": skill1_name,
                     "cooltime": skill1_ct,
+                    "target_count": skill1_target_count,
                     "levels": skill1_levels,
                 },
                 skill2_id: {
                     "name": skill2_name,
                     "cooltime": skill2_ct,
+                    "target_count": skill2_target_count,
                     "levels": skill2_levels,
                 },
             },

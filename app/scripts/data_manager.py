@@ -21,6 +21,7 @@ from app.scripts.registry.server_registry import ServerSpec, server_registry
 from app.scripts.registry.skill_registry import ScrollDef, SkillDef
 
 DATA_VERSION: int = 5
+CUSTOM_SKILLS_DATA_VERSION: int = 2
 
 # todo: 라이브러리를 통해 경로를 설정하도록 변경
 local_appdata: str = os.environ.get("LOCALAPPDATA", default="")
@@ -75,17 +76,18 @@ def _append_backup_notice_log(
     )
 
 
-def has_future_macro_data_version() -> bool:
-    """현재 프로그램보다 높은 macros.json 저장 버전 여부 반환"""
+def _has_future_data_version(data_file_path: str, current_data_version: int) -> bool:
+    """현재 프로그램보다 높은 저장 데이터 버전 여부 반환"""
 
     # 최초 실행 또는 데이터 파일 부재 상태 확인
-    if not os.path.isfile(file_dir):
+    if not os.path.isfile(data_file_path):
         return False
 
     try:
         # 저장 데이터의 루트 버전 값만 확인
-        with open(file_dir, "r", encoding="utf-8") as f:
-            raw_obj: object = json.load(f)
+        with open(data_file_path, "r", encoding="utf-8") as f:
+            raw_obj: Any = json.load(f)
+
     except (OSError, json.JSONDecodeError):
         return False
 
@@ -93,13 +95,30 @@ def has_future_macro_data_version() -> bool:
     if not isinstance(raw_obj, dict):
         return False
 
-    stored_version_obj: object = raw_obj.get("version")
+    stored_version_obj: Any = raw_obj.get("version")
 
     # 정수 버전이 아니면 기존 로드 복구 흐름 사용
     if type(stored_version_obj) is not int:
         return False
 
-    return stored_version_obj > DATA_VERSION
+    return stored_version_obj > current_data_version
+
+
+def has_future_macro_data_version() -> bool:
+    """현재 프로그램보다 높은 macros.json 저장 버전 여부 반환"""
+
+    # macros.json 저장 버전 확인
+    return _has_future_data_version(file_dir, DATA_VERSION)
+
+
+def has_future_custom_skills_data_version() -> bool:
+    """현재 프로그램보다 높은 custom_skills.json 저장 버전 여부 반환"""
+
+    # custom_skills.json 저장 버전 확인
+    return _has_future_data_version(
+        custom_skills_file_dir,
+        CUSTOM_SKILLS_DATA_VERSION,
+    )
 
 
 def backup_data_file(file_path: str) -> str | None:
@@ -251,7 +270,190 @@ def create_default_custom_skills_data() -> None:
 
     # 비어있는 커스텀 스킬 파일 초기화
     with open(custom_skills_file_dir, "w", encoding="utf-8") as f:
-        json.dump({}, f, ensure_ascii=False, indent=4)
+        json.dump(
+            {
+                "version": CUSTOM_SKILLS_DATA_VERSION,
+                "servers": {},
+            },
+            f,
+            ensure_ascii=False,
+            indent=4,
+        )
+
+
+def _build_custom_skills_payload(servers: dict[str, dict]) -> dict[str, Any]:
+    """커스텀 스킬 저장 루트 페이로드 구성"""
+
+    # 독립 버전과 서버별 커스텀 스킬 데이터 묶음 구성
+    payload: dict[str, Any] = {
+        "version": CUSTOM_SKILLS_DATA_VERSION,
+        "servers": servers,
+    }
+    return payload
+
+
+def _normalize_custom_skill_level(raw_level_detail: Any) -> float:
+    """이전 효과 목록을 단일 데미지 계수로 정규화"""
+
+    # 직전 단일 레벨 구조는 데미지 계수만 추출
+    if isinstance(raw_level_detail, dict):
+        return float(raw_level_detail["damage"])
+
+    # 이전 효과 목록은 데미지 효과만 합산하고 힐/버프는 제거
+    if not isinstance(raw_level_detail, list):
+        return float(raw_level_detail)
+
+    damage: float = 0.0
+    raw_effect: Any
+    for raw_effect in raw_level_detail:
+        if not isinstance(raw_effect, dict):
+            raise TypeError("skill effect must be a dict")
+
+        if str(raw_effect["type"]) != "damage":
+            continue
+
+        damage += float(raw_effect["damage"])
+
+    return damage
+
+
+def _normalize_custom_skill_import_data(import_data: dict[str, Any]) -> dict[str, Any]:
+    """커스텀 스킬 서버 데이터 정규화"""
+
+    # 중복 무공비급 제거 및 참조 스킬 순서 재구성
+    scrolls_obj: Any = import_data.get("scrolls", [])
+    if not isinstance(scrolls_obj, list):
+        raise TypeError("scrolls must be a list")
+
+    scrolls: list[dict] = []
+    seen_scroll_ids: set[str] = set()
+    scroll_obj: Any
+    for scroll_obj in scrolls_obj:
+        if not isinstance(scroll_obj, dict):
+            raise TypeError("scroll must be a dict")
+
+        scroll_id: str = str(scroll_obj["scroll_id"]).strip()
+        if scroll_id in seen_scroll_ids:
+            continue
+
+        seen_scroll_ids.add(scroll_id)
+        scrolls.append(scroll_obj)
+
+    skill_ids: list[str] = []
+    seen_skill_ids: set[str] = set()
+    scroll: dict
+    for scroll in scrolls:
+        skill_id_obj: Any
+        for skill_id_obj in scroll["skills"]:
+            skill_id: str = str(skill_id_obj).strip()
+            if skill_id in seen_skill_ids:
+                continue
+
+            seen_skill_ids.add(skill_id)
+            skill_ids.append(skill_id)
+
+    # 선언된 스킬만 새 단일 데미지 구조로 변환
+    raw_skill_details_obj: Any = import_data["skill_details"]
+    if not isinstance(raw_skill_details_obj, dict):
+        raise TypeError("skill_details must be a dict")
+
+    raw_skill_details: dict[str, Any] = raw_skill_details_obj
+    skill_details: dict[str, dict[str, Any]] = {}
+    skill_id: str
+    for skill_id in skill_ids:
+        raw_detail_obj: Any = raw_skill_details[skill_id]
+        if not isinstance(raw_detail_obj, dict):
+            raise TypeError("skill detail must be a dict")
+
+        raw_detail: dict[str, Any] = raw_detail_obj
+        raw_levels_obj: Any = raw_detail.get("levels", {})
+        if not isinstance(raw_levels_obj, dict):
+            raise TypeError("levels must be a dict")
+
+        levels: dict[str, float] = {}
+        raw_level: Any
+        raw_level_detail: Any
+        for raw_level, raw_level_detail in raw_levels_obj.items():
+            levels[str(raw_level)] = _normalize_custom_skill_level(raw_level_detail)
+
+        # 저장 구조 기준 타겟 수 조회 및 이전 데이터 기본값 적용
+        target_count: int = raw_detail.get("target_count", 1)
+        if type(target_count) is not int:
+            raise ValueError("target_count must be an integer")
+
+        if target_count < 1:
+            raise ValueError("target_count must be greater than 0")
+
+        skill_details[skill_id] = {
+            "name": str(raw_detail["name"]),
+            "cooltime": float(raw_detail["cooltime"]),
+            "target_count": target_count,
+            "levels": levels,
+        }
+
+    normalized_import_data: dict[str, Any] = {
+        "skills": skill_ids,
+        "scrolls": scrolls,
+        "skill_details": skill_details,
+    }
+    return normalized_import_data
+
+
+def _extract_custom_skill_servers(raw: dict[str, Any]) -> tuple[dict[str, dict], bool]:
+    """커스텀 스킬 저장 루트에서 서버별 데이터 추출"""
+
+    # 파일 갱신 필요 여부 추적
+    changed: bool = False
+
+    # 버전 루트가 없는 기존 파일은 전체 객체를 서버 데이터로 간주
+    if "version" in raw and "servers" in raw:
+        raw_version: int = int(raw["version"])
+        if raw_version > CUSTOM_SKILLS_DATA_VERSION:
+            raise ValueError("custom_skills version is newer than supported")
+
+        raw_servers_obj: Any = raw["servers"]
+        if not isinstance(raw_servers_obj, dict):
+            raise TypeError("custom_skills servers must be a dict")
+
+        raw_servers: dict[str, Any] = raw_servers_obj
+        changed = raw_version != CUSTOM_SKILLS_DATA_VERSION
+    else:
+        raw_servers = raw
+        changed = True
+
+    normalized_servers: dict[str, dict] = {}
+    server_id: str
+    import_data_obj: Any
+    for server_id, import_data_obj in raw_servers.items():
+        if not isinstance(server_id, str):
+            raise TypeError("server_id must be a string")
+
+        if not isinstance(import_data_obj, dict):
+            raise TypeError("custom skill import must be a dict")
+
+        normalized_import_data: dict[str, Any] = _normalize_custom_skill_import_data(
+            import_data_obj
+        )
+        if normalized_import_data != import_data_obj:
+            changed = True
+
+        normalized_servers[server_id] = normalized_import_data
+
+    return normalized_servers, changed
+
+
+def _write_custom_skills_data(servers: dict[str, dict]) -> None:
+    """커스텀 스킬 서버 데이터 저장"""
+
+    # 독립 버전 루트에 서버별 데이터를 감싸서 저장
+    os.makedirs(data_path, exist_ok=True)
+    with open(custom_skills_file_dir, "w", encoding="utf-8") as f:
+        json.dump(
+            _build_custom_skills_payload(servers),
+            f,
+            ensure_ascii=False,
+            indent=4,
+        )
 
 
 def read_custom_skills_data() -> dict[str, dict]:
@@ -270,68 +472,21 @@ def read_custom_skills_data() -> dict[str, dict]:
         if not isinstance(raw_obj, dict):
             raise TypeError("custom_skills root must be a dict")
 
-        raw: dict[str, dict] = raw_obj
+        raw: dict[str, Any] = raw_obj
 
-        normalized_raw: dict[str, dict] = {}
-        normalized_any: bool = False
+        normalized_raw: dict[str, dict]
+        changed: bool
+        normalized_raw, changed = _extract_custom_skill_servers(raw)
 
         # 서버별 커스텀 스킬 구조 사전 검증
-        for server_id, import_data in raw.items():
-            if not isinstance(server_id, str):
-                raise TypeError("server_id must be a string")
-
-            if not isinstance(import_data, dict):
-                raise TypeError("custom skill import must be a dict")
-
-            # 중복 무공비급은 첫 항목만 유지
-            scrolls_obj: object = import_data.get("scrolls", [])
-            if not isinstance(scrolls_obj, list):
-                raise TypeError("scrolls must be a list")
-
-            scrolls: list[dict] = []
-            seen_scroll_ids: set[str] = set()
-            scroll_obj: object
-            for scroll_obj in scrolls_obj:
-                if not isinstance(scroll_obj, dict):
-                    raise TypeError("scroll must be a dict")
-
-                scroll_id: str = str(scroll_obj["scroll_id"]).strip()
-                if scroll_id in seen_scroll_ids:
-                    normalized_any = True
-                    continue
-
-                seen_scroll_ids.add(scroll_id)
-                scrolls.append(scroll_obj)
-
-            if len(scrolls) != len(scrolls_obj):
-                skill_ids: list[str] = []
-                seen_skill_ids: set[str] = set()
-                for scroll in scrolls:
-                    for skill_id in scroll["skills"]:
-                        if skill_id in seen_skill_ids:
-                            continue
-
-                        seen_skill_ids.add(skill_id)
-                        skill_ids.append(skill_id)
-
-                import_data = {
-                    "skills": skill_ids,
-                    "scrolls": scrolls,
-                    "skill_details": {
-                        skill_id: import_data["skill_details"][skill_id]
-                        for skill_id in skill_ids
-                    },
-                }
-
+        server_id: str
+        import_data: dict
+        for server_id, import_data in normalized_raw.items():
             CustomSkillImport.from_dict(import_data)
-            normalized_raw[server_id] = import_data
 
-        # 정규화 결과를 원본 파일에 즉시 반영
-        if normalized_any:
-            app_state.ui.has_pending_custom_skill_normalized_notice = True
-            os.makedirs(data_path, exist_ok=True)
-            with open(custom_skills_file_dir, "w", encoding="utf-8") as f:
-                json.dump(normalized_raw, f, ensure_ascii=False, indent=4)
+        # 파일 갱신이 필요하면 즉시 저장
+        if changed:
+            _write_custom_skills_data(normalized_raw)
 
         raw = normalized_raw
     except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
@@ -503,8 +658,7 @@ def remove_custom_scroll(server_id: str, scroll_id: str) -> None:
         data["skill_details"].pop(skill_id, None)
 
     existing[server_id] = data
-    with open(custom_skills_file_dir, "w", encoding="utf-8") as f:
-        json.dump(existing, f, ensure_ascii=False, indent=4)
+    _write_custom_skills_data(existing)
 
 
 def save_custom_skills(server_id: str, skill_import: CustomSkillImport) -> None:
@@ -515,9 +669,7 @@ def save_custom_skills(server_id: str, skill_import: CustomSkillImport) -> None:
 
     existing[server_id] = skill_import.to_dict()
 
-    os.makedirs(data_path, exist_ok=True)
-    with open(custom_skills_file_dir, "w", encoding="utf-8") as f:
-        json.dump(existing, f, ensure_ascii=False, indent=4)
+    _write_custom_skills_data(existing)
 
 
 def sanitize_preset_registry_references(preset: MacroPreset) -> bool:

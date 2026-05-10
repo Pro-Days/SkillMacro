@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import enum
 from dataclasses import dataclass
 from typing import Any
 
@@ -30,74 +29,6 @@ def parse_skill_id(skill_id: str) -> tuple[str, str]:
     return server_id, skill_name
 
 
-class LevelEffectType(enum.Enum):
-    DAMAGE = "damage"
-    HEAL = "heal"
-    BUFF = "buff"
-
-
-@dataclass(frozen=True, slots=True)
-class LevelEffect:
-    """스킬 레벨별 효과 데이터"""
-
-    level: int
-    time: float
-
-    @classmethod
-    def from_dict(cls, level: int, effect_dict: dict[str, Any]) -> LevelEffect:
-        if effect_dict["type"] == LevelEffectType.DAMAGE.value:
-            return DamageEffect(
-                level=level,
-                time=effect_dict["time"],
-                damage=effect_dict["damage"],
-            )
-
-        elif effect_dict["type"] == LevelEffectType.HEAL.value:
-            return HealEffect(
-                level=level,
-                time=effect_dict["time"],
-                heal=effect_dict["heal"],
-            )
-
-        elif effect_dict["type"] == LevelEffectType.BUFF.value:
-            return BuffEffect(
-                level=level,
-                time=effect_dict["time"],
-                stat=effect_dict["stat"],
-                value=effect_dict["value"],
-                duration=effect_dict["duration"],
-            )
-
-        else:
-            raise ValueError(f"Unknown LevelEffectType: {effect_dict['type']}")
-
-
-@dataclass(frozen=True, slots=True)
-class DamageEffect(LevelEffect):
-    """데미지 효과 데이터"""
-
-    damage: float
-    type: LevelEffectType = LevelEffectType.DAMAGE
-
-
-@dataclass(frozen=True, slots=True)
-class HealEffect(LevelEffect):
-    """힐 효과 데이터"""
-
-    heal: float
-    type: LevelEffectType = LevelEffectType.HEAL
-
-
-@dataclass(frozen=True, slots=True)
-class BuffEffect(LevelEffect):
-    """버프 효과 데이터"""
-
-    stat: str
-    value: float
-    duration: float
-    type: LevelEffectType = LevelEffectType.BUFF
-
-
 @dataclass(frozen=True, slots=True)
 class SkillDef:
     """스킬 데이터"""
@@ -106,7 +37,8 @@ class SkillDef:
     server_id: str
     name: str
     cooltime: float
-    levels: dict[int, list[LevelEffect]]
+    target_count: int
+    levels: dict[int, float]
 
     @staticmethod
     def from_detail_dict(
@@ -114,19 +46,17 @@ class SkillDef:
     ) -> "SkillDef":
         """detail dict에서 SkillDef 생성"""
 
-        levels: dict[int, list[LevelEffect]] = {
-            int(level_str): [
-                LevelEffect.from_dict(int(level_str), effect_dict)
-                for effect_dict in effects_list
-            ]
-            for level_str, effects_list in detail["levels"].items()
+        levels: dict[int, float] = {
+            int(level_str): float(level_detail)
+            for level_str, level_detail in detail["levels"].items()
         }
 
         return SkillDef(
             id=skill_id,
             server_id=server_id,
             name=detail["name"],
-            cooltime=detail["cooltime"],
+            cooltime=float(detail["cooltime"]),
+            target_count=int(detail["target_count"]),
             levels=levels,
         )
 
