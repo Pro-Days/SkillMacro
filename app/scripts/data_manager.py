@@ -999,6 +999,8 @@ def copy_preset(source_index: int) -> None:
 
     # 프리셋 상태 전체 딥카피
     copied_preset: MacroPreset = copy.deepcopy(app_state.macro.presets[source_index])
+    for link_skill in copied_preset.link_skills:
+        link_skill.skill_timers.clear()
 
     app_state.macro.presets.append(copied_preset)
 

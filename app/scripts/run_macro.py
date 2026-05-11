@@ -191,7 +191,11 @@ def is_key_held(key: KeySpec, hold_seconds: float) -> bool:
         return False
 
     # 키 입력 시작 이후 경과 시간 확인
-    started_at: float = pressed_key_started_at[key.key_id]
+    started_at: float | None = pressed_key_started_at.get(key.key_id)
+    if started_at is None:
+        pressed_keys.discard(key)
+        return False
+
     return time.perf_counter() - started_at >= hold_seconds
 
 
