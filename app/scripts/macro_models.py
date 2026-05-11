@@ -113,8 +113,8 @@ class MacroSkills:
         refs: list[EquippedSkillRef] = []
 
         # 서버가 허용하는 전체 슬롯 범위를 순회하며 배치 위치 수집
-        for scroll_index in range(server_spec.scroll_slot_count):
-            for line_index in range(server_spec.skill_line_count):
+        for line_index in range(server_spec.skill_line_count):
+            for scroll_index in range(server_spec.scroll_slot_count):
 
                 skill_ref: EquippedSkillRef = EquippedSkillRef(
                     scroll_index=scroll_index,
