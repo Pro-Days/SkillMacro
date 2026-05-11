@@ -362,7 +362,7 @@ class GeneralSettings(QFrame):
             func1=self.on_user_delay_clicked,
         )
 
-        # 쿨타임 감소
+        # 스킬속도
         self.cooltime_setting = self.SettingItem(
             title=config.specs.COOLTIME_REDUCTION.label,
             tooltip=(
@@ -378,20 +378,6 @@ class GeneralSettings(QFrame):
         )
 
         # 시작키 설정
-        self.remember_state_setting = self.SettingItem(
-            title="이전 상태 기억하기",
-            tooltip=(
-                "매크로를 다시 시작할 때 마지막 중지 시점의 스킬 쿨타임을 이어서 계산합니다.\n"
-                "매크로 중지 이후 설정이 바뀌면 기억된 상태는 사용하지 않습니다."
-            ),
-            btn0_text="기억 안함",
-            btn0_enabled=True,
-            btn1_text="기억함",
-            btn1_enabled=False,
-            func0=self.on_forget_previous_state_clicked,
-            func1=self.on_remember_previous_state_clicked,
-        )
-
         self.start_key_setting = self.SettingItem(
             title="시작키 설정",
             tooltip=(
@@ -406,20 +392,7 @@ class GeneralSettings(QFrame):
             func1=self.on_user_start_key_clicked,
         )
 
-        self.key_hold_setting = self.SettingItem(
-            title=config.specs.KEY_HOLD_SECONDS.label,
-            tooltip=(
-                "시작키와 연계스킬 시작키를 몇 초 이상 눌러야 입력으로 처리할지 설정합니다.\n"
-                "0초로 설정하면 키를 누르는 즉시 입력됩니다."
-            ),
-            btn0_text=f"기본: {config.specs.KEY_HOLD_SECONDS.default:g}초",
-            btn0_enabled=True,
-            btn1_text="",
-            btn1_enabled=False,
-            func0=self.on_default_key_hold_clicked,
-            func1=self.on_user_key_hold_clicked,
-        )
-
+        # 스왑키 설정
         self.swap_key_setting = self.SettingItem(
             title="스왑키 설정",
             tooltip=(
@@ -432,21 +405,6 @@ class GeneralSettings(QFrame):
             btn1_enabled=False,
             func0=self.on_default_swap_key_clicked,
             func1=self.on_user_swap_key_clicked,
-        )
-
-        # 스킬 사용 후 1번 줄 복귀
-        self.always_return_first_line_setting = self.SettingItem(
-            title="1번 줄 자동 복귀",
-            tooltip=(
-                "매번 스킬을 사용한 후 자동으로 1번 줄로 돌아옵니다.\n"
-                "2번 줄 스킬을 사용하면 스왑→사용→스왑으로 1번 줄에 계속 머무릅니다."
-            ),
-            btn0_text="복귀 안함",
-            btn0_enabled=True,
-            btn1_text="복귀함",
-            btn1_enabled=False,
-            func0=self.on_always_return_first_line_off_clicked,
-            func1=self.on_always_return_first_line_on_clicked,
         )
 
         # 마우스 클릭
@@ -464,18 +422,63 @@ class GeneralSettings(QFrame):
             func1=self.on_mouse_type1_clicked,
         )
 
+        # 키 입력 유지
+        self.key_hold_setting = self.SettingItem(
+            title=config.specs.KEY_HOLD_SECONDS.label,
+            tooltip=(
+                "시작키와 연계스킬 시작키를 몇 초 이상 눌러야 입력으로 처리할지 설정합니다.\n"
+                "0초로 설정하면 키를 누르는 즉시 입력됩니다."
+            ),
+            btn0_text=f"기본: {config.specs.KEY_HOLD_SECONDS.default:g}초",
+            btn0_enabled=True,
+            btn1_text="",
+            btn1_enabled=False,
+            func0=self.on_default_key_hold_clicked,
+            func1=self.on_user_key_hold_clicked,
+        )
+
+        # 이전 상태 기억하기
+        self.remember_state_setting = self.SettingItem(
+            title="이전 상태 기억하기",
+            tooltip=(
+                "매크로를 다시 시작할 때 마지막 중지 시점의 스킬 쿨타임을 이어서 계산합니다.\n"
+                "매크로 중지 이후 설정이 바뀌면 기억된 상태는 사용하지 않습니다."
+            ),
+            btn0_text="기억 안함",
+            btn0_enabled=True,
+            btn1_text="기억함",
+            btn1_enabled=False,
+            func0=self.on_forget_previous_state_clicked,
+            func1=self.on_remember_previous_state_clicked,
+        )
+
+        # 1번 줄 자동 복귀
+        self.always_return_first_line_setting = self.SettingItem(
+            title="1번 줄 자동 복귀",
+            tooltip=(
+                "매번 스킬을 사용한 후 자동으로 1번 줄로 돌아옵니다.\n"
+                "2번 줄 스킬을 사용하면 스왑→사용→스왑으로 1번 줄에 계속 머무릅니다."
+            ),
+            btn0_text="복귀 안함",
+            btn0_enabled=True,
+            btn1_text="복귀함",
+            btn1_enabled=False,
+            func0=self.on_always_return_first_line_off_clicked,
+            func1=self.on_always_return_first_line_on_clicked,
+        )
+
         layout = QVBoxLayout()
 
         layout.addWidget(self.title)
         layout.addWidget(self.server_job_setting)
         layout.addWidget(self.delay_setting)
         layout.addWidget(self.cooltime_setting)
-        layout.addWidget(self.remember_state_setting)
         layout.addWidget(self.start_key_setting)
-        layout.addWidget(self.key_hold_setting)
         layout.addWidget(self.swap_key_setting)
-        layout.addWidget(self.always_return_first_line_setting)
         layout.addWidget(self.click_setting)
+        layout.addWidget(self.key_hold_setting)
+        layout.addWidget(self.remember_state_setting)
+        layout.addWidget(self.always_return_first_line_setting)
 
         layout.setContentsMargins(10, 20, 10, 10)
         layout.setSpacing(30)
@@ -508,11 +511,6 @@ class GeneralSettings(QFrame):
         )
 
         # 시작키 설정
-        self.remember_state_setting.set_buttons_enabled(
-            not preset.settings.remember_previous_state,
-            preset.settings.remember_previous_state,
-        )
-
         custom_start_key: str = preset.settings.custom_start_key
         use_custom_start_key: bool = preset.settings.use_custom_start_key
         self.start_key_setting.set_right_button_text(
@@ -520,14 +518,6 @@ class GeneralSettings(QFrame):
         )
         self.start_key_setting.set_buttons_enabled(
             not use_custom_start_key, use_custom_start_key
-        )
-
-        # 키 입력 유지
-        custom_key_hold_seconds: float = preset.settings.custom_key_hold_seconds
-        use_custom_key_hold_seconds: bool = preset.settings.use_custom_key_hold_seconds
-        self.key_hold_setting.set_right_button_text(f"{custom_key_hold_seconds:g}초")
-        self.key_hold_setting.set_buttons_enabled(
-            not use_custom_key_hold_seconds, use_custom_key_hold_seconds
         )
 
         # 스왑키 설정
@@ -540,16 +530,30 @@ class GeneralSettings(QFrame):
             not use_custom_swap_key, use_custom_swap_key
         )
 
-        # 1번 줄 자동 복귀
-        self.always_return_first_line_setting.set_buttons_enabled(
-            not preset.settings.always_return_to_first_line,
-            preset.settings.always_return_to_first_line,
-        )
-
         # 마우스 클릭
         self.click_setting.set_buttons_enabled(
             preset.settings.use_default_attack == 0,
             preset.settings.use_default_attack == 1,
+        )
+
+        # 키 입력 유지
+        custom_key_hold_seconds: float = preset.settings.custom_key_hold_seconds
+        use_custom_key_hold_seconds: bool = preset.settings.use_custom_key_hold_seconds
+        self.key_hold_setting.set_right_button_text(f"{custom_key_hold_seconds:g}초")
+        self.key_hold_setting.set_buttons_enabled(
+            not use_custom_key_hold_seconds, use_custom_key_hold_seconds
+        )
+
+        # 이전 상태 기억하기
+        self.remember_state_setting.set_buttons_enabled(
+            not preset.settings.remember_previous_state,
+            preset.settings.remember_previous_state,
+        )
+
+        # 1번 줄 자동 복귀
+        self.always_return_first_line_setting.set_buttons_enabled(
+            not preset.settings.always_return_to_first_line,
+            preset.settings.always_return_to_first_line,
         )
 
     def on_servers_clicked(self) -> None:
