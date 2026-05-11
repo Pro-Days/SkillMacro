@@ -500,6 +500,18 @@ QPushButton#generalSettingBtn[active=false] {{ color: #999999; }}
 
 QLabel#generalSettingTitle {{ border: 0px solid black; border-radius: 10px; }}
 
+QPushButton#infoBtn {{
+    background-color: #E5E7EB;
+    color: #4B5563;
+    border: 1px solid #C9CED6;
+    border-radius: 8px;
+    padding: 0px;
+}}
+QPushButton#infoBtn:hover {{
+    background-color: #D1D5DB;
+    color: #1F2937;
+}}
+
 
 /* ────────────────── CustomLineEdit ────────────────── */
 QLineEdit {{
@@ -695,6 +707,21 @@ QLabel#hoverCardTitle {{
 }}
 QLabel#hoverCardBody {{
     color: #D9D5E3;
+    background-color: transparent;
+    border: 0px;
+}}
+QFrame#hoverCardContainer[variant="info"] {{
+    background-color: #FFFFFF;
+    border: 1px solid #D6E0EB;
+    border-radius: 10px;
+}}
+QLabel#hoverCardTitle[variant="info"] {{
+    color: #111111;
+    background-color: transparent;
+    border: 0px;
+}}
+QLabel#hoverCardBody[variant="info"] {{
+    color: #333333;
     background-color: transparent;
     border: 0px;
 }}
@@ -1874,6 +1901,18 @@ QPushButton#generalSettingBtn[active=true]  {{ color: #E8E8F0; }}
 QPushButton#generalSettingBtn[active=false] {{ color: #555570; }}
 
 QLabel#generalSettingTitle {{ border: 0px solid black; border-radius: 10px; }}
+
+QPushButton#infoBtn {{
+    background-color: #2A2A3F;
+    color: #FFFFFF;
+    border: 1px solid #3A3A52;
+    border-radius: 8px;
+    padding: 0px;
+}}
+QPushButton#infoBtn:hover {{
+    background-color: #363650;
+    color: #E8E8F0;
+}}
 
 
 /* ────────────────── CustomLineEdit ────────────────── */

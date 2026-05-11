@@ -184,12 +184,23 @@ class HoverCardLine:
     point_size: int = 10
 
 
+class HoverCardVariant(str, Enum):
+    """호버 카드 외형 변형"""
+
+    # 일반 다크 카드 (스킬/무공비급 정보용)
+    DEFAULT = "default"
+
+    # 설명용 라이트 카드 (i 버튼용)
+    INFO = "info"
+
+
 @dataclass(frozen=True)
 class HoverCardData:
     """호버 카드 전체 데이터"""
 
     title: str
     lines: tuple[HoverCardLine, ...]
+    variant: HoverCardVariant = HoverCardVariant.DEFAULT
 
 
 HoverCardSupplier = Callable[[], HoverCardData | None]
@@ -243,7 +254,7 @@ class HoverCardContent(QFrame):
         self._body_label.setFont(CustomFont(10))
         self._body_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self._body_label.setTextFormat(Qt.TextFormat.RichText)
-        self._body_label.setWordWrap(True)
+        # self._body_label.setWordWrap(True)
         self._layout.addWidget(self._body_label)
 
     def set_data(self, data: HoverCardData) -> None:
@@ -251,6 +262,12 @@ class HoverCardContent(QFrame):
 
         # 제목 텍스트 즉시 갱신
         self._title_label.setText(data.title)
+
+        # 라벨 색상 분기용 variant property 동기화
+        for label in (self._title_label, self._body_label):
+            label.setProperty("variant", data.variant.value)
+            label.style().unpolish(label)  # type: ignore
+            label.style().polish(label)  # type: ignore
 
         # 색상별 줄바꿈 표현을 유지하기 위해 HTML 본문 조합
         body_lines: list[str] = []
@@ -312,6 +329,11 @@ class HoverCardHost(QFrame):
 
     def show_at_cursor(self, data: HoverCardData, global_pos: QPoint) -> None:
         """지정된 마우스 위치 근처에 호버 카드 표시"""
+
+        # 배경/테두리 분기용 variant property 동기화
+        self._container.setProperty("variant", data.variant.value)
+        self._container.style().unpolish(self._container)  # type: ignore
+        self._container.style().polish(self._container)  # type: ignore
 
         # 최신 카드 내용 반영 및 크기 계산
         self._content.set_data(data)

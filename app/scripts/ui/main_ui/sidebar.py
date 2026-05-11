@@ -49,6 +49,9 @@ from app.scripts.registry.resource_registry import (
 from app.scripts.registry.skill_registry import CUSTOM_SKILL_PREFIX, ScrollDef, SkillDef
 from app.scripts.ui.popup import (
     CustomSkillAddDialog,
+    HoverCardData,
+    HoverCardLine,
+    HoverCardVariant,
     NoticeKind,
     PopupKind,
     PopupManager,
@@ -104,7 +107,7 @@ SKILL_SETTING_OPTION_DEFS: tuple[SkillSettingOptionDef, ...] = (
         key="sole",
         title="단독 사용",
         tooltip=(
-            "연계스킬을 대기할 때 다른 스킬들이 준비되는 것을 기다리지 않고 우선적으로 사용할 지 결정합니다.\n"
+            "자동 연계스킬을 대기할 때 다른 스킬들이 준비되는 것을 기다리지 않고 우선적으로 사용할 지 결정합니다.\n"
             "연계스킬 내에서 다른 스킬보다 너무 빠르게 준비되는 스킬은 사용을 해제하시는 것을 추천드립니다.\n"
             "사용여부가 활성화되지 않았다면 단독으로 사용되지 않습니다."
         ),
@@ -114,7 +117,6 @@ SKILL_SETTING_OPTION_DEFS: tuple[SkillSettingOptionDef, ...] = (
         title="우선 순위",
         tooltip=(
             "매크로가 작동 중일 때 여러 스킬이 준비되었더라도 우선순위가 더 높은(숫자가 낮은) 스킬을 먼저 사용합니다.\n"
-            "우선순위를 설정하지 않은 스킬들은 준비된 시간 순서대로 사용합니다.\n"
             "먼저 써야 하는 핵심 스킬의 우선순위를 높이는 것을 추천합니다.\n"
             "연계스킬은 우선순위가 적용되지 않습니다."
         ),
@@ -126,6 +128,47 @@ SKILL_SETTING_OPTION_DEFS: tuple[SkillSettingOptionDef, ...] = (
 SKILL_SETTING_OPTION_MAP: dict[
     Literal["usage", "sole", "priority"], SkillSettingOptionDef
 ] = {option.key: option for option in SKILL_SETTING_OPTION_DEFS}
+
+
+def _make_info_button(
+    popup_manager: PopupManager,
+    title: str,
+    description: str,
+) -> QPushButton:
+    """설정 항목 옆에 표시되는 설명용 i 버튼 생성"""
+
+    # 버튼 외형 및 입력 동작 설정
+    btn: QPushButton = QPushButton("i")
+    btn.setObjectName("infoBtn")
+    btn.setFont(CustomFont(9, bold=True))
+    btn.setFixedSize(16, 16)
+    btn.setCursor(Qt.CursorShape.PointingHandCursor)
+    btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+
+    # 줄바꿈 단위로 분리한 본문 원본 보관
+    raw_lines: tuple[str, ...] = tuple(
+        line for line in description.split("\n") if line.strip()
+    )
+
+    def supply() -> HoverCardData:
+        """현재 테마에 맞춰 호버 카드 데이터 구성"""
+
+        # 라이트는 흰 배경용 어두운 글자, 다크는 default 본문과 동일한 밝은 글자
+        body_color: str = "#C0BCDC" if theme_manager.is_dark else "#333333"
+        lines: tuple[HoverCardLine, ...] = tuple(
+            HoverCardLine(line, color=body_color) for line in raw_lines
+        )
+
+        # 다크 모드에서는 default 스타일 그대로 적용을 위한 variant 분기
+        variant: HoverCardVariant = (
+            HoverCardVariant.DEFAULT
+            if theme_manager.is_dark
+            else HoverCardVariant.INFO
+        )
+        return HoverCardData(title=title, lines=lines, variant=variant)
+
+    popup_manager.bind_hover_card(btn, supply)
+    return btn
 
 
 class Sidebar(QFrame):
@@ -335,6 +378,7 @@ class GeneralSettings(QFrame):
 
         # 서버 - 직업
         self.server_job_setting = self.SettingItem(
+            popup_manager=self.popup_manager,
             title="서버 - 직업",
             tooltip="서버와 직업을 선택합니다.",
             btn0_text="",
@@ -347,12 +391,13 @@ class GeneralSettings(QFrame):
 
         # 딜레이
         self.delay_setting = self.SettingItem(
+            popup_manager=self.popup_manager,
             title="딜레이",
             tooltip=(
                 "스킬을 사용하기 위한 키보드 입력, 마우스 클릭과 같은 동작 사이의 간격을 설정합니다.\n"
                 "단위는 밀리초(millisecond, 0.001초)를 사용합니다.\n"
                 "입력 가능한 딜레이의 범위는 50~1000입니다.\n"
-                "딜레이를 계속해서 조절하며 1분간 매크로를 실행했을 때 놓치는 스킬이 없도록 설정해주세요."
+                "딜레이를 50씩 조절하며 1분간 매크로를 실행했을 때 놓치는 스킬이 없도록 설정해주세요."
             ),
             btn0_text=f"기본: {config.specs.DELAY.default}",
             btn0_enabled=True,
@@ -364,6 +409,7 @@ class GeneralSettings(QFrame):
 
         # 스킬속도
         self.cooltime_setting = self.SettingItem(
+            popup_manager=self.popup_manager,
             title=config.specs.COOLTIME_REDUCTION.label,
             tooltip=(
                 f"캐릭터의 {config.specs.COOLTIME_REDUCTION.label} 스탯입니다.\n"
@@ -379,11 +425,9 @@ class GeneralSettings(QFrame):
 
         # 시작키 설정
         self.start_key_setting = self.SettingItem(
+            popup_manager=self.popup_manager,
             title="시작키 설정",
-            tooltip=(
-                "매크로를 시작하기 위한 키입니다.\n"
-                "쓰지 않는 키로 설정한 후, 로지텍 G 허브와 같은 프로그램으로 마우스의 버튼에 매핑하는 것을 추천합니다."
-            ),
+            tooltip=("매크로를 시작하기 위한 키입니다."),
             btn0_text=f"기본: {config.specs.DEFAULT_START_KEY.display}",
             btn0_enabled=True,
             btn1_text="",
@@ -394,6 +438,7 @@ class GeneralSettings(QFrame):
 
         # 스왑키 설정
         self.swap_key_setting = self.SettingItem(
+            popup_manager=self.popup_manager,
             title="스왑키 설정",
             tooltip=(
                 "2줄 스킬을 사용하기 전에 입력하는 스킬 줄 전환 키입니다.\n"
@@ -409,6 +454,7 @@ class GeneralSettings(QFrame):
 
         # 마우스 클릭
         self.click_setting = self.SettingItem(
+            popup_manager=self.popup_manager,
             title="마우스 클릭",
             tooltip=(
                 "평타 사용 안함: 일반공격을 사용하지 않습니다.\n"
@@ -424,10 +470,12 @@ class GeneralSettings(QFrame):
 
         # 키 입력 유지
         self.key_hold_setting = self.SettingItem(
+            popup_manager=self.popup_manager,
             title=config.specs.KEY_HOLD_SECONDS.label,
             tooltip=(
                 "시작키와 연계스킬 시작키를 몇 초 이상 눌러야 입력으로 처리할지 설정합니다.\n"
-                "0초로 설정하면 키를 누르는 즉시 입력됩니다."
+                "0초로 설정하면 키를 누르는 즉시 입력됩니다.\n"
+                "0.2초 정도로 설정하면 채팅을 칠 때 매크로가 사용되는 것을 방지할 수 있습니다."
             ),
             btn0_text=f"기본: {config.specs.KEY_HOLD_SECONDS.default:g}초",
             btn0_enabled=True,
@@ -439,6 +487,7 @@ class GeneralSettings(QFrame):
 
         # 이전 상태 기억하기
         self.remember_state_setting = self.SettingItem(
+            popup_manager=self.popup_manager,
             title="이전 상태 기억하기",
             tooltip=(
                 "매크로를 다시 시작할 때 마지막 중지 시점의 스킬 쿨타임을 이어서 계산합니다.\n"
@@ -454,6 +503,7 @@ class GeneralSettings(QFrame):
 
         # 1번 줄 자동 복귀
         self.always_return_first_line_setting = self.SettingItem(
+            popup_manager=self.popup_manager,
             title="1번 줄 자동 복귀",
             tooltip=(
                 "매번 스킬을 사용한 후 자동으로 1번 줄로 돌아옵니다.\n"
@@ -1016,6 +1066,7 @@ class GeneralSettings(QFrame):
     class SettingItem(QFrame):
         def __init__(
             self,
+            popup_manager: PopupManager,
             title: str,
             tooltip: str,
             btn0_text: str,
@@ -1032,7 +1083,21 @@ class GeneralSettings(QFrame):
             self.title.setFont(CustomFont(16))
 
             self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.title.setToolTip(tooltip)
+
+            self.info_button: QPushButton = _make_info_button(
+                popup_manager, title, tooltip
+            )
+
+            # title 시각적 중심 보존용 좌측 더미 spacer 포함 행 구성
+            title_row: QHBoxLayout = QHBoxLayout()
+            title_row.setContentsMargins(0, 0, 0, 0)
+            title_row.setSpacing(0)
+            title_row.addStretch(1)
+            title_row.addSpacing(22)
+            title_row.addWidget(self.title)
+            title_row.addSpacing(6)
+            title_row.addWidget(self.info_button, 0, Qt.AlignmentFlag.AlignVCenter)
+            title_row.addStretch(1)
 
             self.left_button = QPushButton(btn0_text)
             self.left_button.setObjectName("generalSettingBtn")
@@ -1057,7 +1122,7 @@ class GeneralSettings(QFrame):
             self.right_button.setCursor(Qt.CursorShape.PointingHandCursor)
 
             layout = QGridLayout()
-            layout.addWidget(self.title, 0, 0, 1, 2)
+            layout.addLayout(title_row, 0, 0, 1, 2)
             layout.addWidget(self.left_button, 1, 0)
             layout.addWidget(self.right_button, 1, 1)
             layout.setContentsMargins(0, 0, 0, 0)
@@ -1274,7 +1339,19 @@ class SkillSettings(QFrame):
         option_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         option_title.setFont(CustomFont(11))
         option_title.setWordWrap(True)
-        option_title.setToolTip(tooltip)
+
+        info_button: QPushButton = _make_info_button(self.popup_manager, title, tooltip)
+
+        # title 시각적 중심 보존용 좌측 더미 spacer 포함 행 구성
+        title_row: QHBoxLayout = QHBoxLayout()
+        title_row.setContentsMargins(0, 0, 0, 0)
+        title_row.setSpacing(0)
+        title_row.addStretch(1)
+        title_row.addSpacing(20)
+        title_row.addWidget(option_title)
+        title_row.addSpacing(4)
+        title_row.addWidget(info_button, 0, Qt.AlignmentFlag.AlignVCenter)
+        title_row.addStretch(1)
 
         # 옵션 버튼 정렬 행 구성
         button_row: QHBoxLayout = QHBoxLayout()
@@ -1288,13 +1365,12 @@ class SkillSettings(QFrame):
         option_layout: QVBoxLayout = QVBoxLayout()
         option_layout.setContentsMargins(8, 8, 8, 8)
         option_layout.setSpacing(6)
-        option_layout.addWidget(option_title)
+        option_layout.addLayout(title_row)
         option_layout.addLayout(button_row)
 
         # 옵션 카드 프레임 구성
         option_frame: QFrame = QFrame()
         option_frame.setObjectName("skillOptionCard")
-        option_frame.setToolTip(tooltip)
         option_frame.setLayout(option_layout)
         return option_frame
 
@@ -1378,7 +1454,6 @@ class SkillSettings(QFrame):
             usage_btn.setObjectName("checkBtn")
             usage_btn.setIconSize(QSize(40, 40))
             usage_btn.setFixedSize(30, 30)
-            usage_btn.setToolTip(SKILL_SETTING_OPTION_MAP["usage"].tooltip)
             usage_btn.clicked.connect(
                 partial(lambda x: self.change_skill_usage(x), idx)
             )
@@ -1389,7 +1464,6 @@ class SkillSettings(QFrame):
             sole_btn.setObjectName("checkBtn")
             sole_btn.setIconSize(QSize(40, 40))
             sole_btn.setFixedSize(30, 30)
-            sole_btn.setToolTip(SKILL_SETTING_OPTION_MAP["sole"].tooltip)
             sole_btn.clicked.connect(partial(lambda x: self.change_use_sole(x), idx))
             sole_btn.setCursor(Qt.CursorShape.PointingHandCursor)
 
@@ -1398,7 +1472,6 @@ class SkillSettings(QFrame):
             priority_btn.setFont(CustomFont(12))
             priority_btn.setObjectName("priorityBtn")
             priority_btn.setFixedSize(52, 30)
-            priority_btn.setToolTip(SKILL_SETTING_OPTION_MAP["priority"].tooltip)
             priority_btn.clicked.connect(
                 partial(lambda x: self.change_priority(x), idx)
             )
@@ -2062,6 +2135,7 @@ class LinkSkillEditor(QFrame):
         layout.addWidget(self.title, 0, Qt.AlignmentFlag.AlignCenter)
 
         self.type_setting = self.SettingItem(
+            popup_manager=self.popup_manager,
             title="연계 유형",
             tooltip=(
                 "자동: 매크로가 실행 중일 때 자동으로 연계 스킬을 사용합니다. 자동 연계스킬에 사용되는 스킬은 다른 자동 연계스킬에 사용될 수 없습니다.\n"
@@ -2077,6 +2151,7 @@ class LinkSkillEditor(QFrame):
         layout.addWidget(self.type_setting)
 
         self.key_setting = self.SettingItem(
+            popup_manager=self.popup_manager,
             title="단축키",
             tooltip=(
                 "매크로가 실행 중이지 않을 때 해당 연계스킬을 작동시킬 단축키입니다."
@@ -2091,11 +2166,11 @@ class LinkSkillEditor(QFrame):
         layout.addWidget(self.key_setting)
 
         self.remember_state_setting = self.SettingItem(
+            popup_manager=self.popup_manager,
             title="쿨타임 동기화",
             tooltip=(
-                "켜면 단축키로 연계스킬을 작동시킬 때 쿨타임이 준비된 스킬만 사용하고,\n"
-                "사용한 스킬의 쿨타임을 기록합니다.\n"
-                "매크로 자동 연계 동작에는 영향을 주지 않습니다."
+                "단축키로 연계스킬을 작동시킬 때 쿨타임이 준비된 스킬만 사용하고, 사용한 스킬의 쿨타임을 기록합니다.\n"
+                "쿨타임은 연계스킬마다 별도로 기록됩니다."
             ),
             btn0_text="끄기",
             btn1_text="켜기",
@@ -2558,6 +2633,7 @@ class LinkSkillEditor(QFrame):
     class SettingItem(QFrame):
         def __init__(
             self,
+            popup_manager: PopupManager,
             title: str,
             tooltip: str,
             btn0_text: str,
@@ -2570,8 +2646,11 @@ class LinkSkillEditor(QFrame):
             super().__init__()
 
             self.title = QLabel(title)
-            self.title.setToolTip(tooltip)
             self.title.setFont(CustomFont(12))
+
+            self.info_button: QPushButton = _make_info_button(
+                popup_manager, title, tooltip
+            )
 
             self.left_button = QPushButton(btn0_text)
             self.left_button.setObjectName("settingItemBtn")
@@ -2589,6 +2668,7 @@ class LinkSkillEditor(QFrame):
 
             layout = QHBoxLayout()
             layout.addWidget(self.title)
+            layout.addWidget(self.info_button, 0, Qt.AlignmentFlag.AlignVCenter)
             layout.addStretch(1)
             layout.addWidget(self.left_button)
             layout.addWidget(self.right_button)
