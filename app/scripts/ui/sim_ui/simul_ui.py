@@ -182,9 +182,9 @@ class _CalculatorResultsCacheKey:
     calculator_input_data: str
     equipped_scrolls: tuple[str, ...]
     placed_skills: tuple[str, ...]
-    skill_definitions: tuple[tuple[str, tuple[float, ...], float, int], ...]
+    skill_definitions: tuple[tuple[str, tuple[tuple[int, float], ...], float, int], ...]
     scroll_levels: tuple[tuple[str, int], ...]
-    usage_settings: tuple[tuple[str, tuple[bool, bool, bool, int]], ...]
+    usage_settings: tuple[tuple[str, tuple[bool, bool, int]], ...]
     link_skills: tuple[tuple[str, str, str | None, tuple[str, ...]], ...]
     custom_formulas: tuple[tuple[str, str, str], ...]
 
@@ -446,13 +446,16 @@ class SimUI:
             )
             skill_ids.update(scroll_def.skills)
 
-        skill_definition_rows: list[tuple[str, tuple[float, ...], float, int]] = []
+        skill_definition_rows: list[
+            tuple[str, tuple[tuple[int, float], ...], float, int]
+        ] = []
         for skill_id in sorted(skill_ids):
             skill_def: SkillDef = app_state.macro.current_server.skill_registry.get(
                 skill_id
             )
-            skill_levels: tuple[float, ...] = tuple(
-                float(level_value) for level_value in skill_def.levels
+            skill_levels: tuple[tuple[int, float], ...] = tuple(
+                (int(level), float(damage))
+                for level, damage in sorted(skill_def.levels.items())
             )
             skill_definition_rows.append(
                 (
@@ -464,7 +467,7 @@ class SimUI:
             )
 
         skill_definitions: tuple[
-            tuple[str, tuple[float, ...], float, int],
+            tuple[str, tuple[tuple[int, float], ...], float, int],
             ...,
         ] = tuple(skill_definition_rows)
 
