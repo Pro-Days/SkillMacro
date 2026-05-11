@@ -1834,6 +1834,7 @@ class LinkSkillSettings(QFrame):
             key_type=LinkKeyType.OFF,
             key=None,
             skills=[],
+            remember_state=False,
         )
 
         self.edit(-1, draft=data)
@@ -2085,6 +2086,22 @@ class LinkSkillEditor(QFrame):
         )
         layout.addWidget(self.key_setting)
 
+        self.remember_state_setting = self.SettingItem(
+            title="쿨타임 동기화",
+            tooltip=(
+                "켜면 단축키로 연계스킬을 작동시킬 때 쿨타임이 준비된 스킬만 사용하고,\n"
+                "사용한 스킬의 쿨타임을 기록합니다.\n"
+                "매크로 자동 연계 동작에는 영향을 주지 않습니다."
+            ),
+            btn0_text="끄기",
+            btn1_text="켜기",
+            is_btn0_enabled=True,
+            is_btn1_enabled=False,
+            func0=self.disable_remember_state,
+            func1=self.enable_remember_state,
+        )
+        layout.addWidget(self.remember_state_setting)
+
         # 연계 스킬 구성 목록
         self._skills_container = QWidget(self)
         self._skills_layout = QVBoxLayout(self._skills_container)
@@ -2158,6 +2175,12 @@ class LinkSkillEditor(QFrame):
         self.key_setting.set_right_button_text(key_text)
         self.key_setting.set_buttons_enabled(
             key_type == LinkKeyType.OFF, key_type == LinkKeyType.ON
+        )
+
+        # 쿨타임 동기화 버튼
+        remember_state: bool = self.data.remember_state
+        self.remember_state_setting.set_buttons_enabled(
+            not remember_state, remember_state
         )
 
     def _get_all_skill_ids(self) -> list[str]:
@@ -2282,6 +2305,28 @@ class LinkSkillEditor(QFrame):
         self.popup_manager.close_popup()
 
         self.data.clear_key()
+        self._after_data_changed(update_skills=False)
+
+    def enable_remember_state(self) -> None:
+        """쿨타임 동기화 켜기"""
+
+        self.popup_manager.close_popup()
+
+        if self.data.remember_state:
+            return
+
+        self.data.set_remember_state(True)
+        self._after_data_changed(update_skills=False)
+
+    def disable_remember_state(self) -> None:
+        """쿨타임 동기화 끄기"""
+
+        self.popup_manager.close_popup()
+
+        if not self.data.remember_state:
+            return
+
+        self.data.set_remember_state(False)
         self._after_data_changed(update_skills=False)
 
     def on_key_btn_clicked(self) -> None:

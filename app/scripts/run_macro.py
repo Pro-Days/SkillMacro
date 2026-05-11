@@ -673,6 +673,28 @@ def use_skill(run_id: int) -> bool:
     return True
 
 
+def _collect_ready_link_skill_ids(link_skill: LinkSkill) -> list[str]:
+    """연계스킬 타이머 기준 사용 가능 스킬 ID 목록 반환"""
+
+    # 연계스킬 자체 발동 이력 추적
+    now: float = time.perf_counter()
+    cooltime_reduction: float = app_state.macro.current_cooltime_reduction
+    skill_registry = app_state.macro.current_server.skill_registry
+
+    ready_skill_ids: list[str] = []
+    for skill_id in link_skill.skills:
+        cooltime: float = (
+            skill_registry.get(skill_id).cooltime * (100 - cooltime_reduction) / 100.0
+        )
+        started_at: float | None = link_skill.skill_timers.get(skill_id)
+
+        # 미사용이거나 쿨타임 경과 시 사용 가능 후보로 포함
+        if started_at is None or (now - started_at) >= cooltime:
+            ready_skill_ids.append(skill_id)
+
+    return ready_skill_ids
+
+
 def use_link_skill(link_skill: LinkSkill, run_id: int) -> None:
     """연계스킬 사용 함수"""
 
@@ -685,9 +707,19 @@ def use_link_skill(link_skill: LinkSkill, run_id: int) -> None:
     if not all(skill_id in skill_ref_map for skill_id in link_skill.skills):
         return
 
+    # 쿨타임 동기화 옵션 시 연계스킬 타이머 기준으로 필터링
+    if link_skill.remember_state:
+        skills_to_press: list[str] = _collect_ready_link_skill_ids(link_skill)
+    else:
+        skills_to_press = list(link_skill.skills)
+
+    # 입력할 스킬이 없으면 상태를 건드리지 않고 종료
+    if not skills_to_press:
+        return
+
     # 연계 입력 전체 구간 동안 평타 클릭 차단
     link_skill_pause_seconds: float = (
-        len(link_skill.skills) * app_state.macro.current_delay * 0.001
+        len(skills_to_press) * app_state.macro.current_delay * 0.001
     ) + ATTACK_PAUSE_BUFFER_SECONDS
     _pause_attack_for(link_skill_pause_seconds)
 
@@ -697,8 +729,12 @@ def use_link_skill(link_skill: LinkSkill, run_id: int) -> None:
     kbd_controller: keyboard.Controller = keyboard.Controller()
 
     # 연계에 등록된 순서대로 스킬 입력 진행
-    for skill_id in link_skill.skills:
+    for skill_id in skills_to_press:
         skill_ref: EquippedSkillRef = skill_ref_map[skill_id]
+
+        # 쿨타임 동기화 옵션 시 입력 직전 연계 자체 타이머 갱신
+        if link_skill.remember_state:
+            link_skill.skill_timers[skill_id] = time.perf_counter()
 
         _press_skill_keys(
             kbd_controller,

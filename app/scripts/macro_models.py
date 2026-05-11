@@ -301,17 +301,24 @@ class LinkSkill:
     key: str | None = None
     # 연계스킬 스킬 ID 목록
     skills: list[str] = field(default_factory=list)
+    # 수동 발동 시 자체 쿨타임 추적 여부
+    remember_state: bool = False
+    # 런타임 발동 이력 (skill_id -> 마지막 사용 perf_counter 시각)
+    skill_timers: dict[str, float] = field(
+        default_factory=dict, init=False, repr=False, compare=False
+    )
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> LinkSkill:
         """딕셔너리로부터 LinkSkill 생성"""
 
-        # todo: snake case로 변경
+        # todo: useType, keyType도 snake case로 변경
         return cls(
             use_type=LinkUseType(data["useType"]),
             key_type=LinkKeyType(data["keyType"]),
             key=data["key"] if data["key"] is not None else None,
             skills=data["skills"].copy(),
+            remember_state=data["remember_state"],
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -322,6 +329,7 @@ class LinkSkill:
             "keyType": self.key_type.value,
             "key": self.key,
             "skills": self.skills.copy(),
+            "remember_state": self.remember_state,
         }
 
     def set_manual(self) -> None:
@@ -345,6 +353,11 @@ class LinkSkill:
 
         self.key_type = LinkKeyType.ON
         self.key = key_id
+
+    def set_remember_state(self, remember: bool) -> None:
+        """수동 발동 시 쿨타임 동기화 여부 설정"""
+
+        self.remember_state = remember
 
 
 @dataclass(slots=True)
