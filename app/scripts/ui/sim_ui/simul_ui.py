@@ -136,7 +136,7 @@ if TYPE_CHECKING:
     from app.scripts.macro_models import MacroPreset
     from app.scripts.ocr import OcrStatCandidate
     from app.scripts.registry.server_registry import ServerSpec
-    from app.scripts.registry.skill_registry import ScrollDef
+    from app.scripts.registry.skill_registry import ScrollDef, SkillDef
     from app.scripts.ui.main_window import MainWindow
     from app.scripts.ui.popup import HoverCardData
 
@@ -182,6 +182,7 @@ class _CalculatorResultsCacheKey:
     calculator_input_data: str
     equipped_scrolls: tuple[str, ...]
     placed_skills: tuple[str, ...]
+    skill_definitions: tuple[tuple[str, tuple[float, ...], float, int], ...]
     scroll_levels: tuple[tuple[str, int], ...]
     usage_settings: tuple[tuple[str, tuple[bool, bool, bool, int]], ...]
     link_skills: tuple[tuple[str, str, str | None, tuple[str, ...]], ...]
@@ -428,6 +429,45 @@ class SimUI:
             for scroll_id in sorted(preset.info.scroll_levels.keys())
         )
 
+        # 결과 계산에 쓰이는 스킬 정의값을 순서 고정 튜플로 변환
+        skill_ids: set[str] = set()
+        skill_id: str
+        for skill_id in preset.skills.placed_skills:
+            if skill_id:
+                skill_ids.add(skill_id)
+
+        scroll_id: str
+        for scroll_id in preset.skills.equipped_scrolls:
+            if not scroll_id:
+                continue
+
+            scroll_def: ScrollDef = app_state.macro.current_server.skill_registry.get_scroll(
+                scroll_id
+            )
+            skill_ids.update(scroll_def.skills)
+
+        skill_definition_rows: list[tuple[str, tuple[float, ...], float, int]] = []
+        for skill_id in sorted(skill_ids):
+            skill_def: SkillDef = app_state.macro.current_server.skill_registry.get(
+                skill_id
+            )
+            skill_levels: tuple[float, ...] = tuple(
+                float(level_value) for level_value in skill_def.levels
+            )
+            skill_definition_rows.append(
+                (
+                    skill_id,
+                    skill_levels,
+                    float(skill_def.cooltime),
+                    int(skill_def.target_count),
+                )
+            )
+
+        skill_definitions: tuple[
+            tuple[str, tuple[float, ...], float, int],
+            ...,
+        ] = tuple(skill_definition_rows)
+
         # 스킬 사용 설정을 스킬 ID 순서로 고정
         usage_settings: tuple[tuple[str, tuple[bool, bool, int]], ...] = tuple(
             (skill_id, preset.usage_settings[skill_id].to_tuple())
@@ -461,6 +501,7 @@ class SimUI:
             calculator_input_data=calculator_input_data,
             equipped_scrolls=tuple(preset.skills.equipped_scrolls),
             placed_skills=tuple(preset.skills.placed_skills),
+            skill_definitions=skill_definitions,
             scroll_levels=scroll_levels,
             usage_settings=usage_settings,
             link_skills=link_skills,

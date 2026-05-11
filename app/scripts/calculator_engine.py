@@ -72,12 +72,17 @@ if TYPE_CHECKING:
 
 # 전투력 표시 순서 고정
 DISPLAY_POWER_METRICS: tuple[PowerMetric, ...] = (
-    PowerMetric.BOSS_DAMAGE,
-    PowerMetric.NORMAL_DAMAGE,
     PowerMetric.DAMAGE_CHECK,
     PowerMetric.BOSS_DAMAGE_CHECK,
     PowerMetric.SKILL_SPEED_DAMAGE_CHECK,
     PowerMetric.SKILL_SPEED_BOSS_DAMAGE_CHECK,
+    PowerMetric.SKILL_CYCLE_DAMAGE_CHECK,
+    PowerMetric.SKILL_CYCLE_BOSS_DAMAGE_CHECK,
+    PowerMetric.SKILL_CYCLE_TARGET_DAMAGE_CHECK,
+    PowerMetric.SIMPLE_DPS_DAMAGE_CHECK,
+    PowerMetric.SIMPLE_DPS_BOSS_DAMAGE_CHECK,
+    PowerMetric.NORMAL_DAMAGE,
+    PowerMetric.BOSS_DAMAGE,
     PowerMetric.PATTERN_SKIP_DAMAGE_CHECK,
     PowerMetric.OFFICIAL,
 )
@@ -94,6 +99,11 @@ POWER_METRIC_LABELS: dict[PowerMetric, str] = {
     PowerMetric.NORMAL_DAMAGE: "60초 일반 데미지",
     PowerMetric.DAMAGE_CHECK: "일반 데미지 기댓값",
     PowerMetric.BOSS_DAMAGE_CHECK: "보스 데미지 기댓값",
+    PowerMetric.SKILL_CYCLE_DAMAGE_CHECK: "일반 스킬 한사이클 데미지 기댓값",
+    PowerMetric.SKILL_CYCLE_BOSS_DAMAGE_CHECK: "보스 스킬 한사이클 데미지 기댓값",
+    PowerMetric.SKILL_CYCLE_TARGET_DAMAGE_CHECK: "타겟 수 반영 일반 스킬 한사이클 데미지 기댓값",
+    PowerMetric.SIMPLE_DPS_DAMAGE_CHECK: "일반 데미지 DPS",
+    PowerMetric.SIMPLE_DPS_BOSS_DAMAGE_CHECK: "보스 데미지 DPS",
     PowerMetric.SKILL_SPEED_DAMAGE_CHECK: "스킬속도 반영 일반 데미지 기댓값",
     PowerMetric.SKILL_SPEED_BOSS_DAMAGE_CHECK: "스킬속도 반영 보스 데미지 기댓값",
     PowerMetric.PATTERN_SKIP_DAMAGE_CHECK: "패턴 스킵 데미지 확인",
@@ -196,13 +206,134 @@ _POWER_FORMULA_SOURCES: dict[PowerMetric, str] = {
         "dmg *= 1 + boss_attack_percent * 0.01\n\n"
         "result = dmg"
     ),
+    PowerMetric.SKILL_CYCLE_DAMAGE_CHECK: (
+        "dmg = attack\n"
+        "dmg *= 1 + skill_damage_percent * 0.01\n"
+        "dmg *= 1 + final_attack_percent * 0.01\n"
+        "dmg *= 1 + crit_rate_percent * (crit_damage_percent - 100) * 0.0001\n\n"
+        "skill_multiplier = skill_1_damage + skill_2_damage + skill_3_damage\n"
+        "skill_multiplier += skill_4_damage + skill_5_damage + skill_6_damage\n"
+        "skill_multiplier += skill_7_damage + skill_8_damage + skill_9_damage\n"
+        "skill_multiplier += skill_10_damage + skill_11_damage + skill_12_damage\n"
+        "skill_multiplier += skill_13_damage + skill_14_damage\n\n"
+        "result = dmg * skill_multiplier"
+    ),
+    PowerMetric.SKILL_CYCLE_BOSS_DAMAGE_CHECK: (
+        "dmg = attack\n"
+        "dmg *= 1 + skill_damage_percent * 0.01\n"
+        "dmg *= 1 + final_attack_percent * 0.01\n"
+        "dmg *= 1 + crit_rate_percent * (crit_damage_percent - 100) * 0.0001\n"
+        "dmg *= 1 + boss_attack_percent * 0.01\n\n"
+        "skill_multiplier = skill_1_damage + skill_2_damage + skill_3_damage\n"
+        "skill_multiplier += skill_4_damage + skill_5_damage + skill_6_damage\n"
+        "skill_multiplier += skill_7_damage + skill_8_damage + skill_9_damage\n"
+        "skill_multiplier += skill_10_damage + skill_11_damage + skill_12_damage\n"
+        "skill_multiplier += skill_13_damage + skill_14_damage\n\n"
+        "result = dmg * skill_multiplier"
+    ),
+    PowerMetric.SKILL_CYCLE_TARGET_DAMAGE_CHECK: (
+        "dmg = attack\n"
+        "dmg *= 1 + skill_damage_percent * 0.01\n"
+        "dmg *= 1 + final_attack_percent * 0.01\n"
+        "dmg *= 1 + crit_rate_percent * (crit_damage_percent - 100) * 0.0001\n\n"
+        "skill_multiplier = skill_1_damage * skill_1_target_count\n"
+        "skill_multiplier += skill_2_damage * skill_2_target_count\n"
+        "skill_multiplier += skill_3_damage * skill_3_target_count\n"
+        "skill_multiplier += skill_4_damage * skill_4_target_count\n"
+        "skill_multiplier += skill_5_damage * skill_5_target_count\n"
+        "skill_multiplier += skill_6_damage * skill_6_target_count\n"
+        "skill_multiplier += skill_7_damage * skill_7_target_count\n"
+        "skill_multiplier += skill_8_damage * skill_8_target_count\n"
+        "skill_multiplier += skill_9_damage * skill_9_target_count\n"
+        "skill_multiplier += skill_10_damage * skill_10_target_count\n"
+        "skill_multiplier += skill_11_damage * skill_11_target_count\n"
+        "skill_multiplier += skill_12_damage * skill_12_target_count\n"
+        "skill_multiplier += skill_13_damage * skill_13_target_count\n"
+        "skill_multiplier += skill_14_damage * skill_14_target_count\n\n"
+        "result = dmg * skill_multiplier"
+    ),
+    PowerMetric.SIMPLE_DPS_DAMAGE_CHECK: (
+        "dmg = attack\n"
+        "dmg *= 1 + skill_damage_percent * 0.01\n"
+        "dmg *= 1 + final_attack_percent * 0.01\n"
+        "dmg *= 1 + crit_rate_percent * (crit_damage_percent - 100) * 0.0001\n\n"
+        "cooltime_multiplier = 1 - skill_speed_percent * 0.01\n"
+        "dps_multiplier = 1 / 0.7\n"
+        "if skill_1_cooltime > 0:\n"
+        "    dps_multiplier += skill_1_damage / (skill_1_cooltime * cooltime_multiplier)\n"
+        "if skill_2_cooltime > 0:\n"
+        "    dps_multiplier += skill_2_damage / (skill_2_cooltime * cooltime_multiplier)\n"
+        "if skill_3_cooltime > 0:\n"
+        "    dps_multiplier += skill_3_damage / (skill_3_cooltime * cooltime_multiplier)\n"
+        "if skill_4_cooltime > 0:\n"
+        "    dps_multiplier += skill_4_damage / (skill_4_cooltime * cooltime_multiplier)\n"
+        "if skill_5_cooltime > 0:\n"
+        "    dps_multiplier += skill_5_damage / (skill_5_cooltime * cooltime_multiplier)\n"
+        "if skill_6_cooltime > 0:\n"
+        "    dps_multiplier += skill_6_damage / (skill_6_cooltime * cooltime_multiplier)\n"
+        "if skill_7_cooltime > 0:\n"
+        "    dps_multiplier += skill_7_damage / (skill_7_cooltime * cooltime_multiplier)\n"
+        "if skill_8_cooltime > 0:\n"
+        "    dps_multiplier += skill_8_damage / (skill_8_cooltime * cooltime_multiplier)\n"
+        "if skill_9_cooltime > 0:\n"
+        "    dps_multiplier += skill_9_damage / (skill_9_cooltime * cooltime_multiplier)\n"
+        "if skill_10_cooltime > 0:\n"
+        "    dps_multiplier += skill_10_damage / (skill_10_cooltime * cooltime_multiplier)\n"
+        "if skill_11_cooltime > 0:\n"
+        "    dps_multiplier += skill_11_damage / (skill_11_cooltime * cooltime_multiplier)\n"
+        "if skill_12_cooltime > 0:\n"
+        "    dps_multiplier += skill_12_damage / (skill_12_cooltime * cooltime_multiplier)\n"
+        "if skill_13_cooltime > 0:\n"
+        "    dps_multiplier += skill_13_damage / (skill_13_cooltime * cooltime_multiplier)\n"
+        "if skill_14_cooltime > 0:\n"
+        "    dps_multiplier += skill_14_damage / (skill_14_cooltime * cooltime_multiplier)\n\n"
+        "result = dmg * dps_multiplier"
+    ),
+    PowerMetric.SIMPLE_DPS_BOSS_DAMAGE_CHECK: (
+        "dmg = attack\n"
+        "dmg *= 1 + skill_damage_percent * 0.01\n"
+        "dmg *= 1 + final_attack_percent * 0.01\n"
+        "dmg *= 1 + crit_rate_percent * (crit_damage_percent - 100) * 0.0001\n"
+        "dmg *= 1 + boss_attack_percent * 0.01\n\n"
+        "cooltime_multiplier = 1 - skill_speed_percent * 0.01\n"
+        "dps_multiplier = 1 / 0.7\n"
+        "if skill_1_cooltime > 0:\n"
+        "    dps_multiplier += skill_1_damage / (skill_1_cooltime * cooltime_multiplier)\n"
+        "if skill_2_cooltime > 0:\n"
+        "    dps_multiplier += skill_2_damage / (skill_2_cooltime * cooltime_multiplier)\n"
+        "if skill_3_cooltime > 0:\n"
+        "    dps_multiplier += skill_3_damage / (skill_3_cooltime * cooltime_multiplier)\n"
+        "if skill_4_cooltime > 0:\n"
+        "    dps_multiplier += skill_4_damage / (skill_4_cooltime * cooltime_multiplier)\n"
+        "if skill_5_cooltime > 0:\n"
+        "    dps_multiplier += skill_5_damage / (skill_5_cooltime * cooltime_multiplier)\n"
+        "if skill_6_cooltime > 0:\n"
+        "    dps_multiplier += skill_6_damage / (skill_6_cooltime * cooltime_multiplier)\n"
+        "if skill_7_cooltime > 0:\n"
+        "    dps_multiplier += skill_7_damage / (skill_7_cooltime * cooltime_multiplier)\n"
+        "if skill_8_cooltime > 0:\n"
+        "    dps_multiplier += skill_8_damage / (skill_8_cooltime * cooltime_multiplier)\n"
+        "if skill_9_cooltime > 0:\n"
+        "    dps_multiplier += skill_9_damage / (skill_9_cooltime * cooltime_multiplier)\n"
+        "if skill_10_cooltime > 0:\n"
+        "    dps_multiplier += skill_10_damage / (skill_10_cooltime * cooltime_multiplier)\n"
+        "if skill_11_cooltime > 0:\n"
+        "    dps_multiplier += skill_11_damage / (skill_11_cooltime * cooltime_multiplier)\n"
+        "if skill_12_cooltime > 0:\n"
+        "    dps_multiplier += skill_12_damage / (skill_12_cooltime * cooltime_multiplier)\n"
+        "if skill_13_cooltime > 0:\n"
+        "    dps_multiplier += skill_13_damage / (skill_13_cooltime * cooltime_multiplier)\n"
+        "if skill_14_cooltime > 0:\n"
+        "    dps_multiplier += skill_14_damage / (skill_14_cooltime * cooltime_multiplier)\n\n"
+        "result = dmg * dps_multiplier"
+    ),
     PowerMetric.SKILL_SPEED_DAMAGE_CHECK: (
         "dmg = attack\n"
         "dmg *= 1 + skill_damage_percent * 0.01\n"
         "dmg *= 1 + final_attack_percent * 0.01\n"
         "dmg *= 1 + crit_rate_percent * (crit_damage_percent - 100) * 0.0001\n"
         "dmg /= 1 - skill_speed_percent * 0.01\n\n"
-        "result = dmg * 100"
+        "result = dmg"
     ),
     PowerMetric.SKILL_SPEED_BOSS_DAMAGE_CHECK: (
         "dmg = attack\n"
@@ -211,7 +342,7 @@ _POWER_FORMULA_SOURCES: dict[PowerMetric, str] = {
         "dmg *= 1 + crit_rate_percent * (crit_damage_percent - 100) * 0.0001\n"
         "dmg *= 1 + boss_attack_percent * 0.01\n"
         "dmg /= 1 - skill_speed_percent * 0.01\n\n"
-        "result = dmg * 100"
+        "result = dmg"
     ),
     PowerMetric.PATTERN_SKIP_DAMAGE_CHECK: (
         "dmg = attack\n"

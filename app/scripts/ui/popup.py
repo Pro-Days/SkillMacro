@@ -2411,7 +2411,7 @@ class CustomPowerFormulaEditDialog(QDialog):
         toggle_button.setFont(CustomFont(10, bold=True))
         toggle_button.setCursor(Qt.CursorShape.PointingHandCursor)
         toggle_button.setCheckable(True)
-        toggle_button.setChecked(reference_group.title != "전체 스탯")
+        toggle_button.setChecked(reference_group.title not in ("전체 스탯", "스킬"))
         toggle_button.setFlat(True)
         toggle_button.setStyleSheet(
             "QPushButton {"
