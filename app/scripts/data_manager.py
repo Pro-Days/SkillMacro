@@ -10,6 +10,7 @@ from app.scripts.app_state import app_state
 from app.scripts.config import config
 from app.scripts.custom_skill_models import CustomSkillImport
 from app.scripts.macro_models import (
+    DATA_VERSION,
     LinkSkill,
     MacroPreset,
     MacroPresetFile,
@@ -20,7 +21,6 @@ from app.scripts.macro_models import (
 from app.scripts.registry.server_registry import ServerSpec, server_registry
 from app.scripts.registry.skill_registry import ScrollDef, SkillDef
 
-DATA_VERSION: int = 5
 CUSTOM_SKILLS_DATA_VERSION: int = 2
 
 # todo: 라이브러리를 통해 경로를 설정하도록 변경

@@ -15,6 +15,9 @@ if TYPE_CHECKING:
     from app.scripts.registry.skill_registry import ScrollDef
 
 
+DATA_VERSION: int = 5
+
+
 class ThemeMode(str, Enum):
     """저장 가능한 테마 모드"""
 
@@ -525,7 +528,7 @@ class MacroPreset:
 class MacroPresetFile:
     """json 파일을 저장하는 최상위 객체"""
 
-    version: int = 5
+    version: int = DATA_VERSION
     theme_mode: ThemeMode = ThemeMode.SYSTEM
     recent_preset: int = 0
     custom_power_formulas: list[CustomPowerFormula] = field(default_factory=list)
@@ -577,6 +580,9 @@ class MacroPresetRepository:
 
     def save(self, preset_file: MacroPresetFile) -> None:
         """매크로 프리셋 파일 저장"""
+
+        # 라벨/스키마 일관성을 위해 저장 시점에 현재 버전으로 고정
+        preset_file.version = DATA_VERSION
 
         os.makedirs(os.path.dirname(self.file_path), exist_ok=True)
 
