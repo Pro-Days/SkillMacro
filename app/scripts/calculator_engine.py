@@ -114,6 +114,8 @@ POWER_METRIC_LABELS: dict[PowerMetric, str] = {
 # 타임라인 길이 상수
 TIMELINE_SECONDS: float = 60.0
 TIMELINE_MILLISECONDS: int = 60000
+BASIC_ATTACK_INTERVAL_MILLISECONDS: int = 625
+BASIC_ATTACK_PAUSE_BUFFER_MILLISECONDS: int = 50
 
 
 # 역산 시 음수 허용 범위
@@ -2098,22 +2100,6 @@ def build_simulation_events(
 ) -> tuple[HitEvent, ...]:
     """공유 스케줄러 기준 공격 이벤트 구성"""
 
-    # 평타 간격과 배치 스킬 사용 기록을 각각 이벤트로 확장
-    basic_attack_skill_id: str = get_builtin_skill_id(server_spec.id, "평타")
-    hit_events: list[HitEvent] = []
-    for current_time_ms in range(
-        0,
-        TIMELINE_MILLISECONDS,
-        700,
-    ):
-        hit_events.append(
-            HitEvent(
-                skill_id=basic_attack_skill_id,
-                time=round(current_time_ms * 0.001, 2),
-                multiplier=1.0,
-            )
-        )
-
     skill_uses: tuple[SkillUseEvent, ...] = build_skill_use_sequence(
         server_spec=server_spec,
         preset=preset,
@@ -2121,6 +2107,40 @@ def build_simulation_events(
         delay_ms=delay_ms,
         cooltime_reduction=cooltime_reduction,
     )
+
+    hit_events: list[HitEvent] = []
+    if preset.settings.use_default_attack:
+        basic_attack_pause_ms: int = delay_ms + BASIC_ATTACK_PAUSE_BUFFER_MILLISECONDS
+        basic_attack_pause_ranges: list[tuple[int, int]] = []
+        for skill_use in skill_uses:
+            skill_time_ms: int = int(round(skill_use.time * 1000))
+            basic_attack_pause_ranges.append(
+                (
+                    max(0, skill_time_ms - basic_attack_pause_ms),
+                    min(TIMELINE_MILLISECONDS, skill_time_ms + basic_attack_pause_ms),
+                )
+            )
+
+        # 평타 간격 기준으로 스킬 입력 구간 밖의 평타 이벤트만 확장
+        basic_attack_skill_id: str = get_builtin_skill_id(server_spec.id, "평타")
+        for current_time_ms in range(
+            0,
+            TIMELINE_MILLISECONDS,
+            BASIC_ATTACK_INTERVAL_MILLISECONDS,
+        ):
+            if any(
+                start_ms <= current_time_ms < end_ms
+                for start_ms, end_ms in basic_attack_pause_ranges
+            ):
+                continue
+
+            hit_events.append(
+                HitEvent(
+                    skill_id=basic_attack_skill_id,
+                    time=round(current_time_ms * 0.001, 2),
+                    multiplier=1.0,
+                )
+            )
 
     # 사용 시점과 현재 레벨 스킬 계수를 조합해 최종 이벤트 생성
     for skill_use in skill_uses:
