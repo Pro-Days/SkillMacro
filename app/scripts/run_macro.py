@@ -752,6 +752,9 @@ def use_link_skill(link_skill: LinkSkill, run_id: int) -> None:
             * config.macro.SLEEP_COEFFICIENT_NORMAL
         )
 
+    if app_state.macro.run_id == run_id:
+        _restore_first_line_state()
+
 
 def _pop_next_regular_task(
     prepared_skills: set[EquippedSkillRef],
