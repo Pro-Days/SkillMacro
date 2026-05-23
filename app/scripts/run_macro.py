@@ -961,6 +961,14 @@ def use_link_skill(link_skill: LinkSkill, run_id: int) -> None:
 
         last_skill_input_at = time.perf_counter()
 
+    if last_skill_input_at is not None:
+        remaining_delay_seconds: float = max(
+            0.0,
+            _get_skill_delay_seconds() - (time.perf_counter() - last_skill_input_at),
+        )
+        if remaining_delay_seconds > 0.0:
+            time.sleep(remaining_delay_seconds)
+
     if app_state.macro.run_id == run_id:
         _restore_first_line_state()
 
