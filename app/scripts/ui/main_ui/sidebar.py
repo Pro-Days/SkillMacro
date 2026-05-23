@@ -1911,6 +1911,7 @@ class LinkSkillSettings(QFrame):
             key_type=LinkKeyType.OFF,
             key=None,
             skills=[],
+            skill_cancels=[],
             remember_state=False,
         )
 
@@ -2271,6 +2272,8 @@ class LinkSkillEditor(QFrame):
     def _refresh_skill_items(self) -> None:
         """self.data['skills']로 스킬 구성 UI를 다시 그림"""
 
+        self.data.sync_skill_cancels()
+
         # 기존 위젯 제거
         for widget in self._skill_item_widgets:
             self._skills_layout.removeWidget(widget)
@@ -2283,9 +2286,11 @@ class LinkSkillEditor(QFrame):
             skill_widget: LinkSkillEditor.SkillItem = self.SkillItem(
                 index=idx,
                 name=name,
+                use_cancel=self.data.skill_cancels[idx],
                 popup_manager=self.popup_manager,
             )
             skill_widget.changeRequested.connect(self._open_skill_select_popup)
+            skill_widget.cancelToggled.connect(self.toggle_skill_cancel)
             skill_widget.removeRequested.connect(self._remove_skill_and_refresh)
 
             self._skills_layout.addWidget(skill_widget)
@@ -2451,13 +2456,23 @@ class LinkSkillEditor(QFrame):
 
         self._after_data_changed(update_skills=True)
 
+    def toggle_skill_cancel(self, i: int) -> None:
+        """i번째 스킬의 캔슬 설정 전환"""
+
+        self.popup_manager.close_popup()
+        self.data.sync_skill_cancels()
+        self.data.skill_cancels[i] = not self.data.skill_cancels[i]
+        self._after_data_changed(update_skills=True)
+
     def remove_skill(self, i: int) -> None:
         """i번째 스킬 제거"""
 
         self.popup_manager.close_popup()
 
         # 스킬 제거
+        self.data.sync_skill_cancels()
         self.data.skills.pop(i)
+        self.data.skill_cancels.pop(i)
 
         # 수동 사용으로 변경
         self.data.set_manual()
@@ -2483,6 +2498,7 @@ class LinkSkillEditor(QFrame):
             skill_id = all_skills[0]
 
         self.data.skills.append(skill_id)
+        self.data.skill_cancels.append(False)
 
         # 수동 사용으로 변경
         self.data.set_manual()
@@ -2518,9 +2534,18 @@ class LinkSkillEditor(QFrame):
         self.popup_manager.close_popup()
 
         allowed_skill_ids: set[str] = set(self._get_all_skill_ids())
-        self.data.skills = [
-            skill_id for skill_id in self.data.skills if skill_id in allowed_skill_ids
-        ]
+        self.data.sync_skill_cancels()
+        filtered_skills: list[str] = []
+        filtered_skill_cancels: list[bool] = []
+        for skill_id, use_cancel in zip(self.data.skills, self.data.skill_cancels):
+            if skill_id not in allowed_skill_ids:
+                continue
+
+            filtered_skills.append(skill_id)
+            filtered_skill_cancels.append(use_cancel)
+
+        self.data.skills = filtered_skills
+        self.data.skill_cancels = filtered_skill_cancels
 
         # 스킬을 하나도 추가하지 않은 경우 취소
         if not self.data.skills:
@@ -2557,12 +2582,14 @@ class LinkSkillEditor(QFrame):
 
     class SkillItem(QFrame):
         changeRequested = Signal(int)
+        cancelToggled = Signal(int)
         removeRequested = Signal(int)
 
         def __init__(
             self,
             index: int,
             name: str,
+            use_cancel: bool,
             popup_manager: PopupManager,
         ) -> None:
             super().__init__()
@@ -2570,6 +2597,7 @@ class LinkSkillEditor(QFrame):
             self.index: int = int(index)
             self.popup_manager: PopupManager = popup_manager
             self.skill_id: str = name
+            self.use_cancel: bool = use_cancel
 
             self.skill = QPushButton()
             self.skill.setObjectName("skillItemBtn")
@@ -2601,6 +2629,13 @@ class LinkSkillEditor(QFrame):
             layout = QHBoxLayout()
             layout.addWidget(self.skill)
             # layout.addStretch(1)
+            self.cancel = QPushButton("캔슬")
+            self.cancel.setObjectName("settingItemBtn")
+            self.cancel.setProperty("active", self.use_cancel)
+            self.cancel.setFont(CustomFont(12))
+            self.cancel.setCursor(Qt.CursorShape.PointingHandCursor)
+            self.cancel.clicked.connect(self._emit_cancel_toggle)
+            layout.addWidget(self.cancel)
             layout.addWidget(self.remove)
             layout.setContentsMargins(0, 0, 0, 0)
             self.setLayout(layout)
@@ -2616,6 +2651,9 @@ class LinkSkillEditor(QFrame):
 
         def _emit_change(self) -> None:
             self.changeRequested.emit(self.index)
+
+        def _emit_cancel_toggle(self) -> None:
+            self.cancelToggled.emit(self.index)
 
         def _emit_remove(self) -> None:
             self.removeRequested.emit(self.index)

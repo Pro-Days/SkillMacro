@@ -10,6 +10,7 @@ from app.scripts.macro_models import (
     LinkKeyType,
     LinkSkill,
     MacroPreset,
+    SkillTask,
     ThemeMode,
 )
 from app.scripts.registry.key_registry import KeyRegistry, KeySpec
@@ -93,20 +94,23 @@ class MacroState:
 
     # 매크로 실행 중 바뀌는 변수들
     # 여러 곳에서 참조되므로 여기에 보관
-    task_list: list[EquippedSkillRef] = field(default_factory=list)
+    task_list: list[SkillTask] = field(default_factory=list)
     prepared_skills: set[EquippedSkillRef] = field(default_factory=set)
 
     # 연계스킬 수행에 필요한 스킬 정보 리스트
     link_skills_requirements: list[list[EquippedSkillRef]] = field(default_factory=list)
 
     # 매크로 작동 중 사용하는 연계스킬 리스트
-    using_link_skills: list[list[EquippedSkillRef]] = field(default_factory=list)
+    using_link_skills: list[list[SkillTask]] = field(default_factory=list)
 
     # 연계가 아닌 스킬의 사용 순서
     skill_sequence: list[EquippedSkillRef] = field(default_factory=list)
 
     # 현재 활성화된 스킬 줄
     current_line_index: int = 0
+
+    # 마지막 스킬 입력 시각
+    last_skill_input_at: float | None = None
 
     # AFK 모드 시작 시간
     afk_started_time: float = 0.0

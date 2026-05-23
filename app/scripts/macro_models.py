@@ -40,6 +40,14 @@ class EquippedSkillRef:
         return (self.scroll_index * 2) + self.line_index
 
 
+@dataclass(frozen=True, slots=True)
+class SkillTask:
+    """실행할 스킬 입력 정보"""
+
+    skill_ref: EquippedSkillRef
+    use_cancel: bool = False
+
+
 @dataclass(slots=True)
 class MacroSkills:
     """매크로 스킬 데이터 모델"""
@@ -304,6 +312,8 @@ class LinkSkill:
     key: str | None = None
     # 연계스킬 스킬 ID 목록
     skills: list[str] = field(default_factory=list)
+    # 연계스킬 스킬별 캔슬 사용 여부
+    skill_cancels: list[bool] = field(default_factory=list)
     # 수동 발동 시 자체 쿨타임 추적 여부
     remember_state: bool = False
     # 런타임 발동 이력 (skill_id -> 마지막 사용 perf_counter 시각)
@@ -316,22 +326,57 @@ class LinkSkill:
         """딕셔너리로부터 LinkSkill 생성"""
 
         # todo: useType, keyType도 snake case로 변경
+        skills: list[str] = data["skills"].copy()
         return cls(
             use_type=LinkUseType(data["useType"]),
             key_type=LinkKeyType(data["keyType"]),
             key=data["key"] if data["key"] is not None else None,
-            skills=data["skills"].copy(),
+            skills=skills,
+            skill_cancels=cls._load_skill_cancels(data, len(skills)),
             remember_state=data["remember_state"],
+        )
+
+    @staticmethod
+    def _load_skill_cancels(data: dict[str, Any], skill_count: int) -> list[bool]:
+        """저장된 캔슬 설정을 현재 스킬 개수에 맞춰 반환"""
+
+        if "skill_cancels" not in data:
+            return [False] * skill_count
+
+        raw_skill_cancels: Any = data["skill_cancels"]
+        if not isinstance(raw_skill_cancels, list):
+            raise TypeError("skill_cancels must be a list")
+
+        skill_cancels: list[bool] = []
+        for raw_value in raw_skill_cancels[:skill_count]:
+            if type(raw_value) is not bool:
+                raise TypeError("skill_cancels values must be boolean")
+            skill_cancels.append(raw_value)
+
+        skill_cancels.extend([False] * (skill_count - len(skill_cancels)))
+        return skill_cancels
+
+    def sync_skill_cancels(self) -> None:
+        """캔슬 설정 개수를 스킬 개수와 맞춤"""
+
+        if len(self.skill_cancels) > len(self.skills):
+            del self.skill_cancels[len(self.skills) :]
+            return
+
+        self.skill_cancels.extend(
+            [False] * (len(self.skills) - len(self.skill_cancels))
         )
 
     def to_dict(self) -> dict[str, Any]:
         """딕셔너리로 변환"""
 
+        self.sync_skill_cancels()
         return {
             "useType": self.use_type.value,
             "keyType": self.key_type.value,
             "key": self.key,
             "skills": self.skills.copy(),
+            "skill_cancels": self.skill_cancels.copy(),
             "remember_state": self.remember_state,
         }
 

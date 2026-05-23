@@ -681,11 +681,17 @@ class Tab(QFrame):
 
         # 현재 무공비급이 더 이상 제공하지 않는 스킬은 연계 목록에서 제거
         for link_skill in self.preset.link_skills:
-            filtered_skill_ids: list[str] = [
-                skill_id
-                for skill_id in link_skill.skills
-                if skill_id in available_skill_ids
-            ]
+            link_skill.sync_skill_cancels()
+            filtered_skill_ids: list[str] = []
+            filtered_skill_cancels: list[bool] = []
+            for skill_id, use_cancel in zip(
+                link_skill.skills, link_skill.skill_cancels
+            ):
+                if skill_id not in available_skill_ids:
+                    continue
+
+                filtered_skill_ids.append(skill_id)
+                filtered_skill_cancels.append(use_cancel)
 
             if not filtered_skill_ids:
                 continue
@@ -693,6 +699,7 @@ class Tab(QFrame):
             if filtered_skill_ids != link_skill.skills:
                 # 스킬 구성 변경 시 자동 연계와 단축키 설정 초기화
                 link_skill.skills = filtered_skill_ids
+                link_skill.skill_cancels = filtered_skill_cancels
                 link_skill.set_manual()
                 link_skill.clear_key()
 

@@ -734,9 +734,15 @@ def sanitize_preset_registry_references(preset: MacroPreset) -> bool:
     filtered_link_skills: list[LinkSkill] = []
     link_skill: LinkSkill
     for link_skill in preset.link_skills:
-        filtered_skill_ids: list[str] = [
-            skill_id for skill_id in link_skill.skills if skill_id in valid_skill_ids
-        ]
+        link_skill.sync_skill_cancels()
+        filtered_skill_ids: list[str] = []
+        filtered_skill_cancels: list[bool] = []
+        for skill_id, use_cancel in zip(link_skill.skills, link_skill.skill_cancels):
+            if skill_id not in valid_skill_ids:
+                continue
+
+            filtered_skill_ids.append(skill_id)
+            filtered_skill_cancels.append(use_cancel)
 
         if not filtered_skill_ids:
             changed = True
@@ -744,6 +750,7 @@ def sanitize_preset_registry_references(preset: MacroPreset) -> bool:
 
         if filtered_skill_ids != link_skill.skills:
             link_skill.skills = filtered_skill_ids
+            link_skill.skill_cancels = filtered_skill_cancels
             link_skill.set_manual()
             link_skill.clear_key()
             changed = True

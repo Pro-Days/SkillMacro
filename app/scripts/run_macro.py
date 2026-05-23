@@ -16,6 +16,7 @@ from app.scripts.macro_models import (
     LinkKeyType,
     LinkSkill,
     LinkUseType,
+    SkillTask,
     SkillUsageSetting,
 )
 from app.scripts.registry.key_registry import KeyRegistry, KeySpec
@@ -23,6 +24,11 @@ from app.scripts.registry.key_registry import KeyRegistry, KeySpec
 DEBUG_PRINT_INFO = False
 ATTACK_PAUSE_BUFFER_SECONDS = 0.05
 ATTACK_PAUSE_POLL_SECONDS = 0.01
+LINK_CANCEL_BEFORE_SKILL_SECONDS = 0.1
+LINK_CANCEL_AFTER_SKILL_SECONDS = 0.1
+LINK_CANCEL_SPAM_PRESS_SECONDS = 0.05
+LINK_CANCEL_SPAM_RELEASE_SECONDS = 0.05
+LINK_CANCEL_KEY_SPEC = KeySpec.from_key("Space", "link_cancel_space", Key.space)
 
 
 # 전역 입력 상태 추적
@@ -36,15 +42,21 @@ injected_press_counts: dict[str, int] = {}
 injected_release_counts: dict[str, int] = {}
 injected_input_lock: Lock = Lock()
 
+# 연계 캔슬 Space 연타 상태
+link_cancel_spam_until: float = 0.0
+link_cancel_spam_run_id: int | None = None
+is_link_cancel_spam_running: bool = False
+link_cancel_spam_lock: Lock = Lock()
+
 
 @dataclass(slots=True)
 class PreviewTaskState:
     """프리뷰 계산용 상태 묶음"""
 
     prepared_skills: set[EquippedSkillRef]
-    task_list: list[EquippedSkillRef]
+    task_list: list[SkillTask]
     skill_sequence: list[EquippedSkillRef]
-    using_link_skills: list[list[EquippedSkillRef]]
+    using_link_skills: list[list[SkillTask]]
     link_skills_requirements: list[list[EquippedSkillRef]]
 
 
@@ -68,21 +80,26 @@ def _consume_injected_key_event(
     """프로그램이 등록한 입력인지 확인 후 소모"""
 
     # 키 아이디 변환 불가 입력은 사용자 입력으로 처리
-    key_spec: KeySpec | None = KeyRegistry.pynput_key_to_keyspec(key)
-    if key_spec is None:
+    if key == LINK_CANCEL_KEY_SPEC.value:
+        key_id: str | None = LINK_CANCEL_KEY_SPEC.key_id
+    else:
+        key_spec: KeySpec | None = KeyRegistry.pynput_key_to_keyspec(key)
+        key_id = key_spec.key_id if key_spec is not None else None
+
+    if key_id is None:
         return False
 
     # 등록된 주입 입력 카운트 차감
     with injected_input_lock:
-        remaining_count: int = counters.get(key_spec.key_id, 0)
+        remaining_count: int = counters.get(key_id, 0)
         if remaining_count == 0:
             return False
 
         if remaining_count == 1:
-            del counters[key_spec.key_id]
+            del counters[key_id]
 
         else:
-            counters[key_spec.key_id] = remaining_count - 1
+            counters[key_id] = remaining_count - 1
 
     return True
 
@@ -415,11 +432,110 @@ def _restore_first_line_state() -> None:
 
     # 종료 복귀용 스왑 입력 등록
     kbd_controller: keyboard.Controller = keyboard.Controller()
-    _register_injected_key_event(swap_key)
-    keyboard_key: Key | KeyCode = cast(Key | KeyCode, swap_key.value)
+    _press_keyboard_key(kbd_controller, swap_key)
+    app_state.macro.current_line_index = 0
+
+
+def _press_keyboard_key(
+    kbd_controller: keyboard.Controller,
+    key_spec: KeySpec,
+) -> None:
+    """키보드 키를 한 번 입력"""
+
+    _register_injected_key_event(key_spec)
+    keyboard_key: Key | KeyCode = cast(Key | KeyCode, key_spec.value)
     kbd_controller.press(keyboard_key)
     kbd_controller.release(keyboard_key)
-    app_state.macro.current_line_index = 0
+
+
+# 단발 캔슬 입력 경로는 필요할 때 다시 연결할 수 있도록 유지
+def _hold_link_cancel_key(
+    kbd_controller: keyboard.Controller,
+    hold_seconds: float,
+) -> None:
+    """연계 캔슬 키를 지정 시간 동안 입력"""
+
+    _register_injected_key_event(LINK_CANCEL_KEY_SPEC)
+    keyboard_key: Key = cast(Key, LINK_CANCEL_KEY_SPEC.value)
+    kbd_controller.press(keyboard_key)
+    time.sleep(hold_seconds)
+    kbd_controller.release(keyboard_key)
+
+
+def _link_cancel_spam_thread(run_id: int) -> None:
+    """예약된 시각까지 연계 캔슬 키를 반복 입력"""
+
+    global is_link_cancel_spam_running
+    global link_cancel_spam_run_id
+
+    kbd_controller: keyboard.Controller = keyboard.Controller()
+    keyboard_key: Key = cast(Key, LINK_CANCEL_KEY_SPEC.value)
+
+    while True:
+        now: float = time.perf_counter()
+        with link_cancel_spam_lock:
+            should_stop: bool = (
+                app_state.macro.run_id != run_id
+                or link_cancel_spam_run_id != run_id
+                or now >= link_cancel_spam_until
+            )
+
+            if should_stop:
+                if link_cancel_spam_run_id == run_id:
+                    is_link_cancel_spam_running = False
+                    link_cancel_spam_run_id = None
+                return
+
+        _register_injected_key_event(LINK_CANCEL_KEY_SPEC)
+        kbd_controller.press(keyboard_key)
+        time.sleep(LINK_CANCEL_SPAM_PRESS_SECONDS)
+        kbd_controller.release(keyboard_key)
+        time.sleep(LINK_CANCEL_SPAM_RELEASE_SECONDS)
+
+
+def _schedule_link_cancel_spam_until(run_id: int, end_at: float) -> None:
+    """연계 캔슬 키 연타 종료 시각 예약"""
+
+    global is_link_cancel_spam_running
+    global link_cancel_spam_run_id
+    global link_cancel_spam_until
+
+    should_start_thread: bool = False
+    with link_cancel_spam_lock:
+        if is_link_cancel_spam_running and link_cancel_spam_run_id == run_id:
+            link_cancel_spam_until = max(link_cancel_spam_until, end_at)
+            return
+
+        link_cancel_spam_run_id = run_id
+        link_cancel_spam_until = end_at
+        is_link_cancel_spam_running = True
+        should_start_thread = True
+
+    if should_start_thread:
+        Thread(
+            target=_link_cancel_spam_thread,
+            args=[run_id],
+            daemon=True,
+        ).start()
+
+
+def _schedule_link_cancel_spam_for_skill(
+    last_skill_input_at: float | None,
+    run_id: int,
+) -> None:
+    """캔슬 스킬 직전 딜레이부터 직후 딜레이 끝까지 연타 예약"""
+
+    now: float = time.perf_counter()
+    skill_delay_seconds: float = _get_skill_delay_seconds()
+    if last_skill_input_at is None:
+        expected_skill_input_at: float = now
+    else:
+        expected_skill_input_at = max(now, last_skill_input_at + skill_delay_seconds)
+
+    _schedule_link_cancel_spam_until(
+        run_id,
+        expected_skill_input_at + skill_delay_seconds,
+    )
 
 
 def _press_skill_keys(
@@ -427,24 +543,21 @@ def _press_skill_keys(
     skill_ref: EquippedSkillRef,
     run_id: int,
     require_running: bool,
-) -> None:
+) -> bool:
     """줄 상태에 맞는 입력 수행"""
 
     if app_state.macro.run_id != run_id:
-        return
+        return False
 
     if require_running and not app_state.macro.is_running:
-        return
+        return False
 
     # 목표 줄과 현재 줄이 다르면 스왑 입력 수행
     if skill_ref.line_index != app_state.macro.current_line_index:
         swap_key: KeySpec = app_state.macro.current_swap_key
 
         # 프로그램 주입 스왑 입력 등록
-        _register_injected_key_event(swap_key)
-        swap_keyboard_key: Key | KeyCode = cast(Key | KeyCode, swap_key.value)
-        kbd_controller.press(swap_keyboard_key)
-        kbd_controller.release(swap_keyboard_key)
+        _press_keyboard_key(kbd_controller, swap_key)
 
         app_state.macro.current_line_index = skill_ref.line_index
 
@@ -454,10 +567,71 @@ def _press_skill_keys(
     )
 
     # 프로그램 주입 스킬 입력 등록
-    _register_injected_key_event(skill_key)
-    skill_keyboard_key: Key | KeyCode = cast(Key | KeyCode, skill_key.value)
-    kbd_controller.press(skill_keyboard_key)
-    kbd_controller.release(skill_keyboard_key)
+    _press_keyboard_key(kbd_controller, skill_key)
+    return True
+
+
+def _get_skill_delay_seconds() -> float:
+    """스킬 입력 간격을 초 단위로 반환"""
+
+    return app_state.macro.current_delay * 0.001 * config.macro.SLEEP_COEFFICIENT_NORMAL
+
+
+def _wait_before_skill_input(
+    use_cancel: bool,
+    run_id: int,
+    require_running: bool,
+) -> bool:
+    """다음 스킬 입력 전 필요한 대기와 캔슬 선입력을 수행"""
+
+    last_skill_input_at: float | None = app_state.macro.last_skill_input_at
+    if use_cancel:
+        _schedule_link_cancel_spam_for_skill(last_skill_input_at, run_id)
+
+    if last_skill_input_at is not None:
+        elapsed_seconds: float = time.perf_counter() - last_skill_input_at
+        wait_seconds: float = max(
+            0.0,
+            _get_skill_delay_seconds() - elapsed_seconds,
+        )
+        if wait_seconds > 0.0:
+            time.sleep(wait_seconds)
+
+    if app_state.macro.run_id != run_id:
+        return False
+
+    if require_running and not app_state.macro.is_running:
+        return False
+
+    return True
+
+
+def _press_skill_task(
+    kbd_controller: keyboard.Controller,
+    skill_task: SkillTask,
+    run_id: int,
+    require_running: bool,
+) -> bool:
+    """스킬 입력 정보에 맞춰 실제 키 입력 수행"""
+
+    if not _wait_before_skill_input(
+        skill_task.use_cancel,
+        run_id,
+        require_running,
+    ):
+        return False
+
+    if not _press_skill_keys(
+        kbd_controller,
+        skill_task.skill_ref,
+        run_id,
+        require_running=require_running,
+    ):
+        return False
+
+    app_state.macro.last_skill_input_at = time.perf_counter()
+
+    return True
 
 
 def _collect_priority_skill_sequence() -> list[EquippedSkillRef]:
@@ -577,7 +751,8 @@ def _settle_cooltime_state_after_stop() -> None:
     )
     placed_ref_set: set[EquippedSkillRef] = set(placed_refs)
     prepared_skills: set[EquippedSkillRef] = (
-        app_state.macro.prepared_skills | set(app_state.macro.task_list)
+        app_state.macro.prepared_skills
+        | {skill_task.skill_ref for skill_task in app_state.macro.task_list}
     ) & placed_ref_set
 
     # 미사용 대기열만 준비 상태로 되돌리고 기존 타이머는 그대로 유지
@@ -599,6 +774,7 @@ def init_macro() -> None:
     app_state.macro.afk_started_time = time.time()
     app_state.macro.has_pending_afk_notice = False
     app_state.macro.current_line_index = 0
+    app_state.macro.last_skill_input_at = None
     app_state.macro.skill_sequence = _collect_priority_skill_sequence()
     app_state.macro.using_link_skills.clear()
     app_state.macro.attack_pause_until = 0.0
@@ -617,12 +793,16 @@ def init_macro() -> None:
         if not all(skill_id in skill_ref_map for skill_id in link_skill.skills):
             continue
 
+        link_skill.sync_skill_cancels()
         app_state.macro.using_link_skills.append(
-            [skill_ref_map[skill_id] for skill_id in link_skill.skills]
+            [
+                SkillTask(skill_ref_map[skill_id], link_skill.skill_cancels[index])
+                for index, skill_id in enumerate(link_skill.skills)
+            ]
         )
 
     app_state.macro.link_skills_requirements = [
-        [skill_ref for skill_ref in link_skill]
+        [skill_task.skill_ref for skill_task in link_skill]
         for link_skill in app_state.macro.using_link_skills
     ]
     app_state.macro.task_list.clear()
@@ -639,54 +819,46 @@ def use_skill(run_id: int) -> bool:
     _pause_attack_for(_get_attack_hold_seconds())
 
     kbd_controller: keyboard.Controller = keyboard.Controller()
-    skill_ref: EquippedSkillRef = app_state.macro.task_list.pop(0)
-    app_state.macro.skill_cooltime_timers[skill_ref] = time.perf_counter()
+    skill_task: SkillTask = app_state.macro.task_list.pop(0)
+    skill_ref: EquippedSkillRef = skill_task.skill_ref
 
-    _press_skill_keys(
+    if not _press_skill_task(
         kbd_controller,
-        skill_ref,
+        skill_task,
         run_id,
         require_running=True,
-    )
+    ):
+        return False
 
-    delay_seconds: float = (
-        app_state.macro.current_delay * 0.001 * config.macro.SLEEP_COEFFICIENT_NORMAL
+    app_state.macro.skill_cooltime_timers[skill_ref] = (
+        app_state.macro.last_skill_input_at or time.perf_counter()
     )
 
     # 옵션 활성화 시 스킬 사용 후 1번 줄로 복귀
-    # 복귀 스왑 앞뒤로 딜레이를 분할해 두 스왑 키 입력 간격을 확보 (총 딜레이는 유지)
+    # 다음 스킬 입력 타이밍 계산이 남은 딜레이를 이어서 처리한다.
     if (
         app_state.macro.current_always_return_to_first_line
         and app_state.macro.current_line_index != 0
     ):
-        time.sleep(delay_seconds * 0.5)
+        time.sleep(_get_skill_delay_seconds() * 0.5)
 
         swap_key: KeySpec = app_state.macro.current_swap_key
-        _register_injected_key_event(swap_key)
-        swap_keyboard_key: Key | KeyCode = cast(Key | KeyCode, swap_key.value)
-
-        kbd_controller.press(swap_keyboard_key)
-        kbd_controller.release(swap_keyboard_key)
+        _press_keyboard_key(kbd_controller, swap_key)
 
         app_state.macro.current_line_index = 0
-
-        time.sleep(delay_seconds * 0.5)
-        return True
-
-    time.sleep(delay_seconds)
     return True
 
 
-def _collect_ready_link_skill_ids(link_skill: LinkSkill) -> list[str]:
-    """연계스킬 타이머 기준 사용 가능 스킬 ID 목록 반환"""
+def _collect_ready_link_skill_indices(link_skill: LinkSkill) -> list[int]:
+    """연계스킬 타이머 기준 사용 가능 스킬 인덱스 목록 반환"""
 
     # 연계스킬 자체 발동 이력 추적
     now: float = time.perf_counter()
     cooltime_reduction: float = app_state.macro.current_cooltime_reduction
     skill_registry = app_state.macro.current_server.skill_registry
 
-    ready_skill_ids: list[str] = []
-    for skill_id in link_skill.skills:
+    ready_skill_indices: list[int] = []
+    for index, skill_id in enumerate(link_skill.skills):
         cooltime: float = (
             skill_registry.get(skill_id).cooltime * (100 - cooltime_reduction) / 100.0
         )
@@ -694,9 +866,34 @@ def _collect_ready_link_skill_ids(link_skill: LinkSkill) -> list[str]:
 
         # 미사용이거나 쿨타임 경과 시 사용 가능 후보로 포함
         if started_at is None or (now - started_at) >= cooltime:
-            ready_skill_ids.append(skill_id)
+            ready_skill_indices.append(index)
 
-    return ready_skill_ids
+    return ready_skill_indices
+
+
+def _wait_before_link_skill_input(
+    last_skill_input_at: float | None,
+    use_cancel: bool,
+    run_id: int,
+) -> bool:
+    """수동 연계의 다음 스킬 입력 전 대기와 캔슬 선입력을 수행"""
+
+    if use_cancel:
+        _schedule_link_cancel_spam_for_skill(last_skill_input_at, run_id)
+
+    if last_skill_input_at is not None:
+        elapsed_seconds: float = time.perf_counter() - last_skill_input_at
+        wait_seconds: float = max(
+            0.0,
+            _get_skill_delay_seconds() - elapsed_seconds,
+        )
+        if wait_seconds > 0.0:
+            time.sleep(wait_seconds)
+
+    if app_state.macro.run_id != run_id:
+        return False
+
+    return True
 
 
 def use_link_skill(link_skill: LinkSkill, run_id: int) -> None:
@@ -712,18 +909,22 @@ def use_link_skill(link_skill: LinkSkill, run_id: int) -> None:
         return
 
     # 쿨타임 동기화 옵션 시 연계스킬 타이머 기준으로 필터링
+    link_skill.sync_skill_cancels()
+
     if link_skill.remember_state:
-        skills_to_press: list[str] = _collect_ready_link_skill_ids(link_skill)
+        skill_indices_to_press: list[int] = _collect_ready_link_skill_indices(
+            link_skill
+        )
     else:
-        skills_to_press = list(link_skill.skills)
+        skill_indices_to_press = list(range(len(link_skill.skills)))
 
     # 입력할 스킬이 없으면 상태를 건드리지 않고 종료
-    if not skills_to_press:
+    if not skill_indices_to_press:
         return
 
     # 연계 입력 전체 구간 동안 평타 클릭 차단
     link_skill_pause_seconds: float = (
-        len(skills_to_press) * app_state.macro.current_delay * 0.001
+        len(skill_indices_to_press) * app_state.macro.current_delay * 0.001
     ) + ATTACK_PAUSE_BUFFER_SECONDS
     _pause_attack_for(link_skill_pause_seconds)
 
@@ -731,26 +932,34 @@ def use_link_skill(link_skill: LinkSkill, run_id: int) -> None:
     app_state.macro.current_line_index = 0
 
     kbd_controller: keyboard.Controller = keyboard.Controller()
+    last_skill_input_at: float | None = None
 
     # 연계에 등록된 순서대로 스킬 입력 진행
-    for skill_id in skills_to_press:
+    for skill_index in skill_indices_to_press:
+        skill_id: str = link_skill.skills[skill_index]
         skill_ref: EquippedSkillRef = skill_ref_map[skill_id]
+        use_cancel: bool = link_skill.skill_cancels[skill_index]
+
+        if not _wait_before_link_skill_input(
+            last_skill_input_at,
+            use_cancel,
+            run_id,
+        ):
+            return
 
         # 쿨타임 동기화 옵션 시 입력 직전 연계 자체 타이머 갱신
         if link_skill.remember_state:
             link_skill.skill_timers[skill_id] = time.perf_counter()
 
-        _press_skill_keys(
+        if not _press_skill_keys(
             kbd_controller,
             skill_ref,
             run_id,
             require_running=False,
-        )
-        time.sleep(
-            app_state.macro.current_delay
-            * 0.001
-            * config.macro.SLEEP_COEFFICIENT_NORMAL
-        )
+        ):
+            return
+
+        last_skill_input_at = time.perf_counter()
 
     if app_state.macro.run_id == run_id:
         _restore_first_line_state()
@@ -827,11 +1036,11 @@ def build_task_list(show_info: bool = False) -> float:
     )
 
     if prepared_link_skill_indices:
-        for skill_ref in app_state.macro.using_link_skills[
+        for skill_task in app_state.macro.using_link_skills[
             prepared_link_skill_indices[0]
         ]:
-            app_state.macro.prepared_skills.discard(skill_ref)
-            app_state.macro.task_list.append(skill_ref)
+            app_state.macro.prepared_skills.discard(skill_task.skill_ref)
+            app_state.macro.task_list.append(skill_task)
 
     else:
         # 우선순위 기준 일반 스킬 1개 선택
@@ -841,7 +1050,7 @@ def build_task_list(show_info: bool = False) -> float:
             link_skills_requirements=app_state.macro.link_skills_requirements,
         )
         if next_regular_skill_ref is not None:
-            app_state.macro.task_list.append(next_regular_skill_ref)
+            app_state.macro.task_list.append(SkillTask(next_regular_skill_ref))
 
     if DEBUG_PRINT_INFO and show_info:
         print_macro_info(brief=False)
@@ -873,9 +1082,9 @@ def build_preview_task_list() -> tuple[EquippedSkillRef, ...]:
 
     # 자동 연계가 준비된 경우 실제 실행 순서와 동일하게 먼저 추가
     for prepared_link_skill_index in prepared_link_skill_indices:
-        for skill_ref in preview_state.using_link_skills[prepared_link_skill_index]:
-            preview_state.prepared_skills.discard(skill_ref)
-            preview_state.task_list.append(skill_ref)
+        for skill_task in preview_state.using_link_skills[prepared_link_skill_index]:
+            preview_state.prepared_skills.discard(skill_task.skill_ref)
+            preview_state.task_list.append(skill_task)
 
     # 남은 일반 스킬을 우선순위대로 추가
     while True:
@@ -887,9 +1096,9 @@ def build_preview_task_list() -> tuple[EquippedSkillRef, ...]:
         if next_regular_skill_ref is None:
             break
 
-        preview_state.task_list.append(next_regular_skill_ref)
+        preview_state.task_list.append(SkillTask(next_regular_skill_ref))
 
-    return tuple(preview_state.task_list)
+    return tuple(skill_task.skill_ref for skill_task in preview_state.task_list)
 
 
 def _build_preview_task_state() -> PreviewTaskState:
@@ -921,7 +1130,7 @@ def _build_preview_task_state() -> PreviewTaskState:
             app_state.macro.current_server
         )
     )
-    using_link_skills: list[list[EquippedSkillRef]] = []
+    using_link_skills: list[list[SkillTask]] = []
 
     # 현재 배치 기준으로 실행 가능한 자동 연계만 프리뷰 대상에 포함
     link_skill: LinkSkill
@@ -932,8 +1141,12 @@ def _build_preview_task_state() -> PreviewTaskState:
         if not all(skill_id in skill_ref_map for skill_id in link_skill.skills):
             continue
 
+        link_skill.sync_skill_cancels()
         using_link_skills.append(
-            [skill_ref_map[skill_id] for skill_id in link_skill.skills]
+            [
+                SkillTask(skill_ref_map[skill_id], link_skill.skill_cancels[index])
+                for index, skill_id in enumerate(link_skill.skills)
+            ]
         )
 
     prepared_skills: set[EquippedSkillRef]
@@ -954,7 +1167,8 @@ def _build_preview_task_state() -> PreviewTaskState:
         skill_sequence=_collect_priority_skill_sequence(),
         using_link_skills=using_link_skills,
         link_skills_requirements=[
-            [skill_ref for skill_ref in link_skill] for link_skill in using_link_skills
+            [skill_task.skill_ref for skill_task in link_skill]
+            for link_skill in using_link_skills
         ],
     )
 
