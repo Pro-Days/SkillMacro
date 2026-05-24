@@ -1038,27 +1038,25 @@ def build_task_list(show_info: bool = False) -> float:
         if (now - started_at) >= cooltimes[skill_ref]:
             app_state.macro.prepared_skills.add(skill_ref)
 
-    prepared_link_skill_indices: list[int] = get_prepared_link_skill_indices(
+    # 우선순위 기준 일반 스킬 1개 선택
+    next_regular_skill_ref: EquippedSkillRef | None = _pop_next_regular_task(
         prepared_skills=app_state.macro.prepared_skills,
+        skill_sequence=app_state.macro.skill_sequence,
         link_skills_requirements=app_state.macro.link_skills_requirements,
     )
-
-    if prepared_link_skill_indices:
-        for skill_task in app_state.macro.using_link_skills[
-            prepared_link_skill_indices[0]
-        ]:
-            app_state.macro.prepared_skills.discard(skill_task.skill_ref)
-            app_state.macro.task_list.append(skill_task)
-
+    if next_regular_skill_ref is not None:
+        app_state.macro.task_list.append(SkillTask(next_regular_skill_ref))
     else:
-        # 우선순위 기준 일반 스킬 1개 선택
-        next_regular_skill_ref: EquippedSkillRef | None = _pop_next_regular_task(
+        prepared_link_skill_indices: list[int] = get_prepared_link_skill_indices(
             prepared_skills=app_state.macro.prepared_skills,
-            skill_sequence=app_state.macro.skill_sequence,
             link_skills_requirements=app_state.macro.link_skills_requirements,
         )
-        if next_regular_skill_ref is not None:
-            app_state.macro.task_list.append(SkillTask(next_regular_skill_ref))
+        if prepared_link_skill_indices:
+            for skill_task in app_state.macro.using_link_skills[
+                prepared_link_skill_indices[0]
+            ]:
+                app_state.macro.prepared_skills.discard(skill_task.skill_ref)
+                app_state.macro.task_list.append(skill_task)
 
     if DEBUG_PRINT_INFO and show_info:
         print_macro_info(brief=False)
@@ -1083,18 +1081,7 @@ def build_preview_task_list() -> tuple[EquippedSkillRef, ...]:
     # 프리뷰 전용 상태 스냅샷 구성
     preview_state: PreviewTaskState = _build_preview_task_state()
 
-    prepared_link_skill_indices: list[int] = get_prepared_link_skill_indices(
-        prepared_skills=preview_state.prepared_skills,
-        link_skills_requirements=preview_state.link_skills_requirements,
-    )
-
-    # 자동 연계가 준비된 경우 실제 실행 순서와 동일하게 먼저 추가
-    for prepared_link_skill_index in prepared_link_skill_indices:
-        for skill_task in preview_state.using_link_skills[prepared_link_skill_index]:
-            preview_state.prepared_skills.discard(skill_task.skill_ref)
-            preview_state.task_list.append(skill_task)
-
-    # 남은 일반 스킬을 우선순위대로 추가
+    # 일반 스킬을 우선순위대로 먼저 추가
     while True:
         next_regular_skill_ref: EquippedSkillRef | None = _pop_next_regular_task(
             prepared_skills=preview_state.prepared_skills,
@@ -1105,6 +1092,17 @@ def build_preview_task_list() -> tuple[EquippedSkillRef, ...]:
             break
 
         preview_state.task_list.append(SkillTask(next_regular_skill_ref))
+
+    prepared_link_skill_indices: list[int] = get_prepared_link_skill_indices(
+        prepared_skills=preview_state.prepared_skills,
+        link_skills_requirements=preview_state.link_skills_requirements,
+    )
+
+    # 일반 스킬 후보가 없을 때 자동 연계를 추가
+    for prepared_link_skill_index in prepared_link_skill_indices:
+        for skill_task in preview_state.using_link_skills[prepared_link_skill_index]:
+            preview_state.prepared_skills.discard(skill_task.skill_ref)
+            preview_state.task_list.append(skill_task)
 
     return tuple(skill_task.skill_ref for skill_task in preview_state.task_list)
 

@@ -1944,22 +1944,6 @@ def _build_next_task_list(
 ) -> list[EquippedSkillRef]:
     """현재 시점 기준 실행 가능한 다음 작업 목록 구성"""
 
-    # 자동 연계 완성 여부를 먼저 확인
-    prepared_link_indices: list[int] = get_prepared_link_skill_indices(
-        prepared_skills=prepared_skills,
-        link_skills_requirements=link_skill_requirements,
-    )
-    if prepared_link_indices:
-        target_link_skills: list[EquippedSkillRef] = auto_link_skills[
-            prepared_link_indices[0]
-        ]
-        task_list: list[EquippedSkillRef] = []
-        for skill_ref in target_link_skills:
-            prepared_skills.discard(skill_ref)
-            task_list.append(skill_ref)
-
-        return task_list
-
     # 자동 연계에 속한 스킬 참조 집합 구성
     linked_skill_refs: set[EquippedSkillRef] = {
         skill_ref
@@ -1983,6 +1967,22 @@ def _build_next_task_list(
 
         prepared_skills.discard(skill_ref)
         return [skill_ref]
+
+    # 일반 스킬 후보가 없을 때 자동 연계 완성 여부 확인
+    prepared_link_indices: list[int] = get_prepared_link_skill_indices(
+        prepared_skills=prepared_skills,
+        link_skills_requirements=link_skill_requirements,
+    )
+    if prepared_link_indices:
+        target_link_skills: list[EquippedSkillRef] = auto_link_skills[
+            prepared_link_indices[0]
+        ]
+        task_list: list[EquippedSkillRef] = []
+        for skill_ref in target_link_skills:
+            prepared_skills.discard(skill_ref)
+            task_list.append(skill_ref)
+
+        return task_list
 
     return []
 
