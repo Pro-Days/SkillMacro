@@ -197,14 +197,14 @@ _POWER_FORMULA_SOURCES: dict[PowerMetric, str] = {
         "dmg = attack\n"
         "dmg *= 1 + skill_damage_percent * 0.01\n"
         "dmg *= 1 + final_attack_percent * 0.01\n"
-        "dmg *= 1 + crit_rate_percent * (crit_damage_percent - 100) * 0.0001\n\n"
+        "dmg *= 1 + min(crit_rate_percent, 100) * (crit_damage_percent - 100) * 0.0001\n\n"
         "result = dmg"
     ),
     PowerMetric.BOSS_DAMAGE_CHECK: (
         "dmg = attack\n"
         "dmg *= 1 + skill_damage_percent * 0.01\n"
         "dmg *= 1 + final_attack_percent * 0.01\n"
-        "dmg *= 1 + crit_rate_percent * (crit_damage_percent - 100) * 0.0001\n"
+        "dmg *= 1 + min(crit_rate_percent, 100) * (crit_damage_percent - 100) * 0.0001\n"
         "dmg *= 1 + boss_attack_percent * 0.01\n\n"
         "result = dmg"
     ),
@@ -212,7 +212,7 @@ _POWER_FORMULA_SOURCES: dict[PowerMetric, str] = {
         "dmg = attack\n"
         "dmg *= 1 + skill_damage_percent * 0.01\n"
         "dmg *= 1 + final_attack_percent * 0.01\n"
-        "dmg *= 1 + crit_rate_percent * (crit_damage_percent - 100) * 0.0001\n\n"
+        "dmg *= 1 + min(crit_rate_percent, 100) * (crit_damage_percent - 100) * 0.0001\n\n"
         "skill_multiplier = skill_1_damage + skill_2_damage + skill_3_damage\n"
         "skill_multiplier += skill_4_damage + skill_5_damage + skill_6_damage\n"
         "skill_multiplier += skill_7_damage + skill_8_damage + skill_9_damage\n"
@@ -224,7 +224,7 @@ _POWER_FORMULA_SOURCES: dict[PowerMetric, str] = {
         "dmg = attack\n"
         "dmg *= 1 + skill_damage_percent * 0.01\n"
         "dmg *= 1 + final_attack_percent * 0.01\n"
-        "dmg *= 1 + crit_rate_percent * (crit_damage_percent - 100) * 0.0001\n"
+        "dmg *= 1 + min(crit_rate_percent, 100) * (crit_damage_percent - 100) * 0.0001\n"
         "dmg *= 1 + boss_attack_percent * 0.01\n\n"
         "skill_multiplier = skill_1_damage + skill_2_damage + skill_3_damage\n"
         "skill_multiplier += skill_4_damage + skill_5_damage + skill_6_damage\n"
@@ -237,7 +237,7 @@ _POWER_FORMULA_SOURCES: dict[PowerMetric, str] = {
         "dmg = attack\n"
         "dmg *= 1 + skill_damage_percent * 0.01\n"
         "dmg *= 1 + final_attack_percent * 0.01\n"
-        "dmg *= 1 + crit_rate_percent * (crit_damage_percent - 100) * 0.0001\n\n"
+        "dmg *= 1 + min(crit_rate_percent, 100) * (crit_damage_percent - 100) * 0.0001\n\n"
         "skill_multiplier = skill_1_damage * skill_1_target_count\n"
         "skill_multiplier += skill_2_damage * skill_2_target_count\n"
         "skill_multiplier += skill_3_damage * skill_3_target_count\n"
@@ -258,7 +258,7 @@ _POWER_FORMULA_SOURCES: dict[PowerMetric, str] = {
         "dmg = attack\n"
         "dmg *= 1 + skill_damage_percent * 0.01\n"
         "dmg *= 1 + final_attack_percent * 0.01\n"
-        "dmg *= 1 + crit_rate_percent * (crit_damage_percent - 100) * 0.0001\n\n"
+        "dmg *= 1 + min(crit_rate_percent, 100) * (crit_damage_percent - 100) * 0.0001\n\n"
         "cooltime_multiplier = 1 - skill_speed_percent * 0.01\n"
         "dps_multiplier = 1 / 0.7\n"
         "if skill_1_cooltime > 0:\n"
@@ -295,7 +295,7 @@ _POWER_FORMULA_SOURCES: dict[PowerMetric, str] = {
         "dmg = attack\n"
         "dmg *= 1 + skill_damage_percent * 0.01\n"
         "dmg *= 1 + final_attack_percent * 0.01\n"
-        "dmg *= 1 + crit_rate_percent * (crit_damage_percent - 100) * 0.0001\n"
+        "dmg *= 1 + min(crit_rate_percent, 100) * (crit_damage_percent - 100) * 0.0001\n"
         "dmg *= 1 + boss_attack_percent * 0.01\n\n"
         "cooltime_multiplier = 1 - skill_speed_percent * 0.01\n"
         "dps_multiplier = 1 / 0.7\n"
@@ -333,7 +333,7 @@ _POWER_FORMULA_SOURCES: dict[PowerMetric, str] = {
         "dmg = attack\n"
         "dmg *= 1 + skill_damage_percent * 0.01\n"
         "dmg *= 1 + final_attack_percent * 0.01\n"
-        "dmg *= 1 + crit_rate_percent * (crit_damage_percent - 100) * 0.0001\n"
+        "dmg *= 1 + min(crit_rate_percent, 100) * (crit_damage_percent - 100) * 0.0001\n"
         "dmg /= 1 - skill_speed_percent * 0.01\n\n"
         "result = dmg"
     ),
@@ -341,7 +341,7 @@ _POWER_FORMULA_SOURCES: dict[PowerMetric, str] = {
         "dmg = attack\n"
         "dmg *= 1 + skill_damage_percent * 0.01\n"
         "dmg *= 1 + final_attack_percent * 0.01\n"
-        "dmg *= 1 + crit_rate_percent * (crit_damage_percent - 100) * 0.0001\n"
+        "dmg *= 1 + min(crit_rate_percent, 100) * (crit_damage_percent - 100) * 0.0001\n"
         "dmg *= 1 + boss_attack_percent * 0.01\n"
         "dmg /= 1 - skill_speed_percent * 0.01\n\n"
         "result = dmg"
@@ -490,7 +490,7 @@ POWER_FORMULA_EXAMPLES: tuple[PowerFormulaExample, ...] = (
             "dmg = attack\n"
             "dmg *= 1 + skill_damage_percent * 0.01\n"
             "dmg *= 1 + final_attack_percent * 0.01\n"
-            "dmg *= 1 + crit_rate_percent * (crit_damage_percent - 100) * 0.0001\n\n"
+            "dmg *= 1 + min(crit_rate_percent, 100) * (crit_damage_percent - 100) * 0.0001\n\n"
             "if dmg < 1000:  # <- 원하는 데미지로 수정하세요.\n"
             "    power = dmg * 0.01\n"
             "else:\n"
@@ -513,6 +513,13 @@ POWER_FORMULA_EXAMPLES: tuple[PowerFormulaExample, ...] = (
         ),
     ),
 )
+
+
+# 전투력 공식 참고 변수 버튼 삽입 문자열
+_POWER_FORMULA_REFERENCE_INSERT_TEXTS: dict[StatKey, str] = {
+    StatKey.CRIT_RATE_PERCENT: "min(crit_rate_percent, 100)",
+    StatKey.DODGE_PERCENT: "min(dodge_percent, 50)",
+}
 
 
 # 전투력 공식 노출 변수/함수 목록
@@ -546,7 +553,10 @@ POWER_FORMULA_REFERENCE_GROUPS: tuple[PowerFormulaReferenceGroup, ...] = (
                 PowerFormulaReferenceEntry(
                     symbol=stat_key.value,
                     description=f"최종 {STAT_SPECS[stat_key]} 값",
-                    insert_text=stat_key.value,
+                    insert_text=_POWER_FORMULA_REFERENCE_INSERT_TEXTS.get(
+                        stat_key,
+                        stat_key.value,
+                    ),
                 )
                 for stat_key in OVERALL_STAT_ORDER
             ),
