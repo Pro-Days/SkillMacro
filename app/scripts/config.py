@@ -17,6 +17,9 @@ class MacroConfig:
     # AFK 모드 활성화 여부: 정식 버전에서는 True로 변경
     is_afk_enabled: ClassVar[bool] = True
 
+    # 잠수 방지 시간
+    AFK_TIMEOUT_SECONDS: ClassVar[float] = 60.0
+
     # 버전 확인 모드 활성화 여부: 정식 버전에서는 True로 변경
     is_version_check_enabled: ClassVar[bool] = True
 

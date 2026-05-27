@@ -373,7 +373,8 @@ def running_macro_thread(run_id: int) -> None:
             # 잠수면 매크로 중지
             if (
                 config.macro.is_afk_enabled
-                and time.time() - app_state.macro.afk_started_time >= 10
+                and time.time() - app_state.macro.afk_started_time
+                >= config.macro.AFK_TIMEOUT_SECONDS
             ):
                 # UI 스레드 알림 표시용 잠수 종료 상태 기록
                 app_state.macro.has_pending_afk_notice = True
