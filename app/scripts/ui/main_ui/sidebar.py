@@ -161,9 +161,7 @@ def _make_info_button(
 
         # 다크 모드에서는 default 스타일 그대로 적용을 위한 variant 분기
         variant: HoverCardVariant = (
-            HoverCardVariant.DEFAULT
-            if theme_manager.is_dark
-            else HoverCardVariant.INFO
+            HoverCardVariant.DEFAULT if theme_manager.is_dark else HoverCardVariant.INFO
         )
         return HoverCardData(title=title, lines=lines, variant=variant)
 
@@ -2284,8 +2282,11 @@ class LinkSkillEditor(QFrame):
                 index=idx,
                 name=name,
                 popup_manager=self.popup_manager,
+                can_move_up=idx > 0,
+                can_move_down=idx < len(self.data.skills) - 1,
             )
             skill_widget.changeRequested.connect(self._open_skill_select_popup)
+            skill_widget.moveRequested.connect(self.move_skill)
             skill_widget.removeRequested.connect(self._remove_skill_and_refresh)
 
             self._skills_layout.addWidget(skill_widget)
@@ -2464,6 +2465,24 @@ class LinkSkillEditor(QFrame):
 
         self._after_data_changed(update_skills=True)
 
+    def move_skill(self, i: int, direction: int) -> None:
+        """i번째 스킬을 direction 방향으로 이동"""
+
+        self.popup_manager.close_popup()
+
+        # 이동 대상 인덱스 계산
+        target_index: int = i + direction
+        if target_index < 0 or target_index >= len(self.data.skills):
+            return
+
+        # 연계스킬 실행 순서 교체
+        self.data.skills[i], self.data.skills[target_index] = (
+            self.data.skills[target_index],
+            self.data.skills[i],
+        )
+
+        self._after_data_changed(update_skills=True)
+
     def add_skill(self) -> None:
         """스킬 추가"""
 
@@ -2557,6 +2576,7 @@ class LinkSkillEditor(QFrame):
 
     class SkillItem(QFrame):
         changeRequested = Signal(int)
+        moveRequested = Signal(int, int)
         removeRequested = Signal(int)
 
         def __init__(
@@ -2564,6 +2584,8 @@ class LinkSkillEditor(QFrame):
             index: int,
             name: str,
             popup_manager: PopupManager,
+            can_move_up: bool,
+            can_move_down: bool,
         ) -> None:
             super().__init__()
 
@@ -2590,6 +2612,36 @@ class LinkSkillEditor(QFrame):
                 self._build_skill_hover_card,
             )
 
+            # 순서 이동 컨트롤 프레임 구성
+            self.move_box = QFrame()
+            self.move_box.setObjectName("skillItemMoveBox")
+            self.move_box.setFixedSize(32, 44)
+
+            move_layout = QVBoxLayout(self.move_box)
+            move_layout.setContentsMargins(0, 0, 0, 0)
+            move_layout.setSpacing(0)
+
+            # 위쪽 순서 이동 버튼 구성
+            self.move_up = QPushButton("▲")
+            self.move_up.setObjectName("skillItemMoveBtn")
+            self.move_up.setToolTip("위로 이동")
+            self.move_up.clicked.connect(self._emit_move_up)
+            self.move_up.setFixedSize(32, 22)
+            self.move_up.setEnabled(can_move_up)
+            self.move_up.setCursor(Qt.CursorShape.PointingHandCursor)
+
+            # 아래쪽 순서 이동 버튼 구성
+            self.move_down = QPushButton("▼")
+            self.move_down.setObjectName("skillItemMoveBtn")
+            self.move_down.setToolTip("아래로 이동")
+            self.move_down.clicked.connect(self._emit_move_down)
+            self.move_down.setFixedSize(32, 22)
+            self.move_down.setEnabled(can_move_down)
+            self.move_down.setCursor(Qt.CursorShape.PointingHandCursor)
+
+            move_layout.addWidget(self.move_up)
+            move_layout.addWidget(self.move_down)
+
             self.remove = QPushButton()
             self.remove.setObjectName("skillItemRemoveBtn")
             self.remove.clicked.connect(self._emit_remove)
@@ -2599,10 +2651,13 @@ class LinkSkillEditor(QFrame):
             self.remove.setCursor(Qt.CursorShape.PointingHandCursor)
 
             layout = QHBoxLayout()
+            layout.setSpacing(6)
+            layout.addWidget(self.move_box)
+            # layout.addStretch(1)
             layout.addWidget(self.skill)
             # layout.addStretch(1)
             layout.addWidget(self.remove)
-            layout.setContentsMargins(0, 0, 0, 0)
+            layout.setContentsMargins(15, 0, 15, 0)
             self.setLayout(layout)
 
         def apply_theme(self, dark: bool) -> None:
@@ -2616,6 +2671,12 @@ class LinkSkillEditor(QFrame):
 
         def _emit_change(self) -> None:
             self.changeRequested.emit(self.index)
+
+        def _emit_move_up(self) -> None:
+            self.moveRequested.emit(self.index, -1)
+
+        def _emit_move_down(self) -> None:
+            self.moveRequested.emit(self.index, 1)
 
         def _emit_remove(self) -> None:
             self.removeRequested.emit(self.index)

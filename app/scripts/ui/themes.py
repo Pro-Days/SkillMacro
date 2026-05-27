@@ -492,6 +492,20 @@ QPushButton#skillItemRemoveBtn {{
     border-radius: 16px;
 }}
 QPushButton#skillItemRemoveBtn:hover {{ background-color: #eeeeee; }}
+QFrame#skillItemMoveBox {{
+    background-color: #f3f3f3;
+    border: 1px solid #dddddd;
+    border-radius: 8px;
+}}
+QPushButton#skillItemMoveBtn {{
+    background-color: transparent;
+    border: none;
+    border-radius: 7px;
+    color: #666666;
+    padding: 0px;
+}}
+QPushButton#skillItemMoveBtn:hover {{ background-color: #eeeeee; }}
+QPushButton#skillItemMoveBtn:disabled {{ color: #bbbbbb; }}
 
 
 /* ────────────────── GeneralSettings SettingItem 버튼 ────────────────── */
@@ -1894,6 +1908,20 @@ QPushButton#skillItemRemoveBtn {{
     border-radius: 16px;
 }}
 QPushButton#skillItemRemoveBtn:hover {{ background-color: #2E2E45; }}
+QFrame#skillItemMoveBox {{
+    background-color: #252535;
+    border: 1px solid #3A3A52;
+    border-radius: 8px;
+}}
+QPushButton#skillItemMoveBtn {{
+    background-color: transparent;
+    border: none;
+    border-radius: 7px;
+    color: #C0BCDC;
+    padding: 0px;
+}}
+QPushButton#skillItemMoveBtn:hover {{ background-color: #2E2E45; }}
+QPushButton#skillItemMoveBtn:disabled {{ color: #555570; }}
 
 
 /* ────────────────── GeneralSettings SettingItem 버튼 ────────────────── */
