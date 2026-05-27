@@ -2033,13 +2033,13 @@ class LinkSkillSettings(QFrame):
             line.setFixedHeight(1)
             root.addWidget(line)
 
-            # 연계 유형, 시작 키 표시 컨테이너
+            # 자동 사용 상태, 시작 키 표시 컨테이너
             info_container = QHBoxLayout()
             info_container.setContentsMargins(0, 5, 0, 5)
             root.addLayout(info_container)
 
             is_auto: bool = data.use_type == LinkUseType.AUTO
-            badge_text: str = "자동 모드" if is_auto else "수동 모드"
+            badge_text: str = "자동 ON" if is_auto else "자동 OFF"
 
             use_type_display = QLabel(badge_text)
             use_type_display.setObjectName("badgeAuto" if is_auto else "badgeManual")
@@ -2134,13 +2134,13 @@ class LinkSkillEditor(QFrame):
 
         self.type_setting = self.SettingItem(
             popup_manager=self.popup_manager,
-            title="연계 유형",
+            title="자동 사용",
             tooltip=(
-                "자동: 매크로가 실행 중일 때 자동으로 연계 스킬을 사용합니다. 자동 연계스킬에 사용되는 스킬은 다른 자동 연계스킬에 사용될 수 없습니다.\n"
-                "연계스킬은 매크로 작동 여부와 관계 없이 단축키를 입력해서 작동시킬 수 있습니다."
+                "ON: 매크로 실행 중 조건이 맞으면 이 연계를 자동으로 사용합니다. 자동 연계스킬에 포함된 스킬은 다른 자동 연계스킬에서 사용할 수 없습니다.\n"
+                "OFF: 매크로가 자동으로 사용하지 않습니다. 단축키를 설정하면 매크로 작동 여부와 관계없이 직접 실행할 수 있습니다."
             ),
-            btn0_text="자동",
-            btn1_text="수동",
+            btn0_text="ON",
+            btn1_text="OFF",
             is_btn0_enabled=True,
             is_btn1_enabled=False,
             func0=self.set_auto,
@@ -2236,7 +2236,7 @@ class LinkSkillEditor(QFrame):
     def _refresh_ui(self) -> None:
         """현재 self.data 상태에 맞춰 UI(버튼 색/텍스트)를 동기화."""
 
-        # 연계 유형 버튼
+        # 자동 사용 버튼
         use_type: LinkUseType = self.data.use_type
         self.type_setting.set_buttons_enabled(
             use_type == LinkUseType.AUTO, use_type == LinkUseType.MANUAL
