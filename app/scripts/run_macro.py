@@ -65,16 +65,11 @@ def _register_injected_key_event(key_spec: KeySpec) -> None:
         )
 
 
-def _consume_injected_key_event(
-    key: Key | KeyCode,
+def _consume_injected_input_event(
+    key_spec: KeySpec,
     counters: dict[str, int],
 ) -> bool:
     """프로그램이 등록한 입력인지 확인 후 소모"""
-
-    # 키 아이디 변환 불가 입력은 사용자 입력으로 처리
-    key_spec: KeySpec | None = KeyRegistry.pynput_key_to_keyspec(key)
-    if key_spec is None:
-        return False
 
     # 등록된 주입 입력 카운트 차감
     with injected_input_lock:
@@ -108,15 +103,19 @@ def on_press(key: Key | KeyCode | None) -> None:
     if key is None:
         return
 
+    key_spec: KeySpec | None = KeyRegistry.pynput_key_to_keyspec(key)
+
     # 프로그램이 보낸 키 입력은 AFK 갱신 대상에서 제외
-    if _consume_injected_key_event(key, injected_press_counts):
+    if key_spec is not None and _consume_injected_input_event(
+        key_spec,
+        injected_press_counts,
+    ):
         return
 
     # 잠수 감지는 인식 불가 키도 사용자 입력으로 인정
     has_user_activity = True
 
     # 모디파이어 조합 등으로 변형된 키도 동일 KeySpec으로 정규화
-    key_spec: KeySpec | None = KeyRegistry.pynput_key_to_keyspec(key)
     if key_spec is not None:
         # 최초 입력 시점 기록 및 이전 처리 상태 초기화
         if key_spec not in pressed_keys:
@@ -134,12 +133,12 @@ def on_release(key: Key | KeyCode | None) -> None:
     if key is None:
         return
 
-    # 프로그램이 보낸 키 해제 입력은 눌림 상태 추적에서 제외
-    if _consume_injected_key_event(key, injected_release_counts):
-        return
-
     key_spec: KeySpec | None = KeyRegistry.pynput_key_to_keyspec(key)
     if key_spec is not None:
+        # 프로그램이 보낸 키 해제 입력은 눌림 상태 추적에서 제외
+        if _consume_injected_input_event(key_spec, injected_release_counts):
+            return
+
         # 눌림 상태 및 1회 처리 상태 해제
         pressed_keys.discard(key_spec)
         pressed_key_started_at.pop(key_spec.key_id, None)
@@ -154,12 +153,22 @@ def on_click(
 ) -> None:
     """마우스 버튼 입력 시 호출되는 함수"""
 
-    global pressed_keys, pressed_key_started_at, handled_key_ids
+    global pressed_keys, pressed_key_started_at, handled_key_ids, has_user_activity
 
     # 지원하는 마우스 버튼 기준 KeySpec 정규화
     key_spec: KeySpec | None = KeyRegistry.pynput_mouse_to_keyspec(button)
     if key_spec is None:
         return
+
+    # 프로그램이 보낸 마우스 입력은 사용자 입력 상태에서 제외
+    counters: dict[str, int] = (
+        injected_press_counts if pressed else injected_release_counts
+    )
+    if _consume_injected_input_event(key_spec, counters):
+        return
+
+    # 사용자 마우스 사이드버튼 입력 기준 AFK 갱신
+    has_user_activity = True
 
     # 마우스 버튼 press 상태 등록
     if pressed:
@@ -201,6 +210,29 @@ def is_key_held(key: KeySpec, hold_seconds: float) -> bool:
         return False
 
     return time.perf_counter() - started_at >= hold_seconds
+
+
+def _press_key_spec(
+    kbd_controller: keyboard.Controller,
+    mouse_controller: mouse.Controller,
+    key_spec: KeySpec,
+) -> None:
+    """KeySpec 기준 키보드 또는 마우스 입력 실행"""
+
+    # 프로그램 주입 입력 등록
+    _register_injected_key_event(key_spec)
+
+    # 마우스 버튼 입력 실행
+    if key_spec.type == "mouse":
+        mouse_button: Button = cast(Button, key_spec.value)
+        mouse_controller.press(mouse_button)
+        mouse_controller.release(mouse_button)
+        return
+
+    # 키보드 키 입력 실행
+    keyboard_key: Key | KeyCode = cast(Key | KeyCode, key_spec.value)
+    kbd_controller.press(keyboard_key)
+    kbd_controller.release(keyboard_key)
 
 
 def checking_kb_thread() -> NoReturn:
@@ -390,7 +422,12 @@ def running_macro_thread(run_id: int) -> None:
                 # 현재 실행 주기 종료 시 1줄 종료 상태 복구
                 _settle_cooltime_state_after_stop()
                 kbd_controller: keyboard.Controller = keyboard.Controller()
-                _restore_first_line_state(kbd_controller, current_line_index)
+                mouse_controller: mouse.Controller = mouse.Controller()
+                _restore_first_line_state(
+                    kbd_controller,
+                    mouse_controller,
+                    current_line_index,
+                )
             finally:
                 # 매크로 종료 후 입력 점유 상태 해제
                 is_input_sequence_running = False
@@ -452,6 +489,7 @@ def _sleep_while_macro_running(duration_seconds: float) -> None:
 
 def _restore_first_line_state(
     kbd_controller: keyboard.Controller,
+    mouse_controller: mouse.Controller,
     current_line_index: int,
 ) -> int:
     """현재 줄 상태를 1줄 종료 상태로 복구"""
@@ -463,15 +501,13 @@ def _restore_first_line_state(
     swap_key: KeySpec = app_state.macro.current_swap_key
 
     # 종료 복귀용 스왑 입력 등록
-    _register_injected_key_event(swap_key)
-    keyboard_key: Key | KeyCode = cast(Key | KeyCode, swap_key.value)
-    kbd_controller.press(keyboard_key)
-    kbd_controller.release(keyboard_key)
+    _press_key_spec(kbd_controller, mouse_controller, swap_key)
     return 0
 
 
 def _press_skill_keys(
     kbd_controller: keyboard.Controller,
+    mouse_controller: mouse.Controller,
     skill_ref: EquippedSkillRef,
     current_line_index: int,
 ) -> int:
@@ -487,18 +523,12 @@ def _press_skill_keys(
         swap_key: KeySpec = app_state.macro.current_swap_key
 
         # 프로그램 주입 스왑 입력 등록
-        _register_injected_key_event(swap_key)
-        swap_keyboard_key: Key | KeyCode = cast(Key | KeyCode, swap_key.value)
-        kbd_controller.press(swap_keyboard_key)
-        kbd_controller.release(swap_keyboard_key)
+        _press_key_spec(kbd_controller, mouse_controller, swap_key)
 
         current_line_index = skill_ref.line_index
 
     # 프로그램 주입 스킬 입력 등록
-    _register_injected_key_event(skill_key)
-    skill_keyboard_key: Key | KeyCode = cast(Key | KeyCode, skill_key.value)
-    kbd_controller.press(skill_keyboard_key)
-    kbd_controller.release(skill_keyboard_key)
+    _press_key_spec(kbd_controller, mouse_controller, skill_key)
     return current_line_index
 
 
@@ -680,11 +710,13 @@ def use_skill(current_line_index: int) -> tuple[bool, int]:
     _pause_attack_for(_get_attack_hold_seconds())
 
     kbd_controller: keyboard.Controller = keyboard.Controller()
+    mouse_controller: mouse.Controller = mouse.Controller()
     skill_ref: EquippedSkillRef = app_state.macro.task_list.pop(0)
     app_state.macro.skill_cooltime_timers[skill_ref] = time.perf_counter()
 
     current_line_index = _press_skill_keys(
         kbd_controller,
+        mouse_controller,
         skill_ref,
         current_line_index=current_line_index,
     )
@@ -699,6 +731,7 @@ def use_skill(current_line_index: int) -> tuple[bool, int]:
         _sleep_while_macro_running(half_delay_seconds)
         current_line_index = _restore_first_line_state(
             kbd_controller,
+            mouse_controller,
             current_line_index,
         )
 
@@ -740,6 +773,7 @@ def use_link_skill(link_skill: LinkSkill) -> None:
 
     current_line_index: int = 0
     kbd_controller: keyboard.Controller = keyboard.Controller()
+    mouse_controller: mouse.Controller = mouse.Controller()
 
     try:
         skill_ref_map: dict[str, EquippedSkillRef] = (
@@ -783,6 +817,7 @@ def use_link_skill(link_skill: LinkSkill) -> None:
 
             current_line_index = _press_skill_keys(
                 kbd_controller,
+                mouse_controller,
                 skill_ref,
                 current_line_index=current_line_index,
             )
@@ -791,7 +826,11 @@ def use_link_skill(link_skill: LinkSkill) -> None:
     finally:
         try:
             # 연계 입력 종료 후 1줄 상태 복구
-            _restore_first_line_state(kbd_controller, current_line_index)
+            _restore_first_line_state(
+                kbd_controller,
+                mouse_controller,
+                current_line_index,
+            )
         finally:
             # 연계 입력 종료 후 입력 점유 상태 해제
             is_input_sequence_running = False

@@ -1652,12 +1652,34 @@ class PopupManager:
 
             content.set_key(key)
 
+        def _on_click(
+            x: int,
+            y: int,
+            button: pynput_mouse.Button,
+            pressed: bool,
+        ) -> None:
+            if not pressed:
+                return
+
+            key: KeySpec | None = KeyRegistry.pynput_mouse_to_keyspec(button)
+
+            if not key:
+                return
+
+            content.set_key(key)
+
         listener: pynput_keyboard.Listener = pynput_keyboard.Listener(
             on_press=_on_press
         )
+        mouse_listener: pynput_mouse.Listener = pynput_mouse.Listener(
+            on_click=_on_click
+        )
         listener.daemon = True
+        mouse_listener.daemon = True
         listener.start()
+        mouse_listener.start()
         self._key_listener = listener
+        self._mouse_listener = mouse_listener
         app_state.ui.is_setting_key = True
 
     def make_scroll_select_popup(
