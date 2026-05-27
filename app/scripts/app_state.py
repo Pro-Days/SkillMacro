@@ -105,9 +105,6 @@ class MacroState:
     # 연계가 아닌 스킬의 사용 순서
     skill_sequence: list[EquippedSkillRef] = field(default_factory=list)
 
-    # 현재 활성화된 스킬 줄
-    current_line_index: int = 0
-
     # AFK 모드 시작 시간
     afk_started_time: float = 0.0
 

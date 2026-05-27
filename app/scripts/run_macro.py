@@ -23,6 +23,7 @@ from app.scripts.registry.key_registry import KeyRegistry, KeySpec
 DEBUG_PRINT_INFO = False
 ATTACK_PAUSE_BUFFER_SECONDS = 0.05
 ATTACK_PAUSE_POLL_SECONDS = 0.01
+MACRO_SLEEP_POLL_SECONDS = 0.05
 
 
 # 전역 입력 상태 추적
@@ -35,6 +36,9 @@ has_user_activity = False
 injected_press_counts: dict[str, int] = {}
 injected_release_counts: dict[str, int] = {}
 injected_input_lock: Lock = Lock()
+
+# 매크로와 수동 연계스킬의 동시 실행 방지 상태
+is_input_sequence_running = False
 
 
 @dataclass(slots=True)
@@ -202,7 +206,7 @@ def is_key_held(key: KeySpec, hold_seconds: float) -> bool:
 def checking_kb_thread() -> NoReturn:
     """키보드 입력 감지 쓰레드"""
 
-    global has_user_activity, handled_key_ids
+    global has_user_activity, handled_key_ids, is_input_sequence_running
 
     # 키보드 리스너 시작
     keyboard_listener: keyboard.Listener = keyboard.Listener(
@@ -240,15 +244,17 @@ def checking_kb_thread() -> NoReturn:
         if is_start_key_ready:
             handled_key_ids.add(start_key.key_id)
 
-            # 현재 중이면 즉시 종료 상태 전환
+            # 실행 중이면 즉시 종료 상태 전환
             if app_state.macro.is_running:
                 app_state.macro.is_running = False
 
-                # 종료 입력 직후 1줄 종료 상태 즉시 복구
-                _restore_first_line_state()
-
-            # 현재 중이 아니면 새 실행 시작
+            # 실행 중이 아니면 새 실행 시작
             else:
+                if is_input_sequence_running:
+                    time.sleep(0.5 * config.macro.SLEEP_COEFFICIENT_NORMAL)
+                    continue
+
+                is_input_sequence_running = True
                 app_state.macro.is_running = True
 
                 # 매크로 번호 증가
@@ -267,6 +273,19 @@ def checking_kb_thread() -> NoReturn:
             # 다음 루프로 넘어감
             continue
 
+        if is_input_sequence_running:
+            # 연계스킬
+            for link_skill in app_state.macro.current_preset.link_skills:
+                if link_skill.key_type == LinkKeyType.OFF or link_skill.key is None:
+                    continue
+
+                link_key: KeySpec = KeyRegistry.get(link_skill.key)
+                if link_key in pressed_keys:
+                    handled_key_ids.add(link_key.key_id)
+
+            time.sleep(0.05 * config.macro.SLEEP_COEFFICIENT_NORMAL)
+            continue
+
         # 연계스킬 사용
         for link_skill in app_state.macro.current_preset.link_skills:
             # 단축키가 설정된 연계스킬만 검사
@@ -280,11 +299,11 @@ def checking_kb_thread() -> NoReturn:
                 and link_key.key_id not in handled_key_ids
             ):
                 handled_key_ids.add(link_key.key_id)
+                is_input_sequence_running = True
 
-                # 연계스킬 쓰레드 시작
                 Thread(
                     target=use_link_skill,
-                    args=[link_skill, app_state.macro.run_id],
+                    args=[link_skill],
                     daemon=True,
                 ).start()
                 break
@@ -304,62 +323,76 @@ def running_macro_thread(run_id: int) -> None:
     시뮬레이션과 약간의 오차가 있지만 무시할만 함 (나중에 개선 예정)
     """
 
-    init_macro()
+    global is_input_sequence_running
 
-    # 매크로 클릭 쓰레드
-    if app_state.macro.current_use_default_attack:
-        # 첫 스킬 입력 전에 평타가 먼저 나가지 않도록 시작 직후 보호 구간 선예약
-        _pause_attack_for(_get_attack_hold_seconds())
+    current_line_index: int = 0
 
-        Thread(
-            target=clicking_mouse_thread,
-            args=[app_state.macro.run_id],
-            daemon=True,
-        ).start()
+    try:
+        init_macro()
 
-    while app_state.macro.is_running and app_state.macro.run_id == run_id:
-        # taskList에 사용 가능한 스킬 추가
-        wait_seconds: float = 0.0
-        if not app_state.macro.task_list:
-            wait_seconds = build_task_list(show_info=DEBUG_PRINT_INFO)
-
-        # 다음 스킬이 아직 멀면 평타를 유지한 채 직전 보호 구간까지만 대기
-        if not app_state.macro.task_list and wait_seconds > 0.0:
-            attack_hold_seconds: float = _get_attack_hold_seconds()
-
-            if wait_seconds > attack_hold_seconds:
-                time.sleep(
-                    (wait_seconds - attack_hold_seconds)
-                    * config.macro.SLEEP_COEFFICIENT_UNIT
-                )
-                continue
-
-            # 다음 스킬 임박 구간 동안 평타 중지 예약
-            _pause_attack_for(wait_seconds + ATTACK_PAUSE_BUFFER_SECONDS)
-
-        # 즉시 사용할 스킬이 있으면 평타 스레드 선차단
-        if app_state.macro.task_list:
+        # 매크로 클릭 쓰레드
+        if app_state.macro.current_use_default_attack:
+            # 첫 스킬 입력 전에 평타가 먼저 나가지 않도록 시작 직후 보호 구간 선예약
             _pause_attack_for(_get_attack_hold_seconds())
 
-        # 스킬 사용하고 사용 여부 리턴
-        is_used_skill: bool = use_skill(run_id=app_state.macro.run_id)
+            Thread(
+                target=clicking_mouse_thread,
+                args=[run_id],
+                daemon=True,
+            ).start()
 
-        # 잠수면 매크로 중지
-        if (
-            config.macro.is_afk_enabled
-            and time.time() - app_state.macro.afk_started_time >= 10
-        ):
-            # UI 스레드 알림 표시용 잠수 종료 상태 기록
-            app_state.macro.has_pending_afk_notice = True
-            app_state.macro.is_running = False
+        while app_state.macro.is_running and app_state.macro.run_id == run_id:
+            # taskList에 사용 가능한 스킬 추가
+            wait_seconds: float = 0.0
+            if not app_state.macro.task_list:
+                wait_seconds = build_task_list(show_info=DEBUG_PRINT_INFO)
 
-        if not is_used_skill:
-            time.sleep(wait_seconds * config.macro.SLEEP_COEFFICIENT_UNIT)
+            # 다음 스킬이 아직 멀면 평타를 유지한 채 직전 보호 구간까지만 대기
+            if not app_state.macro.task_list and wait_seconds > 0.0:
+                attack_hold_seconds: float = _get_attack_hold_seconds()
 
-    # 현재 실행 주기 종료 시 1줄 종료 상태 복구
-    if app_state.macro.run_id == run_id:
-        _settle_cooltime_state_after_stop()
-        _restore_first_line_state()
+                if wait_seconds > attack_hold_seconds:
+                    _sleep_while_macro_running(
+                        (wait_seconds - attack_hold_seconds)
+                        * config.macro.SLEEP_COEFFICIENT_UNIT
+                    )
+                    continue
+
+                # 다음 스킬 임박 구간 동안 평타 중지 예약
+                _pause_attack_for(wait_seconds + ATTACK_PAUSE_BUFFER_SECONDS)
+
+            # 즉시 사용할 스킬이 있으면 평타 스레드 선차단
+            if app_state.macro.task_list:
+                _pause_attack_for(_get_attack_hold_seconds())
+
+            # 스킬 사용하고 사용 여부 리턴
+            is_used_skill, current_line_index = use_skill(
+                current_line_index=current_line_index,
+            )
+
+            # 잠수면 매크로 중지
+            if (
+                config.macro.is_afk_enabled
+                and time.time() - app_state.macro.afk_started_time >= 10
+            ):
+                # UI 스레드 알림 표시용 잠수 종료 상태 기록
+                app_state.macro.has_pending_afk_notice = True
+                app_state.macro.is_running = False
+
+            if not is_used_skill:
+                _sleep_while_macro_running(
+                    wait_seconds * config.macro.SLEEP_COEFFICIENT_UNIT
+                )
+    finally:
+        if app_state.macro.run_id == run_id:
+            try:
+                # 현재 실행 주기 종료 시 1줄 종료 상태 복구
+                _settle_cooltime_state_after_stop()
+                kbd_controller: keyboard.Controller = keyboard.Controller()
+                _restore_first_line_state(kbd_controller, current_line_index)
+            finally:
+                # 매크로 종료 후 입력 점유 상태 해제
+                is_input_sequence_running = False
 
 
 def clicking_mouse_thread(run_id: int) -> None:
@@ -404,40 +437,52 @@ def _pause_attack_for(duration_seconds: float) -> None:
     )
 
 
-def _restore_first_line_state() -> None:
+def _sleep_while_macro_running(duration_seconds: float) -> None:
+    """매크로 중지 상태를 확인하며 대기"""
+
+    end_at: float = time.perf_counter() + max(0.0, duration_seconds)
+    while app_state.macro.is_running:
+        remaining_seconds: float = end_at - time.perf_counter()
+        if remaining_seconds <= 0.0:
+            return
+
+        time.sleep(min(remaining_seconds, MACRO_SLEEP_POLL_SECONDS))
+
+
+def _restore_first_line_state(
+    kbd_controller: keyboard.Controller,
+    current_line_index: int,
+) -> int:
     """현재 줄 상태를 1줄 종료 상태로 복구"""
 
     # 이미 1줄이면 추가 입력 없이 종료
-    if app_state.macro.current_line_index == 0:
-        return
+    if current_line_index == 0:
+        return current_line_index
 
     swap_key: KeySpec = app_state.macro.current_swap_key
 
     # 종료 복귀용 스왑 입력 등록
-    kbd_controller: keyboard.Controller = keyboard.Controller()
     _register_injected_key_event(swap_key)
     keyboard_key: Key | KeyCode = cast(Key | KeyCode, swap_key.value)
     kbd_controller.press(keyboard_key)
     kbd_controller.release(keyboard_key)
-    app_state.macro.current_line_index = 0
+    return 0
 
 
 def _press_skill_keys(
     kbd_controller: keyboard.Controller,
     skill_ref: EquippedSkillRef,
-    run_id: int,
-    require_running: bool,
-) -> None:
+    current_line_index: int,
+) -> int:
     """줄 상태에 맞는 입력 수행"""
 
-    if app_state.macro.run_id != run_id:
-        return
-
-    if require_running and not app_state.macro.is_running:
-        return
+    # 현재 세로줄 공용키 기준 스킬 입력 키 조회
+    skill_key: KeySpec = KeyRegistry.get(
+        app_state.macro.current_preset.skills.skill_keys[skill_ref.scroll_index]
+    )
 
     # 목표 줄과 현재 줄이 다르면 스왑 입력 수행
-    if skill_ref.line_index != app_state.macro.current_line_index:
+    if skill_ref.line_index != current_line_index:
         swap_key: KeySpec = app_state.macro.current_swap_key
 
         # 프로그램 주입 스왑 입력 등록
@@ -446,18 +491,14 @@ def _press_skill_keys(
         kbd_controller.press(swap_keyboard_key)
         kbd_controller.release(swap_keyboard_key)
 
-        app_state.macro.current_line_index = skill_ref.line_index
-
-    # 현재 세로줄 공용키 기준 스킬 입력 키 조회
-    skill_key: KeySpec = KeyRegistry.get(
-        app_state.macro.current_preset.skills.skill_keys[skill_ref.scroll_index]
-    )
+        current_line_index = skill_ref.line_index
 
     # 프로그램 주입 스킬 입력 등록
     _register_injected_key_event(skill_key)
     skill_keyboard_key: Key | KeyCode = cast(Key | KeyCode, skill_key.value)
     kbd_controller.press(skill_keyboard_key)
     kbd_controller.release(skill_keyboard_key)
+    return current_line_index
 
 
 def _collect_priority_skill_sequence() -> list[EquippedSkillRef]:
@@ -598,7 +639,6 @@ def init_macro() -> None:
     _clear_injected_key_events()
     app_state.macro.afk_started_time = time.time()
     app_state.macro.has_pending_afk_notice = False
-    app_state.macro.current_line_index = 0
     app_state.macro.skill_sequence = _collect_priority_skill_sequence()
     app_state.macro.using_link_skills.clear()
     app_state.macro.attack_pause_until = 0.0
@@ -629,11 +669,11 @@ def init_macro() -> None:
     _restore_or_reset_cooltime_state(placed_refs)
 
 
-def use_skill(run_id: int) -> bool:
+def use_skill(current_line_index: int) -> tuple[bool, int]:
     """스킬 사용 함수"""
 
     if not app_state.macro.task_list:
-        return False
+        return False, current_line_index
 
     # 스킬 입력 직전과 후속 딜레이 동안 평타 끼어들기 차단
     _pause_attack_for(_get_attack_hold_seconds())
@@ -642,11 +682,10 @@ def use_skill(run_id: int) -> bool:
     skill_ref: EquippedSkillRef = app_state.macro.task_list.pop(0)
     app_state.macro.skill_cooltime_timers[skill_ref] = time.perf_counter()
 
-    _press_skill_keys(
+    current_line_index = _press_skill_keys(
         kbd_controller,
         skill_ref,
-        run_id,
-        require_running=True,
+        current_line_index=current_line_index,
     )
 
     delay_seconds: float = (
@@ -654,27 +693,21 @@ def use_skill(run_id: int) -> bool:
     )
 
     # 옵션 활성화 시 스킬 사용 후 1번 줄로 복귀
-    # 복귀 스왑 앞뒤로 딜레이를 분할해 두 스왑 키 입력 간격을 확보 (총 딜레이는 유지)
-    if (
-        app_state.macro.current_always_return_to_first_line
-        and app_state.macro.current_line_index != 0
-    ):
-        time.sleep(delay_seconds * 0.5)
+    if app_state.macro.current_always_return_to_first_line and current_line_index != 0:
+        half_delay_seconds: float = delay_seconds * 0.5
+        _sleep_while_macro_running(half_delay_seconds)
+        current_line_index = _restore_first_line_state(
+            kbd_controller,
+            current_line_index,
+        )
 
-        swap_key: KeySpec = app_state.macro.current_swap_key
-        _register_injected_key_event(swap_key)
-        swap_keyboard_key: Key | KeyCode = cast(Key | KeyCode, swap_key.value)
+        if app_state.macro.is_running:
+            _sleep_while_macro_running(half_delay_seconds)
 
-        kbd_controller.press(swap_keyboard_key)
-        kbd_controller.release(swap_keyboard_key)
-
-        app_state.macro.current_line_index = 0
-
-        time.sleep(delay_seconds * 0.5)
-        return True
+        return True, current_line_index
 
     time.sleep(delay_seconds)
-    return True
+    return True, current_line_index
 
 
 def _collect_ready_link_skill_ids(link_skill: LinkSkill) -> list[str]:
@@ -699,61 +732,68 @@ def _collect_ready_link_skill_ids(link_skill: LinkSkill) -> list[str]:
     return ready_skill_ids
 
 
-def use_link_skill(link_skill: LinkSkill, run_id: int) -> None:
+def use_link_skill(link_skill: LinkSkill) -> None:
     """연계스킬 사용 함수"""
 
-    skill_ref_map: dict[str, EquippedSkillRef] = (
-        app_state.macro.current_preset.skills.get_placed_skill_ref_map(
-            app_state.macro.current_server
-        )
-    )
+    global is_input_sequence_running
 
-    if not all(skill_id in skill_ref_map for skill_id in link_skill.skills):
-        return
-
-    # 쿨타임 동기화 옵션 시 연계스킬 타이머 기준으로 필터링
-    if link_skill.remember_state:
-        skills_to_press: list[str] = _collect_ready_link_skill_ids(link_skill)
-    else:
-        skills_to_press = list(link_skill.skills)
-
-    # 입력할 스킬이 없으면 상태를 건드리지 않고 종료
-    if not skills_to_press:
-        return
-
-    # 연계 입력 전체 구간 동안 평타 클릭 차단
-    link_skill_pause_seconds: float = (
-        len(skills_to_press) * app_state.macro.current_delay * 0.001
-    ) + ATTACK_PAUSE_BUFFER_SECONDS
-    _pause_attack_for(link_skill_pause_seconds)
-
-    # 수동 연계 시작 기준 1줄 상태 초기화
-    app_state.macro.current_line_index = 0
-
+    current_line_index: int = 0
     kbd_controller: keyboard.Controller = keyboard.Controller()
 
-    # 연계에 등록된 순서대로 스킬 입력 진행
-    for skill_id in skills_to_press:
-        skill_ref: EquippedSkillRef = skill_ref_map[skill_id]
-
-        # 쿨타임 동기화 옵션 시 입력 직전 연계 자체 타이머 갱신
-        if link_skill.remember_state:
-            link_skill.skill_timers[skill_id] = time.perf_counter()
-
-        _press_skill_keys(
-            kbd_controller,
-            skill_ref,
-            run_id,
-            require_running=False,
+    try:
+        skill_ref_map: dict[str, EquippedSkillRef] = (
+            app_state.macro.current_preset.skills.get_placed_skill_ref_map(
+                app_state.macro.current_server
+            )
         )
-        time.sleep(
+
+        if not all(skill_id in skill_ref_map for skill_id in link_skill.skills):
+            return
+
+        # 쿨타임 동기화 옵션 시 연계스킬 타이머 기준으로 필터링
+        if link_skill.remember_state:
+            skills_to_press: list[str] = _collect_ready_link_skill_ids(link_skill)
+        else:
+            skills_to_press = list(link_skill.skills)
+
+        # 입력할 스킬이 없으면 상태를 건드리지 않고 종료
+        if not skills_to_press:
+            return
+
+        # 연계 입력 전체 구간 동안 평타 클릭 차단
+        link_skill_pause_seconds: float = (
+            len(skills_to_press) * app_state.macro.current_delay * 0.001
+        ) + ATTACK_PAUSE_BUFFER_SECONDS
+        _pause_attack_for(link_skill_pause_seconds)
+
+        delay_seconds: float = (
             app_state.macro.current_delay
             * 0.001
             * config.macro.SLEEP_COEFFICIENT_NORMAL
         )
 
-    if app_state.macro.run_id == run_id:
-        _restore_first_line_state()
+        # 연계에 등록된 순서대로 스킬 입력 진행
+        for skill_id in skills_to_press:
+            skill_ref: EquippedSkillRef = skill_ref_map[skill_id]
+
+            # 쿨타임 동기화 옵션 시 입력 직전 연계 자체 타이머 갱신
+            if link_skill.remember_state:
+                link_skill.skill_timers[skill_id] = time.perf_counter()
+
+            current_line_index = _press_skill_keys(
+                kbd_controller,
+                skill_ref,
+                current_line_index=current_line_index,
+            )
+
+            time.sleep(delay_seconds)
+    finally:
+        try:
+            # 연계 입력 종료 후 1줄 상태 복구
+            _restore_first_line_state(kbd_controller, current_line_index)
+        finally:
+            # 연계 입력 종료 후 입력 점유 상태 해제
+            is_input_sequence_running = False
 
 
 def _pop_next_regular_task(
