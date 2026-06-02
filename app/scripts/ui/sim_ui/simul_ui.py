@@ -5549,6 +5549,19 @@ class ResultsPage(QFrame):
                 self._relative_efficiency_checkbox
             )
 
+            # 최적화 결과 카드
+            self._opt_result_list: ResultsPage.Efficiency.ResultList = (
+                ResultsPage.Efficiency.ResultList(self)
+            )
+            self._opt_stats_grid: ResultsPage.ResultsView.OverallStatsGrid = (
+                ResultsPage.ResultsView.OverallStatsGrid(self)
+            )
+            self._opt_card: SectionCard = SectionCard(self, "최적화 결과")
+            self._opt_card.add_widget(self._opt_result_list)
+            self._opt_card.add_separator()
+            self._opt_card.add_sub_title("최적화 후 전체 스탯")
+            self._opt_card.add_widget(self._opt_stats_grid)
+
             # 성장 효율 카드 (레벨업 + 경지)
             self._level_up_list: ResultsPage.Efficiency.ResultList = (
                 ResultsPage.Efficiency.ResultList(self)
@@ -5657,27 +5670,14 @@ class ResultsPage(QFrame):
                 "목표 단전 적용 후 전체 스탯",
             )
 
-            # 최적화 결과 카드
-            self._opt_result_list: ResultsPage.Efficiency.ResultList = (
-                ResultsPage.Efficiency.ResultList(self)
-            )
-            self._opt_stats_grid: ResultsPage.ResultsView.OverallStatsGrid = (
-                ResultsPage.ResultsView.OverallStatsGrid(self)
-            )
-            self._opt_card: SectionCard = SectionCard(self, "최적화 결과")
-            self._opt_card.add_widget(self._opt_result_list)
-            self._opt_card.add_separator()
-            self._opt_card.add_sub_title("최적화 후 전체 스탯")
-            self._opt_card.add_widget(self._opt_stats_grid)
-
             layout: QVBoxLayout = QVBoxLayout(self)
             layout.addWidget(self._power_card)
             layout.addWidget(self._stat_scroll_card)
+            layout.addWidget(self._opt_card)
             layout.addWidget(self._growth_card)
             layout.addWidget(self._custom_card)
             layout.addWidget(self._target_card)
             layout.addWidget(self._target_danjeon_card)
-            layout.addWidget(self._opt_card)
             layout.setSpacing(10)
             layout.setContentsMargins(10, 10, 10, 10)
             self.setLayout(layout)
