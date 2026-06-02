@@ -81,6 +81,7 @@ from app.scripts.calculator_models import (
     OwnedTitleStat,
     StatKey,
     TalismanGrade,
+    TargetDanjeonState,
     TargetDistributionState,
 )
 from app.scripts.config import config
@@ -1544,9 +1545,12 @@ class ResultsPage(QFrame):
         custom_delta: tuple[str, str] | None
         target_distribution_summary: tuple[str, str] | None
         target_delta: tuple[str, str] | None
+        target_danjeon_summary: tuple[str, str] | None
+        target_danjeon_delta: tuple[str, str] | None
         optimization_result: list[tuple[str, str]]
         custom_base_stats: BaseStats | None
         target_base_stats: BaseStats | None
+        target_danjeon_base_stats: BaseStats | None
         optimized_base_stats: BaseStats | None
 
     def __init__(
@@ -1816,6 +1820,39 @@ class ResultsPage(QFrame):
             # 목표 분배 적용 후 전체 스탯 구성
             target_base_stats = base_stats.with_changes(target_changes)
 
+        target_danjeon_changes: dict[StatKey, float] = cls._build_target_danjeon_delta(
+            calculator_input
+        )
+        target_danjeon_summary: tuple[str, str] | None = None
+        target_danjeon_delta_row: tuple[str, str] | None = None
+        target_danjeon_base_stats: BaseStats | None = None
+
+        # 목표 단전 결과 표시 행 구성
+        if target_danjeon_changes:
+            # 목표 단전 수치 요약 행 구성
+            target_danjeon_summary = cls._build_target_danjeon_summary_row(
+                calculator_input
+            )
+
+            # 목표 단전 기준 전투력 변화량 행 구성
+            formula_labels: dict[str, str] = _build_formula_label_map(
+                app_state.macro.custom_power_formulas
+            )
+            target_danjeon_delta: float = evaluate_arbitrary_stat_delta(
+                context=context,
+                stat_changes=target_danjeon_changes,
+                target_formula_id=selected_formula_id,
+            )
+            target_danjeon_delta_row = (
+                formula_labels[selected_formula_id],
+                cls._format_delta(target_danjeon_delta),
+            )
+
+            # 목표 단전 적용 후 전체 스탯 구성
+            target_danjeon_base_stats = base_stats.with_changes(
+                target_danjeon_changes
+            )
+
         # 최적화 결과 계산 단계 반영
         if progress_callback is not None:
             progress_callback("최적화 결과 계산 중...", 0)
@@ -1912,9 +1949,12 @@ class ResultsPage(QFrame):
             custom_delta=custom_delta_row,
             target_distribution_summary=target_distribution_summary,
             target_delta=target_delta_row,
+            target_danjeon_summary=target_danjeon_summary,
+            target_danjeon_delta=target_danjeon_delta_row,
             optimization_result=optimization_rows,
             custom_base_stats=custom_base_stats,
             target_base_stats=target_base_stats,
+            target_danjeon_base_stats=target_danjeon_base_stats,
             optimized_base_stats=optimized_base_stats,
         )
 
@@ -2023,6 +2063,45 @@ class ResultsPage(QFrame):
         )
         return ("목표 분배", summary)
 
+    @staticmethod
+    def _build_target_danjeon_delta(
+        calculator_input: "CalculatorPresetInput",
+    ) -> dict[StatKey, float]:
+        """현재 단전 대비 목표 단전 차이 계산"""
+
+        current: DanjeonState = calculator_input.danjeon
+        target: "TargetDanjeonState" = calculator_input.target_danjeon
+        delta: dict[StatKey, float] = {}
+        diff_upper: int = target.upper - current.upper
+        diff_middle: int = target.middle - current.middle
+        diff_lower: int = target.lower - current.lower
+        if diff_upper != 0:
+            delta[StatKey.HP_PERCENT] = float(diff_upper * 3)
+            delta[StatKey.RESIST_PERCENT] = float(diff_upper)
+        if diff_middle != 0:
+            delta[StatKey.ATTACK_PERCENT] = float(diff_middle)
+        if diff_lower != 0:
+            delta[StatKey.DROP_RATE_PERCENT] = float(diff_lower * 1.5)
+            delta[StatKey.EXP_PERCENT] = float(diff_lower * 0.5)
+        return delta
+
+    @staticmethod
+    def _build_target_danjeon_summary_row(
+        calculator_input: "CalculatorPresetInput",
+    ) -> tuple[str, str]:
+        """목표 단전 수치 요약 행 구성"""
+
+        # 목표 단전 상태 참조
+        target: "TargetDanjeonState" = calculator_input.target_danjeon
+
+        # 목표 단전 표시 문자열 구성
+        summary: str = (
+            f"상단전 {target.upper} / "
+            f"중단전 {target.middle} / "
+            f"하단전 {target.lower}"
+        )
+        return ("목표 단전", summary)
+
     class Efficiency(QFrame):
         def __init__(
             self,
@@ -2103,17 +2182,43 @@ class ResultsPage(QFrame):
             )
 
             # 최적화 기준 입력 UI 구성
-            self.distribution_inputs = self.DistributionInputs(
+            self.distribution_inputs = self.AllocationInputs(
                 self,
                 self.on_optimization_input_changed,
+                (
+                    ("strength", "힘"),
+                    ("dexterity", "민첩"),
+                    ("vitality", "생명력"),
+                    ("luck", "행운"),
+                ),
             )
-            self.target_distribution_inputs = self.TargetDistributionInputs(
+            self.target_distribution_inputs = self.TargetMinimumInputs(
                 self,
                 self.on_optimization_input_changed,
+                (
+                    ("strength", "힘"),
+                    ("dexterity", "민첩"),
+                    ("vitality", "생명력"),
+                    ("luck", "행운"),
+                ),
             )
-            self.danjeon_inputs = self.DanjeonInputs(
+            self.danjeon_inputs = self.AllocationInputs(
                 self,
                 self.on_optimization_input_changed,
+                (
+                    ("upper", "상단전"),
+                    ("middle", "중단전"),
+                    ("lower", "하단전"),
+                ),
+            )
+            self.target_danjeon_inputs = self.TargetMinimumInputs(
+                self,
+                self.on_optimization_input_changed,
+                (
+                    ("upper", "상단전"),
+                    ("middle", "중단전"),
+                    ("lower", "하단전"),
+                ),
             )
             self.title_inputs = self.TitleInputs(
                 self,
@@ -2173,17 +2278,11 @@ class ResultsPage(QFrame):
             opt_card.add_widget(self.distribution_inputs)
             opt_card.add_sub_title("목표 분배 미리보기")
             opt_card.add_widget(self.target_distribution_inputs)
-            target_distribution_guide: QLabel = QLabel(
-                "입력한 분배는 항상 결과 미리보기에 표시됩니다. 체크하면 최적화에도 최소분배 조건으로 반영됩니다.",
-                self,
-            )
-            target_distribution_guide.setWordWrap(True)
-            target_distribution_guide.setObjectName("sectionCardSubTitle")
-            target_distribution_guide.setFont(CustomFont(10))
-            opt_card.add_widget(target_distribution_guide)
             opt_card.add_separator()
             opt_card.add_sub_title("단전")
             opt_card.add_widget(self.danjeon_inputs)
+            opt_card.add_sub_title("목표 단전 미리보기")
+            opt_card.add_widget(self.target_danjeon_inputs)
             opt_card.add_separator()
             opt_card.add_sub_title("칭호 목록")
             opt_card.add_widget(self.title_inputs)
@@ -2249,6 +2348,7 @@ class ResultsPage(QFrame):
             distribution_state: DistributionState
             target_distribution_state: TargetDistributionState
             danjeon_state: DanjeonState
+            target_danjeon_state: TargetDanjeonState
             owned_titles: list[OwnedTitle]
             equipped_state: EquippedState
             owned_talismans: list[OwnedTalisman]
@@ -2257,6 +2357,7 @@ class ResultsPage(QFrame):
                 distribution_state,
                 target_distribution_state,
                 danjeon_state,
+                target_danjeon_state,
                 owned_titles,
                 equipped_state,
                 owned_talismans,
@@ -2282,6 +2383,7 @@ class ResultsPage(QFrame):
                 distribution_state=distribution_state,
                 target_distribution_state=target_distribution_state,
                 danjeon_state=danjeon_state,
+                target_danjeon_state=target_danjeon_state,
                 owned_titles=owned_titles,
                 equipped_state=equipped_state,
                 owned_talismans=owned_talismans,
@@ -2482,26 +2584,22 @@ class ResultsPage(QFrame):
                     row_layout.addWidget(value_label)
                     self._layout.addWidget(row_widget)
 
-        class DistributionInputs(QFrame):
+        class AllocationInputs(QFrame):
             def __init__(
                 self,
                 parent: QWidget,
                 connected_function: Callable[[], None],
+                fields: tuple[tuple[str, str], ...],
             ) -> None:
                 super().__init__(parent)
 
-                # 현재 스탯 분배 입력 행 구성
+                # 현재 포인트 입력 행 구성
                 self.inputs: dict[str, CustomLineEdit] = {}
                 layout: QHBoxLayout = QHBoxLayout(self)
                 layout.setContentsMargins(0, 0, 0, 0)
                 layout.setSpacing(10)
 
-                for field_name, label in (
-                    ("strength", "힘"),
-                    ("dexterity", "민첩"),
-                    ("vitality", "생명력"),
-                    ("luck", "행운"),
-                ):
+                for field_name, label in fields:
                     item_widget: KVInput = KVInput(
                         self,
                         label,
@@ -2522,26 +2620,22 @@ class ResultsPage(QFrame):
                 layout.addStretch(1)
                 self.setLayout(layout)
 
-        class TargetDistributionInputs(QFrame):
+        class TargetMinimumInputs(QFrame):
             def __init__(
                 self,
                 parent: QWidget,
                 connected_function: Callable[[], None],
+                fields: tuple[tuple[str, str], ...],
             ) -> None:
                 super().__init__(parent)
 
-                # 목표 스탯 분배 입력 행 구성
+                # 목표 입력 행 구성
                 self.inputs: dict[str, CustomLineEdit] = {}
                 layout: QHBoxLayout = QHBoxLayout(self)
                 layout.setContentsMargins(0, 0, 0, 0)
                 layout.setSpacing(10)
 
-                for field_name, label in (
-                    ("strength", "힘"),
-                    ("dexterity", "민첩"),
-                    ("vitality", "생명력"),
-                    ("luck", "행운"),
-                ):
+                for field_name, label in fields:
                     item_widget: KVInput = KVInput(
                         self,
                         label,
@@ -2558,45 +2652,6 @@ class ResultsPage(QFrame):
                 )
                 self.minimum_checkbox.stateChanged.connect(connected_function)
                 layout.addWidget(self.minimum_checkbox)
-                layout.addStretch(1)
-                self.setLayout(layout)
-
-        class DanjeonInputs(QFrame):
-            def __init__(
-                self,
-                parent: QWidget,
-                connected_function: Callable[[], None],
-            ) -> None:
-                super().__init__(parent)
-
-                # 현재 단전 입력 행 구성
-                self.inputs: dict[str, CustomLineEdit] = {}
-                layout: QHBoxLayout = QHBoxLayout(self)
-                layout.setContentsMargins(0, 0, 0, 0)
-                layout.setSpacing(10)
-
-                for field_name, label in (
-                    ("upper", "상단전"),
-                    ("middle", "중단전"),
-                    ("lower", "하단전"),
-                ):
-                    item_widget: KVInput = KVInput(
-                        self,
-                        label,
-                        "0",
-                        connected_function,
-                        max_width=80,
-                    )
-                    self.inputs[field_name] = item_widget.input
-                    layout.addWidget(item_widget)
-
-                # 잠금/초기화 토글 구성
-                self.lock_checkbox: QCheckBox = QCheckBox("잠금", self)
-                self.lock_checkbox.stateChanged.connect(connected_function)
-                self.reset_checkbox: QCheckBox = QCheckBox("초기화", self)
-                self.reset_checkbox.stateChanged.connect(connected_function)
-                layout.addWidget(self.lock_checkbox)
-                layout.addWidget(self.reset_checkbox)
                 layout.addStretch(1)
                 self.setLayout(layout)
 
@@ -4456,6 +4511,18 @@ class ResultsPage(QFrame):
             self.danjeon_inputs.reset_checkbox.setChecked(
                 calculator_input.danjeon.use_reset
             )
+            self.target_danjeon_inputs.inputs["upper"].setText(
+                str(calculator_input.target_danjeon.upper)
+            )
+            self.target_danjeon_inputs.inputs["middle"].setText(
+                str(calculator_input.target_danjeon.middle)
+            )
+            self.target_danjeon_inputs.inputs["lower"].setText(
+                str(calculator_input.target_danjeon.lower)
+            )
+            self.target_danjeon_inputs.minimum_checkbox.setChecked(
+                calculator_input.target_danjeon.is_minimum
+            )
             self.title_inputs.load(
                 calculator_input.owned_titles,
                 calculator_input.equipped_state.equipped_title_name,
@@ -4465,12 +4532,16 @@ class ResultsPage(QFrame):
                 calculator_input.equipped_state.equipped_talisman_names,
             )
 
-        def _read_distribution_state(self) -> tuple[bool, DistributionState]:
-            """현재 스탯 분배 상태 복원"""
+        @staticmethod
+        def _read_integer_inputs(
+            inputs: dict[str, CustomLineEdit],
+        ) -> tuple[bool, dict[str, int]]:
+            """정수 입력 묶음 복원 및 검증"""
 
+            # 숫자 문자열 입력값을 정수 맵으로 변환
             is_valid: bool = True
             values: dict[str, int] = {}
-            for field_name, input_widget in self.distribution_inputs.inputs.items():
+            for field_name, input_widget in inputs.items():
                 text: str = input_widget.text()
                 if not text.isdigit():
                     input_widget.set_valid(False)
@@ -4480,6 +4551,17 @@ class ResultsPage(QFrame):
 
                 input_widget.set_valid(True)
                 values[field_name] = int(text)
+
+            return is_valid, values
+
+        def _read_distribution_state(self) -> tuple[bool, DistributionState]:
+            """현재 스탯 분배 상태 복원"""
+
+            is_valid: bool
+            values: dict[str, int]
+            is_valid, values = self._read_integer_inputs(
+                self.distribution_inputs.inputs
+            )
 
             distribution_state: DistributionState = DistributionState(
                 strength=values["strength"],
@@ -4496,21 +4578,11 @@ class ResultsPage(QFrame):
         ) -> tuple[bool, TargetDistributionState]:
             """목표 스탯 분배 상태 복원"""
 
-            is_valid: bool = True
-            values: dict[str, int] = {}
-            for (
-                field_name,
-                input_widget,
-            ) in self.target_distribution_inputs.inputs.items():
-                text: str = input_widget.text()
-                if not text.isdigit():
-                    input_widget.set_valid(False)
-                    is_valid = False
-                    values[field_name] = 0
-                    continue
-
-                input_widget.set_valid(True)
-                values[field_name] = int(text)
+            is_valid: bool
+            values: dict[str, int]
+            is_valid, values = self._read_integer_inputs(
+                self.target_distribution_inputs.inputs
+            )
 
             # 최소분배 체크 상태 확인
             is_minimum: bool = (
@@ -4531,18 +4603,9 @@ class ResultsPage(QFrame):
         def _read_danjeon_state(self) -> tuple[bool, DanjeonState]:
             """현재 단전 상태 복원"""
 
-            is_valid: bool = True
-            values: dict[str, int] = {}
-            for field_name, input_widget in self.danjeon_inputs.inputs.items():
-                text: str = input_widget.text()
-                if not text.isdigit():
-                    input_widget.set_valid(False)
-                    is_valid = False
-                    values[field_name] = 0
-                    continue
-
-                input_widget.set_valid(True)
-                values[field_name] = int(text)
+            is_valid: bool
+            values: dict[str, int]
+            is_valid, values = self._read_integer_inputs(self.danjeon_inputs.inputs)
 
             danjeon_state: DanjeonState = DanjeonState(
                 upper=values["upper"],
@@ -4553,6 +4616,26 @@ class ResultsPage(QFrame):
             )
             return is_valid, danjeon_state
 
+        def _read_target_danjeon_state(self) -> tuple[bool, TargetDanjeonState]:
+            """목표 단전 상태 복원"""
+
+            is_valid: bool
+            values: dict[str, int]
+            is_valid, values = self._read_integer_inputs(
+                self.target_danjeon_inputs.inputs
+            )
+
+            # 최소분배 체크 상태 확인
+            is_minimum: bool = self.target_danjeon_inputs.minimum_checkbox.isChecked()
+
+            target_danjeon_state: TargetDanjeonState = TargetDanjeonState(
+                upper=values["upper"],
+                middle=values["middle"],
+                lower=values["lower"],
+                is_minimum=is_minimum,
+            )
+            return is_valid, target_danjeon_state
+
         def _read_optimization_state(
             self,
         ) -> tuple[
@@ -4560,6 +4643,7 @@ class ResultsPage(QFrame):
             DistributionState,
             TargetDistributionState,
             DanjeonState,
+            TargetDanjeonState,
             list[OwnedTitle],
             EquippedState,
             list[OwnedTalisman],
@@ -4579,6 +4663,12 @@ class ResultsPage(QFrame):
             danjeon_valid: bool
             danjeon_state: DanjeonState
             danjeon_valid, danjeon_state = self._read_danjeon_state()
+
+            target_danjeon_valid: bool
+            target_danjeon_state: TargetDanjeonState
+            target_danjeon_valid, target_danjeon_state = (
+                self._read_target_danjeon_state()
+            )
 
             title_valid: bool
             owned_titles: list[OwnedTitle]
@@ -4602,6 +4692,7 @@ class ResultsPage(QFrame):
                 distribution_valid
                 and target_distribution_valid
                 and danjeon_valid
+                and target_danjeon_valid
                 and title_valid
                 and talisman_valid
             )
@@ -4610,6 +4701,7 @@ class ResultsPage(QFrame):
                 distribution_state,
                 target_distribution_state,
                 danjeon_state,
+                target_danjeon_state,
                 owned_titles,
                 equipped_state,
                 owned_talismans,
@@ -4732,6 +4824,7 @@ class ResultsPage(QFrame):
             distribution_state: DistributionState,
             target_distribution_state: TargetDistributionState,
             danjeon_state: DanjeonState,
+            target_danjeon_state: TargetDanjeonState,
             owned_titles: list[OwnedTitle],
             equipped_state: EquippedState,
             owned_talismans: list[OwnedTalisman],
@@ -4743,6 +4836,7 @@ class ResultsPage(QFrame):
             calculator_input.distribution = distribution_state
             calculator_input.target_distribution = target_distribution_state
             calculator_input.danjeon = danjeon_state
+            calculator_input.target_danjeon = target_danjeon_state
             calculator_input.owned_titles = owned_titles
             calculator_input.equipped_state = equipped_state
             calculator_input.owned_talismans = owned_talismans
@@ -4761,6 +4855,7 @@ class ResultsPage(QFrame):
             distribution_state: DistributionState
             target_distribution_state: TargetDistributionState
             danjeon_state: DanjeonState
+            target_danjeon_state: TargetDanjeonState
             owned_titles: list[OwnedTitle]
             equipped_state: EquippedState
             owned_talismans: list[OwnedTalisman]
@@ -4769,6 +4864,7 @@ class ResultsPage(QFrame):
                 distribution_state,
                 target_distribution_state,
                 danjeon_state,
+                target_danjeon_state,
                 owned_titles,
                 equipped_state,
                 owned_talismans,
@@ -4780,6 +4876,7 @@ class ResultsPage(QFrame):
                 distribution_state=distribution_state,
                 target_distribution_state=target_distribution_state,
                 danjeon_state=danjeon_state,
+                target_danjeon_state=target_danjeon_state,
                 owned_titles=owned_titles,
                 equipped_state=equipped_state,
                 owned_talismans=owned_talismans,
@@ -5519,19 +5616,46 @@ class ResultsPage(QFrame):
             self._custom_card.add_widget(self._custom_stats_grid)
             self._custom_card.setVisible(False)
 
-            # 목표 분배 결과 카드
-            self._target_list: ResultsPage.Efficiency.ResultList = (
-                ResultsPage.Efficiency.ResultList(self)
+            def _make_preview_card(
+                title: str,
+                stats_title: str,
+            ) -> tuple[
+                SectionCard,
+                "ResultsPage.Efficiency.ResultList",
+                "ResultsPage.ResultsView.OverallStatsGrid",
+            ]:
+                # 미리보기 공통 카드 구성
+                result_list: ResultsPage.Efficiency.ResultList = (
+                    ResultsPage.Efficiency.ResultList(self)
+                )
+                stats_grid: ResultsPage.ResultsView.OverallStatsGrid = (
+                    ResultsPage.ResultsView.OverallStatsGrid(self)
+                )
+                card: SectionCard = SectionCard(self, title)
+                card.add_widget(result_list)
+                card.add_separator()
+                card.add_sub_title(stats_title)
+                card.add_widget(stats_grid)
+                card.setVisible(False)
+                return card, result_list, stats_grid
+
+            # 목표 미리보기 결과 카드
+            (
+                self._target_card,
+                self._target_list,
+                self._target_stats_grid,
+            ) = _make_preview_card(
+                "목표 분배 미리보기",
+                "목표 분배 적용 후 전체 스탯",
             )
-            self._target_stats_grid: ResultsPage.ResultsView.OverallStatsGrid = (
-                ResultsPage.ResultsView.OverallStatsGrid(self)
+            (
+                self._target_danjeon_card,
+                self._target_danjeon_list,
+                self._target_danjeon_stats_grid,
+            ) = _make_preview_card(
+                "목표 단전 미리보기",
+                "목표 단전 적용 후 전체 스탯",
             )
-            self._target_card: SectionCard = SectionCard(self, "목표 분배 미리보기")
-            self._target_card.add_widget(self._target_list)
-            self._target_card.add_separator()
-            self._target_card.add_sub_title("목표 분배 적용 후 전체 스탯")
-            self._target_card.add_widget(self._target_stats_grid)
-            self._target_card.setVisible(False)
 
             # 최적화 결과 카드
             self._opt_result_list: ResultsPage.Efficiency.ResultList = (
@@ -5552,12 +5676,35 @@ class ResultsPage(QFrame):
             layout.addWidget(self._growth_card)
             layout.addWidget(self._custom_card)
             layout.addWidget(self._target_card)
+            layout.addWidget(self._target_danjeon_card)
             layout.addWidget(self._opt_card)
             layout.setSpacing(10)
             layout.setContentsMargins(10, 10, 10, 10)
             self.setLayout(layout)
 
             self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+        def _set_preview_card(
+            self,
+            card: SectionCard,
+            result_list: "ResultsPage.Efficiency.ResultList",
+            stats_grid: "ResultsPage.ResultsView.OverallStatsGrid",
+            summary_row: tuple[str, str] | None,
+            delta_row: tuple[str, str] | None,
+            base_stats: BaseStats | None,
+        ) -> None:
+            """미리보기 결과 카드 표시 상태 반영"""
+
+            # 미리보기 결과 존재 여부 확인
+            has_result: bool = summary_row is not None and delta_row is not None
+            card.setVisible(has_result)
+            if not has_result:
+                stats_grid.set_stats(None)
+                return
+
+            # 미리보기 요약/전투력 변화량/전체 스탯 동기화
+            result_list.set_rows([summary_row, delta_row])
+            stats_grid.set_stats(base_stats)
 
         def set_error_outputs(self) -> None:
             """결과 페이지 오류 상태 출력"""
@@ -5573,8 +5720,22 @@ class ResultsPage(QFrame):
 
             # 사용자 지정 변화량 전체 스탯 표시 초기화
             self._custom_stats_grid.set_stats(None)
-            self._target_card.setVisible(False)
-            self._target_stats_grid.set_stats(None)
+            self._set_preview_card(
+                self._target_card,
+                self._target_list,
+                self._target_stats_grid,
+                None,
+                None,
+                None,
+            )
+            self._set_preview_card(
+                self._target_danjeon_card,
+                self._target_danjeon_list,
+                self._target_danjeon_stats_grid,
+                None,
+                None,
+                None,
+            )
             self._opt_result_list.set_rows(error_rows)
             self._opt_stats_grid.set_stats(None)
 
@@ -5592,8 +5753,22 @@ class ResultsPage(QFrame):
 
             # 사용자 지정 변화량 전체 스탯 표시 초기화
             self._custom_stats_grid.set_stats(None)
-            self._target_card.setVisible(False)
-            self._target_stats_grid.set_stats(None)
+            self._set_preview_card(
+                self._target_card,
+                self._target_list,
+                self._target_stats_grid,
+                None,
+                None,
+                None,
+            )
+            self._set_preview_card(
+                self._target_danjeon_card,
+                self._target_danjeon_list,
+                self._target_danjeon_stats_grid,
+                None,
+                None,
+                None,
+            )
             self._opt_result_list.set_rows(loading_rows)
             self._opt_stats_grid.set_stats(None)
 
@@ -5621,33 +5796,24 @@ class ResultsPage(QFrame):
             else:
                 # 사용자 지정 변화량 미입력 시 이전 전체 스탯 표시 제거
                 self._custom_stats_grid.set_stats(None)
-            has_target_result: bool = (
-                output_rows.target_distribution_summary is not None
-                and output_rows.target_delta is not None
+
+            # 목표 분배/단전 미리보기 결과 카드 동기화
+            self._set_preview_card(
+                self._target_card,
+                self._target_list,
+                self._target_stats_grid,
+                output_rows.target_distribution_summary,
+                output_rows.target_delta,
+                output_rows.target_base_stats,
             )
-            self._target_card.setVisible(has_target_result)
-            if has_target_result:
-                # 목표 분배 결과 카드 하위 섹션 동기화
-                target_summary_row_opt: tuple[str, str] | None = (
-                    output_rows.target_distribution_summary
-                )
-                target_delta_row_opt: tuple[str, str] | None = output_rows.target_delta
-
-                # 목표 분배 결과 행 타입 확정
-                if target_summary_row_opt is None or target_delta_row_opt is None:
-                    return
-
-                target_summary_row: tuple[str, str] = target_summary_row_opt
-                target_delta_row: tuple[str, str] = target_delta_row_opt
-                target_rows: list[tuple[str, str]] = [
-                    target_summary_row,
-                    target_delta_row,
-                ]
-                self._target_list.set_rows(target_rows)
-                self._target_stats_grid.set_stats(output_rows.target_base_stats)
-            else:
-                # 목표 분배 미입력 시 이전 전체 스탯 표시 제거
-                self._target_stats_grid.set_stats(None)
+            self._set_preview_card(
+                self._target_danjeon_card,
+                self._target_danjeon_list,
+                self._target_danjeon_stats_grid,
+                output_rows.target_danjeon_summary,
+                output_rows.target_danjeon_delta,
+                output_rows.target_danjeon_base_stats,
+            )
             self._opt_result_list.set_rows(output_rows.optimization_result)
             self._opt_stats_grid.set_stats(output_rows.optimized_base_stats)
 

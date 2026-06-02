@@ -58,6 +58,7 @@ from app.scripts.calculator_models import (
     RealmSpec,
     RealmTier,
     StatKey,
+    TargetDanjeonState,
     TargetDistributionState,
 )
 from app.scripts.macro_models import EquippedSkillRef, LinkUseType
@@ -1602,6 +1603,7 @@ class OptimizationFailureReason(Enum):
     DANJEON_EXCEEDS_REALM_CAP = "danjeon_exceeds_realm_cap"
     SELECTED_INPUT_EXCEEDS_TOTAL_STATS = "selected_input_exceeds_total_stats"
     MINIMUM_DISTRIBUTION_EXCEEDS_LEVEL_CAP = "minimum_distribution_exceeds_level_cap"
+    MINIMUM_DANJEON_EXCEEDS_REALM_CAP = "minimum_danjeon_exceeds_realm_cap"
     NO_CALCULABLE_COMBINATION = "no_calculable_combination"
 
 
@@ -1652,6 +1654,20 @@ class DistributionSearchRange:
     vitality_min: int
     vitality_max: int
     luck_min: int
+    target_points: int
+    is_locked: bool
+    use_reset: bool
+
+
+@dataclass(frozen=True, slots=True)
+class DanjeonSearchRange:
+    """단전 분배 범위 노드"""
+
+    upper_min: int
+    upper_max: int
+    middle_min: int
+    middle_max: int
+    lower_min: int
     target_points: int
     is_locked: bool
     use_reset: bool
@@ -2961,6 +2977,69 @@ def _is_distribution_search_range_feasible(
     )
 
 
+def _build_danjeon_search_root(
+    calculator_input: CalculatorPresetInput,
+) -> DanjeonSearchRange:
+    """단전 분배 탐색 루트 범위 구성"""
+
+    current_state: DanjeonState = calculator_input.danjeon
+    if current_state.is_locked:
+        # 잠금 상태 단일 노드 구성
+        used_points: int = (
+            current_state.upper + current_state.middle + current_state.lower
+        )
+        return DanjeonSearchRange(
+            upper_min=current_state.upper,
+            upper_max=current_state.upper,
+            middle_min=current_state.middle,
+            middle_max=current_state.middle,
+            lower_min=current_state.lower,
+            target_points=used_points,
+            is_locked=current_state.is_locked,
+            use_reset=current_state.use_reset,
+        )
+
+    # 리셋 여부 기반 탐색 경계 구성
+    max_points: int = REALM_TIER_SPECS[calculator_input.realm_tier].danjeon_points
+    upper_min: int = 0 if current_state.use_reset else current_state.upper
+    middle_min: int = 0 if current_state.use_reset else current_state.middle
+    lower_min: int = 0 if current_state.use_reset else current_state.lower
+
+    # 목표 단전 최소분배 모드 하한 적용 블록
+    target_danjeon: TargetDanjeonState = calculator_input.target_danjeon
+    if target_danjeon.is_minimum:
+        target: TargetDanjeonState = target_danjeon
+        upper_min = max(upper_min, target.upper)
+        middle_min = max(middle_min, target.middle)
+        lower_min = max(lower_min, target.lower)
+
+    return DanjeonSearchRange(
+        upper_min=upper_min,
+        upper_max=max_points,
+        middle_min=middle_min,
+        middle_max=max_points,
+        lower_min=lower_min,
+        target_points=max_points,
+        is_locked=current_state.is_locked,
+        use_reset=current_state.use_reset,
+    )
+
+
+def _is_danjeon_search_range_feasible(
+    danjeon_range: DanjeonSearchRange,
+) -> bool:
+    """단전 분배 범위 실현 가능 여부 확인"""
+
+    # 최소 포인트 합 검증
+    minimum_allocated_points: int = (
+        danjeon_range.upper_min + danjeon_range.middle_min
+    )
+    return (
+        minimum_allocated_points + danjeon_range.lower_min
+        <= danjeon_range.target_points
+    )
+
+
 def _is_leaf_distribution_search_range(
     distribution_range: DistributionSearchRange,
 ) -> bool:
@@ -3150,47 +3229,43 @@ def _split_distribution_search_range(
 
 
 def _build_danjeon_candidates(
-    calculator_input: CalculatorPresetInput,
+    danjeon_range: DanjeonSearchRange,
 ) -> list[DanjeonState]:
     """단전 후보 목록 생성"""
 
-    current_state: DanjeonState = calculator_input.danjeon
-    if current_state.is_locked:
-        return [current_state]
-
-    max_points: int = REALM_TIER_SPECS[calculator_input.realm_tier].danjeon_points
-    used_points: int = current_state.upper + current_state.middle + current_state.lower
-    target_points: int = max_points if current_state.use_reset else used_points
-    free_points: int = (
-        max_points if current_state.use_reset else max_points - used_points
-    )
+    if danjeon_range.is_locked:
+        # 잠금 상태 단일 후보 구성
+        return [
+            DanjeonState(
+                upper=danjeon_range.upper_min,
+                middle=danjeon_range.middle_min,
+                lower=danjeon_range.lower_min,
+                is_locked=danjeon_range.is_locked,
+                use_reset=danjeon_range.use_reset,
+            )
+        ]
 
     candidates: list[DanjeonState] = []
-    if current_state.use_reset:
-        for upper in range(target_points + 1):
-            for middle in range(target_points - upper + 1):
-                lower: int = target_points - upper - middle
-                candidates.append(
-                    DanjeonState(
-                        upper=upper,
-                        middle=middle,
-                        lower=lower,
-                        is_locked=current_state.is_locked,
-                        use_reset=current_state.use_reset,
-                    )
-                )
-        return candidates
+    upper_limit: int = min(danjeon_range.upper_max, danjeon_range.target_points)
+    for upper in range(danjeon_range.upper_min, upper_limit + 1):
+        # 상단전 배정 후 잔여 포인트 기반 중단전 범위 구성
+        remaining_after_upper: int = danjeon_range.target_points - upper
+        middle_limit: int = min(danjeon_range.middle_max, remaining_after_upper)
+        for middle in range(danjeon_range.middle_min, middle_limit + 1):
+            # 남은 포인트 전체를 하단전에 배정
+            lower: int = danjeon_range.target_points - upper - middle
 
-    for add_upper in range(free_points + 1):
-        for add_middle in range(free_points - add_upper + 1):
-            add_lower: int = free_points - add_upper - add_middle
+            # 하단전 하한 미만 조합 제외
+            if lower < danjeon_range.lower_min:
+                continue
+
             candidates.append(
                 DanjeonState(
-                    upper=current_state.upper + add_upper,
-                    middle=current_state.middle + add_middle,
-                    lower=current_state.lower + add_lower,
-                    is_locked=current_state.is_locked,
-                    use_reset=current_state.use_reset,
+                    upper=upper,
+                    middle=middle,
+                    lower=lower,
+                    is_locked=danjeon_range.is_locked,
+                    use_reset=danjeon_range.use_reset,
                 )
             )
 
@@ -3783,8 +3858,16 @@ def optimize_current_selection(
             message="최적화 불가: 최소분배 포인트가 레벨 기준 최대치를 초과합니다.",
         )
 
+    # 단전 분배 탐색 루트 구성
+    danjeon_root: DanjeonSearchRange = _build_danjeon_search_root(calculator_input)
+    if not _is_danjeon_search_range_feasible(danjeon_root):
+        return OptimizationFailure(
+            reason=(OptimizationFailureReason.MINIMUM_DANJEON_EXCEEDS_REALM_CAP),
+            message="최적화 불가: 최소 단전 포인트가 현재 경지 최대치를 초과합니다.",
+        )
+
     # 각 내부 선택지 후보 목록 구성
-    danjeon_candidates: list[DanjeonState] = _build_danjeon_candidates(calculator_input)
+    danjeon_candidates: list[DanjeonState] = _build_danjeon_candidates(danjeon_root)
     title_candidates: list[str | None] = _build_title_candidates(calculator_input)
     talisman_candidates: list[list[str]] = _build_talisman_candidates(calculator_input)
 

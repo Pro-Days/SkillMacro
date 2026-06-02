@@ -226,7 +226,25 @@ def migrate_macro_data_file(file_path: str) -> None:
                 for raw_link_skill in raw_preset["link_skills"]:
                     raw_link_skill["remember_state"] = False
 
+            raw["version"] = 5
+            stored_version_obj = 5
+            migrated = True
+
+        # v5 -> v6: 목표 단전 미리보기 기본 구조 주입
+        if stored_version_obj == 5:
+            raw_preset: dict[str, Any]
+            for raw_preset in raw["preset"]:
+                raw_info: dict[str, Any] = raw_preset["info"]
+                raw_calculator: dict[str, Any] = raw_info["calculator"]
+                raw_calculator["target_danjeon"] = {
+                    "upper": 0,
+                    "middle": 0,
+                    "lower": 0,
+                    "is_minimum": False,
+                }
+
             raw["version"] = DATA_VERSION
+            stored_version_obj = DATA_VERSION
             migrated = True
 
         # v3 이상 저장 데이터의 목표 분배 필드 누락 보정

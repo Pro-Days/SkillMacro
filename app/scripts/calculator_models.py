@@ -384,6 +384,50 @@ class DanjeonState:
 
 
 @dataclass(slots=True)
+class TargetDanjeonState:
+    """목표 단전 입력 상태"""
+
+    # 목표 단전 포인트 상태
+    upper: int = 0
+    middle: int = 0
+    lower: int = 0
+
+    # 최소분배 옵션 상태
+    is_minimum: bool = False
+
+    @classmethod
+    def from_dict(cls, data: dict[str, int | bool]) -> "TargetDanjeonState":
+        """저장 데이터로부터 목표 단전 상태 복원"""
+
+        # 목표 단전 포인트 복원
+        upper: int = int(data["upper"])
+        middle: int = int(data["middle"])
+        lower: int = int(data["lower"])
+
+        # 최소분배 옵션 복원
+        is_minimum: bool = bool(data["is_minimum"])
+
+        return cls(
+            upper=upper,
+            middle=middle,
+            lower=lower,
+            is_minimum=is_minimum,
+        )
+
+    def to_dict(self) -> dict[str, int | bool]:
+        """목표 단전 상태 직렬화"""
+
+        # 목표 단전 상태 저장 구조 구성
+        data: dict[str, int | bool] = {
+            "upper": self.upper,
+            "middle": self.middle,
+            "lower": self.lower,
+            "is_minimum": self.is_minimum,
+        }
+        return data
+
+
+@dataclass(slots=True)
 class EquippedState:
     """현재 장착 선택 상태"""
 
@@ -646,6 +690,7 @@ class CalculatorPresetInput:
         default_factory=TargetDistributionState
     )
     danjeon: DanjeonState = field(default_factory=DanjeonState)
+    target_danjeon: TargetDanjeonState = field(default_factory=TargetDanjeonState)
 
     # 보유 선택지 및 현재 장착 상태 저장
     owned_titles: list[OwnedTitle] = field(default_factory=list)
@@ -710,6 +755,15 @@ class CalculatorPresetInput:
             raise TypeError("danjeon must be a dict")
         danjeon: DanjeonState = DanjeonState.from_dict(danjeon_data)
 
+        # 목표 단전 구조 복원
+        target_danjeon_data: object = data["target_danjeon"]
+        if not isinstance(target_danjeon_data, dict):
+            raise TypeError("target_danjeon must be a dict")
+
+        target_danjeon: TargetDanjeonState = TargetDanjeonState.from_dict(
+            target_danjeon_data
+        )
+
         # 칭호
         owned_titles_raw: object = data["owned_titles"]
         if not isinstance(owned_titles_raw, list):
@@ -750,6 +804,7 @@ class CalculatorPresetInput:
             distribution=distribution,
             target_distribution=target_distribution,
             danjeon=danjeon,
+            target_danjeon=target_danjeon,
             owned_titles=owned_titles,
             owned_talismans=owned_talismans,
             equipped_state=equipped_state,
@@ -767,6 +822,7 @@ class CalculatorPresetInput:
             "distribution": self.distribution.to_dict(),
             "target_distribution": self.target_distribution.to_dict(),
             "danjeon": self.danjeon.to_dict(),
+            "target_danjeon": self.target_danjeon.to_dict(),
             "owned_titles": [title.to_dict() for title in self.owned_titles],
             "owned_talismans": [
                 talisman.to_dict() for talisman in self.owned_talismans

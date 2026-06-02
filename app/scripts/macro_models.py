@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from app.scripts.registry.skill_registry import ScrollDef
 
 
-DATA_VERSION: int = 5
+DATA_VERSION: int = 6
 
 
 class ThemeMode(str, Enum):
