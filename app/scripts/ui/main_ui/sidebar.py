@@ -174,6 +174,7 @@ class Sidebar(QFrame):
 
     dataChanged = Signal()
     scrollDeleted = Signal()
+    guideRequested = Signal()
 
     def __init__(
         self,
@@ -230,7 +231,11 @@ class Sidebar(QFrame):
         self.skill_settings.scrollDeleted.connect(self.scrollDeleted.emit)
 
         # 네비게이션 버튼
-        self.nav_button = NavigationButtons(self.change_page, self.master.change_layout)
+        self.nav_button = NavigationButtons(
+            self.change_page,
+            self.master.change_layout,
+            self.guideRequested.emit,
+        )
 
         self.page_navigator = QStackedWidget()
         self.page_navigator.addWidget(self.general_settings)
@@ -2764,12 +2769,14 @@ class NavigationButtons(QFrame):
         self,
         change_page: Callable[[Literal[0, 1, 2, 3]], None],
         change_layout: Callable[[int], None],
+        guide_requested: Callable[[], None],
     ) -> None:
         super().__init__()
 
         self.setObjectName("navButtonsFrame")
         self.change_page: Callable[[Literal[0, 1, 2, 3]], None] = change_page
         self.change_layout: Callable[[int], None] = change_layout
+        self.guide_requested: Callable[[], None] = guide_requested
 
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 30, 0, 0)
@@ -2804,6 +2811,15 @@ class NavigationButtons(QFrame):
                 button.clicked.connect(lambda: self.change_layout(1))
 
         layout.addStretch(1)
+
+        self.guide_button: QPushButton = QPushButton("?")
+        self.guide_button.setObjectName("guideNavButton")
+        self.guide_button.setFont(CustomFont(11, bold=True))
+        self.guide_button.setFixedSize(30, 30)
+        self.guide_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.guide_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.guide_button.clicked.connect(self.guide_requested)
+        layout.addWidget(self.guide_button, alignment=Qt.AlignmentFlag.AlignCenter)
 
         theme_manager.theme_changed.connect(self._on_theme_changed)
 

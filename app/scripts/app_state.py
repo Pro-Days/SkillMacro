@@ -134,6 +134,9 @@ class UiState:
     # 현재 선택된 테마 모드
     theme_mode: ThemeMode = ThemeMode.SYSTEM
 
+    # 첫 가이드 안내 처리 여부
+    guide_prompt_handled: bool = False
+
     # 업데이트 url
     update_url: str = ""
 

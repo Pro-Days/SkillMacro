@@ -226,7 +226,15 @@ def migrate_macro_data_file(file_path: str) -> None:
                 for raw_link_skill in raw_preset["link_skills"]:
                     raw_link_skill["remember_state"] = False
 
+            raw["version"] = 5
+            stored_version_obj = 5
+            migrated = True
+
+        # v5 -> v6: 첫 가이드 안내 처리 상태 추가
+        if stored_version_obj == 5:
+            raw["guide_prompt_handled"] = False
             raw["version"] = DATA_VERSION
+            stored_version_obj = DATA_VERSION
             migrated = True
 
         # v3 이상 저장 데이터의 목표 분배 필드 누락 보정
@@ -879,6 +887,7 @@ def load_data(num: int = -1) -> None:
     app_state.macro.custom_power_formulas = preset_file.custom_power_formulas
     app_state.macro.current_preset_index = target_index
     app_state.ui.theme_mode = preset_file.theme_mode
+    app_state.ui.guide_prompt_handled = preset_file.guide_prompt_handled
 
     # 정리 결과와 현재 선택 인덱스 저장 반영
     if preset_was_sanitized or preset_file.recent_preset != target_index:
@@ -910,6 +919,7 @@ def create_default_data() -> None:
     preset_file = MacroPresetFile(
         version=DATA_VERSION,
         theme_mode=app_state.ui.theme_mode,
+        guide_prompt_handled=app_state.ui.guide_prompt_handled,
         recent_preset=0,
         custom_power_formulas=[],
         preset=[get_default_preset()],
@@ -931,6 +941,7 @@ def save_data() -> None:
     preset_file: MacroPresetFile = MacroPresetFile(
         version=DATA_VERSION,
         theme_mode=app_state.ui.theme_mode,
+        guide_prompt_handled=app_state.ui.guide_prompt_handled,
         recent_preset=app_state.macro.current_preset_index,
         custom_power_formulas=app_state.macro.custom_power_formulas.copy(),
         preset=app_state.macro.presets.copy(),

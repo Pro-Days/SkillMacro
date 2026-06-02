@@ -34,6 +34,7 @@ from app.scripts.data_manager import (
 from app.scripts.macro_models import ThemeMode
 from app.scripts.registry.resource_registry import convert_resource_path
 from app.scripts.run_macro import checking_kb_thread
+from app.scripts.ui.guide import GuideManager
 from app.scripts.ui.main_ui.main_ui import MainUI
 from app.scripts.ui.main_ui.sidebar import Sidebar
 from app.scripts.ui.popup import NoticeKind, PopupManager
@@ -373,6 +374,10 @@ class MainWindow(QWidget):
         # 시뮬레이션 UI
         self.sim_ui: SimUI = SimUI(self, self.page2)
 
+        # 가이드 매니저 구성
+        self.guide_manager: GuideManager = GuideManager(self)
+        self.sidebar.guideRequested.connect(self.guide_manager.open_selection)
+
         # 하단 푸터 바 (제작자 라벨 + 테마 전환)
         self.footer_bar: FooterBar = FooterBar(self)
 
@@ -408,6 +413,9 @@ class MainWindow(QWidget):
         # 데이터 로딩 중 생성된 백업 알림 표시
         self._show_pending_backup_notices()
 
+        # 첫 가이드 안내 표시
+        QTimer.singleShot(0, self.guide_manager.show_start_prompt_if_needed)
+
         # self.change_layout(1)
 
     ## 마우스 클릭하면 실행
@@ -423,10 +431,17 @@ class MainWindow(QWidget):
         """윈도우 크기 변경 시 실행"""
 
         self.popup_manager.update_notice_positions()
+        if hasattr(self, "guide_manager"):
+            self.guide_manager.refresh_visible_overlays()
+
         return super().resizeEvent(event)
 
     def closeEvent(self, event: QCloseEvent) -> None:
         """프로그램 종료 시 백그라운드 계산 정리"""
+
+        # 창 종료 전 가이드 임시 상태 복원
+        if hasattr(self, "guide_manager"):
+            self.guide_manager.cleanup_for_shutdown()
 
         # 창 종료 전에 계산기 백그라운드 작업 중단 요청
         self.sim_ui.cancel_results_calculation_for_shutdown()

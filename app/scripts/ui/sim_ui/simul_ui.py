@@ -72,6 +72,7 @@ from app.scripts.calculator_models import (
     TALISMAN_SPECS,
     TITLE_STAT_SLOT_COUNT,
     BaseStats,
+    CalculatorPresetInput,
     CustomPowerFormula,
     DanjeonState,
     DistributionState,
@@ -129,7 +130,6 @@ if TYPE_CHECKING:
         ScrollUpgradeEvaluation,
     )
     from app.scripts.calculator_models import (
-        CalculatorPresetInput,
         RealmTier,
         TalismanSpec,
     )
@@ -316,6 +316,27 @@ class SimUI:
         self.stacked_layout.setCurrentIndex(index)
 
         self.adjust_main_frame_height()
+
+    def start_results_calculation_without_confirmation(self) -> bool:
+        """입력 확인창 없이 현재 계산기 입력으로 결과 계산 시작"""
+
+        # 현재 입력 검증 및 계산 상태 반영
+        if not self.input_page.editor.prepare_results_inputs():
+            self.master.get_popup_manager().show_notice(NoticeKind.SIM_INPUT_ERROR)
+            return False
+
+        # 기존 확인 오버레이 숨김 후 결과 계산 실행
+        self._input_confirm_overlay.hide()
+        self._start_results_calculation()
+
+        # 진행 중 결과 페이지를 즉시 표시해 가이드 대상 영역 확보
+        if self._calc_thread is not None and self._calc_thread.isRunning():
+            self.update_nav(2)
+            self.stacked_layout.setCurrentIndex(2)
+            self.adjust_main_frame_height()
+            QTimer.singleShot(0, self.adjust_main_frame_height)
+
+        return True
 
     def update_nav(self, index: int) -> None:
         """
@@ -2034,6 +2055,7 @@ class ResultsPage(QFrame):
 
             # 저장 상태 로드 중 이벤트 억제 플래그 구성
             self._is_loading_state: bool = False
+            self._is_persist_enabled: bool = True
             self.popup_manager: PopupManager = popup_manager
 
             # 전투력 선택지와 경지 선택지 순서 구성
@@ -2206,6 +2228,12 @@ class ResultsPage(QFrame):
             # 저장된 경지 선택 상태 동기화
             self.load_from_preset_state()
 
+        def set_persist_enabled(self, is_enabled: bool) -> None:
+            """계산기 입력 변경의 파일 저장 허용 여부 설정"""
+
+            # 가이드 임시 입력 중 파일 저장 차단
+            self._is_persist_enabled = is_enabled
+
         def has_valid_navigation_inputs(self) -> bool:
             """페이지 이동에 필요한 입력 유효성 반환"""
 
@@ -2291,7 +2319,7 @@ class ResultsPage(QFrame):
                 custom_changes=custom_changes,
                 persist=False,
             )
-            save_data()
+            self._save_data_if_enabled()
             return True
 
         def _has_positive_simulation_damage(self, base_stats: BaseStats) -> bool:
@@ -4710,7 +4738,7 @@ class ResultsPage(QFrame):
             ]
             calculator_input.selected_formula_id = self._get_selected_formula_id()
             if persist:
-                save_data()
+                self._save_data_if_enabled()
 
         def _save_custom_stat_changes(
             self,
@@ -4725,7 +4753,7 @@ class ResultsPage(QFrame):
                 for stat_key in STAT_SPECS.keys()
             }
             if persist:
-                save_data()
+                self._save_data_if_enabled()
 
         def _save_optimization_inputs(
             self,
@@ -4747,7 +4775,16 @@ class ResultsPage(QFrame):
             calculator_input.equipped_state = equipped_state
             calculator_input.owned_talismans = owned_talismans
             if persist:
-                save_data()
+                self._save_data_if_enabled()
+
+        def _save_data_if_enabled(self) -> None:
+            """현재 계산기 입력 저장이 허용된 경우 파일 저장"""
+
+            # 가이드 임시 입력은 현재 세션 메모리에만 유지
+            if not self._is_persist_enabled:
+                return
+
+            save_data()
 
         def on_optimization_input_changed(self) -> None:
             """최적화 입력 변경 시 기준 상태 분리 갱신"""

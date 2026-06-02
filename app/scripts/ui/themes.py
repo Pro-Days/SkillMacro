@@ -1495,6 +1495,72 @@ QPushButton#themeBtn[active=true] {{
     border: 1px solid #4A90D9;
 }}
 
+QPushButton#guideNavButton {{
+    background-color: transparent;
+    color: #777777;
+    border: 1px solid #D8D8D8;
+    border-radius: 4px;
+}}
+QPushButton#guideNavButton:hover {{ background-color: #F0F0F0; color: #333333; }}
+
+QDialog#guideDialog {{
+    background-color: #FFFFFF;
+    color: #111111;
+}}
+QLabel#guideDialogTitle, QLabel#guideOverlayTitle {{
+    background-color: transparent;
+    border: 0px;
+    color: #111111;
+}}
+QLabel#guideDialogBody, QLabel#guideOverlayBody {{
+    background-color: transparent;
+    border: 0px;
+    color: #333333;
+}}
+QFrame#guideOverlayCard {{
+    background-color: rgba(255, 255, 255, 238);
+    border: 1px solid #D6DCE8;
+    border-radius: 8px;
+}}
+QPushButton#guidePrimaryButton {{
+    background-color: #4A90D9;
+    color: #FFFFFF;
+    border: 1px solid #4A90D9;
+    border-radius: 4px;
+    padding: 7px 14px;
+}}
+QPushButton#guidePrimaryButton:hover {{ background-color: #3A7BC8; }}
+QPushButton#guideSecondaryButton {{
+    background-color: #F5F6FA;
+    color: #333333;
+    border: 1px solid #D8DCE6;
+    border-radius: 4px;
+    padding: 7px 14px;
+}}
+QPushButton#guideSecondaryButton:hover {{ background-color: #E8EBF2; }}
+QPushButton#guideSecondaryButton:disabled {{
+    color: #AAAAAA;
+    background-color: #F3F3F3;
+}}
+QPushButton#guideListButton {{
+    background-color: #F8F9FC;
+    color: #222222;
+    border: 1px solid #D8DCE6;
+    border-radius: 6px;
+    padding: 10px 12px;
+    text-align: left;
+}}
+QPushButton#guideListButton:hover {{ background-color: #EEF4FC; }}
+QPushButton#guideRecommendedListButton {{
+    background-color: #F8F9FC;
+    color: #222222;
+    border: 2px solid #82B3E8;
+    border-radius: 6px;
+    padding: 10px 12px;
+    text-align: left;
+}}
+QPushButton#guideRecommendedListButton:hover {{ background-color: #EEF4FC; }}
+
 """
 
 # 다크 테마 동적 색상 상수
@@ -2861,5 +2927,71 @@ QPushButton#themeBtn[active=true] {{
     color: #FFFFFF;
     border: 1px solid #5B78D9;
 }}
+
+QPushButton#guideNavButton {{
+    background-color: transparent;
+    color: #AAAACC;
+    border: 1px solid #3A3A52;
+    border-radius: 4px;
+}}
+QPushButton#guideNavButton:hover {{ background-color: #2A2A3E; color: #FFFFFF; }}
+
+QDialog#guideDialog {{
+    background-color: #1C1C28;
+    color: #E8E8F0;
+}}
+QLabel#guideDialogTitle, QLabel#guideOverlayTitle {{
+    background-color: transparent;
+    border: 0px;
+    color: #F2F2FA;
+}}
+QLabel#guideDialogBody, QLabel#guideOverlayBody {{
+    background-color: transparent;
+    border: 0px;
+    color: #C9C9DA;
+}}
+QFrame#guideOverlayCard {{
+    background-color: rgba(31, 31, 48, 235);
+    border: 1px solid #3A3A52;
+    border-radius: 8px;
+}}
+QPushButton#guidePrimaryButton {{
+    background-color: #5B78D9;
+    color: #FFFFFF;
+    border: 1px solid #5B78D9;
+    border-radius: 4px;
+    padding: 7px 14px;
+}}
+QPushButton#guidePrimaryButton:hover {{ background-color: #4A6ABB; }}
+QPushButton#guideSecondaryButton {{
+    background-color: #2A2A3E;
+    color: #E8E8F0;
+    border: 1px solid #3A3A52;
+    border-radius: 4px;
+    padding: 7px 14px;
+}}
+QPushButton#guideSecondaryButton:hover {{ background-color: #33334A; }}
+QPushButton#guideSecondaryButton:disabled {{
+    color: #666680;
+    background-color: #242436;
+}}
+QPushButton#guideListButton {{
+    background-color: #252538;
+    color: #E8E8F0;
+    border: 1px solid #3A3A52;
+    border-radius: 6px;
+    padding: 10px 12px;
+    text-align: left;
+}}
+QPushButton#guideListButton:hover {{ background-color: #2E2E45; }}
+QPushButton#guideRecommendedListButton {{
+    background-color: #252538;
+    color: #E8E8F0;
+    border: 2px solid #5F7FD6;
+    border-radius: 6px;
+    padding: 10px 12px;
+    text-align: left;
+}}
+QPushButton#guideRecommendedListButton:hover {{ background-color: #2E2E45; }}
 
 """
