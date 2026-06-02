@@ -881,7 +881,7 @@ REALM_TIER_SPECS: dict[RealmTier, RealmSpec] = {
     ),
     RealmTier.HYEONGYEONG: RealmSpec(
         label="현경",
-        min_level=180,
+        min_level=170,
         danjeon_points=37,
     ),
     RealmTier.LIFE_AND_DEATH: RealmSpec(
