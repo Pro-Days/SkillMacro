@@ -113,6 +113,7 @@ from app.scripts.ui.sim_ui.graph import (
     SkillContributionCanvas,
     SkillDpsRatioCanvas,
 )
+from app.scripts.ui.character_ui import CharacterPage
 from app.scripts.ui.themes import theme_manager
 
 if TYPE_CHECKING:
@@ -238,10 +239,12 @@ class SimUI:
         self.input_page = InputPage(self.main_frame, self.popup_manager)
         self.graph_page = GraphPage(self.main_frame)
         self.results_page = ResultsPage(self.main_frame)
+        self.character_page = CharacterPage(self.main_frame)
 
         self.stacked_layout.addWidget(self.input_page)
         self.stacked_layout.addWidget(self.graph_page)
         self.stacked_layout.addWidget(self.results_page)
+        self.stacked_layout.addWidget(self.character_page)
 
         # 결과 계산 오버레이와 백그라운드 스레드 구성
         self._results_overlay: _CalculationOverlay = _CalculationOverlay(
@@ -279,6 +282,15 @@ class SimUI:
         self.input_page.editor.load_from_preset_state()
 
     def change_layout(self, index: int) -> None:
+        # 캐릭터 탭은 검증/계산 없이 즉시 전환
+        if index == 3:
+            if index == self.stacked_layout.currentIndex():
+                return
+            self.update_nav(3)
+            self.stacked_layout.setCurrentIndex(3)
+            self.adjust_main_frame_height()
+            return
+
         # 결과 페이지 계산 중 중복 진입 차단
         if (
             index == 2
@@ -299,7 +311,7 @@ class SimUI:
             return
 
         # 입력값 확인
-        if index in (1, 3) and not self.input_page.editor.has_valid_navigation_inputs():
+        if index == 1 and not self.input_page.editor.has_valid_navigation_inputs():
             self.master.get_popup_manager().show_notice(NoticeKind.SIM_INPUT_ERROR)
             return
 
@@ -323,7 +335,7 @@ class SimUI:
         내비게이션 버튼 색 업데이트
         """
 
-        for i in range(3):
+        for i in range(4):
             btn = self.nav.buttons[i]
             btn.setProperty("active", i == index)
             btn.style().unpolish(btn)
@@ -335,6 +347,22 @@ class SimUI:
         current_widget: QWidget | None = self.stacked_layout.currentWidget()
         if current_widget is None:
             return
+
+        # 캐릭터 페이지는 3분할 셸이 화면을 꽉 채우도록 viewport 높이에 맞춘다
+        # (외곽 세로 무공비급은 숨기고, 내부 패널 스크롤만 사용)
+        if current_widget is self.character_page:
+            self.scroll_area.setVerticalScrollBarPolicy(
+                Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+            )
+            viewport_height: int = self.scroll_area.viewport().height()
+            if viewport_height > 0:
+                self.main_frame.setFixedHeight(viewport_height)
+            return
+
+        # 그 외 페이지는 기존 세로 무공비급 항상 표시 정책 유지
+        self.scroll_area.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOn
+        )
 
         current_layout: QLayout | None = current_widget.layout()
         if current_layout is not None:
@@ -6166,12 +6194,13 @@ class Navigation(QFrame):
         layout = QHBoxLayout(self)
 
         # 네비게이션바 텍스트
-        nav_texts: list[str] = ["정보 입력", "시뮬레이터", "스탯 계산기"]
+        nav_texts: list[str] = ["정보 입력", "시뮬레이터", "스탯 계산기", "캐릭터"]
 
         # 네비게이션바 버튼들
         # 첫 번째 버튼만 활성화 상태로 시작
         self.buttons: list[QPushButton] = [
-            Navigation.NavButton(nav_texts[i], self, i == 0, i, func1) for i in range(3)
+            Navigation.NavButton(nav_texts[i], self, i == 0, i, func1)
+            for i in range(len(nav_texts))
         ]
 
         # 닫기 버튼
@@ -6183,13 +6212,12 @@ class Navigation(QFrame):
 
         self.buttons.append(self.close_button)
 
-        layout.addWidget(self.buttons[0])
-        layout.addWidget(self.buttons[1])
-        layout.addWidget(self.buttons[2])
+        for nav_index in range(len(nav_texts)):
+            layout.addWidget(self.buttons[nav_index])
 
         # 오른쪽 끝에 닫기 버튼 배치
         layout.addStretch()
-        layout.addWidget(self.buttons[3])
+        layout.addWidget(self.close_button)
 
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
 
