@@ -7,6 +7,8 @@ from datetime import datetime
 from typing import Any
 
 from app.scripts.app_state import app_state
+from app.scripts.character_engine import validate_character_store
+from app.scripts.character_models import CHARACTER_DATA_VERSION, CharacterStore
 from app.scripts.config import config
 from app.scripts.custom_skill_models import CustomSkillImport
 from app.scripts.macro_models import (
@@ -29,6 +31,7 @@ local_appdata: str = os.environ.get("LOCALAPPDATA", default="")
 data_path: str = os.path.join(local_appdata, "ProDays", "SkillMacro")
 file_dir: str = os.path.join(data_path, "macros.json")
 custom_skills_file_dir: str = os.path.join(data_path, "custom_skills.json")
+characters_file_dir: str = os.path.join(data_path, "characters.json")
 
 
 class DataRecoveryStartupError(Exception):
@@ -119,6 +122,13 @@ def has_future_custom_skills_data_version() -> bool:
         custom_skills_file_dir,
         CUSTOM_SKILLS_DATA_VERSION,
     )
+
+
+def has_future_character_data_version() -> bool:
+    """현재 프로그램보다 높은 characters.json 저장 버전 여부 반환"""
+
+    # characters.json 저장 버전 확인
+    return _has_future_data_version(characters_file_dir, CHARACTER_DATA_VERSION)
 
 
 def backup_data_file(file_path: str) -> str | None:
@@ -307,6 +317,111 @@ def create_default_custom_skills_data() -> None:
             ensure_ascii=False,
             indent=4,
         )
+
+
+def create_default_characters_data() -> None:
+    """빈 characters.json 생성"""
+
+    # 캐릭터 저장 디렉토리 보장
+    os.makedirs(data_path, exist_ok=True)
+
+    # 빈 전역 캐릭터 저장소 초기화
+    empty_store: CharacterStore = CharacterStore.create_empty()
+
+    with open(characters_file_dir, "w", encoding="utf-8") as f:
+        json.dump(empty_store.to_dict(), f, ensure_ascii=False, indent=4)
+
+
+def load_characters() -> CharacterStore:
+    """characters.json 로드 후 전역 캐릭터 상태에 반영"""
+
+    # 최초 실행 시 빈 캐릭터 저장소 파일 생성
+    if not os.path.isfile(characters_file_dir):
+        create_default_characters_data()
+
+    try:
+        # 캐릭터 저장 루트 로드
+        with open(characters_file_dir, "r", encoding="utf-8") as f:
+            raw_obj: Any = json.load(f)
+
+        if not isinstance(raw_obj, dict):
+            raise TypeError("characters root must be a dict")
+
+        character_store: CharacterStore = CharacterStore.from_dict(raw_obj)
+        validate_character_store(character_store)
+
+    except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
+        # 손상된 캐릭터 파일 백업 후 빈 저장소로 복구
+        try:
+            backup_path: str | None = backup_data_file(characters_file_dir)
+
+        except Exception as backup_error:
+            log_text: str = "\n\n".join(
+                [
+                    _format_data_failure_log(
+                        characters_file_dir,
+                        "characters.json 읽기",
+                        error,
+                        None,
+                    ),
+                    _format_data_failure_log(
+                        characters_file_dir,
+                        "characters.json 백업 생성",
+                        backup_error,
+                        None,
+                    ),
+                ]
+            )
+            raise DataRecoveryStartupError(log_text) from backup_error
+
+        _append_backup_notice_log(
+            characters_file_dir,
+            "characters.json 읽기",
+            error,
+            backup_path,
+        )
+
+        try:
+            create_default_characters_data()
+
+        except Exception as default_error:
+            log_text = "\n\n".join(
+                [
+                    _format_data_failure_log(
+                        characters_file_dir,
+                        "characters.json 읽기",
+                        error,
+                        backup_path,
+                    ),
+                    _format_data_failure_log(
+                        characters_file_dir,
+                        "characters.json 기본 데이터 생성",
+                        default_error,
+                        None,
+                    ),
+                ]
+            )
+            raise DataRecoveryStartupError(log_text) from default_error
+
+        character_store = CharacterStore.create_empty()
+
+    app_state.character_store = character_store
+    return character_store
+
+
+def save_characters() -> None:
+    """characters.json에 전역 캐릭터 저장"""
+
+    # 현재 앱 상태의 캐릭터 저장소 사용
+    target_store: CharacterStore = app_state.character_store
+    target_store.version = CHARACTER_DATA_VERSION
+    validate_character_store(target_store)
+
+    # 검증된 캐릭터 저장소를 독립 파일에 기록
+    os.makedirs(data_path, exist_ok=True)
+
+    with open(characters_file_dir, "w", encoding="utf-8") as f:
+        json.dump(target_store.to_dict(), f, ensure_ascii=False, indent=4)
 
 
 def _build_custom_skills_payload(servers: dict[str, dict]) -> dict[str, Any]:
@@ -850,6 +965,7 @@ def load_data(num: int = -1) -> None:
 
     update_data()
     load_custom_skills()
+    load_characters()
 
     repo: MacroPresetRepository = MacroPresetRepository(file_dir)
     preset_was_sanitized: bool = False

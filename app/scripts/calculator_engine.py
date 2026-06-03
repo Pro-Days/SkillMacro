@@ -1306,6 +1306,26 @@ _POWER_FORMULA_NODES: dict[PowerMetric, CompiledPowerFormula] = (
 )
 
 
+def evaluate_official_power(resolved_stats: FinalStats) -> float:
+    """공식 전투력 값 계산"""
+
+    # 공식 전투력 공식에 필요한 최종 스탯 변수 구성
+    formula_variables: dict[str, float] = {
+        stat_key.value: resolved_stats.values[stat_key]
+        for stat_key in OVERALL_STAT_ORDER
+    }
+
+    # 내장 공식 공통 변수 이름의 최소 기본값 구성
+    formula_variables[_POWER_FORMULA_LEVEL_NAME] = 0
+    formula_variables[_POWER_FORMULA_BOSS_DAMAGE_NAME] = 0.0
+    formula_variables[_POWER_FORMULA_NORMAL_DAMAGE_NAME] = 0.0
+
+    return _evaluate_compiled_power_formula(
+        _POWER_FORMULA_NODES[PowerMetric.OFFICIAL],
+        formula_variables,
+    )
+
+
 def _compute_power_gradient(
     timeline_artifacts: TimelineEvaluationArtifacts,
     base_changed_stats: dict[StatKey, float],
@@ -3031,9 +3051,7 @@ def _is_danjeon_search_range_feasible(
     """단전 분배 범위 실현 가능 여부 확인"""
 
     # 최소 포인트 합 검증
-    minimum_allocated_points: int = (
-        danjeon_range.upper_min + danjeon_range.middle_min
-    )
+    minimum_allocated_points: int = danjeon_range.upper_min + danjeon_range.middle_min
     return (
         minimum_allocated_points + danjeon_range.lower_min
         <= danjeon_range.target_points

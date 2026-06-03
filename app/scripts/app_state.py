@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import ClassVar
 
 from app.scripts.calculator_models import CustomPowerFormula
+from app.scripts.character_models import CharacterStore
 from app.scripts.config import config
 from app.scripts.macro_models import (
     EquippedSkillRef,
@@ -161,6 +162,7 @@ class AppState:
 
     macro: MacroState = field(default_factory=MacroState)
     ui: UiState = field(default_factory=UiState)
+    character_store: CharacterStore = field(default_factory=CharacterStore.create_empty)
 
     def is_key_using(self, key: KeySpec) -> bool:
         """
