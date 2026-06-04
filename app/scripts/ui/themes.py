@@ -1572,6 +1572,12 @@ QFrame#charKVField {{
 QLineEdit#charKVInput {{ border: 0px; background: transparent; color: #1A1A1A; padding: 0 8px; }}
 QLineEdit#charKVInput:focus {{ outline: none; }}
 QLabel#charKVUnit {{ color: #BBB8B1; background: transparent; }}
+/* 읽기 전용 수치 (자동 제공 기본 스탯) */
+QFrame#charBaseField {{
+    background-color: #F3F1EC; border: 1px solid #E5E3DF; border-radius: 8px;
+}}
+QLabel#charBaseValue {{ color: #5D5B54; background: transparent; }}
+QLabel#charBaseUnit {{ color: #BBB8B1; background: transparent; }}
 QPushButton#charStep {{
     background-color: #F0EEEC; border: 0px; border-radius: 6px; color: #5D5B54;
     font-weight: 700;
@@ -3138,6 +3144,12 @@ QFrame#charKVField {{
 }}
 QLineEdit#charKVInput {{ border: 0px; background: transparent; color: #E8E8F0; padding: 0 8px; }}
 QLabel#charKVUnit {{ color: #7878A0; background: transparent; }}
+/* 읽기 전용 수치 (자동 제공 기본 스탯) */
+QFrame#charBaseField {{
+    background-color: #1E1E2E; border: 1px solid #3A3A52; border-radius: 8px;
+}}
+QLabel#charBaseValue {{ color: #A0A0C0; background: transparent; }}
+QLabel#charBaseUnit {{ color: #7878A0; background: transparent; }}
 QPushButton#charStep {{
     background-color: #2A2A3E; border: 0px; border-radius: 6px; color: #A0A0C0;
     font-weight: 700;

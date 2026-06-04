@@ -130,6 +130,49 @@ class StepperField(QFrame):
         self.value_changed.emit()
 
 
+class StaticValueField(QFrame):
+    """읽기 전용 수치 표시 (자동 제공되는 기본 스탯 등)
+
+    StepperField 와 같은 폭·정렬을 유지하되 입력이 아닌 표시 전용이다.
+    """
+
+    _UNIT_WIDTH: int = 16
+
+    def __init__(self, parent: QWidget, value: str = "0", unit: str = "") -> None:
+        super().__init__(parent)
+
+        self.setObjectName("charBaseField")
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(5, 3, 5, 3)
+        layout.setSpacing(0)
+
+        # 단위가 있으면 좌측에 동일 폭 여백을 두어 숫자가 전체 폭 기준 가운데 정렬되게 한다
+        if unit:
+            left_spacer: QWidget = QWidget(self)
+            left_spacer.setFixedWidth(self._UNIT_WIDTH)
+            layout.addWidget(left_spacer)
+
+        self.value_label: QLabel = QLabel(value, self)
+        self.value_label.setObjectName("charBaseValue")
+        self.value_label.setFont(CustomFont(11))
+        self.value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.value_label, 1)
+
+        if unit:
+            unit_label: QLabel = QLabel(unit, self)
+            unit_label.setObjectName("charBaseUnit")
+            unit_label.setFont(CustomFont(9))
+            unit_label.setFixedWidth(self._UNIT_WIDTH)
+            unit_label.setAlignment(
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+            )
+            layout.addWidget(unit_label)
+
+        self.setFixedHeight(34)
+        self.setMaximumWidth(132)
+
+
 class CharCard(QFrame):
     """캐릭터 탭 내부 카드 컨테이너 (제목 헤더 + 콘텐츠 영역)"""
 

@@ -573,6 +573,21 @@ def list_equippable_equipment(
     ]
 
 
+def create_equipment(
+    profile: CharacterProfile,
+    equipment: OwnedEquipment,
+) -> OwnedEquipment:
+    """보유 장비 추가"""
+
+    equipment_by_name: dict[str, OwnedEquipment] = _equipment_by_name(profile)
+    if equipment.name in equipment_by_name:
+        raise ValueError("equipment names must be unique")
+
+    _validate_equipment(equipment)
+    profile.equipment.owned.append(equipment)
+    return equipment
+
+
 def equip_equipment(
     profile: CharacterProfile,
     slot: EquipmentSlot,

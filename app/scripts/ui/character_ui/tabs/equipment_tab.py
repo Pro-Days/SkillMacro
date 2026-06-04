@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QDoubleValidator
+from PySide6.QtGui import QDoubleValidator, QIntValidator
 from PySide6.QtWidgets import (
     QBoxLayout,
     QFrame,
@@ -30,6 +30,7 @@ from app.scripts.ui.character_ui.widgets import (
     CharComboBox,
     FlowLayout,
     ResponsiveColumnsBox,
+    StaticValueField,
     StepperField,
 )
 
@@ -461,10 +462,14 @@ class EquipmentTab(QFrame):
             box.addWidget(add_btn, alignment=Qt.AlignmentFlag.AlignLeft)
             return section
 
-        # 방어구/무기: 고정 기본 스탯 표시 (폭이 넓으면 한 줄, 좁으면 자동 줄바꿈)
+        # 무기·방어구: 자동 제공되는 읽기 전용 스탯 / 그 외(목걸이 등): 직접 입력
+        auto_provided: bool = data.type in sample_data.GRADE_TYPES
+
         flow: FlowLayout = FlowLayout(spacing=14)
         for label_text, value in data.base:
-            flow.addWidget(self._build_labeled_field(label_text, str(value)))
+            flow.addWidget(
+                self._build_labeled_field(label_text, str(value), readonly=auto_provided)
+            )
         box.addLayout(flow)
         return section
 
@@ -495,10 +500,31 @@ class EquipmentTab(QFrame):
         stats: tuple[str, ...] = sample_data.REFORGE_STATS.get(key, ())
 
         flow: FlowLayout = FlowLayout(spacing=14)
+        # 맨 처음에 재련 단계(0~20강) 입력칸
+        flow.addWidget(self._build_step_field())
         for stat in stats:
             flow.addWidget(self._build_labeled_field(stat, "0"))
         box.addLayout(flow)
         return section
+
+    def _build_step_field(self) -> QWidget:
+        """재련 단계(0~20강) 입력 묶음"""
+
+        container: QFrame = QFrame(self)
+        box = QVBoxLayout(container)
+        box.setContentsMargins(0, 0, 0, 0)
+        box.setSpacing(5)
+
+        name_label: QLabel = QLabel("단계", container)
+        name_label.setObjectName("charFieldLabel")
+        name_label.setFont(CustomFont(9, bold=True))
+        box.addWidget(name_label)
+
+        field: StepperField = StepperField(container, "0", unit="강")
+        field.setFixedWidth(84)
+        field.input.setValidator(QIntValidator(0, 20, field))
+        box.addWidget(field)
+        return container
 
     def _build_scroll_section(self, data: sample_data.EquipSlotData) -> QFrame:
         """주문서 섹션 (행=종류, 열=% 단계, 칸=성공 횟수)"""
@@ -580,8 +606,10 @@ class EquipmentTab(QFrame):
             box.addLayout(row)
         return section
 
-    def _build_labeled_field(self, label: str, value: str) -> QWidget:
-        """라벨 + 스텝퍼 묶음"""
+    def _build_labeled_field(
+        self, label: str, value: str, readonly: bool = False
+    ) -> QWidget:
+        """라벨 + 수치 묶음 (readonly 면 입력 대신 읽기 전용 표시)"""
 
         container: QFrame = QFrame(self)
         box = QVBoxLayout(container)
@@ -594,8 +622,12 @@ class EquipmentTab(QFrame):
         name_label.setFont(CustomFont(9, bold=True))
         box.addWidget(name_label)
 
-        # %스탯과 일반 스탯 모두 동일한 입력칸 폭으로 통일
-        field: StepperField = StepperField(container, value, unit=unit)
+        # %스탯과 일반 스탯 모두 동일한 칸 폭으로 통일
+        field: QWidget = (
+            StaticValueField(container, value, unit=unit)
+            if readonly
+            else StepperField(container, value, unit=unit)
+        )
         field.setFixedWidth(84)
         box.addWidget(field)
         return container
