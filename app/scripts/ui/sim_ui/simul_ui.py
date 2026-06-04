@@ -383,6 +383,16 @@ class SimUI:
         horizontal_bar: QScrollBar = self.scroll_area.horizontalScrollBar()
         horizontal_bar.setValue(min(horizontal_bar.value(), horizontal_bar.maximum()))
 
+    def on_window_resized(self) -> None:
+        """윈도우 크기 변경 시 캐릭터 페이지 높이를 viewport 높이에 다시 맞춘다
+
+        캐릭터 페이지는 메인 프레임 높이를 viewport 높이로 고정하는데,
+        창 크기 변경만으로는 이 값이 갱신되지 않아 위아래 크기가 어긋난다.
+        """
+
+        if self.stacked_layout.currentWidget() is self.character_page:
+            self.adjust_main_frame_height()
+
     def _start_results_calculation(self) -> None:
         """현재 페이지 유지 상태로 결과 페이지 계산 시작"""
 

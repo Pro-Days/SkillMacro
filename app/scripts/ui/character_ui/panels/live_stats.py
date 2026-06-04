@@ -70,11 +70,6 @@ class LiveStatsPanel(QFrame):
         power_row.addWidget(power_value)
         layout.addLayout(power_row)
 
-        hint: QLabel = QLabel("왼쪽 입력값에 따라 실시간 반영", self)
-        hint.setObjectName("charHint")
-        hint.setFont(CustomFont(9))
-        layout.addWidget(hint)
-
         # 스탯 그리드 (2열)
         grid = QGridLayout()
         grid.setContentsMargins(0, 14, 0, 0)

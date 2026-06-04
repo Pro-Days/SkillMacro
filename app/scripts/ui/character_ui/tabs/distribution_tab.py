@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -17,11 +18,10 @@ from PySide6.QtWidgets import (
 
 from app.scripts.custom_classes import CustomFont, StyledButton
 from app.scripts.ui.character_ui import sample_data
-from app.scripts.ui.character_ui.widgets import CharCard, FlowLayout, QuickChip, StepperField
+from app.scripts.ui.character_ui.widgets import CharCard, StepperField
 
-# 분배 입력 카드 1칸 고정 폭 (폭이 좁으면 FlowLayout 이 자동 줄바꿈)
-_STAT_ITEM_WIDTH: int = 196
-_DANJEON_ITEM_WIDTH: int = 236
+# 분배 항목 입력칸 폭 (가운데 정렬, 남는 공간은 항목 사이 간격으로)
+_ITEM_FIELD_WIDTH: int = 84
 
 # 표시용 총량 (레벨 180·현경 기준 샘플)
 _STAT_TOTAL: int = 900
@@ -116,50 +116,68 @@ class DistributionTab(QFrame):
         self._stat_budget: _Budget = _Budget(self, "분배 가능", _STAT_TOTAL)
         card.add_widget(self._stat_budget)
 
-        flow_container: QFrame = QFrame(self)
-        flow: FlowLayout = FlowLayout(flow_container, margin=0, spacing=14)
         self._stat_fields: list[StepperField] = []
-        for _key, label, value in sample_data.STAT_DIST:
-            flow.addWidget(self._build_stat_item(label, value))
-        flow_container.setLayout(flow)
-
-        card.add_widget(flow_container)
+        items: list[QWidget] = [
+            self._build_item(label, effect, value, self._recalc_stat, self._stat_fields)
+            for _key, label, effect, value in sample_data.STAT_DIST
+        ]
+        card.add_widget(self._build_item_row(items))
         self._recalc_stat()
         return card
 
-    def _build_stat_item(self, label: str, value: int) -> QWidget:
-        """스탯 1종 입력 (라벨 + 스텝퍼 + 빠른가감 칩)"""
+    def _build_item_row(self, items: list[QWidget]) -> QWidget:
+        """항목들을 가로 가운데 정렬하고, 남는 공간은 항목 사이 간격으로 분배"""
 
-        container: QFrame = QFrame(self)
-        container.setFixedWidth(_STAT_ITEM_WIDTH)
-        box = QVBoxLayout(container)
+        row_container: QFrame = QFrame(self)
+        row = QHBoxLayout(row_container)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(0)
+
+        # 양끝과 항목 사이마다 동일 stretch → 가운데 정렬 + 균등 간격
+        row.addStretch(1)
+        for item in items:
+            row.addWidget(item)
+            row.addStretch(1)
+        return row_container
+
+    def _build_item(
+        self,
+        label: str,
+        effect: str,
+        value: int,
+        on_changed,
+        field_store: list[StepperField],
+    ) -> QWidget:
+        """분배 1종 카드 (라벨 위 / 입력칸 / 올라가는 스탯 아래, 모두 가운데 정렬)"""
+
+        card: QFrame = QFrame(self)
+        box = QVBoxLayout(card)
         box.setContentsMargins(0, 0, 0, 0)
         box.setSpacing(5)
 
-        name_label: QLabel = QLabel(label, container)
+        name_label: QLabel = QLabel(label, card)
         name_label.setObjectName("charFieldLabel")
         name_label.setFont(CustomFont(9, bold=True))
+        name_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         box.addWidget(name_label)
 
-        field: StepperField = StepperField(container, str(value), on_changed=self._recalc_stat)
-        self._stat_fields.append(field)
-        box.addWidget(field)
+        field: StepperField = StepperField(card, str(value), on_changed=on_changed)
+        field.setFixedWidth(_ITEM_FIELD_WIDTH)
+        field_store.append(field)
+        box.addWidget(field, alignment=Qt.AlignmentFlag.AlignHCenter)
 
-        quick = QHBoxLayout()
-        quick.setSpacing(6)
-        for delta in (1, 5, 10, 100):
-            chip: QuickChip = QuickChip(
-                container, f"+{delta}", lambda d=delta, f=field: self._add_stat(f, d)
-            )
-            quick.addWidget(chip)
-        box.addLayout(quick)
+        # 종류가 다른 스탯은 줄을 나눠 표시
+        effect_label: QLabel = QLabel(effect.replace(" · ", "\n"), card)
+        effect_label.setObjectName("charHint")
+        effect_label.setFont(CustomFont(8))
+        effect_label.setWordWrap(True)
+        effect_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        box.addWidget(effect_label)
 
-        return container
+        # 줄 수가 다른 카드끼리도 내용이 위쪽에 정렬되도록 남는 공간을 아래로 보낸다
+        box.addStretch(1)
 
-    def _add_stat(self, field: StepperField, delta: int) -> None:
-        """빠른가감 칩 처리"""
-
-        field.add(float(delta))
+        return card
 
     def _recalc_stat(self) -> None:
         """스탯 합산 후 요약바 갱신"""
@@ -174,45 +192,17 @@ class DistributionTab(QFrame):
         optimize_btn: StyledButton = StyledButton(self, "자동 최적화", kind="normal", point_size=9)
         card.add_header_widget(optimize_btn)
 
-        self._danjeon_budget: _Budget = _Budget(self, "경지 제공", _DANJEON_TOTAL)
+        self._danjeon_budget: _Budget = _Budget(self, "분배 가능", _DANJEON_TOTAL)
         card.add_widget(self._danjeon_budget)
 
-        flow_container: QFrame = QFrame(self)
-        flow: FlowLayout = FlowLayout(flow_container, margin=0, spacing=14)
         self._danjeon_fields: list[StepperField] = []
-        for _key, label, effect, value in sample_data.DANJEON_DIST:
-            flow.addWidget(self._build_danjeon_item(label, effect, value))
-        flow_container.setLayout(flow)
-
-        card.add_widget(flow_container)
+        items: list[QWidget] = [
+            self._build_item(label, effect, value, self._recalc_danjeon, self._danjeon_fields)
+            for _key, label, effect, value in sample_data.DANJEON_DIST
+        ]
+        card.add_widget(self._build_item_row(items))
         self._recalc_danjeon()
         return card
-
-    def _build_danjeon_item(self, label: str, effect: str, value: int) -> QWidget:
-        """단전 1종 입력 (라벨 + 스텝퍼 + 효과 설명)"""
-
-        container: QFrame = QFrame(self)
-        container.setFixedWidth(_DANJEON_ITEM_WIDTH)
-        box = QVBoxLayout(container)
-        box.setContentsMargins(0, 0, 0, 0)
-        box.setSpacing(5)
-
-        name_label: QLabel = QLabel(label, container)
-        name_label.setObjectName("charFieldLabel")
-        name_label.setFont(CustomFont(9, bold=True))
-        box.addWidget(name_label)
-
-        field: StepperField = StepperField(container, str(value), on_changed=self._recalc_danjeon)
-        self._danjeon_fields.append(field)
-        box.addWidget(field)
-
-        effect_label: QLabel = QLabel(effect, container)
-        effect_label.setObjectName("charHint")
-        effect_label.setFont(CustomFont(8))
-        effect_label.setWordWrap(True)
-        box.addWidget(effect_label)
-
-        return container
 
     def _recalc_danjeon(self) -> None:
         """단전 합산 후 요약바 갱신"""

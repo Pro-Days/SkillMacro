@@ -8,10 +8,12 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QRadioButton,
+    QPushButton,
     QVBoxLayout,
     QWidget,
 )
+
+from PySide6.QtCore import Qt
 
 from app.scripts.custom_classes import CustomFont, StyledButton
 from app.scripts.ui.character_ui import sample_data
@@ -51,10 +53,12 @@ class _TitleItem(QFrame):
         name_edit.setObjectName("charTitleName")
         name_edit.setFont(CustomFont(12, bold=True))
 
-        self.equip_radio: QRadioButton = QRadioButton("장착", self)
+        self.equip_radio: QPushButton = QPushButton("장착", self)
         self.equip_radio.setObjectName("charEquipToggle")
         self.equip_radio.setFont(CustomFont(10))
+        self.equip_radio.setCheckable(True)
         self.equip_radio.setChecked(data.equipped)
+        self.equip_radio.setCursor(Qt.CursorShape.PointingHandCursor)
         equip_group.addButton(self.equip_radio)
         self.equip_radio.clicked.connect(lambda: on_equip.set_equipped(self))
 
@@ -118,7 +122,7 @@ class TitleTab(QFrame):
         level_label.setFont(CustomFont(9, bold=True))
         realm_card.add_widget(level_label)
 
-        level_field: StepperField = StepperField(self, "180", unit="Lv", max_width=240)
+        level_field: StepperField = StepperField(self, "180", unit="Lv", max_width=100)
         realm_card.add_widget(level_field)
 
         seg_label: QLabel = QLabel("경지", self)
@@ -161,6 +165,11 @@ class TitleTab(QFrame):
             self._realm_buttons.append(button)
             flow.addWidget(button)
         container.setLayout(flow)
+
+        # 모든 경지 버튼을 가장 넓은 버튼 폭으로 통일
+        uniform_width: int = max(button.sizeHint().width() for button in self._realm_buttons)
+        for button in self._realm_buttons:
+            button.setFixedWidth(uniform_width)
         return container
 
     def _pick_realm(self, index: int) -> None:

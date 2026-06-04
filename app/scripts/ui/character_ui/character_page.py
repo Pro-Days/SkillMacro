@@ -90,7 +90,7 @@ from app.scripts.ui.character_ui.tabs.title_tab import TitleTab
 from app.scripts.ui.character_ui.widgets import FlowLayout, PillTab
 
 _LEFT_WIDTH: int = 236
-_RIGHT_WIDTH: int = 320
+_RIGHT_WIDTH: int = 340
 
 
 class CharacterPage(QFrame):
@@ -229,9 +229,9 @@ class CharacterPage(QFrame):
         content_layout.addWidget(self._stack)
         scroll.setWidget(self._body_content)
 
-        # 탭 순서와 동일하게 페이지 추가 (TABS: equip/title/dist/shelf/talisman/yeongdan/hwan)
-        self._stack.addWidget(EquipmentTab(self._stack))
+        # 탭 순서와 동일하게 페이지 추가 (TABS: title/equip/dist/shelf/talisman/yeongdan/hwan)
         self._stack.addWidget(TitleTab(self._stack))
+        self._stack.addWidget(EquipmentTab(self._stack))
         self._stack.addWidget(DistributionTab(self._stack))
         self._stack.addWidget(DisplayStandTab(self._stack))
         self._stack.addWidget(TalismanTab(self._stack))

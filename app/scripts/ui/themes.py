@@ -1620,7 +1620,14 @@ QFrame#charTitleItem {{
 }}
 QFrame#charTitleItem[equipped=true] {{ background-color: #EFECFD; border-color: #9180F7; }}
 QLineEdit#charTitleName {{ border: 0px; border-bottom: 1px dashed #C8C4BE; background: transparent; color: #1A1A1A; }}
-QRadioButton#charEquipToggle {{ color: #5D5B54; background: transparent; }}
+QPushButton#charEquipToggle {{
+    color: #5D5B54; background: transparent;
+    border: 1px solid #C8C4BE; border-radius: 6px; padding: 4px 14px;
+}}
+QPushButton#charEquipToggle:hover {{ border-color: #9180F7; }}
+QPushButton#charEquipToggle:checked {{
+    background-color: #6C5CE0; border-color: #6C5CE0; color: #FFFFFF;
+}}
 QLabel#charOptIndex {{ color: #787671; background: transparent; }}
 
 /* 영단 / 환 카드 */
@@ -1656,6 +1663,7 @@ QLineEdit#charSearch, QLineEdit#charMiniNum {{
     background-color: #FFFFFF; border: 1px solid #C8C4BE; border-radius: 6px;
     color: #1A1A1A; padding: 4px 8px;
 }}
+QLineEdit#charMiniNum {{ padding: 4px 2px; }}
 QLineEdit#charSearch:focus, QLineEdit#charMiniNum:focus {{ border-color: #9180F7; }}
 
 /* 진열대 표 */
@@ -1663,6 +1671,8 @@ QTableWidget#charShelfTable {{
     background-color: #FFFFFF; border: 1px solid #E5E3DF; border-radius: 8px;
     gridline-color: #EDE9E4; color: #1A1A1A;
 }}
+QTableWidget#charShelfTable::item {{ background-color: #FFFFFF; }}
+QTableWidget#charShelfTable::item:hover {{ background-color: #FFFFFF; }}
 QTableWidget#charShelfTable::item:selected {{ background-color: #EFECFD; color: #1A1A1A; }}
 QTableWidget#charShelfTable QHeaderView::section {{
     background-color: #F6F5F4; color: #787671; border: 0px;
@@ -1684,7 +1694,7 @@ QLabel#charReforgeBadge {{
     background-color: #9180F7; color: #FFFFFF; border-radius: 7px; padding: 1px 6px;
 }}
 QLabel#charDetailName {{ color: #1A1A1A; background: transparent; }}
-QFrame#charEdSection {{ background: transparent; border-top: 1px solid #EDE9E4; }}
+QFrame#charEdSection {{ background: transparent; border-top: 1px solid #EDE9E4; margin-top: 12px; }}
 QLabel#charEdAccent {{ background-color: #9180F7; border-radius: 2px; }}
 QLabel#charEdTitle {{ color: #37352F; background: transparent; }}
 QFrame#charScrollTable {{ background: transparent; }}
@@ -3174,7 +3184,14 @@ QFrame#charTitleItem {{
 }}
 QFrame#charTitleItem[equipped=true] {{ background-color: #2E2A4A; border-color: #9180F7; }}
 QLineEdit#charTitleName {{ border: 0px; border-bottom: 1px dashed #4A4A60; background: transparent; color: #E8E8F0; }}
-QRadioButton#charEquipToggle {{ color: #A0A0C0; background: transparent; }}
+QPushButton#charEquipToggle {{
+    color: #A0A0C0; background: transparent;
+    border: 1px solid #3A3A52; border-radius: 6px; padding: 4px 14px;
+}}
+QPushButton#charEquipToggle:hover {{ border-color: #9180F7; }}
+QPushButton#charEquipToggle:checked {{
+    background-color: #6C5CE0; border-color: #6C5CE0; color: #FFFFFF;
+}}
 QLabel#charOptIndex {{ color: #A0A0C0; background: transparent; }}
 
 /* 영단 / 환 카드 */
@@ -3210,6 +3227,7 @@ QLineEdit#charSearch, QLineEdit#charMiniNum {{
     background-color: #242434; border: 1px solid #3A3A52; border-radius: 6px;
     color: #E8E8F0; padding: 4px 8px;
 }}
+QLineEdit#charMiniNum {{ padding: 4px 2px; }}
 QLineEdit#charSearch:focus, QLineEdit#charMiniNum:focus {{ border-color: #9180F7; }}
 
 /* 진열대 표 */
@@ -3217,6 +3235,8 @@ QTableWidget#charShelfTable {{
     background-color: #1E1E2E; border: 1px solid #363650; border-radius: 8px;
     gridline-color: #2E2E45; color: #E8E8F0;
 }}
+QTableWidget#charShelfTable::item {{ background-color: #1E1E2E; }}
+QTableWidget#charShelfTable::item:hover {{ background-color: #1E1E2E; }}
 QTableWidget#charShelfTable::item:selected {{ background-color: #2E2A4A; color: #E8E8F0; }}
 QTableWidget#charShelfTable QHeaderView::section {{
     background-color: #242434; color: #A0A0C0; border: 0px;
@@ -3238,7 +3258,7 @@ QLabel#charReforgeBadge {{
     background-color: #9180F7; color: #FFFFFF; border-radius: 7px; padding: 1px 6px;
 }}
 QLabel#charDetailName {{ color: #E8E8F0; background: transparent; }}
-QFrame#charEdSection {{ background: transparent; border-top: 1px solid #2E2E45; }}
+QFrame#charEdSection {{ background: transparent; border-top: 1px solid #2E2E45; margin-top: 12px; }}
 QLabel#charEdAccent {{ background-color: #9180F7; border-radius: 2px; }}
 QLabel#charEdTitle {{ color: #C8C8E8; background: transparent; }}
 QFrame#charScrollTable {{ background: transparent; }}

@@ -423,6 +423,7 @@ class MainWindow(QWidget):
         """윈도우 크기 변경 시 실행"""
 
         self.popup_manager.update_notice_positions()
+        QTimer.singleShot(0, self.sim_ui.on_window_resized)
         return super().resizeEvent(event)
 
     def closeEvent(self, event: QCloseEvent) -> None:

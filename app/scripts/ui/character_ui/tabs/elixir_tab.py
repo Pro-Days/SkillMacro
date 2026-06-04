@@ -6,14 +6,13 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
 from app.scripts.custom_classes import CustomFont
 from app.scripts.ui.character_ui import sample_data
-from app.scripts.ui.character_ui.widgets import CharCard, ColorOrb, FlowLayout
+from app.scripts.ui.character_ui.widgets import CharCard, ColorOrb, FlowLayout, StepperField
 
 
 class _ElixirCard(QFrame):
@@ -24,7 +23,7 @@ class _ElixirCard(QFrame):
 
         self.setObjectName("charPillCard")
         self.setProperty("on", data.count > 0)
-        self.setFixedWidth(170)
+        self.setFixedWidth(150)
 
         self._data: sample_data.ElixirData = data
 
@@ -51,39 +50,27 @@ class _ElixirCard(QFrame):
         effect_label.setMinimumHeight(32)
         layout.addWidget(effect_label)
 
-        # 카운터
+        # 카운터 (숫자 입력 + 최대 보유 수 표시)
         counter = QHBoxLayout()
         counter.setSpacing(8)
 
-        minus_btn: QPushButton = QPushButton("−", self)
-        minus_btn.setObjectName("charCounterBtn")
-        minus_btn.clicked.connect(lambda: self._add(-1))
+        self._count_field: StepperField = StepperField(self, str(self._data.count))
+        self._count_field.value_changed.connect(self._on_count)
 
-        self._count_label: QLabel = QLabel(self._count_text(), self)
-        self._count_label.setObjectName("charCounterValue")
-        self._count_label.setFont(CustomFont(10, bold=True))
-        self._count_label.setAlignment(self._count_label.alignment())
+        max_label: QLabel = QLabel(f"/ {sample_data.ELIXIR_MAX}", self)
+        max_label.setObjectName("charMuted")
+        max_label.setFont(CustomFont(9))
 
-        plus_btn: QPushButton = QPushButton("+", self)
-        plus_btn.setObjectName("charCounterBtn")
-        plus_btn.clicked.connect(lambda: self._add(1))
-
-        counter.addWidget(minus_btn)
-        counter.addWidget(self._count_label, 1)
-        counter.addWidget(plus_btn)
+        counter.addWidget(self._count_field, 1)
+        counter.addWidget(max_label)
         layout.addLayout(counter)
 
-    def _count_text(self) -> str:
-        """현재 보유 수 표시 문구"""
+    def _on_count(self) -> None:
+        """입력 보유 수 반영 후 강조 갱신 (0~최대 범위)"""
 
-        return f"{self._data.count}  / {sample_data.ELIXIR_MAX}"
-
-    def _add(self, delta: int) -> None:
-        """보유 수 가감 후 표시·강조 갱신"""
-
-        self._data.count = max(0, min(sample_data.ELIXIR_MAX, self._data.count + delta))
-        self._count_label.setText(self._count_text())
-        self.setProperty("on", self._data.count > 0)
+        count: int = max(0, min(sample_data.ELIXIR_MAX, int(self._count_field.number())))
+        self._data.count = count
+        self.setProperty("on", count > 0)
         self.style().unpolish(self)
         self.style().polish(self)
 
@@ -101,7 +88,7 @@ class ElixirTab(QFrame):
         card: CharCard = CharCard(self, "영단")
 
         grid_container: QFrame = QFrame(self)
-        flow: FlowLayout = FlowLayout(grid_container, margin=0, spacing=12)
+        flow: FlowLayout = FlowLayout(grid_container, margin=0, spacing=12, center=True)
         for data in sample_data.default_elixirs():
             flow.addWidget(_ElixirCard(grid_container, data))
         grid_container.setLayout(flow)

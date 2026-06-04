@@ -5,6 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QDoubleValidator
 from PySide6.QtWidgets import (
+    QAbstractButton,
     QAbstractItemView,
     QFrame,
     QHBoxLayout,
@@ -107,11 +108,25 @@ class DisplayStandTab(QFrame):
         # 표가 좁아지면 페이지가 아니라 표 내부에서 가로 스크롤
         self._table.setMinimumWidth(0)
 
-        # 열 머리글 클릭 시 해당 열 전체 선택
+        # 열 머리글 클릭 시 해당 열 전체 선택 (클릭 가능 표시로 손가락 커서)
         header: QHeaderView = self._table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         header.sectionClicked.connect(self._table.selectColumn)
-        self._table.verticalHeader().setDefaultSectionSize(34)
+        header.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        # 행 높이는 사용자가 드래그로 바꾸지 못하도록 고정
+        vheader: QHeaderView = self._table.verticalHeader()
+        vheader.setDefaultSectionSize(34)
+        vheader.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+
+        # 셀(뷰포트)도 선택 가능 표시로 손가락 커서
+        self._table.viewport().setCursor(Qt.CursorShape.PointingHandCursor)
+
+        # 좌상단 코너 클릭 시 선택 해제가 화면에 반영되도록 직접 처리
+        corner: QAbstractButton | None = self._table.findChild(QAbstractButton)
+        if corner is not None:
+            corner.setCursor(Qt.CursorShape.PointingHandCursor)
+            corner.clicked.connect(self._clear_selection)
 
         for row_index, (_name, values) in enumerate(rows):
             for col_index in range(_COLUMN_COUNT):
@@ -182,10 +197,21 @@ class DisplayStandTab(QFrame):
         for item in self._table.selectedItems():
             item.setText(value_text)
 
+    def _clear_selection(self) -> None:
+        """좌상단 코너 클릭 시 선택 해제 후 화면 반영"""
+
+        self._table.clearSelection()
+        self._table.setCurrentCell(-1, -1)
+        # 선택 변경 시그널에 의존하지 않고 라벨·헤더 볼드·셀을 즉시 갱신
+        self._update_selection_info()
+        self._table.horizontalHeader().viewport().update()
+
     def _update_selection_info(self) -> None:
         """선택 칸 수 갱신"""
 
         self._selection_label.setText(f"선택 {len(self._table.selectedItems())}칸")
+        # 선택 상태 변화가 즉시 표에 반영되도록 다시 그린다
+        self._table.viewport().update()
 
     def _recalc(self) -> None:
         """열별 합계 갱신"""

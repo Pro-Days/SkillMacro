@@ -104,7 +104,7 @@ class TalismanTab(QFrame):
         name_row.addStretch(1)
         box.addLayout(name_row)
 
-        stat_label: QLabel = QLabel(f"{data.stat} +{data.value()} · Lv.{data.level}", slot)
+        stat_label: QLabel = QLabel(f"{data.stat} +{data.value()}\nLv.{data.level}", slot)
         stat_label.setObjectName("charTalStat")
         stat_label.setFont(CustomFont(9))
         stat_label.setWordWrap(True)
@@ -132,7 +132,9 @@ class TalismanTab(QFrame):
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(12)
 
-        layout.addWidget(GradeBadge(row, data.grade, sample_data.TALISMAN_GRADE_COLORS[data.grade]))
+        layout.addWidget(
+            GradeBadge(row, data.grade, sample_data.TALISMAN_GRADE_COLORS[data.grade], dot=True)
+        )
 
         combo: CharComboBox = CharComboBox(row, list(sample_data.TALISMAN_TEMPLATES))
         combo.setMaximumWidth(150)
@@ -145,11 +147,11 @@ class TalismanTab(QFrame):
         stat_label: QLabel = QLabel(self._owned_stat_text(data), row)
         stat_label.setObjectName("charTalStat")
         stat_label.setFont(CustomFont(9))
-        stat_label.setWordWrap(True)
+        stat_label.setWordWrap(False)
         stat_label.setMinimumWidth(0)
         layout.addWidget(stat_label, 1)
 
-        level_field: StepperField = StepperField(row, str(data.level), unit="Lv", max_width=120)
+        level_field: StepperField = StepperField(row, str(data.level), unit="Lv", max_width=92)
         level_field.value_changed.connect(
             lambda f=level_field, d=data, s=stat_label: self._on_level(f, d, s)
         )
@@ -164,6 +166,7 @@ class TalismanTab(QFrame):
         equip_btn: StyledButton = StyledButton(
             row, "장착중" if equipped else "장착", kind="add" if equipped else "normal", point_size=9
         )
+        equip_btn.setFixedWidth(58)
         equip_btn.clicked.connect(lambda: self._toggle_equip(index))
         layout.addWidget(equip_btn)
         return row

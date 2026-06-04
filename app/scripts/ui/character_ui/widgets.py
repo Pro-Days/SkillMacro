@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtCore import QPoint, QRect, QSize, Qt, Signal
+from PySide6.QtCore import QMargins, QPoint, QRect, QSize, Qt, Signal
 from PySide6.QtGui import QDoubleValidator, QWheelEvent
 from PySide6.QtWidgets import (
     QComboBox,
@@ -48,9 +48,11 @@ class CharComboBox(QComboBox):
 
 
 class StepperField(QFrame):
-    """[−] 값 [단위] [+] 형태의 수치 입력 필드 (목업 .kv .field)"""
+    """값 [단위] 형태의 수치 입력 필드 (목업 .kv .field)"""
 
     value_changed = Signal()
+
+    _UNIT_WIDTH: int = 16
 
     def __init__(
         self,
@@ -66,14 +68,13 @@ class StepperField(QFrame):
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(5, 3, 5, 3)
-        layout.setSpacing(5)
+        layout.setSpacing(0)
 
-        # 감소 버튼
-        self.minus_btn: QPushButton = QPushButton("−", self)
-        self.minus_btn.setObjectName("charStep")
-        self.minus_btn.setFixedSize(26, 26)
-        self.minus_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.minus_btn.clicked.connect(lambda: self._bump(-1))
+        # 단위가 있으면 좌측에 동일 폭 여백을 두어 숫자가 전체 폭 기준 가운데 정렬되게 한다
+        if unit:
+            left_spacer: QWidget = QWidget(self)
+            left_spacer.setFixedWidth(self._UNIT_WIDTH)
+            layout.addWidget(left_spacer)
 
         # 수치 입력
         self.input: QLineEdit = QLineEdit(value, self)
@@ -83,24 +84,18 @@ class StepperField(QFrame):
         self.input.setMinimumWidth(0)
         self.input.setValidator(QDoubleValidator(0.0, 1_000_000.0, 2, self))
         self.input.textChanged.connect(self._on_text_changed)
-
-        layout.addWidget(self.minus_btn)
         layout.addWidget(self.input, 1)
 
-        # 단위 라벨
+        # 단위 라벨 (좌측 여백과 동일 폭으로 좌우 대칭 유지)
         if unit:
             unit_label: QLabel = QLabel(unit, self)
             unit_label.setObjectName("charKVUnit")
             unit_label.setFont(CustomFont(9))
+            unit_label.setFixedWidth(self._UNIT_WIDTH)
+            unit_label.setAlignment(
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+            )
             layout.addWidget(unit_label)
-
-        # 증가 버튼
-        self.plus_btn: QPushButton = QPushButton("+", self)
-        self.plus_btn.setObjectName("charStep")
-        self.plus_btn.setFixedSize(26, 26)
-        self.plus_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.plus_btn.clicked.connect(lambda: self._bump(1))
-        layout.addWidget(self.plus_btn)
 
         self.setFixedHeight(34)
         self.setMaximumWidth(max_width if max_width else 132)
@@ -128,11 +123,6 @@ class StepperField(QFrame):
         """현재 값에 가감"""
 
         self.set_number(max(0.0, self.number() + delta))
-
-    def _bump(self, direction: int) -> None:
-        """스텝 버튼 가감"""
-
-        self.add(float(direction))
 
     def _on_text_changed(self, _text: str) -> None:
         """입력 변경 시그널 전달"""
@@ -184,7 +174,9 @@ class CharCard(QFrame):
 class QuickChip(QPushButton):
     """+1/+5/+10/+100 빠른 가감 칩"""
 
-    def __init__(self, parent: QWidget, text: str, on_click: Callable[[], None]) -> None:
+    def __init__(
+        self, parent: QWidget, text: str, on_click: Callable[[], None]
+    ) -> None:
         super().__init__(text, parent)
 
         self.setObjectName("charChip")
@@ -196,7 +188,14 @@ class QuickChip(QPushButton):
 class PillTab(QPushButton):
     """라벨만 표시하는 알약 탭 버튼"""
 
-    def __init__(self, parent: QWidget, label: str, dot_color: str, index: int, on_click: Callable[[int], None]) -> None:
+    def __init__(
+        self,
+        parent: QWidget,
+        label: str,
+        dot_color: str,
+        index: int,
+        on_click: Callable[[int], None],
+    ) -> None:
         super().__init__(label, parent)
 
         self.setObjectName("charTab")
@@ -269,17 +268,29 @@ class SegButton(QFrame):
 class GradeBadge(QLabel):
     """등급 색 뱃지"""
 
-    def __init__(self, parent: QWidget, grade: str, color: str) -> None:
-        super().__init__(grade, parent)
+    def __init__(
+        self, parent: QWidget, grade: str, color: str, dot: bool = False
+    ) -> None:
+        super().__init__("" if dot else grade, parent)
 
         self.setObjectName("charGradeBadge")
-        self.setFont(CustomFont(8, bold=True))
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+
+        # 텍스트 없이 색 점만 표시하는 모드
+        if dot:
+            size: int = 12
+            self.setFixedSize(size, size)
+            self.setStyleSheet(
+                f"background-color: {color}; border-radius: {size // 2}px;"
+            )
+            return
+
+        self.setFont(CustomFont(8, bold=True))
         self.setStyleSheet(
             f"background-color: {color}; color: white;"
             "border-radius: 8px; padding: 2px 8px;"
         )
-        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
 
 
 class ColorOrb(QLabel):
@@ -301,7 +312,12 @@ class ColorOrb(QLabel):
 class ToggleSwitch(QPushButton):
     """on/off 토글 스위치 (환 사용 여부)"""
 
-    def __init__(self, parent: QWidget, active: bool, on_toggle: Callable[[bool], None] | None = None) -> None:
+    def __init__(
+        self,
+        parent: QWidget,
+        active: bool,
+        on_toggle: Callable[[bool], None] | None = None,
+    ) -> None:
         super().__init__(parent)
 
         self.setObjectName("charSwitch")
@@ -329,7 +345,13 @@ class ToggleSwitch(QPushButton):
 class FlowLayout(QLayout):
     """폭에 따라 자식 위젯을 자동 줄바꿈하는 레이아웃 (Qt 공식 예제 이식)"""
 
-    def __init__(self, parent: QWidget | None = None, margin: int = 0, spacing: int = 12) -> None:
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        margin: int = 0,
+        spacing: int = 12,
+        center: bool = False,
+    ) -> None:
         super().__init__(parent)
 
         if parent is not None:
@@ -337,6 +359,7 @@ class FlowLayout(QLayout):
         self.setSpacing(spacing)
 
         self._items: list[QLayoutItem] = []
+        self._center: bool = center
 
     def __del__(self) -> None:
         while self._items:
@@ -379,37 +402,55 @@ class FlowLayout(QLayout):
         for item in self._items:
             size = size.expandedTo(item.minimumSize())
         margins = self.contentsMargins()
-        size += QSize(margins.left() + margins.right(), margins.top() + margins.bottom())
+        size += QSize(
+            margins.left() + margins.right(), margins.top() + margins.bottom()
+        )
         return size
 
     def _do_layout(self, rect: QRect, test_only: bool) -> int:
         """줄바꿈 배치 수행 후 총 높이 반환"""
 
-        margins = self.contentsMargins()
+        margins: QMargins = self.contentsMargins()
         effective: QRect = rect.adjusted(
             margins.left(), margins.top(), -margins.right(), -margins.bottom()
         )
-        x: int = effective.x()
-        y: int = effective.y()
-        line_height: int = 0
         spacing: int = self.spacing()
 
+        # 1) 한 줄에 들어갈 아이템들을 행 단위로 묶는다
+        rows: list[tuple[list[QLayoutItem], int, int]] = []
+        current: list[QLayoutItem] = []
+        row_width: int = 0
+        row_height: int = 0
         for item in self._items:
             item_width: int = item.sizeHint().width()
             item_height: int = item.sizeHint().height()
-            next_x: int = x + item_width + spacing
+            added_width: int = item_width if not current else spacing + item_width
+            if current and row_width + added_width > effective.width():
+                rows.append((current, row_width, row_height))
+                current = []
+                row_width = 0
+                row_height = 0
+                added_width = item_width
+            current.append(item)
+            row_width += added_width
+            row_height = max(row_height, item_height)
 
-            # 한 줄을 넘으면 다음 줄로 내림
-            if next_x - spacing > effective.right() and line_height > 0:
+        if current:
+            rows.append((current, row_width, row_height))
+
+        # 2) 행별로 배치 (center 모드면 행을 가로 가운데 정렬)
+        y: int = effective.y()
+        for index, (items, line_width, line_height) in enumerate(rows):
+            if index > 0:
+                y += spacing
+            if self._center:
+                x: int = effective.x() + max(0, (effective.width() - line_width) // 2)
+            else:
                 x = effective.x()
-                y = y + line_height + spacing
-                next_x = x + item_width + spacing
-                line_height = 0
+            for item in items:
+                if not test_only:
+                    item.setGeometry(QRect(QPoint(x, y), item.sizeHint()))
+                x += item.sizeHint().width() + spacing
+            y += line_height
 
-            if not test_only:
-                item.setGeometry(QRect(QPoint(x, y), item.sizeHint()))
-
-            x = next_x
-            line_height = max(line_height, item_height)
-
-        return y + line_height - rect.y() + margins.bottom()
+        return y - rect.y() + margins.bottom()

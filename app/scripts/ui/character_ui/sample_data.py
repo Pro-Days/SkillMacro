@@ -18,8 +18,8 @@ class TabSpec:
 
 
 TABS: tuple[TabSpec, ...] = (
+    TabSpec("title", "기본정보", "#e6e0f5"),
     TabSpec("equip", "장비", "#dcecfa"),
-    TabSpec("title", "칭호·레벨·경지", "#e6e0f5"),
     TabSpec("dist", "스탯·단전 분배", "#d9f3e1"),
     TabSpec("shelf", "진열대", "#f8f5e8"),
     TabSpec("talisman", "부적", "#fde0ec"),
@@ -82,12 +82,12 @@ CHARACTERS: tuple[CharacterSummary, ...] = (
 )
 
 
-# 스탯 분배 4종
-STAT_DIST: tuple[tuple[str, str, int], ...] = (
-    ("strength", "힘", 200),
-    ("dexterity", "민첩", 180),
-    ("vitality", "생명력", 160),
-    ("luck", "행운", 200),
+# 스탯 분배 4종 (키, 라벨, 효과 설명, 값) — 1포인트당 해당 스탯 +1
+STAT_DIST: tuple[tuple[str, str, str, int], ...] = (
+    ("strength", "힘", "힘 +1", 200),
+    ("dexterity", "민첩", "민첩 +1", 180),
+    ("vitality", "생명력", "생명력 +1", 160),
+    ("luck", "행운", "행운 +1", 200),
 )
 
 # 단전 분배 3종 (키, 라벨, 효과 설명)
@@ -337,6 +337,12 @@ class EquipSlotData:
     grade: str           # 기본 / 찬란한
     base: list[tuple[str, float]]        # 방어구/무기 기본 스탯 (자동 표시)
     free_base: list[tuple[str, str]]     # 반지/귀걸이 자유 기본 스탯 (스탯, 값)
+    tier: int = 1        # 장비 티어 (1~5)
+
+
+# 장비 레벨 / 티어 선택지
+EQUIP_LEVELS: tuple[int, ...] = (0, 20, 50, 80, 110, 150, 180)
+EQUIP_TIERS: tuple[int, ...] = (1, 2, 3, 4, 5)
 
 
 # 등급(기본/찬란한)을 갖는 부위

@@ -23,7 +23,7 @@ class _PillCard(QFrame):
 
         self.setObjectName("charPillCard")
         self.setProperty("on", data.active)
-        self.setFixedWidth(170)
+        self.setFixedWidth(150)
 
         self._data: sample_data.PillData = data
 
@@ -84,7 +84,7 @@ class PillTab(QFrame):
         card: CharCard = CharCard(self, "환")
 
         grid_container: QFrame = QFrame(self)
-        flow: FlowLayout = FlowLayout(grid_container, margin=0, spacing=12)
+        flow: FlowLayout = FlowLayout(grid_container, margin=0, spacing=12, center=True)
         for data in sample_data.default_pills():
             flow.addWidget(_PillCard(grid_container, data))
         grid_container.setLayout(flow)
