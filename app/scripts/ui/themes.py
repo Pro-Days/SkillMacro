@@ -1707,6 +1707,23 @@ QFrame#charScrollTable {{ background: transparent; }}
 QLabel#charScrollHead {{ color: #787671; background: transparent; }}
 QLabel#charScrollStat {{ color: #37352F; background: transparent; }}
 
+/* 장비 교체(선택) 화면 */
+QFrame#charEquipSlot[empty=true] {{ background-color: #FAFAF9; border: 1px dashed #C8C4BE; }}
+QFrame#charEquipSlot[empty=true] QLabel#charEquipType,
+QFrame#charEquipSlot[empty=true] QLabel#charEquipMeta {{ color: #BBB8B1; }}
+QFrame#charEquipPick {{
+    background-color: #FFFFFF; border: 1px solid #E5E3DF; border-radius: 12px;
+}}
+QFrame#charEquipPick:hover {{ border-color: #9180F7; }}
+QFrame#charEquipPick[current=true] {{ background-color: #EFECFD; border-color: #9180F7; }}
+QLabel#charPickReforge {{ color: #9180F7; background: transparent; }}
+QLabel#charPickInfoKey {{ color: #787671; background: transparent; }}
+QLabel#charPickInfoVal {{ color: #5D5B54; background: transparent; }}
+QLabel#charEquipPickEmpty {{
+    color: #787671; background-color: #FAFAF9; border: 1px dashed #C8C4BE;
+    border-radius: 12px; padding: 24px;
+}}
+
 """
 
 # 다크 테마 동적 색상 상수
@@ -3276,5 +3293,22 @@ QLabel#charEdTitle {{ color: #C8C8E8; background: transparent; }}
 QFrame#charScrollTable {{ background: transparent; }}
 QLabel#charScrollHead {{ color: #A0A0C0; background: transparent; }}
 QLabel#charScrollStat {{ color: #C8C8E8; background: transparent; }}
+
+/* 장비 교체(선택) 화면 */
+QFrame#charEquipSlot[empty=true] {{ background-color: #1A1A28; border: 1px dashed #3A3A52; }}
+QFrame#charEquipSlot[empty=true] QLabel#charEquipType,
+QFrame#charEquipSlot[empty=true] QLabel#charEquipMeta {{ color: #7878A0; }}
+QFrame#charEquipPick {{
+    background-color: #1E1E2E; border: 1px solid #363650; border-radius: 12px;
+}}
+QFrame#charEquipPick:hover {{ border-color: #9180F7; }}
+QFrame#charEquipPick[current=true] {{ background-color: #2E2A4A; border-color: #9180F7; }}
+QLabel#charPickReforge {{ color: #C9BEF7; background: transparent; }}
+QLabel#charPickInfoKey {{ color: #A0A0C0; background: transparent; }}
+QLabel#charPickInfoVal {{ color: #C8C8D8; background: transparent; }}
+QLabel#charEquipPickEmpty {{
+    color: #A0A0C0; background-color: #1A1A28; border: 1px dashed #3A3A52;
+    border-radius: 12px; padding: 24px;
+}}
 
 """
