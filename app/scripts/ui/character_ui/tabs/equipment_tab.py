@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QPushButton,
     QScrollArea,
     QVBoxLayout,
     QWidget,
@@ -25,7 +26,12 @@ from PySide6.QtWidgets import (
 
 from app.scripts.custom_classes import CustomFont, StyledButton
 from app.scripts.ui.character_ui import sample_data
-from app.scripts.ui.character_ui.widgets import CharComboBox, SegButton, StepperField
+from app.scripts.ui.character_ui.widgets import (
+    CharComboBox,
+    FlowLayout,
+    ResponsiveColumnsBox,
+    StepperField,
+)
 
 _ICON_STYLE: str = (
     "background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #cbb389, stop:1 #8a6b3f);"
@@ -34,7 +40,7 @@ _ICON_STYLE: str = (
 
 # 장비창 고정 폭
 _EQUIP_WINDOW_WIDTH: int = 232
-_STACK_THRESHOLD: int = 520
+_STACK_THRESHOLD: int = 560
 
 
 class _EquipSlot(QFrame):
@@ -242,21 +248,30 @@ class EquipmentTab(QFrame):
 
         self._detail_layout.addWidget(self._build_item_section(data, has_grade))
 
-        self._detail_layout.addWidget(self._build_base_section(data))
-
+        # 기본 스탯 + 재련: 공간이 남으면 기본 스탯 오른쪽에 재련을 나란히 배치
+        base_group: ResponsiveColumnsBox = ResponsiveColumnsBox(
+            self._detail_content, min_column_width=300, spacing=18
+        )
+        base_group.addWidget(self._build_base_section(data))
         if data.reforge:
-            self._detail_layout.addWidget(self._build_reforge_section(data))
+            base_group.addWidget(self._build_reforge_section(data))
+        self._detail_layout.addWidget(base_group)
 
         if data.scroll:
             self._detail_layout.addWidget(self._build_scroll_section(data))
 
+        # 잠재능력 + 추가능력: 공간이 남으면 나란히 배치
         if has_potential:
-            self._detail_layout.addWidget(
+            option_group: ResponsiveColumnsBox = ResponsiveColumnsBox(
+                self._detail_content, min_column_width=300, spacing=18
+            )
+            option_group.addWidget(
                 self._build_option_section("잠재능력", sample_data.POTENTIAL_OPTS)
             )
-            self._detail_layout.addWidget(
+            option_group.addWidget(
                 self._build_option_section("추가능력", sample_data.ADDITIONAL_OPTS)
             )
+            self._detail_layout.addWidget(option_group)
 
         self._detail_layout.addStretch(1)
 
@@ -371,33 +386,59 @@ class EquipmentTab(QFrame):
 
         section, box = self._section("아이템")
 
-        box.addLayout(self._build_level_tier_row(data))
-
-        # 등급(기본/찬란한)은 무기·방어구만
+        # 등급(기본/찬란한)은 무기·방어구만. 공간이 남으면 레벨·티어 오른쪽에 등급을 배치
         if not has_grade:
+            box.addLayout(self._build_level_tier_row(data))
             return section
 
-        label: QLabel = QLabel("등급", section)
-        label.setObjectName("charFieldLabel")
-        label.setFont(CustomFont(9, bold=True))
-        box.addWidget(label)
+        fields_group: ResponsiveColumnsBox = ResponsiveColumnsBox(
+            section, min_column_width=160, spacing=18, fill=False
+        )
 
-        seg = QHBoxLayout()
-        seg.setSpacing(8)
-        self._grade_buttons: list[SegButton] = []
-        for index, grade in enumerate(("기본", "찬란한")):
-            button: SegButton = SegButton(section, grade, index, self._pick_grade)
-            button.setChecked(data.grade == grade)
-            self._grade_buttons.append(button)
-            seg.addWidget(button)
-        seg.addStretch(1)
-        box.addLayout(seg)
+        level_tier_block: QFrame = QFrame(section)
+        level_tier_box = QVBoxLayout(level_tier_block)
+        level_tier_box.setContentsMargins(0, 0, 0, 0)
+        level_tier_box.setSpacing(0)
+        level_tier_box.addLayout(self._build_level_tier_row(data))
+        fields_group.addWidget(level_tier_block)
+
+        grade_block: QFrame = QFrame(section)
+        grade_box = QVBoxLayout(grade_block)
+        grade_box.setContentsMargins(0, 0, 0, 0)
+        grade_box.setSpacing(0)
+        grade_box.addLayout(self._build_grade_row(data))
+        fields_group.addWidget(grade_block)
+
+        box.addWidget(fields_group)
         return section
 
-    def _pick_grade(self, index: int) -> None:
-        """등급 선택 시 표시 이름 갱신을 위해 상세 재구성"""
+    def _build_grade_row(self, data: sample_data.EquipSlotData) -> QHBoxLayout:
+        """등급 행 (레벨/티어처럼 라벨 + 찬란한 토글 버튼, ON 시 강조색)"""
 
-        self._slots_data[self._active_index].grade = "기본" if index == 0 else "찬란한"
+        controls = QHBoxLayout()
+        controls.setSpacing(8)
+
+        caption: QLabel = QLabel("등급", self)
+        caption.setObjectName("charFieldLabel")
+        caption.setFont(CustomFont(9, bold=True))
+        controls.addWidget(caption)
+
+        grade_btn: QPushButton = QPushButton("찬란한", self)
+        grade_btn.setObjectName("charEquipToggle")
+        grade_btn.setFont(CustomFont(9))
+        grade_btn.setCheckable(True)
+        grade_btn.setChecked(data.grade == "찬란한")
+        grade_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        grade_btn.clicked.connect(self._on_grade_toggle)
+        controls.addWidget(grade_btn)
+
+        controls.addStretch(1)
+        return controls
+
+    def _on_grade_toggle(self, active: bool) -> None:
+        """찬란한 버튼 토글 시 등급 반영 및 표시 이름 갱신"""
+
+        self._slots_data[self._active_index].grade = "찬란한" if active else "기본"
         self._render_detail()
 
     def _build_base_section(self, data: sample_data.EquipSlotData) -> QFrame:
@@ -420,15 +461,11 @@ class EquipmentTab(QFrame):
             box.addWidget(add_btn, alignment=Qt.AlignmentFlag.AlignLeft)
             return section
 
-        # 방어구/무기: 고정 기본 스탯 표시
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(14)
-        grid.setVerticalSpacing(14)
-        for i, (label_text, value) in enumerate(data.base):
-            grid.addWidget(
-                self._build_labeled_field(label_text, str(value)), i // 3, i % 3
-            )
-        box.addLayout(grid)
+        # 방어구/무기: 고정 기본 스탯 표시 (폭이 넓으면 한 줄, 좁으면 자동 줄바꿈)
+        flow: FlowLayout = FlowLayout(spacing=14)
+        for label_text, value in data.base:
+            flow.addWidget(self._build_labeled_field(label_text, str(value)))
+        box.addLayout(flow)
         return section
 
     def _build_free_stat_row(self, stat: str | None, value: str) -> QHBoxLayout:
@@ -457,12 +494,10 @@ class EquipmentTab(QFrame):
         key: str = data.necklace_type if data.necklace_type else data.type
         stats: tuple[str, ...] = sample_data.REFORGE_STATS.get(key, ())
 
-        grid = QGridLayout()
-        grid.setHorizontalSpacing(14)
-        grid.setVerticalSpacing(14)
-        for i, stat in enumerate(stats):
-            grid.addWidget(self._build_labeled_field(stat, "0"), i // 3, i % 3)
-        box.addLayout(grid)
+        flow: FlowLayout = FlowLayout(spacing=14)
+        for stat in stats:
+            flow.addWidget(self._build_labeled_field(stat, "0"))
+        box.addLayout(flow)
         return section
 
     def _build_scroll_section(self, data: sample_data.EquipSlotData) -> QFrame:
@@ -495,7 +530,7 @@ class EquipmentTab(QFrame):
             tier_label.setObjectName("charScrollHead")
             tier_label.setFont(CustomFont(9, bold=True))
             tier_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            grid.addWidget(tier_label, 0, col + 1)
+            grid.addWidget(tier_label, 0, col + 2)
 
         # 본문
         for row, stat in enumerate(scroll_set.stats):
@@ -510,7 +545,7 @@ class EquipmentTab(QFrame):
                     dash: QLabel = QLabel("—", table)
                     dash.setObjectName("charMuted")
                     dash.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    grid.addWidget(dash, row + 1, col + 1)
+                    grid.addWidget(dash, row + 1, col + 2)
                 else:
                     cell: QLineEdit = QLineEdit("0", table)
                     cell.setObjectName("charMiniNum")
@@ -518,7 +553,12 @@ class EquipmentTab(QFrame):
                     cell.setFixedWidth(30)
                     cell.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     cell.setValidator(QDoubleValidator(0.0, 999.0, 0, cell))
-                    grid.addWidget(cell, row + 1, col + 1)
+                    grid.addWidget(cell, row + 1, col + 2)
+
+        # 종류 텍스트와 입력칸 사이 간격
+        grid.setColumnMinimumWidth(1, 16)
+        # 잉여 가로 공간을 마지막 열 뒤로 몰아 입력칸을 종류 라벨 쪽에 붙인다
+        grid.setColumnStretch(len(scroll_set.tiers) + 2, 1)
 
         wrap.setWidget(table)
         box.addWidget(wrap)
@@ -531,13 +571,10 @@ class EquipmentTab(QFrame):
         for _ in range(3):
             row = QHBoxLayout()
             row.setSpacing(10)
-            marker: QLabel = QLabel("●", section)
-            marker.setObjectName("charOptIndex")
-            marker.setFont(CustomFont(9))
-            marker.setFixedWidth(24)
             combo: CharComboBox = CharComboBox(section, ["미설정", *options])
-            field: StepperField = StepperField(section, "0", max_width=140)
-            row.addWidget(marker)
+            # 입력칸은 고정 폭으로 두어 창 크기에 따라 늘어나지 않게 한다
+            field: StepperField = StepperField(section, "0")
+            field.setFixedWidth(100)
             row.addWidget(combo, 1)
             row.addWidget(field)
             box.addLayout(row)
@@ -557,8 +594,8 @@ class EquipmentTab(QFrame):
         name_label.setFont(CustomFont(9, bold=True))
         box.addWidget(name_label)
 
-        # 단위(%)가 붙는 칸은 단위 여백만큼 더 넓게, 일반 스탯은 3글자 폭으로 좁게
+        # %스탯과 일반 스탯 모두 동일한 입력칸 폭으로 통일
         field: StepperField = StepperField(container, value, unit=unit)
-        field.setFixedWidth(96 if unit else 60)
+        field.setFixedWidth(84)
         box.addWidget(field)
         return container

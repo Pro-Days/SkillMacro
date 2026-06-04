@@ -18,7 +18,11 @@ from PySide6.QtWidgets import (
 
 from app.scripts.custom_classes import CustomFont, StyledButton
 from app.scripts.ui.character_ui import sample_data
-from app.scripts.ui.character_ui.widgets import CharCard, StepperField
+from app.scripts.ui.character_ui.widgets import (
+    CharCard,
+    ResponsiveColumnsBox,
+    StepperField,
+)
 
 # 분배 항목 입력칸 폭 (가운데 정렬, 남는 공간은 항목 사이 간격으로)
 _ITEM_FIELD_WIDTH: int = 84
@@ -43,7 +47,9 @@ class _Budget(QFrame):
 
         layout.addLayout(self._build_item(total_label, str(total), value_key="total"))
         layout.addLayout(self._build_item("사용", "0", value_key="used"))
-        layout.addLayout(self._build_item("남은 포인트", str(total), value_key="remain"))
+        layout.addLayout(
+            self._build_item("남은 포인트", str(total), value_key="remain")
+        )
 
         self.bar: QProgressBar = QProgressBar(self)
         self.bar.setObjectName("charBudgetBar")
@@ -102,15 +108,22 @@ class DistributionTab(QFrame):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(16)
 
-        layout.addWidget(self._build_stat_card())
-        layout.addWidget(self._build_danjeon_card())
+        # 폭이 넓으면 스탯 분배 오른쪽에 단전 분배를 나란히 배치
+        cards: ResponsiveColumnsBox = ResponsiveColumnsBox(
+            self, min_column_width=500, spacing=16
+        )
+        cards.addWidget(self._build_stat_card())
+        cards.addWidget(self._build_danjeon_card())
+        layout.addWidget(cards)
         layout.addStretch(1)
 
     def _build_stat_card(self) -> CharCard:
         """스탯 분배 카드"""
 
         card: CharCard = CharCard(self, "스탯 분배")
-        optimize_btn: StyledButton = StyledButton(self, "자동 최적화", kind="normal", point_size=9)
+        optimize_btn: StyledButton = StyledButton(
+            self, "자동 최적화", kind="normal", point_size=9
+        )
         card.add_header_widget(optimize_btn)
 
         self._stat_budget: _Budget = _Budget(self, "분배 가능", _STAT_TOTAL)
@@ -189,7 +202,9 @@ class DistributionTab(QFrame):
         """단전 분배 카드"""
 
         card: CharCard = CharCard(self, "단전 분배")
-        optimize_btn: StyledButton = StyledButton(self, "자동 최적화", kind="normal", point_size=9)
+        optimize_btn: StyledButton = StyledButton(
+            self, "자동 최적화", kind="normal", point_size=9
+        )
         card.add_header_widget(optimize_btn)
 
         self._danjeon_budget: _Budget = _Budget(self, "분배 가능", _DANJEON_TOTAL)
@@ -197,7 +212,9 @@ class DistributionTab(QFrame):
 
         self._danjeon_fields: list[StepperField] = []
         items: list[QWidget] = [
-            self._build_item(label, effect, value, self._recalc_danjeon, self._danjeon_fields)
+            self._build_item(
+                label, effect, value, self._recalc_danjeon, self._danjeon_fields
+            )
             for _key, label, effect, value in sample_data.DANJEON_DIST
         ]
         card.add_widget(self._build_item_row(items))

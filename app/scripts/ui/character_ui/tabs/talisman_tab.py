@@ -12,7 +12,13 @@ from PySide6.QtWidgets import (
 
 from app.scripts.custom_classes import CustomFont, StyledButton
 from app.scripts.ui.character_ui import sample_data
-from app.scripts.ui.character_ui.widgets import CharCard, CharComboBox, GradeBadge, StepperField
+from app.scripts.ui.character_ui.widgets import (
+    CharCard,
+    CharComboBox,
+    GradeBadge,
+    ResponsiveColumnsBox,
+    StepperField,
+)
 
 
 class TalismanTab(QFrame):
@@ -39,10 +45,11 @@ class TalismanTab(QFrame):
 
         # 보유 부적 카드
         owned_card: CharCard = CharCard(self, "보유 부적")
-        self._owned_container: QFrame = QFrame(self)
-        self._owned_layout = QVBoxLayout(self._owned_container)
-        self._owned_layout.setContentsMargins(0, 0, 0, 0)
-        self._owned_layout.setSpacing(8)
+        # 폭이 넓으면 보유 부적을 여러 열에 배치
+        self._owned_container: ResponsiveColumnsBox = ResponsiveColumnsBox(
+            self, min_column_width=420, spacing=8
+        )
+        self._owned_layout = self._owned_container.flow
         owned_card.add_widget(self._owned_container)
 
         add_btn: StyledButton = StyledButton(self, "+ 부적 추가", kind="normal", point_size=9)
@@ -147,7 +154,8 @@ class TalismanTab(QFrame):
         stat_label: QLabel = QLabel(self._owned_stat_text(data), row)
         stat_label.setObjectName("charTalStat")
         stat_label.setFont(CustomFont(9))
-        stat_label.setWordWrap(False)
+        # 폭이 좁아 잘리면 한 줄 더 내려 2줄로 표시
+        stat_label.setWordWrap(True)
         stat_label.setMinimumWidth(0)
         layout.addWidget(stat_label, 1)
 

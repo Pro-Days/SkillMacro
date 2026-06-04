@@ -454,3 +454,214 @@ class FlowLayout(QLayout):
             y += line_height
 
         return y - rect.y() + margins.bottom()
+
+
+class ResponsiveColumns(QLayout):
+    """공간이 넓으면 여러 열, 좁으면 한 열로 블록을 배치하는 레이아웃
+
+    각 블록을 자신의 최소 폭(블록 최소폭과 min_column_width 중 큰 값)으로 좌→우로
+    채우다가 폭이 모자라면 줄을 바꾼다. 한 줄에 들어간 블록들은 남는 폭을 나눠 가져
+    빈 공간을 남기지 않는다. 따라서 두 블록을 나란히 둘 최소 공간이 생기는 즉시
+    2열로 전환된다. 본문 스크롤 높이 계산을 위해 heightForWidth 를 정확히 보고한다.
+    """
+
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        min_column_width: int = 320,
+        spacing: int = 16,
+        max_columns: int = 0,
+        fill: bool = True,
+    ) -> None:
+        super().__init__(parent)
+
+        if parent is not None:
+            self.setContentsMargins(0, 0, 0, 0)
+        self.setSpacing(spacing)
+
+        self._items: list[QLayoutItem] = []
+        self._min_column_width: int = min_column_width
+        self._max_columns: int = max_columns
+        # fill=True 면 한 줄 블록이 남는 폭을 나눠 채우고, False 면 최소 폭으로 좌측 정렬
+        self._fill: bool = fill
+
+    def __del__(self) -> None:
+        while self._items:
+            self._items.pop()
+
+    def addItem(self, item: QLayoutItem) -> None:  # type: ignore[override]
+        self._items.append(item)
+
+    def count(self) -> int:  # type: ignore[override]
+        return len(self._items)
+
+    def itemAt(self, index: int) -> QLayoutItem | None:  # type: ignore[override]
+        if 0 <= index < len(self._items):
+            return self._items[index]
+        return None
+
+    def takeAt(self, index: int) -> QLayoutItem | None:  # type: ignore[override]
+        if 0 <= index < len(self._items):
+            return self._items.pop(index)
+        return None
+
+    def expandingDirections(self) -> Qt.Orientation:  # type: ignore[override]
+        return Qt.Orientation(0)
+
+    def hasHeightForWidth(self) -> bool:  # type: ignore[override]
+        return True
+
+    def heightForWidth(self, width: int) -> int:  # type: ignore[override]
+        return self._do_layout(QRect(0, 0, width, 0), test_only=True)
+
+    def setGeometry(self, rect: QRect) -> None:  # type: ignore[override]
+        super().setGeometry(rect)
+        self._do_layout(rect, test_only=False)
+
+    def sizeHint(self) -> QSize:  # type: ignore[override]
+        return self.minimumSize()
+
+    def minimumSize(self) -> QSize:  # type: ignore[override]
+        width: int = 0
+        height: int = 0
+        spacing: int = self.spacing()
+        # 한 열로 쌓았을 때 기준: 폭은 가장 넓은 블록의 배치 폭, 높이는 합
+        for index, item in enumerate(self._items):
+            width = max(width, self._target_width(item))
+            if index > 0:
+                height += spacing
+            height += item.sizeHint().height()
+        margins: QMargins = self.contentsMargins()
+        return QSize(
+            width + margins.left() + margins.right(),
+            height + margins.top() + margins.bottom(),
+        )
+
+    def _target_width(self, item: QLayoutItem) -> int:
+        """블록을 배치할 최소 폭 (블록 최소폭과 하한값 중 큰 값)"""
+
+        return max(item.minimumSize().width(), self._min_column_width)
+
+    def _pack_rows(self, available: int) -> list[list[QLayoutItem]]:
+        """블록을 최소 폭 기준으로 좌→우로 채워 줄 단위로 묶는다"""
+
+        spacing: int = self.spacing()
+        rows: list[list[QLayoutItem]] = []
+        current: list[QLayoutItem] = []
+        used: int = 0
+        for item in self._items:
+            target: int = self._target_width(item)
+            added: int = target if not current else spacing + target
+            if current and used + added > available:
+                rows.append(current)
+                current = []
+                used = 0
+                added = target
+            current.append(item)
+            used += added
+            if self._max_columns and len(current) >= self._max_columns:
+                rows.append(current)
+                current = []
+                used = 0
+        if current:
+            rows.append(current)
+        return rows
+
+    def _item_height(self, item: QLayoutItem, width: int) -> int:
+        """주어진 폭에서의 블록 높이"""
+
+        if item.hasHeightForWidth():
+            return item.heightForWidth(width)
+        return item.sizeHint().height()
+
+    def _row_widths(self, row: list[QLayoutItem], available: int) -> list[int]:
+        """한 줄 블록들이 남는 폭을 나눠 갖도록 각 블록 폭을 계산한다"""
+
+        targets: list[int] = [self._target_width(item) for item in row]
+        if not self._fill:
+            return targets
+        count: int = len(row)
+        if count == 1:
+            return [available]
+        spacing: int = self.spacing()
+        leftover: int = max(0, available - sum(targets) - spacing * (count - 1))
+        share: int = leftover // count
+        widths: list[int] = [target + share for target in targets]
+        # 정수 나눗셈 잔여 폭은 마지막 블록에 더해 줄 폭을 정확히 채운다
+        widths[-1] += available - (sum(widths) + spacing * (count - 1))
+        return widths
+
+    def _do_layout(self, rect: QRect, test_only: bool) -> int:
+        """줄 단위 배치 수행 후 총 높이 반환"""
+
+        margins: QMargins = self.contentsMargins()
+        effective: QRect = rect.adjusted(
+            margins.left(), margins.top(), -margins.right(), -margins.bottom()
+        )
+        spacing: int = self.spacing()
+        available: int = effective.width()
+
+        y: int = effective.y()
+        first_row: bool = True
+        for row in self._pack_rows(available):
+            if not first_row:
+                y += spacing
+            first_row = False
+
+            widths: list[int] = self._row_widths(row, available)
+            row_height: int = 0
+            for item, width in zip(row, widths):
+                row_height = max(row_height, self._item_height(item, width))
+
+            if not test_only:
+                x: int = effective.x()
+                for item, width in zip(row, widths):
+                    item.setGeometry(
+                        QRect(
+                            QPoint(x, y),
+                            QSize(width, self._item_height(item, width)),
+                        )
+                    )
+                    x += width + spacing
+            y += row_height
+
+        return y - rect.y() + margins.bottom()
+
+
+class ResponsiveColumnsBox(QFrame):
+    """ResponsiveColumns 를 담는 컨테이너
+
+    폭이 바뀌면 줄바꿈 수가 달라져 필요한 높이도 변하는데, 부모 레이아웃이
+    이전 폭 기준 높이를 그대로 할당해 내용이 잘리는 문제가 있다. 폭이 바뀔 때마다
+    현재 폭의 heightForWidth 로 자기 최소 높이를 직접 맞춰 부모가 올바른 높이를
+    할당하게 한다.
+    """
+
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        min_column_width: int = 320,
+        spacing: int = 16,
+        max_columns: int = 0,
+        fill: bool = True,
+    ) -> None:
+        super().__init__(parent)
+
+        self._flow: ResponsiveColumns = ResponsiveColumns(
+            self, min_column_width, spacing, max_columns, fill
+        )
+
+    @property
+    def flow(self) -> ResponsiveColumns:
+        """내부 ResponsiveColumns 레이아웃"""
+
+        return self._flow
+
+    def addWidget(self, widget: QWidget) -> None:
+        """블록 추가"""
+
+        self._flow.addWidget(widget)
+
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        self.setMinimumHeight(self._flow.heightForWidth(self.width()))

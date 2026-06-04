@@ -227,6 +227,8 @@ class CharacterPage(QFrame):
 
         self._stack: _TabStack = _TabStack(self._body_content)
         content_layout.addWidget(self._stack)
+        # 뷰포트가 콘텐츠보다 높을 때 카드가 늘어나지 않도록 잉여 공간은 아래 여백으로 둔다
+        content_layout.addStretch(1)
         scroll.setWidget(self._body_content)
 
         # 탭 순서와 동일하게 페이지 추가 (TABS: title/equip/dist/shelf/talisman/yeongdan/hwan)

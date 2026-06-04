@@ -84,7 +84,9 @@ class DisplayStandTab(QFrame):
         self._value_input.setValidator(QDoubleValidator(0.0, 1_000_000.0, 1, self))
         toolbar.addWidget(self._value_input)
 
-        apply_btn: StyledButton = StyledButton(self, "선택 칸에 적용", kind="normal", point_size=9)
+        apply_btn: StyledButton = StyledButton(
+            self, "선택 칸에 적용", kind="normal", point_size=9
+        )
         apply_btn.clicked.connect(self._apply_to_selection)
         toolbar.addWidget(apply_btn)
 
@@ -99,7 +101,9 @@ class DisplayStandTab(QFrame):
         self._table.setObjectName("charShelfTable")
         self._table.setItemDelegate(_NumericDelegate(self._table))
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
+        self._table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectItems
+        )
         self._table.setVerticalHeaderLabels([name for name, _ in rows])
         self._table.setHorizontalHeaderLabels(
             [f"{title}\n{desc}" for title, desc in sample_data.SHELF_COLUMNS]
@@ -130,7 +134,9 @@ class DisplayStandTab(QFrame):
 
         for row_index, (_name, values) in enumerate(rows):
             for col_index in range(_COLUMN_COUNT):
-                item: QTableWidgetItem = QTableWidgetItem(self._format(values[col_index]))
+                item: QTableWidgetItem = QTableWidgetItem(
+                    self._format(values[col_index])
+                )
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self._table.setItem(row_index, col_index, item)
 
@@ -148,7 +154,11 @@ class DisplayStandTab(QFrame):
         layout.setContentsMargins(16, 12, 16, 12)
 
         labels: tuple[str, ...] = (
-            "경험치 획득량%", "공격력", "드랍률%", "공격력%", "세트효과(힘·민·생·행%)",
+            "경험치 획득량%",
+            "공격력",
+            "드랍률%",
+            "공격력%",
+            "세트효과(힘·민·생·행%)",
         )
         self._summary_values: list[QLabel] = []
         for label_text in labels:

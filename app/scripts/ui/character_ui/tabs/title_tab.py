@@ -21,6 +21,7 @@ from app.scripts.ui.character_ui.widgets import (
     CharCard,
     CharComboBox,
     FlowLayout,
+    ResponsiveColumnsBox,
     SegButton,
     StepperField,
 )
@@ -139,10 +140,15 @@ class TitleTab(QFrame):
         self._equip_group.setExclusive(True)
         self._title_items: list[_TitleItem] = []
 
+        # 폭이 넓으면 칭호를 여러 열에 배치
+        titles_container: ResponsiveColumnsBox = ResponsiveColumnsBox(
+            self, min_column_width=320, spacing=12
+        )
         for data in sample_data.default_titles():
             item: _TitleItem = _TitleItem(self, data, self._equip_group, self)
             self._title_items.append(item)
-            self._title_card.add_widget(item)
+            titles_container.addWidget(item)
+        self._title_card.add_widget(titles_container)
 
         add_title_btn: StyledButton = StyledButton(self, "+ 칭호 추가", kind="normal", point_size=9)
         self._title_card.add_widget(add_title_btn)
