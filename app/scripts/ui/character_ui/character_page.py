@@ -46,7 +46,12 @@ _SAVE_DELAY_MS: int = 400
 
 
 class _TabStack(QWidget):
-    """표시/숨김 방식 탭 스택"""
+    """표시/숨김 방식 탭 스택
+
+    QStackedWidget 은 항상 가장 큰 페이지 높이를 예약하지만, 이 스택은 본문
+    스크롤 영역을 공유하므로 현재 페이지 높이에만 맞아야 한다. 숨긴 페이지가
+    레이아웃 높이에 기여하지 않도록 단순 표시/숨김으로 직접 구현한다.
+    """
 
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)

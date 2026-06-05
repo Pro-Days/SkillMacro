@@ -72,10 +72,6 @@ FREE_BASE_STAT_EQUIPMENT_SLOTS: tuple[EquipmentSlot, ...] = (
     EquipmentSlot.RING2,
     EquipmentSlot.EARRING,
 )
-RING_EQUIPMENT_SLOTS: tuple[EquipmentSlot, ...] = (
-    EquipmentSlot.RING1,
-    EquipmentSlot.RING2,
-)
 
 
 ARMOR_SLOT_STAT_KEYS: dict[EquipmentSlot, StatKey] = {
