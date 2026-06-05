@@ -110,7 +110,7 @@ EQUIPMENT_REFORGE_STAT_KEYS: dict[EquipmentSlot, tuple[StatKey, ...]] = {
     EquipmentSlot.WEAPON: (
         StatKey.ATTACK,
         StatKey.ATTACK_PERCENT,
-        StatKey.SKILL_SPEED_PERCENT,
+        StatKey.SKILL_DAMAGE_PERCENT,
     ),
     EquipmentSlot.RING1: (),
     EquipmentSlot.RING2: (),
@@ -123,19 +123,19 @@ NECKLACE_REFORGE_STAT_KEYS: dict[str, tuple[StatKey, ...]] = {
     "적옥목걸이": (
         StatKey.VITALITY,
         StatKey.VITALITY_PERCENT,
-        StatKey.SKILL_SPEED_PERCENT,
+        StatKey.SKILL_DAMAGE_PERCENT,
         StatKey.FINAL_ATTACK_PERCENT,
     ),
     "청옥목걸이": (
         StatKey.STR,
         StatKey.STR_PERCENT,
-        StatKey.SKILL_SPEED_PERCENT,
+        StatKey.SKILL_DAMAGE_PERCENT,
         StatKey.FINAL_ATTACK_PERCENT,
     ),
     "녹옥목걸이": (
         StatKey.LUCK,
         StatKey.LUCK_PERCENT,
-        StatKey.SKILL_SPEED_PERCENT,
+        StatKey.SKILL_DAMAGE_PERCENT,
         StatKey.FINAL_ATTACK_PERCENT,
     ),
 }
@@ -1129,33 +1129,33 @@ EQUIPMENT_SCROLL_LIMITS: dict[EquipmentSlot, dict[int, int] | None] = {
 
 
 DISPLAY_STAND_SPECS: tuple[DisplayStandSpec, ...] = (
-    DisplayStandSpec(DisplayStand.CRUEL_LEATHER, "잔인한 가죽 장비"),
-    DisplayStandSpec(DisplayStand.CRUEL_ARTISAN, "잔인한 장인 장비"),
-    DisplayStandSpec(DisplayStand.CRUEL_GLOW, "잔인한 광휘 장비"),
-    DisplayStandSpec(DisplayStand.CRUEL_SNOW, "잔인한 설한 장비"),
-    DisplayStandSpec(DisplayStand.CRUEL_FALCON, "잔인한 송골 장비"),
-    DisplayStandSpec(DisplayStand.CRUEL_FIGHTING_SPIRIT, "잔인한 투혼 장비"),
-    DisplayStandSpec(DisplayStand.CRUEL_WHITE_RAIN, "잔인한 백비 장비"),
-    DisplayStandSpec(DisplayStand.CRUEL_TIGER, "잔인한 호공 장비"),
-    DisplayStandSpec(DisplayStand.CALM_CLEAR_STREAM, "고요한 청류 장비"),
-    DisplayStandSpec(DisplayStand.CALM_INK_FLOWER, "고요한 묵화 장비"),
-    DisplayStandSpec(DisplayStand.CALM_MOONLIGHT, "고요한 월광 장비"),
-    DisplayStandSpec(DisplayStand.CALM_RED_FLAME, "고요한 적염 장비"),
-    DisplayStandSpec(DisplayStand.CALM_WIND_WAVE, "고요한 풍랑 장비"),
-    DisplayStandSpec(DisplayStand.CALM_CLOUD_MIST, "고요한 운무 장비"),
-    DisplayStandSpec(DisplayStand.CALM_THUNDER, "고요한 천뢰 장비"),
-    DisplayStandSpec(DisplayStand.CALM_ICE_WHITE, "고요한 빙백 장비"),
-    DisplayStandSpec(DisplayStand.FLYING_DRAGON_PEERLESS, "비룡 무쌍 장비"),
-    DisplayStandSpec(DisplayStand.FLYING_DRAGON_BREAKING_SKY, "비룡 파천 장비"),
-    DisplayStandSpec(DisplayStand.FLYING_DRAGON_FATAL, "비룡 절명 장비"),
-    DisplayStandSpec(DisplayStand.FLYING_DRAGON_FRENZY, "비룡 광폭 장비"),
-    DisplayStandSpec(DisplayStand.MYTH_DAWN, "신화 여명 장비"),
-    DisplayStandSpec(DisplayStand.MYTH_DUSK, "신화 황혼 장비"),
-    DisplayStandSpec(DisplayStand.MYTH_STARRY_NET, "신화 성라 장비"),
-    DisplayStandSpec(DisplayStand.MYTH_ABYSS, "신화 심연 장비"),
-    DisplayStandSpec(DisplayStand.LEGEND_DRAGON_SCALE, "전설 용린 장비"),
-    DisplayStandSpec(DisplayStand.LEGEND_PHOENIX, "전설 봉황 장비"),
-    DisplayStandSpec(DisplayStand.LEGEND_KIRIN, "전설 기린 장비"),
+    DisplayStandSpec(DisplayStand.GAJUK, "찬란한 가죽"),
+    DisplayStandSpec(DisplayStand.JANGIN, "찬란한 장인"),
+    DisplayStandSpec(DisplayStand.DONGGUN, "찬란한 동군"),
+    DisplayStandSpec(DisplayStand.TUHAE, "찬란한 투해"),
+    DisplayStandSpec(DisplayStand.GWANGJEON, "찬란한 광전"),
+    DisplayStandSpec(DisplayStand.BAEKBI, "찬란한 백비"),
+    DisplayStandSpec(DisplayStand.GWANGSEOL, "찬란한 광설"),
+    DisplayStandSpec(DisplayStand.HOGUN, "찬란한 호군"),
+    DisplayStandSpec(DisplayStand.BAEKHYEON, "찬란한 백현"),
+    DisplayStandSpec(DisplayStand.CHEONGGUN, "찬란한 청군"),
+    DisplayStandSpec(DisplayStand.JANGHYEON, "찬란한 장현"),
+    DisplayStandSpec(DisplayStand.GEUMGUN, "찬란한 금군"),
+    DisplayStandSpec(DisplayStand.JINMU, "찬란한 진무"),
+    DisplayStandSpec(DisplayStand.NOKGWI, "찬란한 녹귀"),
+    DisplayStandSpec(DisplayStand.GEUMTU, "찬란한 금투"),
+    DisplayStandSpec(DisplayStand.GEUMCHEONG, "찬란한 금청"),
+    DisplayStandSpec(DisplayStand.YEOMHWA, "찬란한 염화"),
+    DisplayStandSpec(DisplayStand.GOEROK, "찬란한 괴록"),
+    DisplayStandSpec(DisplayStand.JEOKRYEONG, "찬란한 적령"),
+    DisplayStandSpec(DisplayStand.TURYEONG, "찬란한 투령"),
+    DisplayStandSpec(DisplayStand.JINGUN, "찬란한 진군"),
+    DisplayStandSpec(DisplayStand.SANRYEONG, "찬란한 산령"),
+    DisplayStandSpec(DisplayStand.GWANGRYONG, "찬란한 광룡"),
+    DisplayStandSpec(DisplayStand.CHEONGUN, "찬란한 천군"),
+    DisplayStandSpec(DisplayStand.CHEONGGWI, "찬란한 청귀"),
+    DisplayStandSpec(DisplayStand.GOEHWANG, "찬란한 괴황"),
+    DisplayStandSpec(DisplayStand.GEUMSEONG, "찬란한 금성"),
 )
 
 
@@ -1217,7 +1217,7 @@ ELIXIR_SPECS: dict[Elixir, ConsumableSpec] = {
     ),
     Elixir.GEUMHWANDAN: ConsumableSpec(
         "금환단",
-        _stats((StatKey.SKILL_SPEED_PERCENT, 1.0)),
+        _stats((StatKey.SKILL_DAMAGE_PERCENT, 1.0)),
     ),
     Elixir.MAEHWADAN: ConsumableSpec(
         "매화단",
@@ -1242,6 +1242,22 @@ ELIXIR_SPECS: dict[Elixir, ConsumableSpec] = {
     Elixir.SIGONGDAN: ConsumableSpec(
         "시공단",
         _stats((StatKey.EXP_PERCENT, 1.0), (StatKey.POTION_HEAL_PERCENT, 3.0)),
+    ),
+    Elixir.CHEONGRYONGDAN: ConsumableSpec(
+        "청룡단",
+        _stats((StatKey.STR, 4.0), (StatKey.EXP_PERCENT, 1.0)),
+    ),
+    Elixir.BAEKHODAN: ConsumableSpec(
+        "백호단",
+        _stats((StatKey.DEXTERITY, 4.0), (StatKey.EXP_PERCENT, 1.0)),
+    ),
+    Elixir.JUJAKDAN: ConsumableSpec(
+        "주작단",
+        _stats((StatKey.VITALITY, 4.0), (StatKey.EXP_PERCENT, 1.0)),
+    ),
+    Elixir.HYEONMUDAN: ConsumableSpec(
+        "현무단",
+        _stats((StatKey.LUCK, 4.0), (StatKey.EXP_PERCENT, 1.0)),
     ),
 }
 

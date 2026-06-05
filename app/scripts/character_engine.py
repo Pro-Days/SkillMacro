@@ -43,6 +43,7 @@ from app.scripts.character_models import (
     EQUIPMENT_OPTION_SLOT_COUNT,
     MAX_ELIXIR_COUNT,
     MAX_EQUIPPED_TALISMAN_COUNT,
+    MAX_REFORGE_STEP,
     MAX_TALISMAN_LEVEL,
     AdditionalLine,
     CharacterProfile,
@@ -58,6 +59,10 @@ from app.scripts.character_models import (
     ScrollTier,
     StatDistribution,
 )
+
+
+CHARACTER_BASE_HP: float = 50.0
+CHARACTER_HP_PER_LEVEL: float = 5.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,10 +89,14 @@ class CalculatorInputFill:
     equipped_state: EquippedState
 
 
-def _empty_stat_map() -> dict[StatKey, float]:
-    """기본 원시 스탯 맵 구성"""
+def _character_base_stat_map(profile: CharacterProfile) -> dict[StatKey, float]:
+    """캐릭터 기본 원시 스탯 맵 구성"""
 
-    return BaseStats.create_default().to_stat_map()
+    base_values: dict[StatKey, float] = BaseStats.create_default().to_stat_map()
+    base_values[StatKey.HP] = CHARACTER_BASE_HP + (
+        profile.level * CHARACTER_HP_PER_LEVEL
+    )
+    return base_values
 
 
 def _add_stat(
@@ -389,6 +398,10 @@ def _allowed_reforge_stat_keys(
 
 def _validate_equipment_reforge(slot: EquipmentSlot, equipment: OwnedEquipment) -> None:
     """장비 재련 입력값 검증"""
+
+    _validate_non_negative_int(equipment.reforge_step, "reforge step")
+    if equipment.reforge_step > MAX_REFORGE_STEP:
+        raise ValueError("reforge step exceeds maximum")
 
     allowed_stat_keys: tuple[StatKey, ...] = _allowed_reforge_stat_keys(slot, equipment)
     for stat_key, value in equipment.reforge_stats.items():
@@ -865,7 +878,7 @@ def aggregate_base_stats(profile: CharacterProfile) -> BaseStats:
 
     validate_character_profile(profile)
 
-    accumulated: dict[StatKey, float] = _empty_stat_map()
+    accumulated: dict[StatKey, float] = _character_base_stat_map(profile)
     _add_distribution(accumulated, profile.distribution)
     _add_danjeon(accumulated, profile.danjeon)
     _add_equipped_title(accumulated, profile)

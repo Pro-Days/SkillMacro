@@ -14,6 +14,7 @@ EQUIPMENT_OPTION_SLOT_COUNT: int = 3
 MAX_EQUIPPED_TALISMAN_COUNT: int = 3
 MAX_TALISMAN_LEVEL: int = 14
 MAX_ELIXIR_COUNT: int = 10
+MAX_REFORGE_STEP: int = 20
 
 
 class EquipmentSlot(str, Enum):
@@ -91,33 +92,33 @@ class AdditionalOption(str, Enum):
 class DisplayStand(str, Enum):
     """진열대 식별자"""
 
-    CRUEL_LEATHER = "cruel_leather"
-    CRUEL_ARTISAN = "cruel_artisan"
-    CRUEL_GLOW = "cruel_glow"
-    CRUEL_SNOW = "cruel_snow"
-    CRUEL_FALCON = "cruel_falcon"
-    CRUEL_FIGHTING_SPIRIT = "cruel_fighting_spirit"
-    CRUEL_WHITE_RAIN = "cruel_white_rain"
-    CRUEL_TIGER = "cruel_tiger"
-    CALM_CLEAR_STREAM = "calm_clear_stream"
-    CALM_INK_FLOWER = "calm_ink_flower"
-    CALM_MOONLIGHT = "calm_moonlight"
-    CALM_RED_FLAME = "calm_red_flame"
-    CALM_WIND_WAVE = "calm_wind_wave"
-    CALM_CLOUD_MIST = "calm_cloud_mist"
-    CALM_THUNDER = "calm_thunder"
-    CALM_ICE_WHITE = "calm_ice_white"
-    FLYING_DRAGON_PEERLESS = "flying_dragon_peerless"
-    FLYING_DRAGON_BREAKING_SKY = "flying_dragon_breaking_sky"
-    FLYING_DRAGON_FATAL = "flying_dragon_fatal"
-    FLYING_DRAGON_FRENZY = "flying_dragon_frenzy"
-    MYTH_DAWN = "myth_dawn"
-    MYTH_DUSK = "myth_dusk"
-    MYTH_STARRY_NET = "myth_starry_net"
-    MYTH_ABYSS = "myth_abyss"
-    LEGEND_DRAGON_SCALE = "legend_dragon_scale"
-    LEGEND_PHOENIX = "legend_phoenix"
-    LEGEND_KIRIN = "legend_kirin"
+    GAJUK = "gajuk"
+    JANGIN = "jangin"
+    DONGGUN = "donggun"
+    TUHAE = "tuhae"
+    GWANGJEON = "gwangjeon"
+    BAEKBI = "baekbi"
+    GWANGSEOL = "gwangseol"
+    HOGUN = "hogun"
+    BAEKHYEON = "baekhyeon"
+    CHEONGGUN = "cheonggun"
+    JANGHYEON = "janghyeon"
+    GEUMGUN = "geumgun"
+    JINMU = "jinmu"
+    NOKGWI = "nokgwi"
+    GEUMTU = "geumtu"
+    GEUMCHEONG = "geumcheong"
+    YEOMHWA = "yeomhwa"
+    GOEROK = "goerok"
+    JEOKRYEONG = "jeokryeong"
+    TURYEONG = "turyeong"
+    JINGUN = "jingun"
+    SANRYEONG = "sanryeong"
+    GWANGRYONG = "gwangryong"
+    CHEONGUN = "cheongun"
+    CHEONGGWI = "cheonggwi"
+    GOEHWANG = "goehwang"
+    GEUMSEONG = "geumseong"
 
 
 class DisplayStandColumn(str, Enum):
@@ -149,6 +150,10 @@ class Elixir(str, Enum):
     TAEGEUKDAN = "taegeukdan"
     CHEONGYEONGDAN = "cheongyeongdan"
     SIGONGDAN = "sigongdan"
+    CHEONGRYONGDAN = "cheongryongdan"
+    BAEKHODAN = "baekhodan"
+    JUJAKDAN = "jujakdan"
+    HYEONMUDAN = "hyeonmudan"
 
 
 class Pill(str, Enum):
@@ -535,6 +540,7 @@ class OwnedEquipment:
     tier: int = 1
     grade: EquipmentGrade | None = None
     base_stat_lines: list[EquipmentFreeStatLine] = field(default_factory=list)
+    reforge_step: int = 0
     reforge_stats: dict[StatKey, float] = field(default_factory=dict)
     scrolls: dict[StatKey, dict[ScrollTier, int]] = field(default_factory=dict)
     potentials: tuple[PotentialLine | None, ...] = field(
@@ -578,6 +584,7 @@ class OwnedEquipment:
                 EquipmentFreeStatLine.from_dict(item)
                 for item in _read_list(data, "base_stat_lines")
             ],
+            reforge_step=int(data["reforge_step"]),
             reforge_stats=_stat_float_map_from_dict(_read_dict(data, "reforge_stats")),
             scrolls=scrolls,
             potentials=_read_optional_potential_lines(_read_list(data, "potentials")),
@@ -597,6 +604,7 @@ class OwnedEquipment:
             "tier": self.tier,
             "grade": self.grade.value if self.grade is not None else None,
             "base_stat_lines": [line.to_dict() for line in self.base_stat_lines],
+            "reforge_step": self.reforge_step,
             "reforge_stats": _stat_float_map_to_dict(self.reforge_stats),
             "scrolls": {
                 stat_key.value: {
@@ -832,6 +840,16 @@ class CharacterStore:
             version=CHARACTER_DATA_VERSION,
             characters=[],
             selected_index=-1,
+        )
+
+    @classmethod
+    def create_default(cls) -> "CharacterStore":
+        """기본 캐릭터 1개를 포함한 저장 루트 생성"""
+
+        return cls(
+            version=CHARACTER_DATA_VERSION,
+            characters=[CharacterProfile(name="새 캐릭터")],
+            selected_index=0,
         )
 
     @classmethod

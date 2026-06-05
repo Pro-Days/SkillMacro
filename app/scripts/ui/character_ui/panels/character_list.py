@@ -1,8 +1,4 @@
-"""좌측 캐릭터 선택 패널
-
-캐릭터 목록과 추가/붙여넣기/복제/삭제 버튼으로 구성한다.
-(요청에 따라 스탯·단전 자동 최적화 버튼은 두지 않는다.)
-"""
+"""좌측 캐릭터 선택 패널"""
 
 from __future__ import annotations
 
@@ -17,8 +13,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.scripts.calculator_models import REALM_TIER_SPECS
+from app.scripts.character_models import CharacterProfile
 from app.scripts.custom_classes import CustomFont, StyledButton
-from app.scripts.ui.character_ui import sample_data
 
 
 class _CharacterRow(QFrame):
@@ -27,7 +24,7 @@ class _CharacterRow(QFrame):
     def __init__(
         self,
         parent: QWidget,
-        summary: sample_data.CharacterSummary,
+        character: CharacterProfile,
         index: int,
         on_click: Callable[[int], None],
     ) -> None:
@@ -41,11 +38,16 @@ class _CharacterRow(QFrame):
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(2)
 
-        self.name_label: QLabel = QLabel(summary.name, self)
+        # 캐릭터 이름 표시
+        name_text: str = character.name if character.name.strip() else "이름 없음"
+        self.name_label: QLabel = QLabel(name_text, self)
         self.name_label.setObjectName("charRowName")
         self.name_label.setFont(CustomFont(11, bold=True))
 
-        self.meta_label: QLabel = QLabel(summary.meta, self)
+        # 레벨과 경지 요약 표시
+        realm_label: str = REALM_TIER_SPECS[character.realm].label
+        meta_text: str = "미입력" if character.level <= 0 else f"Lv. {character.level} · {realm_label}"
+        self.meta_label: QLabel = QLabel(meta_text, self)
         self.meta_label.setObjectName("charRowMeta")
         self.meta_label.setFont(CustomFont(9))
 
@@ -72,7 +74,15 @@ class _CharacterRow(QFrame):
 class CharacterListPanel(QFrame):
     """좌측 캐릭터 선택 패널"""
 
-    def __init__(self, parent: QWidget, on_select: Callable[[int], None]) -> None:
+    def __init__(
+        self,
+        parent: QWidget,
+        on_select: Callable[[int], None],
+        on_add: Callable[[], None],
+        on_paste: Callable[[], None],
+        on_clone: Callable[[], None],
+        on_delete: Callable[[], None],
+    ) -> None:
         super().__init__(parent)
 
         self.setObjectName("charPanel")
@@ -86,21 +96,16 @@ class CharacterListPanel(QFrame):
         title.setFont(CustomFont(15, bold=True))
         layout.addWidget(title)
 
-        # 캐릭터 목록
-        list_layout = QVBoxLayout()
-        list_layout.setContentsMargins(0, 16, 0, 0)
-        list_layout.setSpacing(10)
+        # 캐릭터 행 목록 영역
+        self._list_layout = QVBoxLayout()
+        self._list_layout.setContentsMargins(0, 16, 0, 0)
+        self._list_layout.setSpacing(10)
+        layout.addLayout(self._list_layout)
 
         self._rows: list[_CharacterRow] = []
         self._on_select: Callable[[int], None] = on_select
-        for index, summary in enumerate(sample_data.CHARACTERS):
-            row: _CharacterRow = _CharacterRow(self, summary, index, self._handle_select)
-            self._rows.append(row)
-            list_layout.addWidget(row)
 
-        layout.addLayout(list_layout)
-
-        # 버튼 그리드 (2×2)
+        # 캐릭터 관리 버튼 영역
         button_grid = QGridLayout()
         button_grid.setContentsMargins(0, 16, 0, 0)
         button_grid.setHorizontalSpacing(10)
@@ -111,6 +116,11 @@ class CharacterListPanel(QFrame):
         clone_btn: StyledButton = StyledButton(self, "복제", kind="normal")
         delete_btn: StyledButton = StyledButton(self, "삭제", kind="danger")
 
+        add_btn.clicked.connect(on_add)
+        paste_btn.clicked.connect(on_paste)
+        clone_btn.clicked.connect(on_clone)
+        delete_btn.clicked.connect(on_delete)
+
         button_grid.addWidget(add_btn, 0, 0)
         button_grid.addWidget(paste_btn, 0, 1)
         button_grid.addWidget(clone_btn, 1, 0)
@@ -119,13 +129,38 @@ class CharacterListPanel(QFrame):
         layout.addLayout(button_grid)
         layout.addStretch(1)
 
-        # 첫 행 기본 선택
-        if self._rows:
-            self._rows[0].set_active(True)
+    def set_characters(
+        self,
+        characters: list[CharacterProfile],
+        selected_index: int,
+    ) -> None:
+        """캐릭터 목록 재구성"""
+
+        # 기존 행 위젯 제거
+        while self._list_layout.count():
+            item = self._list_layout.takeAt(0)
+            widget: QWidget | None = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+        # 현재 저장소 기준 행 생성
+        self._rows = []
+        for index, character in enumerate(characters):
+            row: _CharacterRow = _CharacterRow(
+                self,
+                character,
+                index,
+                self._handle_select,
+            )
+            row.set_active(index == selected_index)
+            self._rows.append(row)
+            self._list_layout.addWidget(row)
 
     def _handle_select(self, index: int) -> None:
         """행 선택 시 활성 표시 갱신 후 콜백 전달"""
 
-        for i, row in enumerate(self._rows):
-            row.set_active(i == index)
+        # 선택 행 스타일 갱신
+        for row_index, row in enumerate(self._rows):
+            row.set_active(row_index == index)
+
         self._on_select(index)

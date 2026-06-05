@@ -1,6 +1,8 @@
-"""환 탭 (FlowLayout 카드 그리드)"""
+"""환 탭"""
 
 from __future__ import annotations
+
+from collections.abc import Callable
 
 from PySide6.QtWidgets import (
     QFrame,
@@ -10,47 +12,77 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.scripts.calculator_models import STAT_SPECS
+from app.scripts.character_data import PILL_SPECS
+from app.scripts.character_models import CharacterProfile, Pill
 from app.scripts.custom_classes import CustomFont
-from app.scripts.ui.character_ui import sample_data
 from app.scripts.ui.character_ui.widgets import CharCard, ColorOrb, FlowLayout, ToggleSwitch
+
+_PILL_COLORS: tuple[str, ...] = (
+    "#7bbf6a",
+    "#c8a04a",
+    "#d75a5a",
+    "#9aa86a",
+    "#7a9a5a",
+    "#5a8a4a",
+    "#c0392b",
+    "#4f9bd9",
+    "#d98b3a",
+    "#a86fd0",
+    "#6fcabf",
+    "#e87fb0",
+    "#e0b94a",
+)
 
 
 class _PillCard(QFrame):
-    """환 1종 카드 (구슬 + 이름 + 효과 + 토글 스위치)"""
+    """환 1종 카드"""
 
-    def __init__(self, parent: QWidget, data: sample_data.PillData) -> None:
+    def __init__(
+        self,
+        parent: QWidget,
+        pill: Pill,
+        color: str,
+        on_changed: Callable[[Pill, bool], None],
+    ) -> None:
         super().__init__(parent)
 
         self.setObjectName("charPillCard")
-        self.setProperty("on", data.active)
+        self.setProperty("on", False)
         self.setFixedWidth(150)
 
-        self._data: sample_data.PillData = data
+        self._pill: Pill = pill
+        self._on_changed: Callable[[Pill, bool], None] = on_changed
 
+        spec = PILL_SPECS[pill]
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 14, 14, 14)
         layout.setSpacing(10)
 
-        # 상단: 구슬 + 이름
+        # 환 이름 표시
         top = QHBoxLayout()
         top.setSpacing(10)
-        top.addWidget(ColorOrb(self, data.color))
-        name_label: QLabel = QLabel(data.name, self)
+        top.addWidget(ColorOrb(self, color))
+        name_label: QLabel = QLabel(spec.name, self)
         name_label.setObjectName("charPillName")
         name_label.setFont(CustomFont(11, bold=True))
         top.addWidget(name_label)
         top.addStretch(1)
         layout.addLayout(top)
 
-        # 효과
-        effect_label: QLabel = QLabel(data.effect, self)
+        # 환 효과 표시
+        effect_text: str = ", ".join(
+            f"{STAT_SPECS[stat_key]} +{value:g}"
+            for stat_key, value in spec.effects.items()
+        )
+        effect_label: QLabel = QLabel(effect_text, self)
         effect_label.setObjectName("charPillEff")
         effect_label.setFont(CustomFont(9))
         effect_label.setWordWrap(True)
         effect_label.setMinimumHeight(32)
         layout.addWidget(effect_label)
 
-        # 하단: 사용 라벨 + 스위치
+        # 사용 토글 구성
         foot = QHBoxLayout()
         foot.setSpacing(8)
 
@@ -59,23 +91,37 @@ class _PillCard(QFrame):
         use_label.setFont(CustomFont(9))
         foot.addWidget(use_label)
         foot.addStretch(1)
-        foot.addWidget(ToggleSwitch(self, data.active, self._on_toggle))
+
+        self._toggle: ToggleSwitch = ToggleSwitch(self, False, self._on_toggle)
+        foot.addWidget(self._toggle)
         layout.addLayout(foot)
 
-    def _on_toggle(self, active: bool) -> None:
-        """토글 시 강조 갱신"""
+    def set_active(self, active: bool) -> None:
+        """사용 여부 표시 반영"""
 
-        self._data.active = active
+        self._toggle.setChecked(active)
         self.setProperty("on", active)
         self.style().unpolish(self)
         self.style().polish(self)
+
+    def _on_toggle(self, active: bool) -> None:
+        """토글 시 모델 반영"""
+
+        self.setProperty("on", active)
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self._on_changed(self._pill, active)
 
 
 class PillTab(QFrame):
     """환 탭"""
 
-    def __init__(self, parent: QWidget) -> None:
+    def __init__(self, parent: QWidget, on_changed: Callable[[], None]) -> None:
         super().__init__(parent)
+
+        self._profile: CharacterProfile | None = None
+        self._on_changed: Callable[[], None] = on_changed
+        self._loading: bool = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -85,10 +131,47 @@ class PillTab(QFrame):
 
         grid_container: QFrame = QFrame(self)
         flow: FlowLayout = FlowLayout(grid_container, margin=0, spacing=12, center=True)
-        for data in sample_data.default_pills():
-            flow.addWidget(_PillCard(grid_container, data))
+
+        self._cards: dict[Pill, _PillCard] = {}
+        for index, pill in enumerate(PILL_SPECS):
+            card_widget: _PillCard = _PillCard(
+                grid_container,
+                pill,
+                _PILL_COLORS[index],
+                self._set_active,
+            )
+            self._cards[pill] = card_widget
+            flow.addWidget(card_widget)
+
         grid_container.setLayout(flow)
 
         card.add_widget(grid_container)
         layout.addWidget(card)
         layout.addStretch(1)
+
+    def set_profile(self, profile: CharacterProfile | None) -> None:
+        """선택 캐릭터 모델 반영"""
+
+        self._loading = True
+        self._profile = profile
+        self.setEnabled(profile is not None)
+
+        for pill, card in self._cards.items():
+            active: bool = False if profile is None else pill in profile.pill.active
+            card.set_active(active)
+
+        self._loading = False
+
+    def _set_active(self, pill: Pill, active: bool) -> None:
+        """환 사용 여부 모델 반영"""
+
+        if self._profile is None or self._loading:
+            return
+
+        if active:
+            self._profile.pill.active.add(pill)
+
+        else:
+            self._profile.pill.active.discard(pill)
+
+        self._on_changed()

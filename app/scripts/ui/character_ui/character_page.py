@@ -1,15 +1,12 @@
-"""캐릭터 창 3분할 셸
-
-좌(캐릭터 선택) · 중(입력 탭) · 우(전체 스탯) 3분할 레이아웃과
-좌·우 패널 접기, 중앙 알약 탭 전환을 담당한다.
-"""
+"""캐릭터 창 3분할 셸"""
 
 from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QSize, Qt
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QSize, Qt, QTimer
 from PySide6.QtWidgets import (
+    QApplication,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -19,65 +16,19 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-
-class _TabStack(QWidget):
-    """표시/숨김 방식 탭 스택
-
-    QStackedWidget 은 모든 페이지 중 가장 큰 최소높이를 강제해(=가장 긴 탭 기준)
-    짧은 탭에서 빈 여백이 생긴다. 현재 탭만 보이고 나머지는 숨겨
-    레이아웃이 현재 탭 크기만 반영하도록 한다.
-    """
-
-    def __init__(self, parent: QWidget) -> None:
-        super().__init__(parent)
-        self._stack_layout = QVBoxLayout(self)
-        self._stack_layout.setContentsMargins(0, 0, 0, 0)
-        self._stack_layout.setSpacing(0)
-        self._pages: list[QWidget] = []
-        self._current: int = 0
-
-    def addWidget(self, widget: QWidget) -> None:
-        """탭 페이지 추가 (첫 페이지만 표시)"""
-
-        self._pages.append(widget)
-        self._stack_layout.addWidget(widget)
-        widget.setVisible(len(self._pages) == 1)
-
-    def setCurrentIndex(self, index: int) -> None:
-        """현재 탭만 표시"""
-
-        for i, page in enumerate(self._pages):
-            page.setVisible(i == index)
-        self._current = index
-
-    def currentWidget(self) -> QWidget | None:
-        """현재 탭 위젯"""
-
-        return self._pages[self._current] if self._pages else None
-
-    def widget(self, index: int) -> QWidget:
-        """인덱스로 탭 위젯 조회"""
-
-        return self._pages[index]
-
-    def minimumSizeHint(self) -> QSize:  # type: ignore[override]
-        return QSize(0, 0)
-
-
-class _BodyContent(QWidget):
-    """본문 스크롤 콘텐츠 — 폭이 바뀌면 콜백으로 높이를 다시 계산하게 한다"""
-
-    def __init__(self, on_resize: "Callable[[], None]") -> None:
-        super().__init__()
-        self._on_resize: "Callable[[], None]" = on_resize
-
-    def resizeEvent(self, event) -> None:  # type: ignore[override]
-        super().resizeEvent(event)
-        self._on_resize()
-
-
-from app.scripts.custom_classes import CustomFont
-from app.scripts.ui.character_ui import sample_data
+from app.scripts.app_state import app_state
+from app.scripts.calculator_models import REALM_TIER_SPECS
+from app.scripts.character_engine import (
+    clone_character_profile,
+    compute_live_view,
+    deserialize_character_profile,
+    serialize_character_profile,
+    validate_character_store,
+)
+from app.scripts.character_models import CharacterProfile, CharacterStore
+from app.scripts.custom_classes import CustomFont, StyledButton
+from app.scripts.data_manager import save_characters
+from app.scripts.ui.character_ui.constants import CHARACTER_TABS
 from app.scripts.ui.character_ui.panels.character_list import CharacterListPanel
 from app.scripts.ui.character_ui.panels.live_stats import LiveStatsPanel
 from app.scripts.ui.character_ui.tabs.display_stand_tab import DisplayStandTab
@@ -91,13 +42,72 @@ from app.scripts.ui.character_ui.widgets import FlowLayout, PillTab
 
 _LEFT_WIDTH: int = 236
 _RIGHT_WIDTH: int = 340
+_SAVE_DELAY_MS: int = 400
+
+
+class _TabStack(QWidget):
+    """표시/숨김 방식 탭 스택"""
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        self._stack_layout = QVBoxLayout(self)
+        self._stack_layout.setContentsMargins(0, 0, 0, 0)
+        self._stack_layout.setSpacing(0)
+        self._pages: list[QWidget] = []
+        self._current: int = 0
+
+    def addWidget(self, widget: QWidget) -> None:
+        """탭 페이지 추가"""
+
+        self._pages.append(widget)
+        self._stack_layout.addWidget(widget)
+        widget.setVisible(len(self._pages) == 1)
+
+    def setCurrentIndex(self, index: int) -> None:
+        """현재 탭만 표시"""
+
+        for page_index, page in enumerate(self._pages):
+            page.setVisible(page_index == index)
+
+        self._current = index
+
+    def currentWidget(self) -> QWidget | None:
+        """현재 탭 위젯"""
+
+        return self._pages[self._current] if self._pages else None
+
+    def minimumSizeHint(self) -> QSize:  # type: ignore[override]
+        return QSize(0, 0)
+
+
+class _BodyContent(QWidget):
+    """본문 스크롤 콘텐츠"""
+
+    def __init__(self, on_resize: Callable[[], None]) -> None:
+        super().__init__()
+        self._on_resize: Callable[[], None] = on_resize
+
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        """폭 변경 시 현재 탭 높이 재계산"""
+
+        super().resizeEvent(event)
+        self._on_resize()
 
 
 class CharacterPage(QFrame):
     """계산기 4번째 탭에 들어가는 캐릭터 창"""
 
-    def __init__(self, parent: QWidget) -> None:
+    def __init__(
+        self,
+        parent: QWidget,
+        on_use_calculator: Callable[[CharacterProfile], None],
+    ) -> None:
         super().__init__(parent)
+
+        self._on_use_calculator: Callable[[CharacterProfile], None] = on_use_calculator
+        self._save_timer: QTimer = QTimer(self)
+        self._save_timer.setSingleShot(True)
+        self._save_timer.timeout.connect(self._save_current_store)
 
         self.setObjectName("charRoot")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -106,9 +116,14 @@ class CharacterPage(QFrame):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(10)
 
-        # 좌측 패널 (기본 접힘)
+        # 좌측 캐릭터 목록 패널
         self._left_panel: CharacterListPanel = CharacterListPanel(
-            self, self._on_character_selected
+            self,
+            self._on_character_selected,
+            self._add_character,
+            self._paste_character,
+            self._clone_character,
+            self._delete_character,
         )
         self._left_panel.setFixedWidth(_LEFT_WIDTH)
         self._left_panel.setMinimumWidth(0)
@@ -116,10 +131,9 @@ class CharacterPage(QFrame):
         self._left_collapsed: bool = True
         layout.addWidget(self._left_panel)
 
-        # 중앙
         layout.addWidget(self._build_center(), 1)
 
-        # 우측 패널
+        # 우측 전체 스탯 패널
         self._right_panel: LiveStatsPanel = LiveStatsPanel(self)
         self._right_panel.setFixedWidth(_RIGHT_WIDTH)
         self._right_panel.setMinimumWidth(0)
@@ -129,9 +143,10 @@ class CharacterPage(QFrame):
         self._left_anim: QPropertyAnimation | None = None
         self._right_anim: QPropertyAnimation | None = None
         self._update_toggle_labels()
+        self.refresh_from_store()
 
     def _build_center(self) -> QFrame:
-        """중앙 패널 (헤더 + 알약 탭 + 스택)"""
+        """중앙 패널 구성"""
 
         center: QFrame = QFrame(self)
         center.setObjectName("charPanel")
@@ -145,7 +160,7 @@ class CharacterPage(QFrame):
         return center
 
     def _build_header(self) -> QFrame:
-        """중앙 헤더 (좌 토글 + 캐릭터명 + 우 토글)"""
+        """중앙 헤더 구성"""
 
         header: QFrame = QFrame(self)
         header.setObjectName("charCenterHead")
@@ -160,12 +175,10 @@ class CharacterPage(QFrame):
         self._toggle_left_btn.clicked.connect(lambda: self._toggle_panel("left"))
         layout.addWidget(self._toggle_left_btn)
 
-        # 이름 + 레벨·경지를 한 줄에 표시 (헤더 높이 최소화)
-        first: sample_data.CharacterSummary = sample_data.CHARACTERS[0]
-        self._title_label: QLabel = QLabel(first.name, header)
+        self._title_label: QLabel = QLabel("캐릭터 없음", header)
         self._title_label.setObjectName("charHeadTitle")
         self._title_label.setFont(CustomFont(13, bold=True))
-        self._subtitle_label: QLabel = QLabel(first.meta, header)
+        self._subtitle_label: QLabel = QLabel("미입력", header)
         self._subtitle_label.setObjectName("charSub")
         self._subtitle_label.setFont(CustomFont(9))
 
@@ -174,6 +187,15 @@ class CharacterPage(QFrame):
         layout.addWidget(self._subtitle_label, 0, Qt.AlignmentFlag.AlignVCenter)
 
         layout.addStretch(1)
+
+        self._use_calculator_btn: StyledButton = StyledButton(
+            header,
+            "계산기에 사용",
+            kind="normal",
+            point_size=9,
+        )
+        self._use_calculator_btn.clicked.connect(self._use_selected_character)
+        layout.addWidget(self._use_calculator_btn)
 
         self._toggle_right_btn: QPushButton = QPushButton("❯", header)
         self._toggle_right_btn.setObjectName("charIconBtn")
@@ -184,24 +206,24 @@ class CharacterPage(QFrame):
         return header
 
     def _build_tab_bar(self) -> QFrame:
-        """알약 탭 바"""
+        """알약 탭 바 구성"""
 
         bar: QFrame = QFrame(self)
         bar.setObjectName("charTabBar")
-        # 폭이 좁으면 알약 탭이 줄바꿈되도록 FlowLayout 사용
         layout: FlowLayout = FlowLayout(bar, margin=0, spacing=6)
         layout.setContentsMargins(12, 8, 12, 8)
 
         self._tabs: list[PillTab] = []
-        for index, tab in enumerate(sample_data.TABS):
+        for index, tab in enumerate(CHARACTER_TABS):
             pill: PillTab = PillTab(bar, tab.label, tab.color, index, self._go)
             self._tabs.append(pill)
             layout.addWidget(pill)
+
         bar.setLayout(layout)
         return bar
 
     def _build_stack(self) -> QFrame:
-        """중앙 본문 (탭별 페이지 스택, 자체 스크롤)"""
+        """중앙 본문 스택 구성"""
 
         wrapper: QFrame = QFrame(self)
         wrapper.setObjectName("charBody")
@@ -221,43 +243,229 @@ class CharacterPage(QFrame):
         self._body_margin: int = 16
         content_layout = QVBoxLayout(self._body_content)
         content_layout.setContentsMargins(
-            self._body_margin, self._body_margin, self._body_margin, self._body_margin
+            self._body_margin,
+            self._body_margin,
+            self._body_margin,
+            self._body_margin,
         )
         content_layout.setSpacing(0)
 
         self._stack: _TabStack = _TabStack(self._body_content)
         content_layout.addWidget(self._stack)
-        # 뷰포트가 콘텐츠보다 높을 때 카드가 늘어나지 않도록 잉여 공간은 아래 여백으로 둔다
         content_layout.addStretch(1)
         scroll.setWidget(self._body_content)
 
-        # 탭 순서와 동일하게 페이지 추가 (TABS: title/equip/dist/shelf/talisman/yeongdan/hwan)
-        self._stack.addWidget(TitleTab(self._stack))
-        self._stack.addWidget(EquipmentTab(self._stack))
-        self._stack.addWidget(DistributionTab(self._stack))
-        self._stack.addWidget(DisplayStandTab(self._stack))
-        self._stack.addWidget(TalismanTab(self._stack))
-        self._stack.addWidget(ElixirTab(self._stack))
-        self._stack.addWidget(PillEffectTab(self._stack))
+        self._profile_tabs: list[QWidget] = [
+            TitleTab(self._stack, self._on_profile_changed),
+            EquipmentTab(self._stack, self._on_profile_changed),
+            DistributionTab(self._stack, self._on_profile_changed),
+            DisplayStandTab(self._stack, self._on_profile_changed),
+            TalismanTab(self._stack, self._on_profile_changed),
+            ElixirTab(self._stack, self._on_profile_changed),
+            PillEffectTab(self._stack, self._on_profile_changed),
+        ]
+        for page in self._profile_tabs:
+            self._stack.addWidget(page)
 
         self._go(0)
         return wrapper
+
+    def refresh_from_store(self) -> None:
+        """전역 캐릭터 저장소 기준 화면 갱신"""
+
+        store: CharacterStore = app_state.character_store
+        self._left_panel.set_characters(store.characters, store.selected_index)
+        profile: CharacterProfile | None = self._selected_profile()
+
+        if profile is None:
+            self._title_label.setText("캐릭터 없음")
+            self._subtitle_label.setText("미입력")
+            self._use_calculator_btn.setEnabled(False)
+            self._right_panel.set_live_view(None)
+
+        else:
+            name_text: str = profile.name if profile.name.strip() else "이름 없음"
+            realm_label: str = REALM_TIER_SPECS[profile.realm].label
+            self._title_label.setText(name_text)
+            self._subtitle_label.setText(f"Lv. {profile.level} · {realm_label}")
+            self._use_calculator_btn.setEnabled(True)
+            self._right_panel.set_live_view(compute_live_view(profile))
+
+        for page in self._profile_tabs:
+            if hasattr(page, "set_profile"):
+                page.set_profile(profile)
+
+        self._sync_body_height()
+
+    def _selected_profile(self) -> CharacterProfile | None:
+        """현재 선택 캐릭터 조회"""
+
+        store: CharacterStore = app_state.character_store
+        if store.selected_index == -1:
+            return None
+
+        return store.characters[store.selected_index]
+
+    def _on_character_selected(self, index: int) -> None:
+        """좌측 캐릭터 선택 처리"""
+
+        app_state.character_store.selected_index = index
+        save_characters()
+        self.refresh_from_store()
+
+    def _add_character(self) -> None:
+        """새 캐릭터 추가"""
+
+        store: CharacterStore = app_state.character_store
+        new_character: CharacterProfile = CharacterProfile(name="새 캐릭터")
+        store.characters.append(new_character)
+        store.selected_index = len(store.characters) - 1
+        save_characters()
+        self.refresh_from_store()
+
+    def _clone_character(self) -> None:
+        """선택 캐릭터 복제"""
+
+        profile: CharacterProfile | None = self._selected_profile()
+        if profile is None:
+            return
+
+        store: CharacterStore = app_state.character_store
+        cloned: CharacterProfile = clone_character_profile(profile)
+        cloned.name = f"{profile.name} 복사"
+        store.characters.append(cloned)
+        store.selected_index = len(store.characters) - 1
+        save_characters()
+        self.refresh_from_store()
+
+    def _paste_character(self) -> None:
+        """클립보드 캐릭터 붙여넣기"""
+
+        clipboard = QApplication.clipboard()
+        text: str = clipboard.text()
+        if not text:
+            return
+
+        store: CharacterStore = app_state.character_store
+        pasted: CharacterProfile = deserialize_character_profile(text)
+        store.characters.append(pasted)
+        store.selected_index = len(store.characters) - 1
+        save_characters()
+        self.refresh_from_store()
+
+    def _delete_character(self) -> None:
+        """선택 캐릭터 삭제"""
+
+        store: CharacterStore = app_state.character_store
+        if store.selected_index == -1:
+            return
+
+        store.characters.pop(store.selected_index)
+        if not store.characters:
+            store.selected_index = -1
+
+        elif store.selected_index >= len(store.characters):
+            store.selected_index = len(store.characters) - 1
+
+        save_characters()
+        self.refresh_from_store()
+
+    def copy_selected_character(self) -> None:
+        """선택 캐릭터 클립보드 복사"""
+
+        profile: CharacterProfile | None = self._selected_profile()
+        if profile is None:
+            return
+
+        QApplication.clipboard().setText(serialize_character_profile(profile))
+
+    def _on_profile_changed(self) -> None:
+        """입력 변경 후 저장 예약 및 실시간 표시 갱신"""
+
+        profile: CharacterProfile | None = self._selected_profile()
+        if profile is None:
+            return
+
+        self._clamp_profile_allocations(profile)
+        self._title_label.setText(profile.name if profile.name.strip() else "이름 없음")
+        self._subtitle_label.setText(
+            f"Lv. {profile.level} · {REALM_TIER_SPECS[profile.realm].label}"
+        )
+        self._left_panel.set_characters(
+            app_state.character_store.characters,
+            app_state.character_store.selected_index,
+        )
+        self._right_panel.set_live_view(compute_live_view(profile))
+        for page in self._profile_tabs:
+            if isinstance(page, DistributionTab):
+                page.set_profile(profile)
+
+        self._save_timer.start(_SAVE_DELAY_MS)
+
+    def _clamp_profile_allocations(self, profile: CharacterProfile) -> None:
+        """레벨·경지 변경 후 분배 한도 초과값 정리"""
+
+        # 스탯 분배 한도 기준 순차 보존
+        remaining_stat_points: int = profile.level * 5
+        profile.distribution.strength = min(
+            profile.distribution.strength,
+            remaining_stat_points,
+        )
+        remaining_stat_points -= profile.distribution.strength
+        profile.distribution.dexterity = min(
+            profile.distribution.dexterity,
+            remaining_stat_points,
+        )
+        remaining_stat_points -= profile.distribution.dexterity
+        profile.distribution.vitality = min(
+            profile.distribution.vitality,
+            remaining_stat_points,
+        )
+        remaining_stat_points -= profile.distribution.vitality
+        profile.distribution.luck = min(
+            profile.distribution.luck,
+            remaining_stat_points,
+        )
+
+        # 단전 분배 한도 기준 순차 보존
+        remaining_danjeon_points: int = REALM_TIER_SPECS[profile.realm].danjeon_points
+        profile.danjeon.upper = min(profile.danjeon.upper, remaining_danjeon_points)
+        remaining_danjeon_points -= profile.danjeon.upper
+        profile.danjeon.middle = min(profile.danjeon.middle, remaining_danjeon_points)
+        remaining_danjeon_points -= profile.danjeon.middle
+        profile.danjeon.lower = min(profile.danjeon.lower, remaining_danjeon_points)
+
+    def _save_current_store(self) -> None:
+        """현재 캐릭터 저장소 검증 및 저장"""
+
+        validate_character_store(app_state.character_store)
+        save_characters()
+
+    def _use_selected_character(self) -> None:
+        """선택 캐릭터를 계산기 입력에 반영"""
+
+        profile: CharacterProfile | None = self._selected_profile()
+        if profile is None:
+            return
+
+        self._save_current_store()
+        self._on_use_calculator(profile)
 
     def _go(self, index: int) -> None:
         """탭 전환"""
 
         self._stack.setCurrentIndex(index)
-        # 현재 페이지 기준 높이로 갱신 (탭 전환 시 빈 여백 제거)
         self._sync_body_height()
-        for i, pill in enumerate(self._tabs):
-            pill.setChecked(i == index)
+        for tab_index, pill in enumerate(self._tabs):
+            pill.setChecked(tab_index == index)
 
     def _sync_body_height(self) -> None:
-        """현재 탭의 실제 배치 높이로 본문 콘텐츠 최소 높이를 맞춘다"""
+        """현재 탭 실제 배치 높이로 본문 최소 높이 갱신"""
 
         page: QWidget | None = self._stack.currentWidget()
         if page is None:
             return
+
         margins: int = self._body_margin * 2
         inner_width: int = self._body_content.width() - margins
         if inner_width <= 0:
@@ -266,16 +474,11 @@ class CharacterPage(QFrame):
         page_layout = page.layout()
         if page_layout is not None and page_layout.hasHeightForWidth():
             height: int = page_layout.heightForWidth(inner_width)
+
         else:
             height = page.sizeHint().height()
+
         self._body_content.setMinimumHeight(height + margins)
-
-    def _on_character_selected(self, index: int) -> None:
-        """좌측 캐릭터 선택 시 헤더 갱신"""
-
-        summary: sample_data.CharacterSummary = sample_data.CHARACTERS[index]
-        self._title_label.setText(summary.name)
-        self._subtitle_label.setText(summary.meta)
 
     def _toggle_panel(self, side: str) -> None:
         """좌/우 패널 접기·펼치기 애니메이션"""
@@ -284,10 +487,12 @@ class CharacterPage(QFrame):
             self._left_collapsed = not self._left_collapsed
             target: int = 0 if self._left_collapsed else _LEFT_WIDTH
             self._left_anim = self._animate_width(self._left_panel, target)
+
         else:
             self._right_collapsed = not self._right_collapsed
             target = 0 if self._right_collapsed else _RIGHT_WIDTH
             self._right_anim = self._animate_width(self._right_panel, target)
+
         self._update_toggle_labels()
 
     def _animate_width(self, panel: QWidget, target: int) -> QPropertyAnimation:

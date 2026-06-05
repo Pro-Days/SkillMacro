@@ -320,16 +320,16 @@ def create_default_custom_skills_data() -> None:
 
 
 def create_default_characters_data() -> None:
-    """빈 characters.json 생성"""
+    """기본 characters.json 생성"""
 
     # 캐릭터 저장 디렉토리 보장
     os.makedirs(data_path, exist_ok=True)
 
-    # 빈 전역 캐릭터 저장소 초기화
-    empty_store: CharacterStore = CharacterStore.create_empty()
+    # 최초 실행용 기본 캐릭터 저장소 초기화
+    default_store: CharacterStore = CharacterStore.create_default()
 
     with open(characters_file_dir, "w", encoding="utf-8") as f:
-        json.dump(empty_store.to_dict(), f, ensure_ascii=False, indent=4)
+        json.dump(default_store.to_dict(), f, ensure_ascii=False, indent=4)
 
 
 def load_characters() -> CharacterStore:

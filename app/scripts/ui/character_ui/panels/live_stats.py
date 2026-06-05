@@ -1,7 +1,4 @@
-"""우측 전체 스탯 패널
-
-공식 전투력과 전체 스탯 그리드를 표시한다. (현재는 정적 샘플 값)
-"""
+"""우측 전체 스탯 패널"""
 
 from __future__ import annotations
 
@@ -16,8 +13,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.scripts.calculator_models import OVERALL_STAT_GRID_ROWS, STAT_SPECS, StatKey
+from app.scripts.character_engine import LiveStatView
 from app.scripts.custom_classes import CustomFont
-from app.scripts.ui.character_ui import sample_data
 
 
 class LiveStatsPanel(QFrame):
@@ -32,7 +30,7 @@ class LiveStatsPanel(QFrame):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        # 내부 세로 스크롤
+        # 내부 세로 스크롤 구성
         scroll: QScrollArea = QScrollArea(self)
         scroll.setObjectName("charPanelScroll")
         scroll.setWidgetResizable(True)
@@ -52,7 +50,7 @@ class LiveStatsPanel(QFrame):
         title.setFont(CustomFont(14, bold=True))
         layout.addWidget(title)
 
-        # 공식 전투력
+        # 공식 전투력 표시 행
         power_row = QHBoxLayout()
         power_row.setContentsMargins(0, 12, 0, 4)
 
@@ -60,35 +58,37 @@ class LiveStatsPanel(QFrame):
         power_label.setObjectName("charSub")
         power_label.setFont(CustomFont(9))
 
-        power_value: QLabel = QLabel(sample_data.OFFICIAL_POWER_TEXT, self)
-        power_value.setObjectName("charPowerValue")
-        power_value.setFont(CustomFont(15, bold=True))
-        power_value.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self._power_value: QLabel = QLabel("-", self)
+        self._power_value.setObjectName("charPowerValue")
+        self._power_value.setFont(CustomFont(15, bold=True))
+        self._power_value.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
 
         power_row.addWidget(power_label)
         power_row.addStretch(1)
-        power_row.addWidget(power_value)
+        power_row.addWidget(self._power_value)
         layout.addLayout(power_row)
 
-        # 스탯 그리드 (2열)
+        # 전체 스탯 그리드 구성
         grid = QGridLayout()
         grid.setContentsMargins(0, 14, 0, 0)
         grid.setHorizontalSpacing(6)
         grid.setVerticalSpacing(6)
 
-        for i, (label, value) in enumerate(sample_data.STAT_ROWS):
-            row: int = i // 2
-            col: int = i % 2
-            grid.addWidget(self._build_cell(label, value), row, col)
+        self._value_labels: dict[StatKey, QLabel] = {}
+        for row_index, row_spec in enumerate(OVERALL_STAT_GRID_ROWS):
+            for col_index, stat_key in enumerate(row_spec):
+                grid.addWidget(self._build_cell(stat_key), row_index, col_index)
 
         layout.addLayout(grid)
         layout.addStretch(1)
 
-    def _build_cell(self, label: str | None, value: str | None) -> QWidget:
-        """스탯 셀 위젯 생성 (label 이 None 이면 빈 셀)"""
+    def _build_cell(self, stat_key: StatKey | None) -> QWidget:
+        """스탯 셀 위젯 생성"""
 
         cell: QFrame = QFrame(self)
-        if label is None or value is None:
+        if stat_key is None:
             cell.setObjectName("charStatCellEmpty")
             return cell
 
@@ -97,18 +97,40 @@ class LiveStatsPanel(QFrame):
         cell_layout.setContentsMargins(9, 6, 9, 6)
         cell_layout.setSpacing(4)
 
-        name_label: QLabel = QLabel(label, cell)
+        name_label: QLabel = QLabel(STAT_SPECS[stat_key], cell)
         name_label.setObjectName("charStatLabel")
         name_label.setFont(CustomFont(8))
         name_label.setWordWrap(True)
 
-        value_label: QLabel = QLabel(value, cell)
+        value_label: QLabel = QLabel("0", cell)
         value_label.setObjectName("charStatValue")
         value_label.setFont(CustomFont(8, bold=True))
-        value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        value_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        self._value_labels[stat_key] = value_label
 
         cell_layout.addWidget(name_label)
         cell_layout.addStretch(1)
         cell_layout.addWidget(value_label)
 
         return cell
+
+    def set_live_view(self, live_view: LiveStatView | None) -> None:
+        """실시간 계산 결과 표시"""
+
+        # 선택 캐릭터가 없는 경우 빈 값 표시
+        if live_view is None:
+            self._power_value.setText("-")
+            for value_label in self._value_labels.values():
+                value_label.setText("0")
+
+            return
+
+        # 공식 전투력 표시
+        self._power_value.setText(f"{live_view.official_power:,.0f}")
+
+        # 최종 스탯 표시
+        for stat_key, value_label in self._value_labels.items():
+            value: float = live_view.final.values[stat_key]
+            value_label.setText(f"{value:g}")

@@ -84,6 +84,8 @@ from app.scripts.calculator_models import (
     TargetDanjeonState,
     TargetDistributionState,
 )
+from app.scripts.character_engine import build_calculator_input_fill
+from app.scripts.character_models import CharacterProfile
 from app.scripts.config import config
 from app.scripts.custom_classes import (
     CustomComboBox,
@@ -239,7 +241,10 @@ class SimUI:
         self.input_page = InputPage(self.main_frame, self.popup_manager)
         self.graph_page = GraphPage(self.main_frame)
         self.results_page = ResultsPage(self.main_frame)
-        self.character_page = CharacterPage(self.main_frame)
+        self.character_page = CharacterPage(
+            self.main_frame,
+            self._use_character_for_calculator,
+        )
 
         self.stacked_layout.addWidget(self.input_page)
         self.stacked_layout.addWidget(self.graph_page)
@@ -266,6 +271,36 @@ class SimUI:
         # 스택 레이아웃 설정
         self.main_frame.setLayout(self.stacked_layout)
 
+        self.adjust_main_frame_height()
+
+    def _use_character_for_calculator(self, profile: CharacterProfile) -> None:
+        """캐릭터 상태를 계산기 입력 페이지에 반영"""
+
+        # 캐릭터 합산 결과를 계산기 입력 구조로 변환
+        fill = build_calculator_input_fill(profile)
+        calculator_input: CalculatorPresetInput = (
+            app_state.macro.current_preset.info.calculator
+        )
+
+        # 전체 스탯 입력칸 표시값을 계산기 내부 원시 스탯으로 저장
+        resolved_base_stats: BaseStats = BaseStats.from_stat_map(fill.overall_stats)
+        calculator_input.base_stats = build_internal_base_stats(resolved_base_stats)
+
+        # 캐릭터 기본 정보와 분배 입력값 반영
+        calculator_input.level = fill.level
+        calculator_input.realm_tier = fill.realm_tier
+        calculator_input.distribution = fill.distribution
+        calculator_input.danjeon = fill.danjeon
+
+        # 계산기 칭호·부적 입력은 캐릭터 계산 결과와 중복되지 않도록 초기화
+        calculator_input.owned_titles = fill.owned_titles
+        calculator_input.owned_talismans = fill.owned_talismans
+        calculator_input.equipped_state = fill.equipped_state
+
+        save_data()
+        self.input_page.editor.load_from_preset_state()
+        self.update_nav(0)
+        self.stacked_layout.setCurrentIndex(0)
         self.adjust_main_frame_height()
 
     def on_enter(self) -> None:

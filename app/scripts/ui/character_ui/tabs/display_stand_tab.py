@@ -1,6 +1,8 @@
-"""진열대 탭 (QTableWidget 스프레드시트형 다중선택)"""
+"""진열대 탭"""
 
 from __future__ import annotations
+
+from collections.abc import Callable
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QDoubleValidator
@@ -9,7 +11,6 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QFrame,
     QHBoxLayout,
-    QHeaderView,
     QLabel,
     QLineEdit,
     QStyledItemDelegate,
@@ -19,11 +20,19 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.scripts.character_data import DISPLAY_STAND_SPECS
+from app.scripts.character_models import (
+    CharacterProfile,
+    DisplayStand,
+    DisplayStandColumn,
+    DisplayStandEntry,
+)
 from app.scripts.custom_classes import CustomFont, StyledButton
-from app.scripts.ui.character_ui import sample_data
+from app.scripts.ui.character_ui.constants import (
+    DISPLAY_STAND_COLUMNS,
+    DISPLAY_STAND_SUMMARY_LABELS,
+)
 from app.scripts.ui.character_ui.widgets import CharCard, FlowLayout
-
-_COLUMN_COUNT: int = 5
 
 
 class _NumericDelegate(QStyledItemDelegate):
@@ -39,8 +48,15 @@ class _NumericDelegate(QStyledItemDelegate):
 class DisplayStandTab(QFrame):
     """진열대 탭"""
 
-    def __init__(self, parent: QWidget) -> None:
+    def __init__(self, parent: QWidget, on_changed: Callable[[], None]) -> None:
         super().__init__(parent)
+
+        self._profile: CharacterProfile | None = None
+        self._on_changed: Callable[[], None] = on_changed
+        self._loading: bool = False
+        self._column_keys: tuple[DisplayStandColumn, ...] = tuple(
+            column for column, _title, _desc in DISPLAY_STAND_COLUMNS
+        )
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -57,6 +73,26 @@ class DisplayStandTab(QFrame):
 
         self._recalc()
         self._update_selection_info()
+
+    def set_profile(self, profile: CharacterProfile | None) -> None:
+        """선택 캐릭터 모델 반영"""
+
+        self._loading = True
+        self._profile = profile
+        self.setEnabled(profile is not None)
+
+        for row_index, spec in enumerate(DISPLAY_STAND_SPECS):
+            for col_index, column in enumerate(self._column_keys):
+                item: QTableWidgetItem = self._table.item(row_index, col_index)
+                value: float = 0.0
+                if profile is not None and spec.stand in profile.display_stand.entries:
+                    entry: DisplayStandEntry = profile.display_stand.entries[spec.stand]
+                    value = entry.values[column] if column in entry.values else 0.0
+
+                item.setText(self._format(value))
+
+        self._loading = False
+        self._recalc()
 
     def _build_toolbar(self) -> QHBoxLayout:
         """검색 / 선택 정보 / 값 / 적용 버튼 툴바"""
@@ -85,7 +121,10 @@ class DisplayStandTab(QFrame):
         toolbar.addWidget(self._value_input)
 
         apply_btn: StyledButton = StyledButton(
-            self, "선택 칸에 적용", kind="normal", point_size=9
+            self,
+            "선택 칸에 적용",
+            kind="normal",
+            point_size=9,
         )
         apply_btn.clicked.connect(self._apply_to_selection)
         toolbar.addWidget(apply_btn)
@@ -95,52 +134,45 @@ class DisplayStandTab(QFrame):
     def _build_table(self) -> QTableWidget:
         """진열대 표 생성"""
 
-        rows: list[tuple[str, list[float]]] = sample_data.shelf_rows()
-
-        self._table: QTableWidget = QTableWidget(len(rows), _COLUMN_COUNT, self)
+        self._table: QTableWidget = QTableWidget(
+            len(DISPLAY_STAND_SPECS),
+            len(DISPLAY_STAND_COLUMNS),
+            self,
+        )
         self._table.setObjectName("charShelfTable")
         self._table.setItemDelegate(_NumericDelegate(self._table))
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-        self._table.setSelectionBehavior(
-            QAbstractItemView.SelectionBehavior.SelectItems
-        )
-        self._table.setVerticalHeaderLabels([name for name, _ in rows])
+        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
+        self._table.setVerticalHeaderLabels([spec.name for spec in DISPLAY_STAND_SPECS])
         self._table.setHorizontalHeaderLabels(
-            [f"{title}\n{desc}" for title, desc in sample_data.SHELF_COLUMNS]
+            [f"{title}\n{desc}" for _column, title, desc in DISPLAY_STAND_COLUMNS]
         )
         self._table.setMaximumHeight(360)
-        # 표가 좁아지면 페이지가 아니라 표 내부에서 가로 스크롤
         self._table.setMinimumWidth(0)
 
-        # 열 머리글 클릭 시 해당 열 전체 선택 (클릭 가능 표시로 손가락 커서)
-        header: QHeaderView = self._table.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        header = self._table.horizontalHeader()
+        header.setSectionResizeMode(header.ResizeMode.Stretch)
         header.sectionClicked.connect(self._table.selectColumn)
         header.setCursor(Qt.CursorShape.PointingHandCursor)
 
-        # 행 높이는 사용자가 드래그로 바꾸지 못하도록 고정
-        vheader: QHeaderView = self._table.verticalHeader()
+        vheader = self._table.verticalHeader()
         vheader.setDefaultSectionSize(34)
-        vheader.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+        vheader.setSectionResizeMode(vheader.ResizeMode.Fixed)
 
-        # 셀(뷰포트)도 선택 가능 표시로 손가락 커서
         self._table.viewport().setCursor(Qt.CursorShape.PointingHandCursor)
 
-        # 좌상단 코너 클릭 시 선택 해제가 화면에 반영되도록 직접 처리
         corner: QAbstractButton | None = self._table.findChild(QAbstractButton)
         if corner is not None:
             corner.setCursor(Qt.CursorShape.PointingHandCursor)
             corner.clicked.connect(self._clear_selection)
 
-        for row_index, (_name, values) in enumerate(rows):
-            for col_index in range(_COLUMN_COUNT):
-                item: QTableWidgetItem = QTableWidgetItem(
-                    self._format(values[col_index])
-                )
+        for row_index in range(len(DISPLAY_STAND_SPECS)):
+            for col_index in range(len(DISPLAY_STAND_COLUMNS)):
+                item: QTableWidgetItem = QTableWidgetItem("0")
                 item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 self._table.setItem(row_index, col_index, item)
 
-        self._table.itemChanged.connect(self._recalc)
+        self._table.itemChanged.connect(self._on_item_changed)
         self._table.itemSelectionChanged.connect(self._update_selection_info)
         return self._table
 
@@ -149,38 +181,34 @@ class DisplayStandTab(QFrame):
 
         summary: QFrame = QFrame(self)
         summary.setObjectName("charBudget")
-        # 폭이 좁으면 합계 항목이 줄바꿈되도록 FlowLayout 사용
         layout: FlowLayout = FlowLayout(summary, margin=0, spacing=18)
         layout.setContentsMargins(16, 12, 16, 12)
 
-        labels: tuple[str, ...] = (
-            "경험치 획득량%",
-            "공격력",
-            "드랍률%",
-            "공격력%",
-            "세트효과(힘·민·생·행%)",
-        )
-        self._summary_values: list[QLabel] = []
-        for label_text in labels:
+        self._summary_values: dict[DisplayStandColumn, QLabel] = {}
+        for column in self._column_keys:
             item: QFrame = QFrame(summary)
             box = QVBoxLayout(item)
             box.setContentsMargins(0, 0, 0, 0)
             box.setSpacing(2)
-            caption: QLabel = QLabel(label_text, item)
+
+            caption: QLabel = QLabel(DISPLAY_STAND_SUMMARY_LABELS[column], item)
             caption.setObjectName("charBudgetLabel")
             caption.setFont(CustomFont(8, bold=True))
+
             value: QLabel = QLabel("+0", item)
             value.setObjectName("charBudgetValue")
             value.setFont(CustomFont(12, bold=True))
+
             box.addWidget(caption)
             box.addWidget(value)
-            self._summary_values.append(value)
+            self._summary_values[column] = value
             layout.addWidget(item)
+
         summary.setLayout(layout)
         return summary
 
     def _format(self, value: float) -> str:
-        """수치 표시 (정수면 정수)"""
+        """수치 표시"""
 
         return str(int(value)) if value == int(value) else str(value)
 
@@ -189,6 +217,7 @@ class DisplayStandTab(QFrame):
 
         try:
             return float(text.replace(",", "").strip())
+
         except ValueError:
             return 0.0
 
@@ -196,9 +225,8 @@ class DisplayStandTab(QFrame):
         """이름 검색으로 행 숨김/표시"""
 
         keyword: str = query.strip()
-        for row_index in range(self._table.rowCount()):
-            name: str = sample_data.SHELF_NAMES[row_index]
-            self._table.setRowHidden(row_index, keyword not in name)
+        for row_index, spec in enumerate(DISPLAY_STAND_SPECS):
+            self._table.setRowHidden(row_index, keyword not in spec.name)
 
     def _apply_to_selection(self) -> None:
         """선택된 셀에 값 일괄 적용"""
@@ -212,7 +240,6 @@ class DisplayStandTab(QFrame):
 
         self._table.clearSelection()
         self._table.setCurrentCell(-1, -1)
-        # 선택 변경 시그널에 의존하지 않고 라벨·헤더 볼드·셀을 즉시 갱신
         self._update_selection_info()
         self._table.horizontalHeader().viewport().update()
 
@@ -220,22 +247,45 @@ class DisplayStandTab(QFrame):
         """선택 칸 수 갱신"""
 
         self._selection_label.setText(f"선택 {len(self._table.selectedItems())}칸")
-        # 선택 상태 변화가 즉시 표에 반영되도록 다시 그린다
         self._table.viewport().update()
+
+    def _on_item_changed(self) -> None:
+        """셀 변경 시 모델 반영"""
+
+        self._recalc()
+        if self._profile is None or self._loading:
+            return
+
+        for row_index, spec in enumerate(DISPLAY_STAND_SPECS):
+            entry: DisplayStandEntry = self._profile.display_stand.entries.setdefault(
+                spec.stand,
+                DisplayStandEntry(),
+            )
+            for col_index, column in enumerate(self._column_keys):
+                item: QTableWidgetItem = self._table.item(row_index, col_index)
+                entry.values[column] = self._parse(item.text())
+
+        self._on_changed()
 
     def _recalc(self) -> None:
         """열별 합계 갱신"""
 
-        sums: list[float] = [0.0] * _COLUMN_COUNT
+        sums: dict[DisplayStandColumn, float] = {
+            column: 0.0 for column in self._column_keys
+        }
         for row_index in range(self._table.rowCount()):
-            for col_index in range(_COLUMN_COUNT):
-                item: QTableWidgetItem | None = self._table.item(row_index, col_index)
-                if item is not None:
-                    sums[col_index] += self._parse(item.text())
+            for col_index, column in enumerate(self._column_keys):
+                item: QTableWidgetItem = self._table.item(row_index, col_index)
+                sums[column] += self._parse(item.text())
 
-        # 표시: 경험치%/공격력/드랍률%/공격력%/세트 순
-        suffixes: tuple[str, ...] = ("%", "", "%", "%", "%")
-        for i, value_label in enumerate(self._summary_values):
-            rounded: float = round(sums[i], 1)
+        suffixes: dict[DisplayStandColumn, str] = {
+            DisplayStandColumn.HELMET: "%",
+            DisplayStandColumn.ARMOR: "",
+            DisplayStandColumn.BELT: "%",
+            DisplayStandColumn.SHOES: "%",
+            DisplayStandColumn.SET: "%",
+        }
+        for column, value_label in self._summary_values.items():
+            rounded: float = round(sums[column], 1)
             number: str = str(int(rounded)) if rounded == int(rounded) else str(rounded)
-            value_label.setText(f"+{number}{suffixes[i]}")
+            value_label.setText(f"+{number}{suffixes[column]}")
