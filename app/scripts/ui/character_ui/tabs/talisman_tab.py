@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
     QFrame,
@@ -14,11 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.scripts.calculator_models import (
-    STAT_SPECS,
-    TALISMAN_SPECS,
-    TalismanSpec,
-)
+from app.scripts.calculator_models import STAT_SPECS, TALISMAN_SPECS, TalismanSpec
 from app.scripts.character_models import (
     MAX_EQUIPPED_TALISMAN_COUNT,
     MAX_TALISMAN_LEVEL,
@@ -35,8 +32,8 @@ from app.scripts.ui.character_ui.widgets import (
     StepperField,
 )
 
-_OWNED_TALISMAN_WIDTH: int = 520
-_OWNED_TALISMAN_HEIGHT: int = 58
+_OWNED_TALISMAN_WIDTH: int = 248
+_OWNED_TALISMAN_HEIGHT: int = 140
 _EQUIPPED_TALISMAN_HEIGHT: int = 132
 
 
@@ -72,7 +69,7 @@ class TalismanTab(QFrame):
         self._owned_container: ResponsiveColumnsBox = ResponsiveColumnsBox(
             self,
             min_column_width=_OWNED_TALISMAN_WIDTH,
-            spacing=8,
+            spacing=12,
             fill=False,
             center=True,
         )
@@ -220,45 +217,57 @@ class TalismanTab(QFrame):
         self._owned_container.sync_height()
 
     def _build_owned_row(self, talisman: CharacterTalisman) -> QFrame:
-        """보유 부적 1행"""
+        """보유 부적 1개 카드"""
 
         row: QFrame = QFrame(self)
         row.setObjectName("charTalCard")
         row.setFixedSize(_OWNED_TALISMAN_WIDTH, _OWNED_TALISMAN_HEIGHT)
-        layout = QHBoxLayout(row)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(12)
+        layout = QVBoxLayout(row)
+        layout.setContentsMargins(6, 12, 6, 12)
+        layout.setSpacing(10)
 
         spec: TalismanSpec = self._specs_by_name[talisman.talisman_key]
-        layout.addWidget(
+        head = QHBoxLayout()
+        head.setSpacing(8)
+        head.addStretch(1)
+        head.addWidget(
             GradeBadge(
                 row,
                 spec.grade.value,
                 GRADE_COLORS[spec.grade.value],
-                dot=True,
             )
         )
 
         combo: CharComboBox = CharComboBox(row, [spec.name for spec in TALISMAN_SPECS])
-        combo.setMaximumWidth(150)
+        combo.setFixedWidth(154)
         combo.setCurrentText(spec.name)
         combo.currentTextChanged.connect(
             lambda text, target=talisman: self._change_talisman_key(target, text)
         )
-        layout.addWidget(combo)
+        head.addWidget(combo)
+        head.addStretch(1)
+        layout.addLayout(head)
+
+        middle = QHBoxLayout()
+        middle.setSpacing(8)
+        middle.addStretch(1)
 
         stat_label: QLabel = QLabel(self._owned_stat_text(talisman), row)
         stat_label.setObjectName("charTalStat")
         stat_label.setFont(CustomFont(9))
         stat_label.setWordWrap(True)
         stat_label.setMinimumWidth(0)
-        layout.addWidget(stat_label, 1)
+        stat_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        middle.addWidget(stat_label)
 
+        level_row = QHBoxLayout()
+        level_row.setSpacing(8)
+        # level_row.addStretch(1)
         level_field: StepperField = StepperField(
             row,
             str(talisman.level),
             unit="Lv",
-            max_width=92,
+            max_width=80,
         )
         level_field.input.setValidator(
             QIntValidator(0, MAX_TALISMAN_LEVEL, level_field.input)
@@ -277,12 +286,20 @@ class TalismanTab(QFrame):
                 label,
             )
         )
-        layout.addWidget(level_field)
+        level_row.addWidget(level_field)
 
         max_label: QLabel = QLabel(f"/ {MAX_TALISMAN_LEVEL}", row)
         max_label.setObjectName("charMuted")
         max_label.setFont(CustomFont(9))
-        layout.addWidget(max_label)
+        level_row.addWidget(max_label)
+        # level_row.addStretch(1)
+        middle.addLayout(level_row)
+        middle.addStretch(1)
+        layout.addLayout(middle)
+
+        foot = QHBoxLayout()
+        foot.setSpacing(8)
+        foot.addStretch(1)
 
         equipped: bool = (
             self._profile is not None
@@ -296,7 +313,19 @@ class TalismanTab(QFrame):
         )
         equip_btn.setFixedWidth(58)
         equip_btn.clicked.connect(lambda: self._toggle_equip(talisman))
-        layout.addWidget(equip_btn)
+        foot.addWidget(equip_btn)
+
+        delete_btn: StyledButton = StyledButton(
+            row,
+            "삭제",
+            kind="danger",
+            point_size=9,
+        )
+        delete_btn.setFixedWidth(58)
+        delete_btn.clicked.connect(lambda: self._delete_talisman(talisman))
+        foot.addWidget(delete_btn)
+        foot.addStretch(1)
+        layout.addLayout(foot)
         return row
 
     def _owned_stat_text(self, talisman: CharacterTalisman) -> str:
@@ -367,9 +396,7 @@ class TalismanTab(QFrame):
 
         owned_stat_label.setText(self._owned_stat_text(talisman))
 
-        equipped_stat_label: QLabel | None = self._equipped_stat_labels.get(
-            talisman.id
-        )
+        equipped_stat_label: QLabel | None = self._equipped_stat_labels.get(talisman.id)
         if equipped_stat_label is None:
             return
 
@@ -391,6 +418,30 @@ class TalismanTab(QFrame):
 
         elif len(self._profile.equipped.talisman_ids) < MAX_EQUIPPED_TALISMAN_COUNT:
             self._profile.equipped.talisman_ids.append(talisman.id)
+
+        self._render_slots()
+        self._render_owned()
+        self._on_changed()
+
+    def _delete_talisman(self, talisman: CharacterTalisman) -> None:
+        """보유 부적 삭제 및 장착 참조 제거"""
+
+        if self._profile is None:
+            return
+
+        # 보유 목록에서 선택 부적 제거
+        self._profile.talismans = [
+            current_talisman
+            for current_talisman in self._profile.talismans
+            if current_talisman.id != talisman.id
+        ]
+
+        # 삭제된 부적의 장착 슬롯 참조 제거
+        self._profile.equipped.talisman_ids = [
+            talisman_id
+            for talisman_id in self._profile.equipped.talisman_ids
+            if talisman_id != talisman.id
+        ]
 
         self._render_slots()
         self._render_owned()

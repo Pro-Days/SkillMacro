@@ -17,17 +17,20 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.scripts.calculator_models import REALM_TIER_SPECS, STAT_SPECS, RealmTier, StatKey
+from app.scripts.calculator_models import (
+    REALM_TIER_SPECS,
+    STAT_SPECS,
+    RealmTier,
+    StatKey,
+)
 from app.scripts.character_models import (
+    MAX_CHARACTER_LEVEL,
     CharacterProfile,
     CharacterTitle,
     TitleStatSlot,
 )
 from app.scripts.custom_classes import CustomFont, StyledButton
-from app.scripts.ui.character_ui.constants import (
-    STAT_CHOICE_LABELS,
-    STAT_LABEL_TO_KEY,
-)
+from app.scripts.ui.character_ui.constants import STAT_CHOICE_LABELS, STAT_LABEL_TO_KEY
 from app.scripts.ui.character_ui.widgets import (
     CharCard,
     CharComboBox,
@@ -85,7 +88,9 @@ class _TitleItem(QFrame):
         equip_group.addButton(self.equip_radio)
         self.equip_radio.clicked.connect(lambda: on_equip(title))
 
-        delete_btn: StyledButton = StyledButton(self, "삭제", kind="danger", point_size=9)
+        delete_btn: StyledButton = StyledButton(
+            self, "삭제", kind="danger", point_size=9
+        )
         delete_btn.clicked.connect(lambda: on_delete(title))
 
         head.addWidget(name_edit, 1)
@@ -201,8 +206,15 @@ class TitleTab(QFrame):
         level_label.setFont(CustomFont(9, bold=True))
         realm_card.add_widget(level_label)
 
-        self._level_field: StepperField = StepperField(self, "0", unit="Lv", max_width=100)
-        self._level_field.input.setValidator(QIntValidator(0, 1_000_000, self))
+        self._level_field: StepperField = StepperField(
+            self,
+            "0",
+            unit="Lv",
+            max_width=100,
+        )
+        self._level_field.input.setValidator(
+            QIntValidator(0, MAX_CHARACTER_LEVEL, self)
+        )
         self._level_field.value_changed.connect(self._on_level_changed)
         realm_card.add_widget(self._level_field)
 
@@ -229,7 +241,9 @@ class TitleTab(QFrame):
         )
         self._title_card.add_widget(self._titles_container)
 
-        add_title_btn: StyledButton = StyledButton(self, "+ 칭호 추가", kind="normal", point_size=9)
+        add_title_btn: StyledButton = StyledButton(
+            self, "+ 칭호 추가", kind="normal", point_size=9
+        )
         add_title_btn.clicked.connect(self._add_title)
         self._title_card.add_widget(add_title_btn)
         self._layout.addWidget(self._title_card)
@@ -258,7 +272,9 @@ class TitleTab(QFrame):
 
         container.setLayout(flow)
 
-        uniform_width: int = max(button.sizeHint().width() for button in self._realm_buttons)
+        uniform_width: int = max(
+            button.sizeHint().width() for button in self._realm_buttons
+        )
         for button in self._realm_buttons:
             button.setFixedWidth(uniform_width)
 

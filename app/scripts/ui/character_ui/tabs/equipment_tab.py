@@ -35,6 +35,7 @@ from app.scripts.character_data import (
     EQUIPMENT_ITEM_SPECS,
     EQUIPMENT_REFORGE_STAT_KEYS,
     EQUIPMENT_SCROLL_EFFECTS,
+    EQUIPMENT_SCROLL_LIMITS,
     FREE_BASE_STAT_EQUIPMENT_SLOTS,
     NECKLACE_REFORGE_STAT_KEYS,
     POTENTIAL_EQUIPMENT_SLOTS,
@@ -212,6 +213,25 @@ def _equipment_tiers(slot: EquipmentSlot, level: int) -> tuple[int, ...]:
 
     # 콤보박스 표시 순서 고정
     return tuple(sorted(tiers))
+
+
+def _equipment_scroll_limit(
+    slot: EquipmentSlot,
+    equipment: OwnedEquipment,
+) -> int | None:
+    """장비 레벨 기준 주문서 최대 성공 횟수 조회"""
+
+    # 반지처럼 총합 제한이 없는 슬롯은 입력칸 개별 제한만 적용
+    limit_map: dict[int, int] | None = EQUIPMENT_SCROLL_LIMITS[slot]
+    if limit_map is None:
+        return None
+
+    # 레벨별 제한이 있는 슬롯은 실제 장비 스펙 레벨로 한도 조회
+    item_spec: EquipmentItemSpec | None = equipment_item_spec(equipment)
+    if item_spec is None:
+        raise ValueError("scroll-limited equipment requires item spec")
+
+    return limit_map[item_spec.level]
 
 
 def _has_grade(item_spec: EquipmentItemSpec | None) -> bool:
@@ -900,8 +920,9 @@ class EquipmentTab(QFrame):
         if item is not None:
             item.level = int(text)
 
-            # 레벨 변경 시 기본 티어 선택
+            # 레벨 변경 시 티어와 주문서 입력 상태 초기화
             item.tier = 1
+            item.scrolls = {}
             self._commit_active_item()
 
     def _pick_tier(self, text: str) -> None:
@@ -1218,6 +1239,7 @@ class EquipmentTab(QFrame):
             raise ValueError("equipped item is required")
 
         scroll_set: _ScrollSet = _SCROLL_SETS[slot.slot]
+        scroll_limit: int | None = _equipment_scroll_limit(slot.slot, item)
 
         wrap: QScrollArea = QScrollArea(section)
         wrap.setObjectName("charScrollTableWrap")
@@ -1274,13 +1296,30 @@ class EquipmentTab(QFrame):
                     cell.setFont(CustomFont(9))
                     cell.setFixedWidth(30)
                     cell.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    cell.setValidator(QIntValidator(0, 999, cell))
+                    cell.setValidator(QIntValidator(0, scroll_limit or 999, cell))
                     cell.textChanged.connect(
-                        lambda text, target=item, key=stat_key, scroll_key=tier: self._set_scroll_count(
+                        lambda text,
+                        target=item,
+                        key=stat_key,
+                        scroll_key=tier: self._set_scroll_count(
                             target,
                             key,
                             scroll_key,
                             text,
+                            emit_changed=False,
+                        )
+                    )
+                    cell.editingFinished.connect(
+                        lambda target=item,
+                        slot_key=slot.slot,
+                        key=stat_key,
+                        scroll_key=tier,
+                        count_field=cell: self._finish_scroll_count(
+                            target,
+                            slot_key,
+                            key,
+                            scroll_key,
+                            count_field,
                         )
                     )
                     grid.addWidget(cell, row + 1, col + 2)
@@ -1434,6 +1473,7 @@ class EquipmentTab(QFrame):
         stat_key: StatKey,
         tier: ScrollTier,
         text: str,
+        emit_changed: bool,
     ) -> None:
         """주문서 성공 횟수 모델 반영"""
 
@@ -1450,6 +1490,57 @@ class EquipmentTab(QFrame):
         if not tier_counts:
             item.scrolls.pop(stat_key, None)
 
+        if emit_changed:
+            self._on_changed()
+
+    def _finish_scroll_count(
+        self,
+        item: OwnedEquipment,
+        slot: EquipmentSlot,
+        stat_key: StatKey,
+        tier: ScrollTier,
+        field: NormalizingLineEdit,
+    ) -> None:
+        """주문서 입력 종료 시 최대 성공 횟수 기준 보정"""
+
+        # 입력칸 validator 기준 표시값 정규화 및 모델 동기화
+        field.normalize_to_validator()
+        self._set_scroll_count(
+            item,
+            stat_key,
+            tier,
+            field.text(),
+            emit_changed=False,
+        )
+
+        # 총합 제한이 없는 슬롯은 정규화된 값으로만 갱신
+        scroll_limit: int | None = _equipment_scroll_limit(slot, item)
+        if scroll_limit is None:
+            self._on_changed()
+            return
+
+        # 전체 주문서 성공 횟수와 마지막 수정 칸의 초과분 계산
+        total_count: int = sum(
+            count
+            for tier_counts in item.scrolls.values()
+            for count in tier_counts.values()
+        )
+        overflow_count: int = total_count - scroll_limit
+        if overflow_count <= 0:
+            self._on_changed()
+            return
+
+        # 초과를 만든 입력칸만 낮춰 엔진 최대 개수에 맞춤
+        current_count: int = item.scrolls[stat_key][tier]
+        adjusted_count: int = max(0, current_count - overflow_count)
+        field.setText(str(adjusted_count))
+        self._set_scroll_count(
+            item,
+            stat_key,
+            tier,
+            field.text(),
+            emit_changed=False,
+        )
         self._on_changed()
 
     def _set_potential_line(

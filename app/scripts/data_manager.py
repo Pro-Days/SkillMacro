@@ -403,7 +403,7 @@ def load_characters() -> CharacterStore:
             )
             raise DataRecoveryStartupError(log_text) from default_error
 
-        character_store = CharacterStore.create_empty()
+        character_store = CharacterStore.create_default()
 
     app_state.character_store = character_store
     return character_store

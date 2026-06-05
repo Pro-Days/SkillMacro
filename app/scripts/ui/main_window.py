@@ -26,6 +26,7 @@ from app.scripts.config import config
 from app.scripts.custom_classes import CustomFont
 from app.scripts.data_manager import (
     DataRecoveryStartupError,
+    has_future_character_data_version,
     has_future_custom_skills_data_version,
     has_future_macro_data_version,
     load_data,
@@ -84,7 +85,9 @@ class MainWindow(QWidget):
 
         # 높은 저장 버전이 아니면 일반 시작 진행
         if not (
-            has_future_macro_data_version() or has_future_custom_skills_data_version()
+            has_future_macro_data_version()
+            or has_future_custom_skills_data_version()
+            or has_future_character_data_version()
         ):
             return True
 
