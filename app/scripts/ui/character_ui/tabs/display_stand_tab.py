@@ -13,15 +13,19 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QStyleOptionViewItem,
     QStyledItemDelegate,
+    QStyleOptionViewItem,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
-from app.scripts.character_data import DISPLAY_STAND_SPECS
+from app.scripts.calculator_models import STAT_SPECS
+from app.scripts.character_data import (
+    DISPLAY_STAND_COLUMN_STAT_KEYS,
+    DISPLAY_STAND_SPECS,
+)
 from app.scripts.character_models import (
     CharacterProfile,
     DisplayStand,
@@ -29,15 +33,27 @@ from app.scripts.character_models import (
     DisplayStandEntry,
 )
 from app.scripts.custom_classes import CustomFont, StyledButton
-from app.scripts.ui.character_ui.constants import (
-    DISPLAY_STAND_COLUMNS,
-    DISPLAY_STAND_SUMMARY_LABELS,
-)
+from app.scripts.ui.character_ui.constants import DISPLAY_STAND_COLUMNS
 from app.scripts.ui.character_ui.widgets import (
     CharCard,
     FlowLayout,
     NormalizingLineEdit,
 )
+
+
+def _column_stat_label(column: DisplayStandColumn) -> str:
+    """진열대 열의 표시 스탯 이름 (열→스탯 매핑에서 파생)"""
+
+    return "·".join(
+        STAT_SPECS[stat_key] for stat_key in DISPLAY_STAND_COLUMN_STAT_KEYS[column]
+    )
+
+
+def _column_is_percent(column: DisplayStandColumn) -> bool:
+    """진열대 열 합계 표시에 % 단위를 붙일지 여부"""
+
+    first_stat_key = DISPLAY_STAND_COLUMN_STAT_KEYS[column][0]
+    return "(%)" in STAT_SPECS[first_stat_key]
 
 
 class _NumericDelegate(QStyledItemDelegate):
@@ -76,7 +92,7 @@ class DisplayStandTab(QFrame):
         self._on_changed: Callable[[], None] = on_changed
         self._loading: bool = False
         self._column_keys: tuple[DisplayStandColumn, ...] = tuple(
-            column for column, _title, _desc in DISPLAY_STAND_COLUMNS
+            column for column, _title in DISPLAY_STAND_COLUMNS
         )
 
         layout = QVBoxLayout(self)
@@ -163,10 +179,15 @@ class DisplayStandTab(QFrame):
         self._table.setObjectName("charShelfTable")
         self._table.setItemDelegate(_NumericDelegate(self._table))
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectItems)
+        self._table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectItems
+        )
         self._table.setVerticalHeaderLabels([spec.name for spec in DISPLAY_STAND_SPECS])
         self._table.setHorizontalHeaderLabels(
-            [f"{title}\n{desc}" for _column, title, desc in DISPLAY_STAND_COLUMNS]
+            [
+                f"{title}\n{_column_stat_label(column)}"
+                for column, title in DISPLAY_STAND_COLUMNS
+            ]
         )
         self._table.setMaximumHeight(360)
         self._table.setMinimumWidth(0)
@@ -212,7 +233,7 @@ class DisplayStandTab(QFrame):
             box.setContentsMargins(0, 0, 0, 0)
             box.setSpacing(2)
 
-            caption: QLabel = QLabel(DISPLAY_STAND_SUMMARY_LABELS[column], item)
+            caption: QLabel = QLabel(_column_stat_label(column), item)
             caption.setObjectName("charBudgetLabel")
             caption.setFont(CustomFont(8, bold=True))
 
@@ -271,21 +292,29 @@ class DisplayStandTab(QFrame):
         self._selection_label.setText(f"선택 {len(self._table.selectedItems())}칸")
         self._table.viewport().update()
 
-    def _on_item_changed(self) -> None:
-        """셀 변경 시 모델 반영"""
+    def _on_item_changed(self, item: QTableWidgetItem) -> None:
+        """셀 변경 시 해당 칸만 모델 반영"""
 
         self._recalc()
         if self._profile is None or self._loading:
             return
 
-        for row_index, spec in enumerate(DISPLAY_STAND_SPECS):
-            entry: DisplayStandEntry = self._profile.display_stand.entries.setdefault(
-                spec.stand,
-                DisplayStandEntry(),
-            )
-            for col_index, column in enumerate(self._column_keys):
-                item: QTableWidgetItem = self._table.item(row_index, col_index)
-                entry.values[column] = self._parse(item.text())
+        spec = DISPLAY_STAND_SPECS[item.row()]
+        column: DisplayStandColumn = self._column_keys[item.column()]
+        value: float = self._parse(item.text())
+        entries: dict[DisplayStand, DisplayStandEntry] = (
+            self._profile.display_stand.entries
+        )
+
+        # 0 값은 저장하지 않고, 비어 버린 진열대 엔트리는 제거한다
+        if value <= 0.0:
+            entry: DisplayStandEntry | None = entries.get(spec.stand)
+            if entry is not None:
+                entry.values.pop(column, None)
+                if not entry.values:
+                    entries.pop(spec.stand, None)
+        else:
+            entries.setdefault(spec.stand, DisplayStandEntry()).values[column] = value
 
         self._on_changed()
 
@@ -300,14 +329,8 @@ class DisplayStandTab(QFrame):
                 item: QTableWidgetItem = self._table.item(row_index, col_index)
                 sums[column] += self._parse(item.text())
 
-        suffixes: dict[DisplayStandColumn, str] = {
-            DisplayStandColumn.HELMET: "%",
-            DisplayStandColumn.ARMOR: "",
-            DisplayStandColumn.BELT: "%",
-            DisplayStandColumn.SHOES: "%",
-            DisplayStandColumn.SET: "%",
-        }
         for column, value_label in self._summary_values.items():
             rounded: float = round(sums[column], 1)
             number: str = str(int(rounded)) if rounded == int(rounded) else str(rounded)
-            value_label.setText(f"+{number}{suffixes[column]}")
+            suffix: str = "%" if _column_is_percent(column) else ""
+            value_label.setText(f"+{number}{suffix}")

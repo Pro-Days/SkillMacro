@@ -18,21 +18,21 @@ from app.scripts.character_models import CharacterProfile, Pill
 from app.scripts.custom_classes import CustomFont
 from app.scripts.ui.character_ui.widgets import CharCard, ColorOrb, FlowLayout, ToggleSwitch
 
-_PILL_COLORS: tuple[str, ...] = (
-    "#7bbf6a",
-    "#c8a04a",
-    "#d75a5a",
-    "#9aa86a",
-    "#7a9a5a",
-    "#5a8a4a",
-    "#c0392b",
-    "#4f9bd9",
-    "#d98b3a",
-    "#a86fd0",
-    "#6fcabf",
-    "#e87fb0",
-    "#e0b94a",
-)
+_PILL_COLORS: dict[Pill, str] = {
+    Pill.HWALSAENGHWAN: "#7bbf6a",
+    Pill.HWANGTOHWAN: "#c8a04a",
+    Pill.HOESAENGHWAN: "#d75a5a",
+    Pill.MYEONGMOKHWAN: "#9aa86a",
+    Pill.CHEONMOKHWAN: "#7a9a5a",
+    Pill.SINMOKHWAN: "#5a8a4a",
+    Pill.GANGGEUNHWAN: "#c0392b",
+    Pill.CHEONGSIMHWAN: "#4f9bd9",
+    Pill.DAERYEOKHWAN: "#d98b3a",
+    Pill.YONGRYEOKHWAN: "#a86fd0",
+    Pill.CHEONSEHWAN: "#6fcabf",
+    Pill.CHEONSIMHWAN: "#e87fb0",
+    Pill.MANNYEONHWAN: "#e0b94a",
+}
 
 
 class _PillCard(QFrame):
@@ -133,11 +133,11 @@ class PillTab(QFrame):
         flow: FlowLayout = FlowLayout(grid_container, margin=0, spacing=12, center=True)
 
         self._cards: dict[Pill, _PillCard] = {}
-        for index, pill in enumerate(PILL_SPECS):
+        for pill in PILL_SPECS:
             card_widget: _PillCard = _PillCard(
                 grid_container,
                 pill,
-                _PILL_COLORS[index],
+                _PILL_COLORS[pill],
                 self._set_active,
             )
             self._cards[pill] = card_widget

@@ -24,28 +24,28 @@ from app.scripts.ui.character_ui.widgets import (
     StepperField,
 )
 
-_ELIXIR_COLORS: tuple[str, ...] = (
-    "#e8c95a",
-    "#7bbf6a",
-    "#a86fd0",
-    "#4f9bd9",
-    "#d75a5a",
-    "#dcdcdc",
-    "#4a4a4a",
-    "#6fcabf",
-    "#b8c0cc",
-    "#e0b94a",
-    "#e87fb0",
-    "#c0392b",
-    "#cfd6e0",
-    "#d98b3a",
-    "#8a7fd0",
-    "#5ac0c0",
-    "#2f8f6f",
-    "#f0f0f0",
-    "#d65a3a",
-    "#2f5f8f",
-)
+_ELIXIR_COLORS: dict[Elixir, str] = {
+    Elixir.HWANGHWANDAN: "#e8c95a",
+    Elixir.NOKHWANDAN: "#7bbf6a",
+    Elixir.JAHWANDAN: "#a86fd0",
+    Elixir.CHEONGHWANDAN: "#4f9bd9",
+    Elixir.JEOKHWANDAN: "#d75a5a",
+    Elixir.BAEKHWANDAN: "#dcdcdc",
+    Elixir.HEUKHWANDAN: "#4a4a4a",
+    Elixir.OKHWANDAN: "#6fcabf",
+    Elixir.EUNHWANDAN: "#b8c0cc",
+    Elixir.GEUMHWANDAN: "#e0b94a",
+    Elixir.MAEHWADAN: "#e87fb0",
+    Elixir.YONGHYEOLDAN: "#c0392b",
+    Elixir.MYEONGWOLDAN: "#cfd6e0",
+    Elixir.TAEGEUKDAN: "#d98b3a",
+    Elixir.CHEONGYEONGDAN: "#8a7fd0",
+    Elixir.SIGONGDAN: "#5ac0c0",
+    Elixir.CHEONGRYONGDAN: "#2f8f6f",
+    Elixir.BAEKHODAN: "#f0f0f0",
+    Elixir.JUJAKDAN: "#d65a3a",
+    Elixir.HYEONMUDAN: "#2f5f8f",
+}
 
 
 class _ElixirCard(QFrame):
@@ -151,11 +151,11 @@ class ElixirTab(QFrame):
         flow: FlowLayout = FlowLayout(grid_container, margin=0, spacing=12, center=True)
 
         self._cards: dict[Elixir, _ElixirCard] = {}
-        for index, elixir in enumerate(ELIXIR_SPECS):
+        for elixir in ELIXIR_SPECS:
             card_widget: _ElixirCard = _ElixirCard(
                 grid_container,
                 elixir,
-                _ELIXIR_COLORS[index],
+                _ELIXIR_COLORS[elixir],
                 self._set_count,
             )
             self._cards[elixir] = card_widget

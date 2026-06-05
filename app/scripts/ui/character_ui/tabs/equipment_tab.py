@@ -45,6 +45,7 @@ from app.scripts.character_data import (
 from app.scripts.character_engine import (
     create_equipment,
     equip_equipment,
+    equipment_item_spec,
     list_equippable_equipment,
     remove_equipment,
     rename_equipment,
@@ -65,7 +66,13 @@ from app.scripts.character_models import (
     ScrollTier,
 )
 from app.scripts.custom_classes import CustomFont, StyledButton
-from app.scripts.ui.character_ui.constants import EQUIPMENT_SLOT_LABELS
+from app.scripts.ui.character_ui.constants import (
+    EQUIPMENT_COL_LEFT,
+    EQUIPMENT_COL_RIGHT,
+    EQUIPMENT_SLOT_LABELS,
+    STAT_CHOICE_LABELS,
+    STAT_LABEL_TO_KEY,
+)
 from app.scripts.ui.character_ui.widgets import (
     CharComboBox,
     FlowLayout,
@@ -84,86 +91,24 @@ _ICON_STYLE_MUTED: str = (
     "border: 1px solid #c8c4be; border-radius: 6px;"
 )
 
-# 장비창 고정 폭
 _EQUIP_WINDOW_WIDTH: int = 232
 _STACK_THRESHOLD: int = 550
 
-_SLOT_ORDER: tuple[EquipmentSlot, ...] = (
-    EquipmentSlot.WEAPON,
-    EquipmentSlot.HELMET,
-    EquipmentSlot.ARMOR,
-    EquipmentSlot.BELT,
-    EquipmentSlot.SHOES,
-    EquipmentSlot.RING1,
-    EquipmentSlot.RING2,
-    EquipmentSlot.NECKLACE,
-    EquipmentSlot.EARRING,
+_SLOT_ORDER: tuple[EquipmentSlot, ...] = (*EQUIPMENT_COL_LEFT, *EQUIPMENT_COL_RIGHT)
+_EQUIP_COL_LEFT: tuple[int, ...] = tuple(range(len(EQUIPMENT_COL_LEFT)))
+_EQUIP_COL_RIGHT: tuple[int, ...] = tuple(
+    range(len(EQUIPMENT_COL_LEFT), len(_SLOT_ORDER))
 )
-_EQUIP_COL_LEFT: tuple[int, ...] = (0, 1, 2, 3, 4)
-_EQUIP_COL_RIGHT: tuple[int, ...] = (5, 6, 7, 8)
-_GRADE_TYPES: tuple[str, ...] = ("무기", "투구", "갑옷", "허리띠", "신발")
-_POTENTIAL_TYPES: tuple[str, ...] = ("투구", "갑옷", "허리띠", "신발")
 _NECKLACE_TYPES: tuple[str, ...] = tuple(NECKLACE_REFORGE_STAT_KEYS.keys())
-# 방어구는 카탈로그 이름 뒤에 부위 접미사를 붙여 표시한다 (예: 적령 → 적령투구·적령대)
 _ARMOR_SLOT_NAME_SUFFIX: dict[EquipmentSlot, str] = {
     EquipmentSlot.HELMET: "투구",
     EquipmentSlot.ARMOR: "갑옷",
     EquipmentSlot.BELT: "대",
     EquipmentSlot.SHOES: "신",
 }
-_EQUIP_LEVELS: tuple[int, ...] = (0, 20, 50, 80, 110, 150, 180)
-_EQUIP_TIERS: tuple[int, ...] = (1, 2, 3, 4, 5)
-_TITLE_STATS: tuple[str, ...] = (
-    "미설정",
-    "공격력",
-    "공격력(%)",
-    "체력",
-    "체력(%)",
-    "힘",
-    "힘(%)",
-    "민첩",
-    "민첩(%)",
-    "생명력",
-    "생명력(%)",
-    "행운",
-    "행운(%)",
-    "스킬 피해량(%)",
-    "최종 공격력(%)",
-    "치명타 확률(%)",
-    "치명타 공격력%",
-    "경험치 획득량(%)",
-    "보스 공격력(%)",
-    "드랍률(%)",
-    "회피(%)",
-    "물약 회복량(%)",
-    "저항(%)",
-    "스킬속도(%)",
-)
-_STAT_LABEL_TO_KEY: dict[str, StatKey] = {
-    **{label: stat_key for stat_key, label in STAT_SPECS.items()},
-    "힘%": StatKey.STR_PERCENT,
-    "민첩%": StatKey.DEXTERITY_PERCENT,
-    "생명력%": StatKey.VITALITY_PERCENT,
-    "행운%": StatKey.LUCK_PERCENT,
-    "공격력%": StatKey.ATTACK_PERCENT,
-    "체력%": StatKey.HP_PERCENT,
-    "경험치%": StatKey.EXP_PERCENT,
-    "저항%": StatKey.RESIST_PERCENT,
-    "스킬속도%": StatKey.SKILL_SPEED_PERCENT,
-    "최종 공격력%": StatKey.FINAL_ATTACK_PERCENT,
-    "치명타 공격력%": StatKey.CRIT_DAMAGE_PERCENT,
-    "치명타 확률%": StatKey.CRIT_RATE_PERCENT,
-    "보스 공격력%": StatKey.BOSS_ATTACK_PERCENT,
-    "드랍률%": StatKey.DROP_RATE_PERCENT,
-    "물약 회복량%": StatKey.POTION_HEAL_PERCENT,
-}
-_STAT_KEY_TO_LABEL: dict[StatKey, str] = {
-    stat_key: label for label, stat_key in _STAT_LABEL_TO_KEY.items()
-}
-_TITLE_STAT_KEY_TO_LABEL: dict[StatKey, str] = {
-    stat_key: label for stat_key, label in STAT_SPECS.items()
-}
-_TITLE_STAT_KEY_TO_LABEL[StatKey.CRIT_DAMAGE_PERCENT] = "치명타 공격력%"
+_REFORGE_EQUIPMENT_SLOTS: tuple[EquipmentSlot, ...] = tuple(
+    slot for slot, stat_keys in EQUIPMENT_REFORGE_STAT_KEYS.items() if stat_keys
+) + (EquipmentSlot.NECKLACE,)
 _SCROLL_TIER_LABELS: dict[ScrollTier, str] = {
     tier: f"{tier.value}%" for tier in ScrollTier
 }
@@ -188,7 +133,7 @@ def _option_label(spec: OptionSpec) -> str:
 
     value_range = spec.value_range
     return (
-        f"{_STAT_KEY_TO_LABEL[spec.stat_key]} "
+        f"{STAT_SPECS[spec.stat_key]} "
         f"({value_range.minimum:g}~{value_range.maximum:g})"
     )
 
@@ -243,173 +188,147 @@ def _build_scroll_sets() -> dict[EquipmentSlot, _ScrollSet]:
 _SCROLL_SETS: dict[EquipmentSlot, _ScrollSet] = _build_scroll_sets()
 
 
-@dataclass(slots=True)
-class _EquipItemData:
-    """보유 장비 모델 UI 어댑터"""
+def _equipment_levels(slot: EquipmentSlot) -> tuple[int, ...]:
+    """슬롯에 존재하는 실제 장비 레벨 목록"""
 
-    equipment: OwnedEquipment
-    slot: EquipmentSlot
+    # 장비 카탈로그 기준 레벨 중복 제거
+    levels: set[int] = {
+        item_spec.level for item_spec in EQUIPMENT_ITEM_SPECS if slot in item_spec.slots
+    }
 
-    @property
-    def name(self) -> str:
-        """상세 헤더 표시 장비명"""
+    # 콤보박스 표시 순서 고정
+    return tuple(sorted(levels))
 
-        item_spec: EquipmentItemSpec | None = self.item_spec()
-        if item_spec is not None:
-            return item_spec.name + _ARMOR_SLOT_NAME_SUFFIX.get(self.slot, "")
 
-        return self.equipment.name
+def _equipment_tiers(slot: EquipmentSlot, level: int) -> tuple[int, ...]:
+    """슬롯과 레벨에 존재하는 실제 장비 티어 목록"""
 
-    @name.setter
-    def name(self, value: str) -> None:
-        """보유 장비 식별 이름 반영"""
+    # 장비 카탈로그 기준 티어 중복 제거
+    tiers: set[int] = {
+        item_spec.tier
+        for item_spec in EQUIPMENT_ITEM_SPECS
+        if slot in item_spec.slots and item_spec.level == level
+    }
 
-        self.equipment.name = value
+    # 콤보박스 표시 순서 고정
+    return tuple(sorted(tiers))
 
-    @property
-    def level(self) -> int:
-        """장비 레벨"""
 
-        return self.equipment.level
+def _has_grade(item_spec: EquipmentItemSpec | None) -> bool:
+    """장비 스펙 기준 등급 선택 가능 여부"""
 
-    @level.setter
-    def level(self, value: int) -> None:
-        """장비 레벨 반영"""
+    # 반지·귀걸이처럼 카탈로그 스펙이 없는 장비 제외
+    if item_spec is None:
+        return False
 
-        self.equipment.level = value
+    # 기본/찬란한 등급 스탯을 가진 장비만 등급 입력 표시
+    return EquipmentGrade.BASIC in item_spec.grade_stats
 
-    @property
-    def grade(self) -> str:
-        """장비 등급 표시값"""
 
-        if self.equipment.grade == EquipmentGrade.RADIANT:
-            return "찬란한"
+def _make_icon(parent: QWidget, size: int, muted: bool = False) -> QLabel:
+    """장비 아이콘 라벨 생성"""
 
-        return "기본"
+    icon: QLabel = QLabel(parent)
+    icon.setFixedSize(size, size)
+    icon.setStyleSheet(_ICON_STYLE_MUTED if muted else _ICON_STYLE)
+    return icon
 
-    @grade.setter
-    def grade(self, value: str) -> None:
-        """장비 등급 반영"""
 
-        self.equipment.grade = (
-            EquipmentGrade.RADIANT if value == "찬란한" else EquipmentGrade.BASIC
-        )
+def _field_caption(parent: QWidget, text: str) -> QLabel:
+    """입력 필드 캡션 라벨 생성"""
 
-    @property
-    def tier(self) -> int:
-        """장비 티어"""
+    caption: QLabel = QLabel(text, parent)
+    caption.setObjectName("charFieldLabel")
+    caption.setFont(CustomFont(9, bold=True))
+    return caption
 
-        return self.equipment.tier
 
-    @tier.setter
-    def tier(self, value: int) -> None:
-        """장비 티어 반영"""
+def _equipment_name(equipment: OwnedEquipment, slot: EquipmentSlot) -> str:
+    """장비 표시 이름 구성"""
 
-        self.equipment.tier = value
+    # 카탈로그 장비 이름과 방어구 부위 접미사 결합
+    item_spec: EquipmentItemSpec | None = equipment_item_spec(equipment)
+    if item_spec is not None:
+        return item_spec.name + _ARMOR_SLOT_NAME_SUFFIX.get(slot, "")
 
-    @property
-    def base(self) -> list[tuple[str, float]]:
-        """기본 스탯 표시값"""
+    # 반지·귀걸이 사용자 지정 이름 표시
+    return equipment.name
 
-        item_spec: EquipmentItemSpec | None = self.item_spec()
-        if item_spec is None:
-            return []
 
-        values: dict[StatKey, float] = dict(item_spec.grade_stats[self.equipment.grade])
-        if self.slot in ARMOR_SLOT_STAT_KEYS:
-            if self.equipment.grade is None:
-                raise ValueError("armor equipment grade is required")
+def _equipment_base_rows(
+    equipment: OwnedEquipment, slot: EquipmentSlot
+) -> list[tuple[str, float]]:
+    """장비 스펙 기반 기본 스탯 표시 행 구성"""
 
-            values[ARMOR_SLOT_STAT_KEYS[self.slot]] = item_spec.armor_stat_values[
-                self.equipment.grade
-            ]
+    # 반지·귀걸이 자유 입력 장비 제외
+    item_spec: EquipmentItemSpec | None = equipment_item_spec(equipment)
+    if item_spec is None:
+        return []
 
-        return [
-            (_STAT_KEY_TO_LABEL[stat_key], value) for stat_key, value in values.items()
-        ]
+    # 장비 등급별 고정 기본 스탯 조회
+    grade: EquipmentGrade | None = equipment.grade
+    values: dict[StatKey, float] = dict(item_spec.grade_stats[grade])
+    if slot not in ARMOR_SLOT_STAT_KEYS:
+        return [(STAT_SPECS[stat_key], value) for stat_key, value in values.items()]
 
-    @property
-    def free_base(self) -> list[tuple[str | None, str]]:
-        """자유 기본 스탯 표시값"""
+    # 방어구 부위별 주스탯 추가
+    if grade is None:
+        raise ValueError("armor equipment grade is required")
 
-        return [
-            (_TITLE_STAT_KEY_TO_LABEL[line.stat_key], f"{line.value:g}")
-            for line in self.equipment.base_stat_lines
-        ]
+    values[ARMOR_SLOT_STAT_KEYS[slot]] = item_spec.armor_stat_values[grade]
+    return [(STAT_SPECS[stat_key], value) for stat_key, value in values.items()]
 
-    @property
-    def necklace_type(self) -> str | None:
-        """목걸이 종류"""
 
-        return self.equipment.item_name
+def _equipment_display_name(
+    equipment: OwnedEquipment, slot: EquipmentSlot, has_grade: bool
+) -> str:
+    """장비 이름 표시 문자열 구성"""
 
-    @property
-    def reforge_step(self) -> int:
-        """재련 단계(강)"""
+    # 찬란한 장비 접두어 구성
+    if has_grade and equipment.grade == EquipmentGrade.RADIANT:
+        return f"찬란한 {_equipment_name(equipment, slot)}"
 
-        return self.equipment.reforge_step
+    return _equipment_name(equipment, slot)
 
-    @reforge_step.setter
-    def reforge_step(self, value: int) -> None:
-        """재련 단계 반영"""
 
-        self.equipment.reforge_step = value
+def _equipment_pick_info_rows(
+    equipment: OwnedEquipment,
+) -> list[tuple[str, list[str]]]:
+    """장비 선택 카드 요약 행 구성"""
 
-    @property
-    def scroll_stat(self) -> list[str]:
-        """주문서 요약 표시값"""
+    info_rows: list[tuple[str, list[str]]] = []
 
-        tokens: list[str] = []
-        for stat_key, tier_counts in self.equipment.scrolls.items():
-            total_count: int = sum(tier_counts.values())
-            if total_count <= 0:
-                continue
+    # 주문서 성공 횟수 요약
+    scroll_tokens: list[str] = []
+    for stat_key, tier_counts in equipment.scrolls.items():
+        total_count: int = sum(tier_counts.values())
+        if total_count <= 0:
+            continue
 
-            tokens.append(f"{_STAT_KEY_TO_LABEL[stat_key]} {total_count:g}")
+        scroll_tokens.append(f"{STAT_SPECS[stat_key]} {total_count:g}")
 
-        return tokens
+    if scroll_tokens:
+        info_rows.append(("주문서", scroll_tokens))
 
-    @property
-    def potential(self) -> list[str]:
-        """잠재능력 요약 표시값"""
+    # 잠재능력 입력 요약
+    potential_tokens: list[str] = [
+        f"{STAT_SPECS[POTENTIAL_OPTION_SPECS[line.option].stat_key]} {line.value:g}"
+        for line in equipment.potentials
+        if line is not None
+    ]
+    if potential_tokens:
+        info_rows.append(("잠재능력", potential_tokens))
 
-        return [
-            f"{_POTENTIAL_OPTION_TO_LABEL[line.option].split(' ')[0]} {line.value:g}"
-            for line in self.equipment.potentials
-            if line is not None
-        ]
+    # 추가능력 입력 요약
+    additional_tokens: list[str] = [
+        f"{STAT_SPECS[ADDITIONAL_OPTION_SPECS[line.option].stat_key]} {line.value:g}"
+        for line in equipment.additionals
+        if line is not None
+    ]
+    if additional_tokens:
+        info_rows.append(("추가능력", additional_tokens))
 
-    @property
-    def additional(self) -> list[str]:
-        """추가능력 요약 표시값"""
-
-        return [
-            f"{_ADDITIONAL_OPTION_TO_LABEL[line.option].split(' ')[0]} {line.value:g}"
-            for line in self.equipment.additionals
-            if line is not None
-        ]
-
-    def item_spec(self) -> EquipmentItemSpec | None:
-        """장비 정적 스펙 조회"""
-
-        if self.equipment.kind in (EquipmentKind.RING, EquipmentKind.EARRING):
-            return None
-
-        for item_spec in EQUIPMENT_ITEM_SPECS:
-            if self.equipment.kind == EquipmentKind.NECKLACE:
-                if item_spec.name == self.equipment.item_name:
-                    return item_spec
-
-                continue
-
-            if (
-                item_spec.level == self.equipment.level
-                and item_spec.tier == self.equipment.tier
-                and self.slot in item_spec.slots
-            ):
-                return item_spec
-
-        raise ValueError("equipment item spec does not exist")
+    return info_rows
 
 
 @dataclass(slots=True)
@@ -417,14 +336,10 @@ class _EquipSlotData:
     """장비 슬롯 UI 데이터"""
 
     slot: EquipmentSlot
-    profile: CharacterProfile | None
-    type: str
-    scroll: EquipmentSlot | None
-    reforge: bool
-    owned: list[_EquipItemData]
+    owned: list[OwnedEquipment]
     equipped_index: int
 
-    def equipped(self) -> _EquipItemData | None:
+    def equipped(self) -> OwnedEquipment | None:
         """현재 장착 장비"""
 
         if self.equipped_index == -1:
@@ -457,8 +372,7 @@ class _EquipSlot(QFrame):
         box.setContentsMargins(6, 8, 6, 8)
         box.setSpacing(3)
 
-        self._icon: QLabel = QLabel(self)
-        self._icon.setFixedSize(34, 34)
+        self._icon: QLabel = _make_icon(self, 34)
         box.addWidget(self._icon, alignment=Qt.AlignmentFlag.AlignHCenter)
 
         self._type_label: QLabel = QLabel(self)
@@ -480,13 +394,18 @@ class _EquipSlot(QFrame):
 
         item = slot.equipped()
         empty: bool = item is None
+        label: str = EQUIPMENT_SLOT_LABELS[slot.slot]
         self._icon.setStyleSheet(_ICON_STYLE_MUTED if empty else _ICON_STYLE)
         if empty:
-            self._type_label.setText(slot.type)
+            self._type_label.setText(label)
             self._meta_label.setText("비어 있음")
         else:
-            self._type_label.setText(item.name)
-            self._meta_label.setText(slot.type)
+            # 찬란한 장비는 좌측 타일 이름에도 접두어를 붙인다
+            has_grade: bool = _has_grade(equipment_item_spec(item))
+            self._type_label.setText(
+                _equipment_display_name(item, slot.slot, has_grade)
+            )
+            self._meta_label.setText(label)
         self.setProperty("empty", empty)
         self.style().unpolish(self)
         self.style().polish(self)
@@ -512,7 +431,7 @@ class _EquipPickCard(QFrame):
         self,
         parent: QWidget,
         slot: _EquipSlotData,
-        item: _EquipItemData,
+        item: OwnedEquipment,
         index: int,
         tab: "EquipmentTab",
         has_grade: bool,
@@ -534,21 +453,18 @@ class _EquipPickCard(QFrame):
         head = QHBoxLayout()
         head.setSpacing(14)
 
-        icon: QLabel = QLabel(self)
-        icon.setFixedSize(44, 44)
-        icon.setStyleSheet(_ICON_STYLE)
+        icon: QLabel = _make_icon(self, 44)
         head.addWidget(icon, alignment=Qt.AlignmentFlag.AlignTop)
 
         name_row = QHBoxLayout()
         name_row.setSpacing(8)
-        display_name: str = (
-            "찬란한 " if has_grade and item.grade == "찬란한" else ""
-        ) + item.name
+        # 실제 장비 등급 기반 표시 이름
+        display_name: str = _equipment_display_name(item, slot.slot, has_grade)
         name_label: QLabel = QLabel(display_name, self)
         name_label.setObjectName("charDetailName")
         name_label.setFont(CustomFont(13, bold=True))
         name_row.addWidget(name_label)
-        if slot.reforge:
+        if slot.slot in _REFORGE_EQUIPMENT_SLOTS:
             reforge_label: QLabel = QLabel(f"+{item.reforge_step}", self)
             reforge_label.setObjectName("charPickReforge")
             reforge_label.setFont(CustomFont(10, bold=True))
@@ -561,13 +477,8 @@ class _EquipPickCard(QFrame):
         head.addWidget(del_btn, alignment=Qt.AlignmentFlag.AlignVCenter)
         card.addLayout(head)
 
-        info_rows: list[tuple[str, list[str]]] = []
-        if item.scroll_stat:
-            info_rows.append(("주문서", item.scroll_stat))
-        if item.potential:
-            info_rows.append(("잠재능력", item.potential))
-        if item.additional:
-            info_rows.append(("추가능력", item.additional))
+        # 실제 장비 입력값 기반 카드 요약
+        info_rows: list[tuple[str, list[str]]] = _equipment_pick_info_rows(item)
         if info_rows:
             info_box = QVBoxLayout()
             info_box.setContentsMargins(58, 0, 0, 0)
@@ -649,26 +560,15 @@ class EquipmentTab(QFrame):
         for slot in _SLOT_ORDER:
             if profile is None:
                 slots_data.append(
-                    _EquipSlotData(
-                        slot=slot,
-                        profile=None,
-                        type=EQUIPMENT_SLOT_LABELS[slot],
-                        scroll=slot if slot in _SCROLL_SETS else None,
-                        reforge=slot in self._reforge_slots(),
-                        owned=[],
-                        equipped_index=-1,
-                    )
+                    _EquipSlotData(slot=slot, owned=[], equipped_index=-1)
                 )
                 continue
 
-            owned: list[_EquipItemData] = [
-                _EquipItemData(equipment=equipment, slot=slot)
-                for equipment in list_equippable_equipment(profile, slot)
-            ]
+            owned: list[OwnedEquipment] = list_equippable_equipment(profile, slot)
             equipped_name: str | None = profile.equipment.equipped[slot]
             equipped_index: int = -1
-            for index, item in enumerate(owned):
-                if item.equipment.name != equipped_name:
+            for index, equipment in enumerate(owned):
+                if equipment.name != equipped_name:
                     continue
 
                 equipped_index = index
@@ -677,10 +577,6 @@ class EquipmentTab(QFrame):
             slots_data.append(
                 _EquipSlotData(
                     slot=slot,
-                    profile=profile,
-                    type=EQUIPMENT_SLOT_LABELS[slot],
-                    scroll=slot if slot in _SCROLL_SETS else None,
-                    reforge=slot in self._reforge_slots(),
                     owned=owned,
                     equipped_index=equipped_index,
                 )
@@ -838,10 +734,11 @@ class EquipmentTab(QFrame):
             self.updateGeometry()
             return
 
-        has_grade: bool = slot.type in _GRADE_TYPES
-        has_potential: bool = slot.type in _POTENTIAL_TYPES
+        item_spec: EquipmentItemSpec | None = equipment_item_spec(item)
+        has_grade: bool = _has_grade(item_spec)
+        has_potential: bool = slot.slot in POTENTIAL_EQUIPMENT_SLOTS
         is_necklace: bool = slot.slot == EquipmentSlot.NECKLACE
-        is_free_stat: bool = item.equipment.kind in (
+        is_free_stat: bool = item.kind in (
             EquipmentKind.RING,
             EquipmentKind.EARRING,
         )
@@ -861,11 +758,11 @@ class EquipmentTab(QFrame):
         # 목걸이는 기본 스탯 없이 재련만 입력한다
         if not is_necklace:
             base_group.addWidget(self._build_base_section(slot, item))
-        if slot.reforge:
+        if slot.slot in _REFORGE_EQUIPMENT_SLOTS:
             base_group.addWidget(self._build_reforge_section(slot, item))
         self._detail_layout.addWidget(base_group)
 
-        if slot.scroll:
+        if slot.slot in _SCROLL_SETS:
             self._detail_layout.addWidget(self._build_scroll_section(slot))
 
         # 잠재능력 + 추가능력: 공간이 남으면 나란히 배치
@@ -887,7 +784,7 @@ class EquipmentTab(QFrame):
     def _build_detail_head(
         self,
         slot: _EquipSlotData,
-        item: _EquipItemData,
+        item: OwnedEquipment,
         has_grade: bool,
     ) -> QHBoxLayout:
         """상세 헤더 (아이콘 + 이름 + 교체 버튼)"""
@@ -896,15 +793,13 @@ class EquipmentTab(QFrame):
         head.setContentsMargins(0, 0, 0, 12)
         head.setSpacing(12)
 
-        icon: QLabel = QLabel(self)
-        icon.setFixedSize(46, 46)
-        icon.setStyleSheet(_ICON_STYLE)
+        icon: QLabel = _make_icon(self, 46)
         head.addWidget(icon)
 
         name_box = QVBoxLayout()
         name_box.setSpacing(4)
         # 반지·귀걸이는 사용자가 직접 이름을 정한다 (그 외 부위는 카탈로그/종류 이름 표시)
-        if item.equipment.kind in (EquipmentKind.RING, EquipmentKind.EARRING):
+        if item.kind in (EquipmentKind.RING, EquipmentKind.EARRING):
             name_edit: QLineEdit = QLineEdit(item.name, self)
             name_edit.setObjectName("charTitleName")
             name_edit.setFont(CustomFont(15, bold=True))
@@ -913,14 +808,13 @@ class EquipmentTab(QFrame):
             )
             name_box.addWidget(name_edit)
         else:
-            display_name: str = (
-                "찬란한 " if has_grade and item.grade == "찬란한" else ""
-            ) + item.name
+            # 실제 장비 등급 기반 표시 이름
+            display_name: str = _equipment_display_name(item, slot.slot, has_grade)
             name_label: QLabel = QLabel(display_name, self)
             name_label.setObjectName("charDetailName")
             name_label.setFont(CustomFont(15, bold=True))
             name_box.addWidget(name_label)
-        meta_label: QLabel = QLabel(slot.type, self)
+        meta_label: QLabel = QLabel(EQUIPMENT_SLOT_LABELS[slot.slot], self)
         meta_label.setObjectName("charSub")
         meta_label.setFont(CustomFont(9))
         name_box.addWidget(meta_label)
@@ -934,67 +828,70 @@ class EquipmentTab(QFrame):
         head.addWidget(change_btn)
         return head
 
-    def _build_level_tier_row(self, item: _EquipItemData) -> QHBoxLayout:
+    def _build_level_tier_row(
+        self, item: OwnedEquipment, slot: EquipmentSlot
+    ) -> QHBoxLayout:
         """레벨/티어 콤보박스 선택 행"""
 
         controls = QHBoxLayout()
         controls.setSpacing(8)
 
-        level_caption: QLabel = QLabel("레벨", self)
-        level_caption.setObjectName("charFieldLabel")
-        level_caption.setFont(CustomFont(9, bold=True))
-        controls.addWidget(level_caption)
+        controls.addWidget(_field_caption(self, "레벨"))
+        level_values: tuple[int, ...] = _equipment_levels(slot)
         level_combo: CharComboBox = CharComboBox(
-            self, [str(level) for level in _EQUIP_LEVELS], point_size=9
+            self, [str(level) for level in level_values], point_size=9
         )
-        if item.level in _EQUIP_LEVELS:
-            level_combo.setCurrentIndex(_EQUIP_LEVELS.index(item.level))
+        level_combo.setCurrentIndex(level_values.index(item.level))
         level_combo.currentTextChanged.connect(self._pick_level)
         controls.addWidget(level_combo)
 
         controls.addSpacing(8)
 
-        tier_caption: QLabel = QLabel("티어", self)
-        tier_caption.setObjectName("charFieldLabel")
-        tier_caption.setFont(CustomFont(9, bold=True))
-        controls.addWidget(tier_caption)
+        controls.addWidget(_field_caption(self, "티어"))
+        tier_values: tuple[int, ...] = _equipment_tiers(slot, item.level)
         tier_combo: CharComboBox = CharComboBox(
-            self, [str(tier) for tier in _EQUIP_TIERS], point_size=9
+            self, [str(tier) for tier in tier_values], point_size=9
         )
-        if item.tier in _EQUIP_TIERS:
-            tier_combo.setCurrentIndex(_EQUIP_TIERS.index(item.tier))
+        tier_combo.setCurrentIndex(tier_values.index(item.tier))
         tier_combo.currentTextChanged.connect(self._pick_tier)
         controls.addWidget(tier_combo)
 
         controls.addStretch(1)
         return controls
 
-    def _build_necklace_type_row(self, item: _EquipItemData) -> QHBoxLayout:
+    def _build_necklace_type_row(self, item: OwnedEquipment) -> QHBoxLayout:
         """목걸이 종류 선택 행"""
 
         controls = QHBoxLayout()
         controls.setSpacing(8)
 
-        caption: QLabel = QLabel("종류", self)
-        caption.setObjectName("charFieldLabel")
-        caption.setFont(CustomFont(9, bold=True))
-        controls.addWidget(caption)
+        controls.addWidget(_field_caption(self, "종류"))
 
         type_combo: CharComboBox = CharComboBox(
             self, list(_NECKLACE_TYPES), point_size=9
         )
-        if item.necklace_type in _NECKLACE_TYPES:
-            type_combo.setCurrentIndex(_NECKLACE_TYPES.index(item.necklace_type))
+        item_name: str | None = item.item_name
+        if item_name is not None and item_name in _NECKLACE_TYPES:
+            type_combo.setCurrentIndex(_NECKLACE_TYPES.index(item_name))
         type_combo.currentTextChanged.connect(self._pick_necklace_type)
         controls.addWidget(type_combo)
 
         controls.addStretch(1)
         return controls
 
-    def _current_item(self) -> _EquipItemData | None:
+    def _current_item(self) -> OwnedEquipment | None:
         """현재 슬롯의 장착 장비"""
 
         return self._slots_data[self._active_index].equipped()
+
+    def _commit_active_item(self) -> None:
+        """현재 장비를 제자리 수정한 뒤 타일·상세·실시간 표시를 갱신"""
+
+        # 레벨/티어/등급/목걸이 종류는 보유 목록을 바꾸지 않으므로 슬롯 데이터를
+        # 다시 만들 필요 없이 현재 타일과 상세만 갱신한다.
+        self._refresh_active_slot()
+        self._render_detail()
+        self._on_changed()
 
     def _pick_level(self, text: str) -> None:
         """선택한 장비 레벨을 현재 장비에 반영"""
@@ -1002,9 +899,10 @@ class EquipmentTab(QFrame):
         item = self._current_item()
         if item is not None:
             item.level = int(text)
-            self._refresh_active_slot()
-            self._render_detail()
-            self._on_changed()
+
+            # 레벨 변경 시 기본 티어 선택
+            item.tier = 1
+            self._commit_active_item()
 
     def _pick_tier(self, text: str) -> None:
         """선택한 장비 티어를 현재 장비에 반영"""
@@ -1012,16 +910,15 @@ class EquipmentTab(QFrame):
         item = self._current_item()
         if item is not None:
             item.tier = int(text)
-            self._render_detail()
-            self._on_changed()
+            self._commit_active_item()
 
-    def _rename_current(self, field: QLineEdit, item: _EquipItemData) -> None:
+    def _rename_current(self, field: QLineEdit, item: OwnedEquipment) -> None:
         """반지·귀걸이 이름 변경 (장착 참조·유일성 유지)"""
 
         if self._profile is None:
             return
 
-        old_name: str = item.equipment.name
+        old_name: str = item.name
         new_name: str = field.text().strip()
         if new_name == old_name:
             return
@@ -1037,7 +934,8 @@ class EquipmentTab(QFrame):
             field.setText(old_name)
             return
 
-        self._slots_data = self._build_slots_data(self._profile)
+        # 이름은 제자리 수정되어 슬롯 데이터의 참조에 그대로 반영된다. 입력 중인
+        # 칸을 흔들지 않도록 상세는 다시 그리지 않고 타일만 갱신한다.
         self._refresh_active_slot()
         self._on_changed()
 
@@ -1048,17 +946,14 @@ class EquipmentTab(QFrame):
         if item is None:
             return
 
-        item.equipment.item_name = text
+        item.item_name = text
         allowed_keys: tuple[StatKey, ...] = NECKLACE_REFORGE_STAT_KEYS[text]
-        item.equipment.reforge_stats = {
+        item.reforge_stats = {
             stat_key: value
-            for stat_key, value in item.equipment.reforge_stats.items()
+            for stat_key, value in item.reforge_stats.items()
             if stat_key in allowed_keys
         }
-        self._slots_data = self._build_slots_data(self._profile)
-        self._refresh_active_slot()
-        self._render_detail()
-        self._on_changed()
+        self._commit_active_item()
 
     def _section(self, title: str) -> tuple[QFrame, QVBoxLayout]:
         """제목이 있는 상세 섹션 컨테이너"""
@@ -1086,7 +981,7 @@ class EquipmentTab(QFrame):
     def _build_item_section(
         self,
         slot: _EquipSlotData,
-        item: _EquipItemData,
+        item: OwnedEquipment,
         has_grade: bool,
     ) -> QFrame:
         """아이템 섹션 (레벨/티어 + 등급)"""
@@ -1100,7 +995,7 @@ class EquipmentTab(QFrame):
 
         # 등급(기본/찬란한)은 무기·방어구만. 공간이 남으면 레벨·티어 오른쪽에 등급을 배치
         if not has_grade:
-            box.addLayout(self._build_level_tier_row(item))
+            box.addLayout(self._build_level_tier_row(item, slot.slot))
             return section
 
         fields_group: ResponsiveColumnsBox = ResponsiveColumnsBox(
@@ -1111,7 +1006,7 @@ class EquipmentTab(QFrame):
         level_tier_box = QVBoxLayout(level_tier_block)
         level_tier_box.setContentsMargins(0, 0, 0, 0)
         level_tier_box.setSpacing(0)
-        level_tier_box.addLayout(self._build_level_tier_row(item))
+        level_tier_box.addLayout(self._build_level_tier_row(item, slot.slot))
         fields_group.addWidget(level_tier_block)
 
         grade_block: QFrame = QFrame(section)
@@ -1124,22 +1019,19 @@ class EquipmentTab(QFrame):
         box.addWidget(fields_group)
         return section
 
-    def _build_grade_row(self, item: _EquipItemData) -> QHBoxLayout:
+    def _build_grade_row(self, item: OwnedEquipment) -> QHBoxLayout:
         """등급 행 (레벨/티어처럼 라벨 + 찬란한 토글 버튼, ON 시 강조색)"""
 
         controls = QHBoxLayout()
         controls.setSpacing(8)
 
-        caption: QLabel = QLabel("등급", self)
-        caption.setObjectName("charFieldLabel")
-        caption.setFont(CustomFont(9, bold=True))
-        controls.addWidget(caption)
+        controls.addWidget(_field_caption(self, "등급"))
 
         grade_btn: QPushButton = QPushButton("찬란한", self)
         grade_btn.setObjectName("charEquipToggle")
         grade_btn.setFont(CustomFont(9))
         grade_btn.setCheckable(True)
-        grade_btn.setChecked(item.grade == "찬란한")
+        grade_btn.setChecked(item.grade == EquipmentGrade.RADIANT)
         grade_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         grade_btn.clicked.connect(self._on_grade_toggle)
         controls.addWidget(grade_btn)
@@ -1152,20 +1044,22 @@ class EquipmentTab(QFrame):
 
         item = self._current_item()
         if item is not None:
-            item.grade = "찬란한" if active else "기본"
-        self._render_detail()
-        self._on_changed()
+            item.grade = EquipmentGrade.RADIANT if active else EquipmentGrade.BASIC
+            self._commit_active_item()
 
-    def _build_base_section(self, slot: _EquipSlotData, item: _EquipItemData) -> QFrame:
+    def _build_base_section(self, slot: _EquipSlotData, item: OwnedEquipment) -> QFrame:
         """기본 스탯 섹션 (방어구/무기 자동 표시 vs 반지/귀걸이 자유 입력)"""
 
         section, box = self._section("기본 스탯")
 
         # 반지/귀걸이: 자유 스탯 라인
-        if not item.base:
+        if slot.slot in FREE_BASE_STAT_EQUIPMENT_SLOTS:
             self._free_rows = QVBoxLayout()
             self._free_rows.setSpacing(8)
-            for index, (stat, value) in enumerate(item.free_base):
+            # 저장된 자유 기본 스탯 라인 표시값 구성
+            for index, line in enumerate(item.base_stat_lines):
+                stat: str = STAT_SPECS[line.stat_key]
+                value: str = f"{line.value:g}"
                 self._free_rows.addLayout(
                     self._build_free_stat_row(item, index, stat, value)
                 )
@@ -1179,10 +1073,11 @@ class EquipmentTab(QFrame):
             return section
 
         # 무기·방어구: 자동 제공되는 읽기 전용 스탯 / 그 외(목걸이 등): 직접 입력
-        auto_provided: bool = slot.type in _GRADE_TYPES
+        base_rows: list[tuple[str, float]] = _equipment_base_rows(item, slot.slot)
+        auto_provided: bool = _has_grade(equipment_item_spec(item))
 
         flow: FlowLayout = FlowLayout(spacing=14)
-        for label_text, value in item.base:
+        for label_text, value in base_rows:
             flow.addWidget(
                 self._build_labeled_field(
                     label_text, str(value), readonly=auto_provided
@@ -1193,17 +1088,17 @@ class EquipmentTab(QFrame):
 
     def _build_free_stat_row(
         self,
-        item: _EquipItemData,
+        item: OwnedEquipment,
         index: int,
-        stat: str | None,
+        stat: str,
         value: str,
     ) -> QHBoxLayout:
         """반지/귀걸이 자유 스탯 한 줄 (콤보 + 값)"""
 
         row = QHBoxLayout()
         row.setSpacing(10)
-        combo: CharComboBox = CharComboBox(self, list(_TITLE_STATS))
-        if stat and stat in _TITLE_STATS:
+        combo: CharComboBox = CharComboBox(self, list(STAT_CHOICE_LABELS))
+        if stat in STAT_CHOICE_LABELS:
             combo.setCurrentText(stat)
         field: StepperField = StepperField(self, value or "0", max_width=140)
         combo.currentTextChanged.connect(
@@ -1226,10 +1121,10 @@ class EquipmentTab(QFrame):
         row.addWidget(field)
         return row
 
-    def _add_free_stat(self, item: _EquipItemData) -> None:
+    def _add_free_stat(self, item: OwnedEquipment) -> None:
         """자유 스탯 라인 추가"""
 
-        item.equipment.base_stat_lines.append(
+        item.base_stat_lines.append(
             EquipmentFreeStatLine(stat_key=StatKey.ATTACK, value=0.0)
         )
         self._render_detail()
@@ -1237,7 +1132,7 @@ class EquipmentTab(QFrame):
 
     def _set_free_stat_line(
         self,
-        item: _EquipItemData,
+        item: OwnedEquipment,
         index: int,
         stat: str,
         value: float,
@@ -1247,29 +1142,27 @@ class EquipmentTab(QFrame):
         if stat == "미설정":
             return
 
-        item.equipment.base_stat_lines[index] = EquipmentFreeStatLine(
-            stat_key=_STAT_LABEL_TO_KEY[stat],
+        item.base_stat_lines[index] = EquipmentFreeStatLine(
+            stat_key=STAT_LABEL_TO_KEY[stat],
             value=value,
         )
         self._on_changed()
 
     def _build_reforge_section(
-        self, slot: _EquipSlotData, item: _EquipItemData
+        self, slot: _EquipSlotData, item: OwnedEquipment
     ) -> QFrame:
         """재련 섹션 (부위/목걸이 종류별 허용 스탯 입력)"""
 
         section, box = self._section("재련")
 
-        stat_keys: tuple[StatKey, ...] = _reforge_stat_keys(
-            slot.slot, item.necklace_type
-        )
+        stat_keys: tuple[StatKey, ...] = _reforge_stat_keys(slot.slot, item.item_name)
 
         flow: FlowLayout = FlowLayout(spacing=14)
         # 맨 처음에 재련 단계(0~20강) 입력칸
         flow.addWidget(self._build_step_field(item))
         for stat_key in stat_keys:
-            label: str = _STAT_KEY_TO_LABEL[stat_key]
-            value: float = item.equipment.reforge_stats.get(stat_key, 0.0)
+            label: str = STAT_SPECS[stat_key]
+            value: float = item.reforge_stats.get(stat_key, 0.0)
             flow.addWidget(
                 self._build_labeled_field(
                     label,
@@ -1284,7 +1177,7 @@ class EquipmentTab(QFrame):
         box.addLayout(flow)
         return section
 
-    def _build_step_field(self, item: _EquipItemData) -> QWidget:
+    def _build_step_field(self, item: OwnedEquipment) -> QWidget:
         """재련 단계(0~20강) 입력 묶음"""
 
         container: QFrame = QFrame(self)
@@ -1292,10 +1185,7 @@ class EquipmentTab(QFrame):
         box.setContentsMargins(0, 0, 0, 0)
         box.setSpacing(5)
 
-        name_label: QLabel = QLabel("단계", container)
-        name_label.setObjectName("charFieldLabel")
-        name_label.setFont(CustomFont(9, bold=True))
-        box.addWidget(name_label)
+        box.addWidget(_field_caption(container, "단계"))
 
         field: StepperField = StepperField(container, str(item.reforge_step), unit="강")
         field.setFixedWidth(84)
@@ -1309,7 +1199,7 @@ class EquipmentTab(QFrame):
         box.addWidget(field)
         return container
 
-    def _set_reforge_step(self, item: _EquipItemData, field: StepperField) -> None:
+    def _set_reforge_step(self, item: OwnedEquipment, field: StepperField) -> None:
         """재련 단계 모델 반영"""
 
         item.reforge_step = int(field.number())
@@ -1320,14 +1210,14 @@ class EquipmentTab(QFrame):
 
         section, box = self._section("주문서")
 
-        if slot.scroll is None:
+        if slot.slot not in _SCROLL_SETS:
             raise ValueError("scroll slot is required")
 
-        item: _EquipItemData | None = slot.equipped()
+        item: OwnedEquipment | None = slot.equipped()
         if item is None:
             raise ValueError("equipped item is required")
 
-        scroll_set: _ScrollSet = _SCROLL_SETS[slot.scroll]
+        scroll_set: _ScrollSet = _SCROLL_SETS[slot.slot]
 
         wrap: QScrollArea = QScrollArea(section)
         wrap.setObjectName("charScrollTableWrap")
@@ -1343,7 +1233,7 @@ class EquipmentTab(QFrame):
         grid.setVerticalSpacing(6)
 
         slot_effects: dict[StatKey, dict[ScrollTier, dict[StatKey, float]]] = (
-            EQUIPMENT_SCROLL_EFFECTS[slot.scroll]
+            EQUIPMENT_SCROLL_EFFECTS[slot.slot]
         )
 
         # 머리글
@@ -1360,7 +1250,7 @@ class EquipmentTab(QFrame):
 
         # 본문
         for row, stat_key in enumerate(scroll_set.stat_keys):
-            stat_label: QLabel = QLabel(_STAT_KEY_TO_LABEL[stat_key], table)
+            stat_label: QLabel = QLabel(STAT_SPECS[stat_key], table)
             stat_label.setObjectName("charScrollStat")
             stat_label.setFont(CustomFont(9, bold=True))
             grid.addWidget(stat_label, row + 1, 0)
@@ -1372,7 +1262,7 @@ class EquipmentTab(QFrame):
                     dash.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     grid.addWidget(dash, row + 1, col + 2)
                 else:
-                    count: int = item.equipment.scrolls.get(stat_key, {}).get(
+                    count: int = item.scrolls.get(stat_key, {}).get(
                         tier,
                         0,
                     )
@@ -1408,7 +1298,7 @@ class EquipmentTab(QFrame):
         """잠재/추가능력 섹션 (3줄 고정)"""
 
         section, box = self._section(title)
-        item: _EquipItemData | None = self._current_item()
+        item: OwnedEquipment | None = self._current_item()
         if item is None:
             raise ValueError("equipped item is required")
 
@@ -1420,7 +1310,7 @@ class EquipmentTab(QFrame):
             field: StepperField = StepperField(section, "0")
             field.setFixedWidth(100)
             if title == "잠재능력":
-                line: PotentialLine | None = item.equipment.potentials[index]
+                line: PotentialLine | None = item.potentials[index]
                 if line is not None:
                     combo.setCurrentText(_POTENTIAL_OPTION_TO_LABEL[line.option])
                     field.set_number(line.value)
@@ -1453,9 +1343,7 @@ class EquipmentTab(QFrame):
                     )
                 )
             else:
-                additional_line: AdditionalLine | None = item.equipment.additionals[
-                    index
-                ]
+                additional_line: AdditionalLine | None = item.additionals[index]
                 if additional_line is not None:
                     combo.setCurrentText(
                         _ADDITIONAL_OPTION_TO_LABEL[additional_line.option]
@@ -1510,10 +1398,7 @@ class EquipmentTab(QFrame):
         box.setSpacing(5)
 
         unit: str = "%" if "%" in label else ""
-        name_label: QLabel = QLabel(label, container)
-        name_label.setObjectName("charFieldLabel")
-        name_label.setFont(CustomFont(9, bold=True))
-        box.addWidget(name_label)
+        box.addWidget(_field_caption(container, label))
 
         # %스탯과 일반 스탯 모두 동일한 칸 폭으로 통일
         field: QWidget = (
@@ -1530,22 +1415,22 @@ class EquipmentTab(QFrame):
 
     def _set_reforge_stat(
         self,
-        item: _EquipItemData,
+        item: OwnedEquipment,
         stat_key: StatKey,
         value: float,
     ) -> None:
         """재련 스탯 모델 반영"""
 
         if value <= 0.0:
-            item.equipment.reforge_stats.pop(stat_key, None)
+            item.reforge_stats.pop(stat_key, None)
         else:
-            item.equipment.reforge_stats[stat_key] = value
+            item.reforge_stats[stat_key] = value
 
         self._on_changed()
 
     def _set_scroll_count(
         self,
-        item: _EquipItemData,
+        item: OwnedEquipment,
         stat_key: StatKey,
         tier: ScrollTier,
         text: str,
@@ -1553,7 +1438,7 @@ class EquipmentTab(QFrame):
         """주문서 성공 횟수 모델 반영"""
 
         count: int = 0 if not text.strip() else int(text)
-        tier_counts: dict[ScrollTier, int] = item.equipment.scrolls.setdefault(
+        tier_counts: dict[ScrollTier, int] = item.scrolls.setdefault(
             stat_key,
             {},
         )
@@ -1563,13 +1448,13 @@ class EquipmentTab(QFrame):
             tier_counts[tier] = count
 
         if not tier_counts:
-            item.equipment.scrolls.pop(stat_key, None)
+            item.scrolls.pop(stat_key, None)
 
         self._on_changed()
 
     def _set_potential_line(
         self,
-        item: _EquipItemData,
+        item: OwnedEquipment,
         index: int,
         label: str,
         field: StepperField,
@@ -1582,10 +1467,10 @@ class EquipmentTab(QFrame):
         시에만 칸 표시를 보정 값으로 맞춘다.
         """
 
-        lines: list[PotentialLine | None] = list(item.equipment.potentials)
+        lines: list[PotentialLine | None] = list(item.potentials)
         if label == "미설정":
             lines[index] = None
-            item.equipment.potentials = tuple(lines)
+            item.potentials = tuple(lines)
             self._on_changed()
             return
 
@@ -1599,12 +1484,12 @@ class EquipmentTab(QFrame):
             field.set_number(value)
 
         lines[index] = PotentialLine(option=option, value=value)
-        item.equipment.potentials = tuple(lines)
+        item.potentials = tuple(lines)
         self._on_changed()
 
     def _set_additional_line(
         self,
-        item: _EquipItemData,
+        item: OwnedEquipment,
         index: int,
         label: str,
         field: StepperField,
@@ -1617,10 +1502,10 @@ class EquipmentTab(QFrame):
         시에만 칸 표시를 보정 값으로 맞춘다.
         """
 
-        lines: list[AdditionalLine | None] = list(item.equipment.additionals)
+        lines: list[AdditionalLine | None] = list(item.additionals)
         if label == "미설정":
             lines[index] = None
-            item.equipment.additionals = tuple(lines)
+            item.additionals = tuple(lines)
             self._on_changed()
             return
 
@@ -1634,7 +1519,7 @@ class EquipmentTab(QFrame):
             field.set_number(value)
 
         lines[index] = AdditionalLine(option=option, value=value)
-        item.equipment.additionals = tuple(lines)
+        item.additionals = tuple(lines)
         self._on_changed()
 
     # 장비 교체 (선택) 화면
@@ -1651,6 +1536,17 @@ class EquipmentTab(QFrame):
         self._picker_open = False
         self._render_detail()
 
+    def _commit_owned_change(self, refresh_active: bool = True) -> None:
+        """보유 목록·장착이 바뀐 뒤 슬롯 데이터를 다시 만들고 화면을 갱신"""
+
+        # 장비 추가/삭제/장착/해제는 (반지처럼) 두 슬롯이 공유하는 보유 목록에
+        # 영향을 줄 수 있으므로 전체 슬롯 데이터를 다시 구성한다.
+        self._slots_data = self._build_slots_data(self._profile)
+        if refresh_active:
+            self._refresh_active_slot()
+        self._render_detail()
+        self._on_changed()
+
     def select_owned(self, index: int) -> None:
         """선택한 장비를 슬롯에 장착하고 상세로 복귀"""
 
@@ -1658,13 +1554,10 @@ class EquipmentTab(QFrame):
             return
 
         slot: _EquipSlotData = self._slots_data[self._active_index]
-        equipment: _EquipItemData = slot.owned[index]
-        equip_equipment(self._profile, slot.slot, equipment.equipment.name)
-        self._slots_data = self._build_slots_data(self._profile)
+        equipment: OwnedEquipment = slot.owned[index]
+        equip_equipment(self._profile, slot.slot, equipment.name)
         self._picker_open = False
-        self._refresh_active_slot()
-        self._render_detail()
-        self._on_changed()
+        self._commit_owned_change()
 
     def unequip(self) -> None:
         """슬롯 장착 해제 후 빈 상태로 복귀"""
@@ -1674,11 +1567,8 @@ class EquipmentTab(QFrame):
 
         slot: _EquipSlotData = self._slots_data[self._active_index]
         unequip_equipment(self._profile, slot.slot)
-        self._slots_data = self._build_slots_data(self._profile)
         self._picker_open = False
-        self._refresh_active_slot()
-        self._render_detail()
-        self._on_changed()
+        self._commit_owned_change()
 
     def add_owned(self) -> None:
         """새 기본 장비를 추가 (선택 화면 유지)"""
@@ -1689,9 +1579,8 @@ class EquipmentTab(QFrame):
         slot: _EquipSlotData = self._slots_data[self._active_index]
         create_equipment(self._profile, self._default_equipment_for_slot(slot.slot))
 
-        self._slots_data = self._build_slots_data(self._profile)
-        self._render_detail()
-        self._on_changed()
+        # 새 장비는 장착되지 않으므로 장착 타일은 그대로다
+        self._commit_owned_change(refresh_active=False)
 
     def remove_owned(self, index: int) -> None:
         """보유 장비 삭제"""
@@ -1700,10 +1589,10 @@ class EquipmentTab(QFrame):
             return
 
         slot: _EquipSlotData = self._slots_data[self._active_index]
-        removed_name: str = slot.owned[index].equipment.name
+        removed_name: str = slot.owned[index].name
         was_equipped: bool = slot.equipped_index == index
         remaining_names: list[str] = [
-            item.equipment.name
+            item.name
             for item_index, item in enumerate(slot.owned)
             if item_index != index
         ]
@@ -1712,17 +1601,13 @@ class EquipmentTab(QFrame):
             next_index: int = min(index, len(remaining_names) - 1)
             equip_equipment(self._profile, slot.slot, remaining_names[next_index])
 
-        self._slots_data = self._build_slots_data(self._profile)
-        self._refresh_active_slot()
-        self._render_detail()
-        self._on_changed()
+        self._commit_owned_change()
 
     def _render_picker(self, slot: _EquipSlotData) -> None:
         """장비 교체 화면 구성 (보유 장비 카드 목록)"""
 
         self._detail_layout.addLayout(self._build_picker_head())
 
-        has_grade: bool = slot.type in _GRADE_TYPES
         list_box = QVBoxLayout()
         list_box.setContentsMargins(0, 4, 0, 0)
         list_box.setSpacing(10)
@@ -1733,7 +1618,7 @@ class EquipmentTab(QFrame):
                 item,
                 index,
                 self,
-                has_grade,
+                _has_grade(equipment_item_spec(item)),
                 index == slot.equipped_index,
             )
             list_box.addWidget(card)
@@ -1781,14 +1666,12 @@ class EquipmentTab(QFrame):
         head.setContentsMargins(0, 0, 0, 12)
         head.setSpacing(12)
 
-        icon: QLabel = QLabel(self)
-        icon.setFixedSize(46, 46)
-        icon.setStyleSheet(_ICON_STYLE_MUTED)
+        icon: QLabel = _make_icon(self, 46, muted=True)
         head.addWidget(icon)
 
         name_box = QVBoxLayout()
         name_box.setSpacing(4)
-        title_label: QLabel = QLabel(slot.type, self)
+        title_label: QLabel = QLabel(EQUIPMENT_SLOT_LABELS[slot.slot], self)
         title_label.setObjectName("charMuted")
         title_label.setFont(CustomFont(15, bold=True))
         sub_label: QLabel = QLabel("장착된 장비가 없습니다", self)
@@ -1814,18 +1697,6 @@ class EquipmentTab(QFrame):
         hint.setWordWrap(True)
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._detail_layout.addWidget(hint)
-
-    def _reforge_slots(self) -> tuple[EquipmentSlot, ...]:
-        """재련 섹션 표시 슬롯 목록"""
-
-        return (
-            EquipmentSlot.HELMET,
-            EquipmentSlot.ARMOR,
-            EquipmentSlot.BELT,
-            EquipmentSlot.SHOES,
-            EquipmentSlot.WEAPON,
-            EquipmentSlot.NECKLACE,
-        )
 
     def _default_equipment_for_slot(self, slot: EquipmentSlot) -> OwnedEquipment:
         """슬롯별 새 장비 기본 모델 생성"""

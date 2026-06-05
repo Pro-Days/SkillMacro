@@ -77,7 +77,6 @@ class LiveStatView:
 class CalculatorInputFill:
     """계산기 입력 페이지 반영값"""
 
-    live_view: LiveStatView
     overall_stats: dict[StatKey, float]
     level: int
     realm_tier: RealmTier
@@ -173,7 +172,7 @@ def _equipment_primary_slot(equipment: OwnedEquipment) -> EquipmentSlot:
     return _equipment_slots(equipment.kind)[0]
 
 
-def _equipment_item_spec(equipment: OwnedEquipment) -> EquipmentItemSpec | None:
+def equipment_item_spec(equipment: OwnedEquipment) -> EquipmentItemSpec | None:
     """장비 입력값 기준 정적 아이템 스펙 조회"""
 
     if equipment.kind in (EquipmentKind.RING, EquipmentKind.EARRING):
@@ -454,7 +453,7 @@ def _validate_equipment(equipment: OwnedEquipment) -> None:
     """장비 입력 상태 검증"""
 
     slot: EquipmentSlot = _equipment_primary_slot(equipment)
-    item_spec: EquipmentItemSpec | None = _equipment_item_spec(equipment)
+    item_spec: EquipmentItemSpec | None = equipment_item_spec(equipment)
     _validate_equipment_item_identity(equipment, item_spec)
 
     if (
@@ -767,7 +766,7 @@ def _add_equipment_base_stats(
     for line in equipment.base_stat_lines:
         _add_stat(accumulated, line.stat_key, line.value)
 
-    item_spec: EquipmentItemSpec | None = _equipment_item_spec(equipment)
+    item_spec: EquipmentItemSpec | None = equipment_item_spec(equipment)
     if item_spec is None:
         return
 
@@ -910,9 +909,8 @@ def build_calculator_input_fill(
 ) -> CalculatorInputFill:
     """캐릭터 상태 기반 계산기 입력 페이지 반영값 생성"""
 
-    # 캐릭터 전체 합산 결과 계산
-    live_view: LiveStatView = compute_live_view(profile)
-    overall_stats: dict[StatKey, float] = live_view.final.values.copy()
+    # 캐릭터 전체 합산 결과에서 최종 스탯 맵 추출
+    overall_stats: dict[StatKey, float] = compute_live_view(profile).final.values.copy()
 
     # 계산기 스탯 분배 입력값 구성
     distribution: DistributionState = DistributionState(
@@ -938,7 +936,6 @@ def build_calculator_input_fill(
     owned_talismans: list[OwnedTalisman] = []
     equipped_state: EquippedState = EquippedState()
     return CalculatorInputFill(
-        live_view=live_view,
         overall_stats=overall_stats,
         level=profile.level,
         realm_tier=profile.realm,

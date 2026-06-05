@@ -2,12 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.scripts.calculator_models import StatKey
-from app.scripts.character_models import (
-    DisplayStandColumn,
-    EquipmentKind,
-    EquipmentSlot,
-)
+from app.scripts.calculator_models import STAT_SPECS, StatKey
+from app.scripts.character_models import DisplayStandColumn, EquipmentSlot
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,28 +38,20 @@ DANJEON_DISTRIBUTION_ITEMS: tuple[tuple[str, str, str], ...] = (
     ("lower", "하단전", "드랍률% +1.5 · 경험치 획득량% +0.5"),
 )
 
-DISPLAY_STAND_COLUMNS: tuple[tuple[DisplayStandColumn, str, str], ...] = (
-    (DisplayStandColumn.HELMET, "투구", "경험치%"),
-    (DisplayStandColumn.ARMOR, "갑옷", "공격력"),
-    (DisplayStandColumn.BELT, "허리띠", "드랍률%"),
-    (DisplayStandColumn.SHOES, "신발", "공격력%"),
-    (DisplayStandColumn.SET, "세트효과", "힘·민·생·행%"),
+DISPLAY_STAND_COLUMNS: tuple[tuple[DisplayStandColumn, str], ...] = (
+    (DisplayStandColumn.HELMET, "투구"),
+    (DisplayStandColumn.ARMOR, "갑옷"),
+    (DisplayStandColumn.BELT, "허리띠"),
+    (DisplayStandColumn.SHOES, "신발"),
+    (DisplayStandColumn.SET, "세트효과"),
 )
 
-DISPLAY_STAND_SUMMARY_LABELS: dict[DisplayStandColumn, str] = {
-    DisplayStandColumn.HELMET: "경험치 획득량%",
-    DisplayStandColumn.ARMOR: "공격력",
-    DisplayStandColumn.BELT: "드랍률%",
-    DisplayStandColumn.SHOES: "공격력%",
-    DisplayStandColumn.SET: "세트효과(힘·민·생·행%)",
+# 스탯 선택 라벨 역조회와 콤보 표시 목록 (칭호·자유 스탯 공용)
+STAT_LABEL_TO_KEY: dict[str, StatKey] = {
+    label: stat_key for stat_key, label in STAT_SPECS.items()
 }
 
-STAT_DISTRIBUTION_KEYS: dict[str, StatKey] = {
-    "strength": StatKey.STR,
-    "dexterity": StatKey.DEXTERITY,
-    "vitality": StatKey.VITALITY,
-    "luck": StatKey.LUCK,
-}
+STAT_CHOICE_LABELS: tuple[str, ...] = ("미설정", *STAT_SPECS.values())
 
 GRADE_COLORS: dict[str, str] = {
     "일반": "#9b9690",
@@ -83,17 +71,6 @@ EQUIPMENT_SLOT_LABELS: dict[EquipmentSlot, str] = {
     EquipmentSlot.RING2: "반지",
     EquipmentSlot.NECKLACE: "목걸이",
     EquipmentSlot.EARRING: "귀걸이",
-}
-
-EQUIPMENT_KIND_LABELS: dict[EquipmentKind, str] = {
-    EquipmentKind.WEAPON: "무기",
-    EquipmentKind.HELMET: "투구",
-    EquipmentKind.ARMOR: "갑옷",
-    EquipmentKind.BELT: "허리띠",
-    EquipmentKind.SHOES: "신발",
-    EquipmentKind.RING: "반지",
-    EquipmentKind.NECKLACE: "목걸이",
-    EquipmentKind.EARRING: "귀걸이",
 }
 
 EQUIPMENT_COL_LEFT: tuple[EquipmentSlot, ...] = (

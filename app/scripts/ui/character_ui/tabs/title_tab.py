@@ -24,6 +24,10 @@ from app.scripts.character_models import (
     TitleStatSlot,
 )
 from app.scripts.custom_classes import CustomFont, StyledButton
+from app.scripts.ui.character_ui.constants import (
+    STAT_CHOICE_LABELS,
+    STAT_LABEL_TO_KEY,
+)
 from app.scripts.ui.character_ui.widgets import (
     CharCard,
     CharComboBox,
@@ -108,7 +112,7 @@ class _TitleItem(QFrame):
 
         combo: CharComboBox = CharComboBox(
             self,
-            ["미설정", *[STAT_SPECS[stat_key] for stat_key in STAT_SPECS]],
+            list(STAT_CHOICE_LABELS),
         )
 
         slot: TitleStatSlot | None = self._title.slots[slot_index]
@@ -138,16 +142,13 @@ class _TitleItem(QFrame):
     def _sync_slots(self) -> None:
         """칭호 스탯 슬롯 모델 반영"""
 
-        label_to_key: dict[str, StatKey] = {
-            label: stat_key for stat_key, label in STAT_SPECS.items()
-        }
         slots: list[TitleStatSlot | None] = []
         for combo, field in zip(self._slot_combos, self._slot_fields):
             if combo.currentIndex() == 0:
                 slots.append(None)
                 continue
 
-            stat_key: StatKey = label_to_key[combo.currentText()]
+            stat_key: StatKey = STAT_LABEL_TO_KEY[combo.currentText()]
             slots.append(TitleStatSlot(stat_key=stat_key, value=field.number()))
 
         self._title.slots = tuple(slots)
