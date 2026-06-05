@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -16,7 +17,12 @@ from app.scripts.calculator_models import STAT_SPECS
 from app.scripts.character_data import ELIXIR_SPECS
 from app.scripts.character_models import MAX_ELIXIR_COUNT, CharacterProfile, Elixir
 from app.scripts.custom_classes import CustomFont
-from app.scripts.ui.character_ui.widgets import CharCard, ColorOrb, FlowLayout, StepperField
+from app.scripts.ui.character_ui.widgets import (
+    CharCard,
+    ColorOrb,
+    FlowLayout,
+    StepperField,
+)
 
 _ELIXIR_COLORS: tuple[str, ...] = (
     "#e8c95a",
@@ -94,6 +100,9 @@ class _ElixirCard(QFrame):
         counter.setSpacing(8)
 
         self._count_field: StepperField = StepperField(self, "0")
+        self._count_field.input.setValidator(
+            QIntValidator(0, MAX_ELIXIR_COUNT, self._count_field.input)
+        )
         self._count_field.value_changed.connect(self._on_count)
 
         max_label: QLabel = QLabel(f"/ {MAX_ELIXIR_COUNT}", self)

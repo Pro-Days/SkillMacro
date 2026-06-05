@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -33,6 +35,10 @@ from app.scripts.ui.character_ui.widgets import (
     StepperField,
 )
 
+_OWNED_TALISMAN_WIDTH: int = 520
+_OWNED_TALISMAN_HEIGHT: int = 58
+_EQUIPPED_TALISMAN_HEIGHT: int = 132
+
 
 class TalismanTab(QFrame):
     """부적 탭"""
@@ -46,6 +52,7 @@ class TalismanTab(QFrame):
         self._specs_by_name: dict[str, TalismanSpec] = {
             spec.name: spec for spec in TALISMAN_SPECS
         }
+        self._equipped_stat_labels: dict[str, QLabel] = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -64,13 +71,20 @@ class TalismanTab(QFrame):
         owned_card: CharCard = CharCard(self, "보유 부적")
         self._owned_container: ResponsiveColumnsBox = ResponsiveColumnsBox(
             self,
-            min_column_width=420,
+            min_column_width=_OWNED_TALISMAN_WIDTH,
             spacing=8,
+            fill=False,
+            center=True,
         )
         self._owned_layout = self._owned_container.flow
         owned_card.add_widget(self._owned_container)
 
-        add_btn: StyledButton = StyledButton(self, "+ 부적 추가", kind="normal", point_size=9)
+        add_btn: StyledButton = StyledButton(
+            self,
+            "+ 부적 추가",
+            kind="normal",
+            point_size=9,
+        )
         add_btn.clicked.connect(self._add_talisman)
         owned_card.add_widget(add_btn)
         layout.addWidget(owned_card)
@@ -79,6 +93,7 @@ class TalismanTab(QFrame):
     def set_profile(self, profile: CharacterProfile | None) -> None:
         """선택 캐릭터 모델 반영"""
 
+        self._equipped_stat_labels = {}
         self._loading = True
         self._profile = profile
         self.setEnabled(profile is not None)
@@ -99,9 +114,10 @@ class TalismanTab(QFrame):
         """장착 슬롯 3개 갱신"""
 
         self._clear_layout(self._slot_layout)
+        self._equipped_stat_labels = {}
         for slot_index in range(MAX_EQUIPPED_TALISMAN_COUNT):
             talisman: CharacterTalisman | None = self._equipped_talisman(slot_index)
-            self._slot_layout.addWidget(self._build_slot(talisman))
+            self._slot_layout.addWidget(self._build_slot(talisman), 1)
 
     def _equipped_talisman(self, slot_index: int) -> CharacterTalisman | None:
         """장착 슬롯의 부적 조회"""
@@ -125,6 +141,11 @@ class TalismanTab(QFrame):
         slot: QFrame = QFrame(self)
         slot.setObjectName("charTalSlot")
         slot.setProperty("filled", talisman is not None)
+        slot.setMinimumHeight(_EQUIPPED_TALISMAN_HEIGHT)
+        slot.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
+        )
         box = QVBoxLayout(slot)
         box.setContentsMargins(14, 14, 14, 14)
         box.setSpacing(8)
@@ -148,7 +169,13 @@ class TalismanTab(QFrame):
         spec: TalismanSpec = self._specs_by_name[talisman.talisman_key]
         name_row = QHBoxLayout()
         name_row.setSpacing(6)
-        name_row.addWidget(GradeBadge(slot, spec.grade.value, GRADE_COLORS[spec.grade.value]))
+        name_row.addWidget(
+            GradeBadge(
+                slot,
+                spec.grade.value,
+                GRADE_COLORS[spec.grade.value],
+            )
+        )
         name_label: QLabel = QLabel(spec.name, slot)
         name_label.setObjectName("charTalName")
         name_label.setFont(CustomFont(10, bold=True))
@@ -157,16 +184,24 @@ class TalismanTab(QFrame):
         box.addLayout(name_row)
 
         stat_label: QLabel = QLabel(
-            f"{STAT_SPECS[spec.stat_key]} +{spec.level_stats[talisman.level]:g}\nLv.{talisman.level}",
+            f"{STAT_SPECS[spec.stat_key]} "
+            f"+{spec.level_stats[talisman.level]:g}\n"
+            f"Lv.{talisman.level}",
             slot,
         )
         stat_label.setObjectName("charTalStat")
         stat_label.setFont(CustomFont(9))
         stat_label.setWordWrap(True)
+        self._equipped_stat_labels[talisman.id] = stat_label
         box.addWidget(stat_label)
         box.addStretch(1)
 
-        unequip_btn: StyledButton = StyledButton(slot, "장착 해제", kind="normal", point_size=9)
+        unequip_btn: StyledButton = StyledButton(
+            slot,
+            "장착 해제",
+            kind="normal",
+            point_size=9,
+        )
         unequip_btn.clicked.connect(lambda: self._unequip(talisman))
         box.addWidget(unequip_btn)
         return slot
@@ -176,23 +211,32 @@ class TalismanTab(QFrame):
 
         self._clear_layout(self._owned_layout)
         if self._profile is None:
+            self._owned_container.sync_height()
             return
 
         for talisman in self._profile.talismans:
             self._owned_layout.addWidget(self._build_owned_row(talisman))
+
+        self._owned_container.sync_height()
 
     def _build_owned_row(self, talisman: CharacterTalisman) -> QFrame:
         """보유 부적 1행"""
 
         row: QFrame = QFrame(self)
         row.setObjectName("charTalCard")
+        row.setFixedSize(_OWNED_TALISMAN_WIDTH, _OWNED_TALISMAN_HEIGHT)
         layout = QHBoxLayout(row)
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(12)
 
         spec: TalismanSpec = self._specs_by_name[talisman.talisman_key]
         layout.addWidget(
-            GradeBadge(row, spec.grade.value, GRADE_COLORS[spec.grade.value], dot=True)
+            GradeBadge(
+                row,
+                spec.grade.value,
+                GRADE_COLORS[spec.grade.value],
+                dot=True,
+            )
         )
 
         combo: CharComboBox = CharComboBox(row, [spec.name for spec in TALISMAN_SPECS])
@@ -210,9 +254,28 @@ class TalismanTab(QFrame):
         stat_label.setMinimumWidth(0)
         layout.addWidget(stat_label, 1)
 
-        level_field: StepperField = StepperField(row, str(talisman.level), unit="Lv", max_width=92)
+        level_field: StepperField = StepperField(
+            row,
+            str(talisman.level),
+            unit="Lv",
+            max_width=92,
+        )
+        level_field.input.setValidator(
+            QIntValidator(0, MAX_TALISMAN_LEVEL, level_field.input)
+        )
         level_field.value_changed.connect(
-            lambda field=level_field, target=talisman: self._on_level(field, target)
+            lambda field=level_field, target=talisman, label=stat_label: self._on_level(
+                field,
+                target,
+                label,
+            )
+        )
+        level_field.input.editingFinished.connect(
+            lambda field=level_field, target=talisman, label=stat_label: self._finish_level(
+                field,
+                target,
+                label,
+            )
         )
         layout.addWidget(level_field)
 
@@ -221,7 +284,10 @@ class TalismanTab(QFrame):
         max_label.setFont(CustomFont(9))
         layout.addWidget(max_label)
 
-        equipped: bool = self._profile is not None and talisman.id in self._profile.equipped.talisman_ids
+        equipped: bool = (
+            self._profile is not None
+            and talisman.id in self._profile.equipped.talisman_ids
+        )
         equip_btn: StyledButton = StyledButton(
             row,
             "장착중" if equipped else "장착",
@@ -266,16 +332,53 @@ class TalismanTab(QFrame):
         self._render_owned()
         self._on_changed()
 
-    def _on_level(self, field: StepperField, talisman: CharacterTalisman) -> None:
+    def _on_level(
+        self,
+        field: StepperField,
+        talisman: CharacterTalisman,
+        stat_label: QLabel,
+    ) -> None:
         """레벨 변경 시 모델 반영"""
 
         if self._loading:
             return
 
         talisman.level = max(0, min(MAX_TALISMAN_LEVEL, int(field.number())))
-        self._render_slots()
-        self._render_owned()
+        self._refresh_talisman_stat_labels(talisman, stat_label)
         self._on_changed()
+
+    def _finish_level(
+        self,
+        field: StepperField,
+        talisman: CharacterTalisman,
+        stat_label: QLabel,
+    ) -> None:
+        """레벨 입력 종료 시 표시값 정규화"""
+
+        field.set_number(float(talisman.level))
+        self._refresh_talisman_stat_labels(talisman, stat_label)
+
+    def _refresh_talisman_stat_labels(
+        self,
+        talisman: CharacterTalisman,
+        owned_stat_label: QLabel,
+    ) -> None:
+        """부적 레벨 표시 라벨 갱신"""
+
+        owned_stat_label.setText(self._owned_stat_text(talisman))
+
+        equipped_stat_label: QLabel | None = self._equipped_stat_labels.get(
+            talisman.id
+        )
+        if equipped_stat_label is None:
+            return
+
+        spec: TalismanSpec = self._specs_by_name[talisman.talisman_key]
+        equipped_stat_label.setText(
+            f"{STAT_SPECS[spec.stat_key]} "
+            f"+{spec.level_stats[talisman.level]:g}\n"
+            f"Lv.{talisman.level}"
+        )
 
     def _toggle_equip(self, talisman: CharacterTalisman) -> None:
         """장착/해제 토글"""

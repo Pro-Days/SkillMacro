@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFrame,
@@ -32,6 +33,9 @@ from app.scripts.ui.character_ui.widgets import (
     StepperField,
 )
 
+_TITLE_ITEM_WIDTH: int = 360
+_TITLE_ITEM_HEIGHT: int = 210
+
 
 class _TitleItem(QFrame):
     """칭호 1개 입력 카드"""
@@ -50,6 +54,7 @@ class _TitleItem(QFrame):
 
         self.setObjectName("charTitleItem")
         self.setProperty("equipped", equipped)
+        self.setFixedSize(_TITLE_ITEM_WIDTH, _TITLE_ITEM_HEIGHT)
 
         self._title: CharacterTitle = title
         self._on_changed: Callable[[], None] = on_changed
@@ -196,6 +201,7 @@ class TitleTab(QFrame):
         realm_card.add_widget(level_label)
 
         self._level_field: StepperField = StepperField(self, "0", unit="Lv", max_width=100)
+        self._level_field.input.setValidator(QIntValidator(0, 1_000_000, self))
         self._level_field.value_changed.connect(self._on_level_changed)
         realm_card.add_widget(self._level_field)
 
@@ -215,8 +221,10 @@ class TitleTab(QFrame):
 
         self._titles_container: ResponsiveColumnsBox = ResponsiveColumnsBox(
             self,
-            min_column_width=320,
+            min_column_width=_TITLE_ITEM_WIDTH,
             spacing=12,
+            fill=False,
+            center=True,
         )
         self._title_card.add_widget(self._titles_container)
 
@@ -298,6 +306,7 @@ class TitleTab(QFrame):
 
         self._title_items = []
         if self._profile is None:
+            self._titles_container.sync_height()
             return
 
         for title in self._profile.titles:
@@ -312,6 +321,8 @@ class TitleTab(QFrame):
             )
             self._title_items.append(item)
             self._titles_container.addWidget(item)
+
+        self._titles_container.sync_height()
 
     def _notify_changed(self) -> None:
         """외부 변경 콜백 호출"""

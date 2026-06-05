@@ -69,8 +69,8 @@ GRADE_COLORS: dict[str, str] = {
     "일반": "#9b9690",
     "고급": "#2a9d99",
     "희귀": "#0075de",
-    "영웅": "#7b3ff2",
-    "전설": "#dd5b00",
+    "영웅": "#dd5b00",
+    "전설": "#7b3ff2",
 }
 
 EQUIPMENT_SLOT_LABELS: dict[EquipmentSlot, str] = {

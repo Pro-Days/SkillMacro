@@ -60,7 +60,6 @@ from app.scripts.character_models import (
     StatDistribution,
 )
 
-
 CHARACTER_BASE_HP: float = 50.0
 CHARACTER_HP_PER_LEVEL: float = 5.0
 
@@ -137,7 +136,10 @@ def _validate_non_negative_float(value: float, field_name: str) -> None:
 def _validate_option_value(option_spec: OptionSpec, value: float) -> None:
     """옵션 수치 범위 검증"""
 
-    if value < option_spec.value_range.minimum or value > option_spec.value_range.maximum:
+    if (
+        value < option_spec.value_range.minimum
+        or value > option_spec.value_range.maximum
+    ):
         raise ValueError(
             f"option value must be between {option_spec.value_range.minimum} and "
             f"{option_spec.value_range.maximum}"
@@ -220,9 +222,7 @@ def _validate_distribution(profile: CharacterProfile) -> None:
         raise ValueError("stat distribution exceeds level point cap")
 
     danjeon_total: int = (
-        profile.danjeon.upper
-        + profile.danjeon.middle
-        + profile.danjeon.lower
+        profile.danjeon.upper + profile.danjeon.middle + profile.danjeon.lower
     )
     for value in (
         profile.danjeon.upper,
@@ -457,7 +457,10 @@ def _validate_equipment(equipment: OwnedEquipment) -> None:
     item_spec: EquipmentItemSpec | None = _equipment_item_spec(equipment)
     _validate_equipment_item_identity(equipment, item_spec)
 
-    if equipment.kind not in (EquipmentKind.RING, EquipmentKind.EARRING) and equipment.base_stat_lines:
+    if (
+        equipment.kind not in (EquipmentKind.RING, EquipmentKind.EARRING)
+        and equipment.base_stat_lines
+    ):
         raise ValueError("base stat lines are allowed only for ring or earring")
 
     for line in equipment.base_stat_lines:
@@ -961,39 +964,57 @@ def optimize_danjeon(profile: CharacterProfile) -> DanjeonDistribution:
 
 
 def optimize_stat_distribution(profile: CharacterProfile) -> StatDistribution:
-    """공식 전투력 기준 스탯 분배 최적화"""
+    """자동 최적화 전용 데미지 기준 스탯 분배 최적화"""
 
     validate_character_profile(profile)
 
+    # 힘 우선 초기 후보 구성
     total_points: int = profile.level * 5
-    strength_candidate: StatDistribution = StatDistribution(
+    best_distribution: StatDistribution = StatDistribution(
         strength=total_points,
         dexterity=0,
         vitality=0,
         luck=0,
     )
-    dexterity_candidate: StatDistribution = StatDistribution(
-        strength=0,
-        dexterity=total_points,
-        vitality=0,
-        luck=0,
-    )
-
-    strength_profile: CharacterProfile = replace(
+    best_profile: CharacterProfile = replace(
         profile,
-        distribution=strength_candidate,
+        distribution=best_distribution,
     )
-    dexterity_profile: CharacterProfile = replace(
-        profile,
-        distribution=dexterity_candidate,
+    best_final_stats: FinalStats = compute_live_view(best_profile).final
+    best_damage_score: float = best_final_stats.values[StatKey.ATTACK] * (
+        1.0
+        + best_final_stats.values[StatKey.CRIT_RATE_PERCENT]
+        * (best_final_stats.values[StatKey.CRIT_DAMAGE_PERCENT] - 100.0)
+        / 10000.0
     )
 
-    strength_power: float = compute_live_view(strength_profile).official_power
-    dexterity_power: float = compute_live_view(dexterity_profile).official_power
-    if strength_power >= dexterity_power:
-        return strength_candidate
+    # 힘과 민첩의 전체 배분 조합 평가
+    for strength in range(total_points - 1, -1, -1):
+        dexterity: int = total_points - strength
+        candidate: StatDistribution = StatDistribution(
+            strength=strength,
+            dexterity=dexterity,
+            vitality=0,
+            luck=0,
+        )
+        candidate_profile: CharacterProfile = replace(
+            profile,
+            distribution=candidate,
+        )
+        candidate_final_stats: FinalStats = compute_live_view(candidate_profile).final
+        damage_score: float = candidate_final_stats.values[StatKey.ATTACK] * (
+            1.0
+            + candidate_final_stats.values[StatKey.CRIT_RATE_PERCENT]
+            * (candidate_final_stats.values[StatKey.CRIT_DAMAGE_PERCENT] - 100.0)
+            / 10000.0
+        )
 
-    return dexterity_candidate
+        # 더 높은 데미지 후보 반영
+        if damage_score > best_damage_score:
+            best_distribution = candidate
+            best_damage_score = damage_score
+
+    return best_distribution
 
 
 def clone_character_profile(profile: CharacterProfile) -> CharacterProfile:
@@ -1050,7 +1071,6 @@ def _regenerate_character_ids(profile: CharacterProfile) -> CharacterProfile:
         cloned.equipped.title_id = title_id_map[cloned.equipped.title_id]
 
     cloned.equipped.talisman_ids = [
-        talisman_id_map[talisman_id]
-        for talisman_id in cloned.equipped.talisman_ids
+        talisman_id_map[talisman_id] for talisman_id in cloned.equipped.talisman_ids
     ]
     return cloned

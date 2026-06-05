@@ -9,7 +9,13 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from PySide6.QtCore import QMargins, QPoint, QRect, QSize, Qt, Signal
-from PySide6.QtGui import QDoubleValidator, QWheelEvent
+from PySide6.QtGui import (
+    QDoubleValidator,
+    QFocusEvent,
+    QIntValidator,
+    QValidator,
+    QWheelEvent,
+)
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -47,6 +53,59 @@ class CharComboBox(QComboBox):
         event.ignore()
 
 
+class NormalizingLineEdit(QLineEdit):
+    """validator 기준 편집 종료 정규화 입력칸"""
+
+    def __init__(
+        self,
+        text: str = "",
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(text, parent)
+
+        self.editingFinished.connect(self.normalize_to_validator)
+
+    def normalize_to_validator(self) -> None:
+        """입력 종료 시 validator 범위로 표시값 정리"""
+
+        validator: QValidator | None = self.validator()
+        if isinstance(validator, QIntValidator):
+            value: int = int(self._number())
+            value = min(max(value, validator.bottom()), validator.top())
+            self.setText(str(value))
+            return
+
+        if isinstance(validator, QDoubleValidator):
+            value: float = self._number()
+            value = min(max(value, validator.bottom()), validator.top())
+            decimals: int = validator.decimals()
+            if decimals >= 0:
+                value = round(value, decimals)
+
+            self.setText(self._format_number(value))
+
+    def _number(self) -> float:
+        """현재 텍스트 숫자 변환"""
+
+        text: str = self.text().replace(",", "").strip()
+        try:
+            return float(text)
+
+        except ValueError:
+            return 0.0
+
+    def _format_number(self, value: float) -> str:
+        """정수값은 정수 형태로 표시"""
+
+        return str(int(value)) if value == int(value) else str(value)
+
+    def focusOutEvent(self, event: QFocusEvent) -> None:  # type: ignore[override]
+        """포커스 이탈 시 validator 상태와 무관하게 표시값 정리"""
+
+        self.normalize_to_validator()
+        super().focusOutEvent(event)
+
+
 class StepperField(QFrame):
     """값 [단위] 형태의 수치 입력 필드 (목업 .kv .field)"""
 
@@ -77,7 +136,7 @@ class StepperField(QFrame):
             layout.addWidget(left_spacer)
 
         # 수치 입력
-        self.input: QLineEdit = QLineEdit(value, self)
+        self.input: NormalizingLineEdit = NormalizingLineEdit(value, self)
         self.input.setObjectName("charKVInput")
         self.input.setFont(CustomFont(11))
         self.input.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -515,6 +574,7 @@ class ResponsiveColumns(QLayout):
         spacing: int = 16,
         max_columns: int = 0,
         fill: bool = True,
+        center: bool = False,
     ) -> None:
         super().__init__(parent)
 
@@ -525,8 +585,9 @@ class ResponsiveColumns(QLayout):
         self._items: list[QLayoutItem] = []
         self._min_column_width: int = min_column_width
         self._max_columns: int = max_columns
-        # fill=True 면 한 줄 블록이 남는 폭을 나눠 채우고, False 면 최소 폭으로 좌측 정렬
+        # 행 내부 블록의 폭 채움 여부와 남는 폭의 중앙 정렬 여부
         self._fill: bool = fill
+        self._center: bool = center
 
     def __del__(self) -> None:
         while self._items:
@@ -657,12 +718,16 @@ class ResponsiveColumns(QLayout):
                 row_height = max(row_height, self._item_height(item, width))
 
             if not test_only:
-                x: int = effective.x()
+                row_width: int = sum(widths) + spacing * (len(widths) - 1)
+                if self._center:
+                    x: int = effective.x() + max(0, (available - row_width) // 2)
+                else:
+                    x = effective.x()
                 for item, width in zip(row, widths):
                     item.setGeometry(
                         QRect(
                             QPoint(x, y),
-                            QSize(width, self._item_height(item, width)),
+                            QSize(width, row_height),
                         )
                     )
                     x += width + spacing
@@ -687,11 +752,12 @@ class ResponsiveColumnsBox(QFrame):
         spacing: int = 16,
         max_columns: int = 0,
         fill: bool = True,
+        center: bool = False,
     ) -> None:
         super().__init__(parent)
 
         self._flow: ResponsiveColumns = ResponsiveColumns(
-            self, min_column_width, spacing, max_columns, fill
+            self, min_column_width, spacing, max_columns, fill, center
         )
 
     @property
@@ -704,7 +770,19 @@ class ResponsiveColumnsBox(QFrame):
         """블록 추가"""
 
         self._flow.addWidget(widget)
+        self.sync_height()
+
+    def sync_height(self) -> None:
+        """현재 폭 기준 컨테이너 높이 갱신"""
+
+        width: int = self.width()
+        if width <= 0:
+            self.updateGeometry()
+            return
+
+        self.setMinimumHeight(self._flow.heightForWidth(width))
+        self.updateGeometry()
 
     def resizeEvent(self, event) -> None:  # type: ignore[override]
         super().resizeEvent(event)
-        self.setMinimumHeight(self._flow.heightForWidth(self.width()))
+        self.sync_height()

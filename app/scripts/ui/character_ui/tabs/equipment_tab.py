@@ -69,6 +69,7 @@ from app.scripts.ui.character_ui.constants import EQUIPMENT_SLOT_LABELS
 from app.scripts.ui.character_ui.widgets import (
     CharComboBox,
     FlowLayout,
+    NormalizingLineEdit,
     ResponsiveColumnsBox,
     StaticValueField,
     StepperField,
@@ -826,11 +827,15 @@ class EquipmentTab(QFrame):
 
         if self._picker_open:
             self._render_picker(slot)
+            self._detail_content.updateGeometry()
+            self.updateGeometry()
             return
 
         item = slot.equipped()
         if item is None:
             self._render_empty(slot)
+            self._detail_content.updateGeometry()
+            self.updateGeometry()
             return
 
         has_grade: bool = slot.type in _GRADE_TYPES
@@ -876,7 +881,8 @@ class EquipmentTab(QFrame):
             )
             self._detail_layout.addWidget(option_group)
 
-        self._detail_layout.addStretch(1)
+        self._detail_content.updateGeometry()
+        self.updateGeometry()
 
     def _build_detail_head(
         self,
@@ -1370,7 +1376,10 @@ class EquipmentTab(QFrame):
                         tier,
                         0,
                     )
-                    cell: QLineEdit = QLineEdit(str(count), table)
+                    cell: NormalizingLineEdit = NormalizingLineEdit(
+                        str(count),
+                        table,
+                    )
                     cell.setObjectName("charMiniNum")
                     cell.setFont(CustomFont(9))
                     cell.setFixedWidth(30)
@@ -1729,7 +1738,6 @@ class EquipmentTab(QFrame):
             )
             list_box.addWidget(card)
         self._detail_layout.addLayout(list_box)
-        self._detail_layout.addStretch(1)
 
     def _build_picker_head(self) -> QHBoxLayout:
         """장비 교체 화면 헤더 (뒤로 + 제목 + 새 장비/해제)"""
@@ -1806,7 +1814,6 @@ class EquipmentTab(QFrame):
         hint.setWordWrap(True)
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._detail_layout.addWidget(hint)
-        self._detail_layout.addStretch(1)
 
     def _reforge_slots(self) -> tuple[EquipmentSlot, ...]:
         """재련 섹션 표시 슬롯 목록"""

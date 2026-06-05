@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -248,6 +249,7 @@ class DistributionTab(QFrame):
         box.addWidget(name_label)
 
         field: StepperField = StepperField(card, "0")
+        field.input.setValidator(QIntValidator(0, 1_000_000, field.input))
         field.value_changed.connect(lambda target_key=key: on_changed(target_key))
         field.setFixedWidth(_ITEM_FIELD_WIDTH)
         field_store[key] = field

@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QClipboard
 from PySide6.QtWidgets import (
+    QApplication,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -13,9 +15,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.scripts.calculator_models import OVERALL_STAT_GRID_ROWS, STAT_SPECS, StatKey
+from app.scripts.calculator_models import (
+    OVERALL_STAT_GRID_ROWS,
+    OVERALL_STAT_ORDER,
+    STAT_SPECS,
+    StatKey,
+)
 from app.scripts.character_engine import LiveStatView
-from app.scripts.custom_classes import CustomFont
+from app.scripts.custom_classes import CustomFont, StyledButton
 
 
 class LiveStatsPanel(QFrame):
@@ -25,6 +32,7 @@ class LiveStatsPanel(QFrame):
         super().__init__(parent)
 
         self.setObjectName("charPanel")
+        self._current_live_view: LiveStatView | None = None
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -82,6 +90,22 @@ class LiveStatsPanel(QFrame):
                 grid.addWidget(self._build_cell(stat_key), row_index, col_index)
 
         layout.addLayout(grid)
+
+        button_row = QHBoxLayout()
+        button_row.setContentsMargins(0, 14, 0, 0)
+        button_row.addStretch(1)
+
+        self._copy_button: StyledButton = StyledButton(
+            self,
+            "전체 스탯 복사",
+            kind="normal",
+            point_size=9,
+        )
+        self._copy_button.setEnabled(False)
+        self._copy_button.clicked.connect(self._copy_stats_to_clipboard)
+        button_row.addWidget(self._copy_button)
+        layout.addLayout(button_row)
+
         layout.addStretch(1)
 
     def _build_cell(self, stat_key: StatKey | None) -> QWidget:
@@ -119,18 +143,45 @@ class LiveStatsPanel(QFrame):
     def set_live_view(self, live_view: LiveStatView | None) -> None:
         """실시간 계산 결과 표시"""
 
+        self._current_live_view = live_view
+
         # 선택 캐릭터가 없는 경우 빈 값 표시
         if live_view is None:
             self._power_value.setText("-")
             for value_label in self._value_labels.values():
                 value_label.setText("0")
 
+            self._copy_button.setEnabled(False)
             return
 
         # 공식 전투력 표시
         self._power_value.setText(f"{live_view.official_power:,.0f}")
+        self._copy_button.setEnabled(True)
 
         # 최종 스탯 표시
         for stat_key, value_label in self._value_labels.items():
             value: float = live_view.final.values[stat_key]
             value_label.setText(f"{value:g}")
+
+    def _copy_stats_to_clipboard(self) -> None:
+        """현재 전체 스탯 클립보드 복사"""
+
+        if self._current_live_view is None:
+            return
+
+        lines: list[str] = []
+        for stat_key in OVERALL_STAT_ORDER:
+            label: str = STAT_SPECS[stat_key]
+            value: float = self._current_live_view.final.values[stat_key]
+            value_text: str = f"{value:.2f}".rstrip("0").rstrip(".")
+            lines.append(f"{label}\t{value_text}")
+
+        clipboard: QClipboard = QApplication.clipboard()
+        if clipboard is not None:
+            clipboard.setText("\n".join(lines))
+
+        self._copy_button.setText("복사됨!")
+        QTimer.singleShot(
+            1500,
+            lambda: self._copy_button.setText("전체 스탯 복사"),
+        )

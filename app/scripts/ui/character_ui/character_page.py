@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QSize, Qt, QTimer
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -70,28 +70,12 @@ class _TabStack(QWidget):
             page.setVisible(page_index == index)
 
         self._current = index
+        self.updateGeometry()
 
     def currentWidget(self) -> QWidget | None:
         """현재 탭 위젯"""
 
         return self._pages[self._current] if self._pages else None
-
-    def minimumSizeHint(self) -> QSize:  # type: ignore[override]
-        return QSize(0, 0)
-
-
-class _BodyContent(QWidget):
-    """본문 스크롤 콘텐츠"""
-
-    def __init__(self, on_resize: Callable[[], None]) -> None:
-        super().__init__()
-        self._on_resize: Callable[[], None] = on_resize
-
-    def resizeEvent(self, event) -> None:  # type: ignore[override]
-        """폭 변경 시 현재 탭 높이 재계산"""
-
-        super().resizeEvent(event)
-        self._on_resize()
 
 
 class CharacterPage(QFrame):
@@ -238,8 +222,9 @@ class CharacterPage(QFrame):
         scroll.setWidgetResizable(True)
         wrapper_layout.addWidget(scroll)
 
-        self._body_content: _BodyContent = _BodyContent(self._sync_body_height)
+        self._body_content: QWidget = QWidget()
         self._body_content.setObjectName("charBodyContent")
+        self._body_content.setMinimumWidth(0)
         self._body_margin: int = 16
         content_layout = QVBoxLayout(self._body_content)
         content_layout.setContentsMargins(
@@ -251,8 +236,12 @@ class CharacterPage(QFrame):
         content_layout.setSpacing(0)
 
         self._stack: _TabStack = _TabStack(self._body_content)
+        self._stack.setMinimumWidth(0)
+        self._stack.setSizePolicy(
+            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Preferred,
+        )
         content_layout.addWidget(self._stack)
-        content_layout.addStretch(1)
         scroll.setWidget(self._body_content)
 
         self._profile_tabs: list[QWidget] = [
@@ -294,8 +283,6 @@ class CharacterPage(QFrame):
         for page in self._profile_tabs:
             if hasattr(page, "set_profile"):
                 page.set_profile(profile)
-
-        self._sync_body_height()
 
     def _selected_profile(self) -> CharacterProfile | None:
         """현재 선택 캐릭터 조회"""
@@ -455,30 +442,8 @@ class CharacterPage(QFrame):
         """탭 전환"""
 
         self._stack.setCurrentIndex(index)
-        self._sync_body_height()
         for tab_index, pill in enumerate(self._tabs):
             pill.setChecked(tab_index == index)
-
-    def _sync_body_height(self) -> None:
-        """현재 탭 실제 배치 높이로 본문 최소 높이 갱신"""
-
-        page: QWidget | None = self._stack.currentWidget()
-        if page is None:
-            return
-
-        margins: int = self._body_margin * 2
-        inner_width: int = self._body_content.width() - margins
-        if inner_width <= 0:
-            return
-
-        page_layout = page.layout()
-        if page_layout is not None and page_layout.hasHeightForWidth():
-            height: int = page_layout.heightForWidth(inner_width)
-
-        else:
-            height = page.sizeHint().height()
-
-        self._body_content.setMinimumHeight(height + margins)
 
     def _toggle_panel(self, side: str) -> None:
         """좌/우 패널 접기·펼치기 애니메이션"""

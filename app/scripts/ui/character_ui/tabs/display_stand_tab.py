@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt
 from PySide6.QtGui import QDoubleValidator
 from PySide6.QtWidgets import (
     QAbstractButton,
@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QStyleOptionViewItem,
     QStyledItemDelegate,
     QTableWidget,
     QTableWidgetItem,
@@ -32,17 +33,37 @@ from app.scripts.ui.character_ui.constants import (
     DISPLAY_STAND_COLUMNS,
     DISPLAY_STAND_SUMMARY_LABELS,
 )
-from app.scripts.ui.character_ui.widgets import CharCard, FlowLayout
+from app.scripts.ui.character_ui.widgets import (
+    CharCard,
+    FlowLayout,
+    NormalizingLineEdit,
+)
 
 
 class _NumericDelegate(QStyledItemDelegate):
     """셀 편집 시 숫자만 허용하는 델리게이트"""
 
-    def createEditor(self, parent, option, index):  # type: ignore[override]
-        editor: QLineEdit = QLineEdit(parent)
+    def createEditor(  # type: ignore[override]
+        self,
+        parent: QWidget,
+        _option: QStyleOptionViewItem,
+        _index: QModelIndex,
+    ) -> NormalizingLineEdit:
+        editor: NormalizingLineEdit = NormalizingLineEdit(parent=parent)
         editor.setValidator(QDoubleValidator(0.0, 1_000_000.0, 1, editor))
         editor.setAlignment(Qt.AlignmentFlag.AlignCenter)
         return editor
+
+    def setModelData(  # type: ignore[override]
+        self,
+        editor: NormalizingLineEdit,
+        model: QAbstractItemModel,
+        index: QModelIndex,
+    ) -> None:
+        """편집 종료 시 셀 값 정규화"""
+
+        editor.normalize_to_validator()
+        model.setData(index, editor.text())
 
 
 class DisplayStandTab(QFrame):
@@ -112,7 +133,7 @@ class DisplayStandTab(QFrame):
         self._selection_label.setFont(CustomFont(9))
         toolbar.addWidget(self._selection_label)
 
-        self._value_input: QLineEdit = QLineEdit("0", self)
+        self._value_input: NormalizingLineEdit = NormalizingLineEdit("0", self)
         self._value_input.setObjectName("charMiniNum")
         self._value_input.setFont(CustomFont(10))
         self._value_input.setFixedWidth(64)
@@ -231,6 +252,7 @@ class DisplayStandTab(QFrame):
     def _apply_to_selection(self) -> None:
         """선택된 셀에 값 일괄 적용"""
 
+        self._value_input.normalize_to_validator()
         value_text: str = self._format(self._parse(self._value_input.text()))
         for item in self._table.selectedItems():
             item.setText(value_text)
