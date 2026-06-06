@@ -1111,28 +1111,31 @@ def deserialize_character_profile(payload: str) -> CharacterProfile:
 def _regenerate_character_ids(profile: CharacterProfile) -> CharacterProfile:
     """복제 캐릭터의 내부 식별자 재발급"""
 
+    # 저장 구조 왕복을 통한 독립 복제본 구성
     cloned: CharacterProfile = CharacterProfile.from_dict(profile.to_dict())
 
+    # 칭호 식별자 재발급 및 장착 참조 매핑 준비
     title_id_map: dict[str, str] = {}
     for title in cloned.titles:
         old_id: str = title.id
         title.id = _new_id()
         title_id_map[old_id] = title.id
 
+    # 부적 식별자 재발급 및 장착 참조 매핑 준비
     talisman_id_map: dict[str, str] = {}
     for talisman in cloned.talismans:
-        old_id = talisman.id
+        old_id: str = talisman.id
         talisman.id = _new_id()
         talisman_id_map[old_id] = talisman.id
 
-    old_profile_id: str = cloned.id
+    # 프로필 식별자 재발급
     cloned.id = _new_id()
-    if cloned.id == old_profile_id:
-        raise ValueError("failed to regenerate character id")
 
+    # 장착 칭호 참조를 재발급된 식별자로 교체
     if cloned.equipped.title_id is not None:
         cloned.equipped.title_id = title_id_map[cloned.equipped.title_id]
 
+    # 장착 부적 참조를 재발급된 식별자로 교체
     cloned.equipped.talisman_ids = [
         talisman_id_map[talisman_id] for talisman_id in cloned.equipped.talisman_ids
     ]

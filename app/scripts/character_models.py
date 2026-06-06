@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, TypeVar
+from typing import Any
 from uuid import uuid4
 
 from app.scripts.calculator_models import RealmTier, StatKey
@@ -220,21 +219,19 @@ def _read_list(data: dict[str, Any], key: str) -> list[Any]:
     return value
 
 
-_OptionT = TypeVar("_OptionT")
-
-
-def _read_fixed_optional(
+def _read_fixed_optional_items(
     raw_items: list[Any],
     count: int,
-    factory: Callable[[dict[str, Any]], _OptionT],
     label: str,
-) -> tuple[_OptionT | None, ...]:
-    """고정 길이 옵션 슬롯 복원 (None 허용)"""
+) -> tuple[dict[str, Any] | None, ...]:
+    """고정 길이 선택 슬롯 저장값 검증"""
 
+    # 저장 슬롯 개수 불변식 검증
     if len(raw_items) != count:
         raise ValueError(f"{label} must have exactly {count} items")
 
-    items: list[_OptionT | None] = []
+    # 선택 슬롯 원소 타입 검증
+    items: list[dict[str, Any] | None] = []
     for raw_item in raw_items:
         if raw_item is None:
             items.append(None)
@@ -243,7 +240,7 @@ def _read_fixed_optional(
         if not isinstance(raw_item, dict):
             raise TypeError(f"{label} item must be a dict or null")
 
-        items.append(factory(raw_item))
+        items.append(raw_item)
 
     return tuple(items)
 
@@ -362,16 +359,24 @@ class CharacterTitle:
     def from_dict(cls, data: dict[str, Any]) -> "CharacterTitle":
         """저장 데이터로부터 보유 칭호 복원"""
 
+        # 칭호 스탯 슬롯 저장 구조 검증
         raw_slots: list[Any] = _read_list(data, "slots")
+        slot_items: tuple[dict[str, Any] | None, ...] = _read_fixed_optional_items(
+            raw_slots,
+            TITLE_STAT_SLOT_COUNT,
+            "title stat slots",
+        )
+
+        # 칭호 스탯 슬롯 모델 복원
+        slots: tuple[TitleStatSlot | None, ...] = tuple(
+            None if item is None else TitleStatSlot.from_dict(item)
+            for item in slot_items
+        )
+
         return cls(
             id=str(data["id"]),
             name=str(data["name"]),
-            slots=_read_fixed_optional(
-                raw_slots,
-                TITLE_STAT_SLOT_COUNT,
-                TitleStatSlot.from_dict,
-                "title stat slots",
-            ),
+            slots=slots,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -587,6 +592,28 @@ class OwnedEquipment:
 
             scrolls.append(EquipmentScrollLine.from_dict(raw_scroll))
 
+        # 장비 옵션 슬롯 저장 구조 검증
+        potential_items: tuple[dict[str, Any] | None, ...] = _read_fixed_optional_items(
+            _read_list(data, "potentials"),
+            EQUIPMENT_OPTION_SLOT_COUNT,
+            "potential lines",
+        )
+        additional_items: tuple[dict[str, Any] | None, ...] = _read_fixed_optional_items(
+            _read_list(data, "additionals"),
+            EQUIPMENT_OPTION_SLOT_COUNT,
+            "additional lines",
+        )
+
+        # 장비 옵션 슬롯 모델 복원
+        potentials: tuple[PotentialLine | None, ...] = tuple(
+            None if item is None else PotentialLine.from_dict(item)
+            for item in potential_items
+        )
+        additionals: tuple[AdditionalLine | None, ...] = tuple(
+            None if item is None else AdditionalLine.from_dict(item)
+            for item in additional_items
+        )
+
         return cls(
             name=str(data["name"]),
             kind=EquipmentKind(str(data["kind"])),
@@ -601,18 +628,8 @@ class OwnedEquipment:
             reforge_step=int(data["reforge_step"]),
             reforge_stats=_stat_float_map_from_dict(_read_dict(data, "reforge_stats")),
             scrolls=scrolls,
-            potentials=_read_fixed_optional(
-                _read_list(data, "potentials"),
-                EQUIPMENT_OPTION_SLOT_COUNT,
-                PotentialLine.from_dict,
-                "potential lines",
-            ),
-            additionals=_read_fixed_optional(
-                _read_list(data, "additionals"),
-                EQUIPMENT_OPTION_SLOT_COUNT,
-                AdditionalLine.from_dict,
-                "additional lines",
-            ),
+            potentials=potentials,
+            additionals=additionals,
         )
 
     def to_dict(self) -> dict[str, Any]:

@@ -9,7 +9,7 @@ from app.scripts.character_models import CharacterProfile
 class CharacterEditSession(QObject):
     """선택 캐릭터 편집에 따른 화면 간 변경 전파"""
 
-    profile_bound = Signal(object)
+    profile_bound = Signal(CharacterProfile)
     name_changed = Signal()
     progression_changed = Signal()
     live_stats_invalidated = Signal()

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt
+from PySide6.QtCore import QAbstractItemModel, QModelIndex, QSignalBlocker, Qt
 from PySide6.QtGui import QDoubleValidator
 from PySide6.QtWidgets import (
     QAbstractButton,
@@ -116,15 +116,22 @@ class DisplayStandTab(CharacterTab):
         self._profile = profile
         self.setEnabled(profile is not None)
 
-        for row_index, spec in enumerate(DISPLAY_STAND_SPECS):
-            for col_index, column in enumerate(self._column_keys):
-                item: QTableWidgetItem = self._table.item(row_index, col_index)
-                value: float = 0.0
-                if profile is not None and spec.stand in profile.display_stand.entries:
-                    entry: DisplayStandEntry = profile.display_stand.entries[spec.stand]
-                    value = entry.values[column] if column in entry.values else 0.0
+        # 프로필 반영 중 셀 변경 신호 재진입 차단
+        with QSignalBlocker(self._table):
+            for row_index, spec in enumerate(DISPLAY_STAND_SPECS):
+                for col_index, column in enumerate(self._column_keys):
+                    item: QTableWidgetItem = self._table.item(row_index, col_index)
+                    value: float = 0.0
+                    if (
+                        profile is not None
+                        and spec.stand in profile.display_stand.entries
+                    ):
+                        entry: DisplayStandEntry = profile.display_stand.entries[
+                            spec.stand
+                        ]
+                        value = entry.values[column] if column in entry.values else 0.0
 
-                item.setText(self._format(value))
+                    item.setText(self._format(value))
 
         self._loading = False
         self._recalc()
@@ -278,8 +285,28 @@ class DisplayStandTab(CharacterTab):
 
         self._value_input.normalize_to_validator()
         value_text: str = self._format(self._parse(self._value_input.text()))
-        for item in self._table.selectedItems():
-            item.setText(value_text)
+        selected_items: list[QTableWidgetItem] = self._table.selectedItems()
+
+        # 선택 셀 텍스트 일괄 반영 중 itemChanged 재진입 차단
+        with QSignalBlocker(self._table):
+            for item in selected_items:
+                item.setText(value_text)
+
+        if self._profile is None or self._loading:
+            self._recalc()
+            return
+
+        # 선택 셀 모델 일괄 반영 및 단일 커밋 여부 계산
+        value: float = self._parse(value_text)
+        changed: bool = False
+        for item in selected_items:
+            spec: DisplayStandSpec = DISPLAY_STAND_SPECS[item.row()]
+            column: DisplayStandColumn = self._column_keys[item.column()]
+            changed = self._set_display_stand_value(spec, column, value) or changed
+
+        self._recalc()
+        if changed:
+            self._session.commit_stats()
 
     def _clear_selection(self) -> None:
         """좌상단 코너 클릭 시 선택 해제 후 화면 반영"""
@@ -298,31 +325,54 @@ class DisplayStandTab(CharacterTab):
     def _on_item_changed(self, item: QTableWidgetItem) -> None:
         """셀 변경 시 해당 칸만 모델 반영"""
 
-        self._recalc()
         if self._profile is None or self._loading:
             return
+
+        # 사용자 편집 결과 합계 반영
+        self._recalc()
 
         spec: DisplayStandSpec = DISPLAY_STAND_SPECS[item.row()]
         column: DisplayStandColumn = self._column_keys[item.column()]
         value: float = self._parse(item.text())
+        if not self._set_display_stand_value(spec, column, value):
+            return
+
+        self._session.commit_stats()
+
+    def _set_display_stand_value(
+        self,
+        spec: DisplayStandSpec,
+        column: DisplayStandColumn,
+        value: float,
+    ) -> bool:
+        """진열대 단일 칸 모델 반영 여부 반환"""
+
+        if self._profile is None:
+            raise ValueError("character profile is not bound")
+
+        # 희소 저장 엔트리 조회 및 현재 값 비교
         entries: dict[DisplayStand, DisplayStandEntry] = (
             self._profile.display_stand.entries
         )
         entry: DisplayStandEntry | None = entries.get(spec.stand)
         current_value: float = 0.0 if entry is None else entry.values.get(column, 0.0)
         if current_value == value:
-            return
+            return False
 
-        # 0 값은 저장하지 않고, 비어 버린 진열대 엔트리는 제거한다
+        # 0 값 제거 및 비어 있는 진열대 엔트리 정리
         if value <= 0.0:
             if entry is not None:
                 entry.values.pop(column, None)
                 if not entry.values:
                     entries.pop(spec.stand, None)
         else:
-            entries.setdefault(spec.stand, DisplayStandEntry()).values[column] = value
+            if entry is None:
+                entry = DisplayStandEntry()
+                entries[spec.stand] = entry
 
-        self._session.commit_stats()
+            entry.values[column] = value
+
+        return True
 
     def _recalc(self) -> None:
         """열별 합계 갱신"""

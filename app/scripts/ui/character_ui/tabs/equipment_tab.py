@@ -14,7 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum, auto
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSignalBlocker, Qt
 from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
     QBoxLayout,
@@ -424,11 +424,13 @@ class _ItemSection:
         if self.tier is None:
             raise ValueError("tier field is not available")
 
-        self.tier.blockSignals(True)
-        self.tier.clear()
-        self.tier.addItems([str(tier) for tier in _equipment_tiers(slot, item.level)])
-        self.tier.setCurrentText(str(item.tier))
-        self.tier.blockSignals(False)
+        # 티어 목록 교체 중 신호 차단
+        with QSignalBlocker(self.tier):
+            self.tier.clear()
+            self.tier.addItems(
+                [str(tier) for tier in _equipment_tiers(slot, item.level)]
+            )
+            self.tier.setCurrentText(str(item.tier))
 
 
 @dataclass(slots=True)
@@ -526,7 +528,7 @@ class _ScrollSection:
         """주문서 선택 상태와 확률 버튼 목록 동기화"""
 
         for stat_key, button in self.stat_buttons.items():
-            button.setEnabled(stat_enabled.get(stat_key, False))
+            button.setEnabled(stat_enabled[stat_key])
             button.setChecked(stat_key is selected_stat_key)
 
         tier_keys: tuple[ScrollTier, ...] = tuple(tier_effects)
@@ -547,7 +549,7 @@ class _ScrollSection:
 
         for tier, button in self.tier_buttons.items():
             button.setText(tier_button_text(tier, tier_effects[tier]))
-            button.setEnabled(tier_enabled.get(tier, False))
+            button.setEnabled(tier_enabled[tier])
             button.setChecked(tier is selected_tier)
 
         self.add_button.setText(add_button_text)
@@ -1051,9 +1053,9 @@ class EquipmentTab(CharacterTab):
     def _refresh_active_slot(self) -> None:
         """장착 변경 후 현재 슬롯 타일 표시 갱신"""
 
-        slot_widget = self._slot_widgets.get(self._active_index)
-        if slot_widget is not None:
-            slot_widget.update_from_slot(self._slots_data[self._active_index])
+        # 현재 슬롯 위젯 구성 불변식에 따른 직접 갱신
+        slot_widget: _EquipSlot = self._slot_widgets[self._active_index]
+        slot_widget.update_from_slot(self._slots_data[self._active_index])
 
     def select_slot(self, index: int) -> None:
         """슬롯 선택 시 상세 갱신 (선택 화면은 닫는다)"""
@@ -1077,7 +1079,9 @@ class EquipmentTab(CharacterTab):
         self._detail_stack: _DetailStack = _DetailStack(self._detail_content)
         self._equipped_stack: _DetailStack = _DetailStack(self._detail_stack)
         self._equipped_view: _EquipmentDetailView | None = None
-        self._slot_views: dict[EquipmentSlot, list[_EquipmentDetailView]] = {}
+        self._slot_views: dict[EquipmentSlot, list[_EquipmentDetailView]] = {
+            slot: [] for slot in EquipmentSlot
+        }
         self._picker_cards: list[_EquipPickCard] = []
         self._picker_page: QFrame = self._build_picker_page()
         self._empty_page: QFrame = self._build_empty_page()
@@ -1119,7 +1123,7 @@ class EquipmentTab(CharacterTab):
     ) -> _EquipmentDetailView:
         """현재 장비가 바뀐 경우에만 상세 페이지 바인딩"""
 
-        for view in self._slot_views.setdefault(slot.slot, []):
+        for view in self._slot_views[slot.slot]:
             if view.item is item:
                 self._equipped_view = view
                 return view
@@ -1285,9 +1289,6 @@ class EquipmentTab(CharacterTab):
                 if self._equipped_view is view:
                     self._equipped_view = None
 
-            if not views:
-                self._slot_views.pop(slot)
-
     def _clear_equipped_views(self) -> None:
         """프로필에 종속된 슬롯 상세 페이지 정리"""
 
@@ -1295,7 +1296,7 @@ class EquipmentTab(CharacterTab):
             for view in views:
                 self._equipped_stack.removeWidget(view.page)
                 view.page.deleteLater()
-        self._slot_views.clear()
+        self._slot_views = {slot: [] for slot in EquipmentSlot}
         self._equipped_view = None
 
     def _clear_picker_cards(self) -> None:
@@ -2021,7 +2022,7 @@ class EquipmentTab(CharacterTab):
                 STAT_SPECS[stat_key],
                 "charScrollChoiceBtn",
                 checked=stat_key is selected_stat_key,
-                enabled=stat_enabled.get(stat_key, False),
+                enabled=stat_enabled[stat_key],
             )
             stat_button.clicked.connect(
                 lambda _checked=False, key=stat_key: self._select_scroll_stat(
@@ -2041,7 +2042,7 @@ class EquipmentTab(CharacterTab):
                 effects,
             )
             tier_button.setChecked(tier is selected_tier)
-            tier_button.setEnabled(tier_enabled.get(tier, False))
+            tier_button.setEnabled(tier_enabled[tier])
             tier_buttons[tier] = tier_button
             panels.option_layout.addWidget(tier_button)
 
@@ -2483,11 +2484,14 @@ class EquipmentTab(CharacterTab):
         if scroll_limit is not None and self._scroll_total_count(item) >= scroll_limit:
             return False
 
-        return self._first_available_scroll_line(
-            item,
-            scroll_set,
-            slot_effects,
-        ) is not None
+        return (
+            self._first_available_scroll_line(
+                item,
+                scroll_set,
+                slot_effects,
+            )
+            is not None
+        )
 
     def _scroll_row_title(self, line: EquipmentScrollLine) -> str:
         """적용 주문서 행 제목 구성"""

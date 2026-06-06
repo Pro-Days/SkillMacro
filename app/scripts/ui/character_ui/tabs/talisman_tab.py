@@ -258,6 +258,12 @@ class TalismanTab(CharacterTab):
         if self._loading:
             return
 
+        if self._profile is None:
+            return
+
+        if grade is self._selected_grade:
+            return
+
         selected_talisman: CharacterTalisman | None = self._selected_talisman()
         if selected_talisman is None:
             return
@@ -272,9 +278,14 @@ class TalismanTab(CharacterTab):
         selected_talisman.talisman_key = first_spec.name
         self._selected_grade = grade
         self._render_selector()
-        self._render_slots()
+
+        # 장착 중인 부적만 장착 슬롯 표시 갱신
+        is_equipped: bool = selected_talisman.id in self._profile.equipped.talisman_ids
+        if is_equipped:
+            self._render_slots()
+
         self._render_owned()
-        if selected_talisman.id in self._profile.equipped.talisman_ids:
+        if is_equipped:
             self._session.commit_stats()
 
         else:
@@ -290,8 +301,14 @@ class TalismanTab(CharacterTab):
         if self._loading:
             return
 
+        if self._profile is None:
+            return
+
         selected_talisman: CharacterTalisman | None = self._selected_talisman()
         if selected_talisman is None:
+            return
+
+        if selected_talisman.talisman_key == template.name:
             return
 
         if not self._can_use_talisman_key(selected_talisman, template.name):
@@ -300,9 +317,14 @@ class TalismanTab(CharacterTab):
         selected_talisman.talisman_key = template.name
         self._selected_grade = template.grade
         self._render_selector()
-        self._render_slots()
+
+        # 장착 중인 부적만 장착 슬롯 표시 갱신
+        is_equipped: bool = selected_talisman.id in self._profile.equipped.talisman_ids
+        if is_equipped:
+            self._render_slots()
+
         self._render_owned()
-        if selected_talisman.id in self._profile.equipped.talisman_ids:
+        if is_equipped:
             self._session.commit_stats()
 
         else:
@@ -567,6 +589,26 @@ class TalismanTab(CharacterTab):
         self._choice_panels.list_layout.removeWidget(row)
         row.deleteLater()
 
+    def _refresh_owned_selection(self) -> None:
+        """보유 부적 카드 선택 표시만 갱신"""
+
+        for talisman_id, row in self._owned_rows.items():
+            # 행 선택 속성 갱신
+            selected: bool = talisman_id == self._selected_talisman_id
+            row.setProperty("selected", selected)
+            row.style().unpolish(row)
+            row.style().polish(row)
+
+            # 선택 버튼 checked 상태 갱신
+            select_button: QPushButton | None = row.findChild(
+                QPushButton,
+                "charTalListSelectBtn",
+            )
+            if select_button is None:
+                raise ValueError("talisman select button is not bound")
+
+            select_button.setChecked(selected)
+
     def _build_owned_row(self, talisman: CharacterTalisman) -> QFrame:
         """보유 부적 1개 카드"""
 
@@ -707,10 +749,13 @@ class TalismanTab(CharacterTab):
         if self._loading:
             return
 
+        if self._selected_talisman_id == talisman.id:
+            return
+
         self._selected_talisman_id = talisman.id
         self._selected_grade = self._specs_by_name[talisman.talisman_key].grade
         self._render_selector()
-        self._render_owned()
+        self._refresh_owned_selection()
 
     def _on_level(
         self,
