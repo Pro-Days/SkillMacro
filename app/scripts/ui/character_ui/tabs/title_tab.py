@@ -25,12 +25,14 @@ from app.scripts.calculator_models import (
 )
 from app.scripts.character_models import (
     MAX_CHARACTER_LEVEL,
+    TITLE_STAT_SLOT_COUNT,
     CharacterProfile,
     CharacterTitle,
     TitleStatSlot,
 )
 from app.scripts.custom_classes import CustomFont, StyledButton
 from app.scripts.ui.character_ui.constants import STAT_CHOICE_LABELS, STAT_LABEL_TO_KEY
+from app.scripts.ui.character_ui.tabs.base import CharacterTab
 from app.scripts.ui.character_ui.widgets import (
     CharCard,
     CharComboBox,
@@ -77,7 +79,9 @@ class _TitleItem(QFrame):
         name_edit: QLineEdit = QLineEdit(title.name, self)
         name_edit.setObjectName("charTitleName")
         name_edit.setFont(CustomFont(12, bold=True))
-        name_edit.textChanged.connect(self._on_name_changed)
+        name_edit.editingFinished.connect(
+            lambda field=name_edit: self._on_name_changed(field.text())
+        )
 
         self.equip_radio: QPushButton = QPushButton("장착", self)
         self.equip_radio.setObjectName("charEquipToggle")
@@ -101,7 +105,7 @@ class _TitleItem(QFrame):
         # 칭호 스탯 3슬롯 구성
         self._slot_combos: list[CharComboBox] = []
         self._slot_fields: list[StepperField] = []
-        for slot_index in range(3):
+        for slot_index in range(TITLE_STAT_SLOT_COUNT):
             layout.addLayout(self._build_slot_row(slot_index))
 
     def _build_slot_row(self, slot_index: int) -> QHBoxLayout:
@@ -168,7 +172,7 @@ class _TitleItem(QFrame):
         self.style().polish(self)
 
 
-class TitleTab(QFrame):
+class TitleTab(CharacterTab):
     """기본정보와 칭호 탭"""
 
     def __init__(self, parent: QWidget, on_changed: Callable[[], None]) -> None:
@@ -198,7 +202,9 @@ class TitleTab(QFrame):
         self._name_edit: QLineEdit = QLineEdit(self)
         self._name_edit.setObjectName("charTitleName")
         self._name_edit.setFont(CustomFont(12, bold=True))
-        self._name_edit.textChanged.connect(self._on_name_changed)
+        self._name_edit.editingFinished.connect(
+            lambda field=self._name_edit: self._on_name_changed(field.text())
+        )
         realm_card.add_widget(self._name_edit)
 
         level_label: QLabel = QLabel("캐릭터 레벨", self)

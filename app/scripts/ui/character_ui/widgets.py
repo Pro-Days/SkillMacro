@@ -70,19 +70,21 @@ class NormalizingLineEdit(QLineEdit):
 
         validator: QValidator | None = self.validator()
         if isinstance(validator, QIntValidator):
-            value: int = int(self._number())
-            value = min(max(value, validator.bottom()), validator.top())
-            self.setText(str(value))
+            int_value: int = int(self._number())
+            int_value = min(max(int_value, validator.bottom()), validator.top())
+            self.setText(str(int_value))
             return
 
         if isinstance(validator, QDoubleValidator):
-            value: float = self._number()
-            value = min(max(value, validator.bottom()), validator.top())
+            float_value: float = self._number()
+            float_value = min(
+                max(float_value, validator.bottom()), validator.top()
+            )
             decimals: int = validator.decimals()
             if decimals >= 0:
-                value = round(value, decimals)
+                float_value = round(float_value, decimals)
 
-            self.setText(self._format_number(value))
+            self.setText(self._format_number(float_value))
 
     def _number(self) -> float:
         """현재 텍스트 숫자 변환"""
@@ -142,7 +144,7 @@ class StepperField(QFrame):
         self.input.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.input.setMinimumWidth(0)
         self.input.setValidator(QDoubleValidator(0.0, 1_000_000.0, 2, self))
-        self.input.textChanged.connect(self._on_text_changed)
+        self.input.editingFinished.connect(self._on_editing_finished)
         layout.addWidget(self.input, 1)
 
         # 단위 라벨 (좌측 여백과 동일 폭으로 좌우 대칭 유지)
@@ -182,9 +184,10 @@ class StepperField(QFrame):
         """현재 값에 가감"""
 
         self.set_number(max(0.0, self.number() + delta))
+        self.value_changed.emit()
 
-    def _on_text_changed(self, _text: str) -> None:
-        """입력 변경 시그널 전달"""
+    def _on_editing_finished(self) -> None:
+        """입력 확정 시그널 전달"""
 
         self.value_changed.emit()
 
@@ -294,7 +297,6 @@ class PillTab(QPushButton):
         self,
         parent: QWidget,
         label: str,
-        dot_color: str,
         index: int,
         on_click: Callable[[int], None],
     ) -> None:
@@ -463,10 +465,6 @@ class FlowLayout(QLayout):
         self._items: list[QLayoutItem] = []
         self._center: bool = center
 
-    def __del__(self) -> None:
-        while self._items:
-            self._items.pop()
-
     def addItem(self, item: QLayoutItem) -> None:  # type: ignore[override]
         self._items.append(item)
 
@@ -588,10 +586,6 @@ class ResponsiveColumns(QLayout):
         # 행 내부 블록의 폭 채움 여부와 남는 폭의 중앙 정렬 여부
         self._fill: bool = fill
         self._center: bool = center
-
-    def __del__(self) -> None:
-        while self._items:
-            self._items.pop()
 
     def addItem(self, item: QLayoutItem) -> None:  # type: ignore[override]
         self._items.append(item)

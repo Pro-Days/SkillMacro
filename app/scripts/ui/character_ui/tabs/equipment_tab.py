@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from enum import Enum, auto
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIntValidator
@@ -42,6 +43,7 @@ from app.scripts.character_data import (
     POTENTIAL_OPTION_SPECS,
     EquipmentItemSpec,
     OptionSpec,
+    ValueRange,
 )
 from app.scripts.character_engine import (
     create_equipment,
@@ -53,6 +55,8 @@ from app.scripts.character_engine import (
     unequip_equipment,
 )
 from app.scripts.character_models import (
+    EQUIPMENT_OPTION_SLOT_COUNT,
+    EQUIPMENT_SLOT_KIND,
     MAX_REFORGE_STEP,
     AdditionalLine,
     AdditionalOption,
@@ -74,6 +78,7 @@ from app.scripts.ui.character_ui.constants import (
     STAT_CHOICE_LABELS,
     STAT_LABEL_TO_KEY,
 )
+from app.scripts.ui.character_ui.tabs.base import CharacterTab
 from app.scripts.ui.character_ui.widgets import (
     CharComboBox,
     FlowLayout,
@@ -154,6 +159,33 @@ _ADDITIONAL_LABEL_TO_OPTION: dict[str, AdditionalOption] = {
     label: option for option, label in _ADDITIONAL_OPTION_TO_LABEL.items()
 }
 _ADDITIONAL_OPTIONS: tuple[str, ...] = tuple(_ADDITIONAL_OPTION_TO_LABEL.values())
+
+class _OptionSectionKind(Enum):
+    """장비 옵션 섹션 종류"""
+
+    POTENTIAL = auto()
+    ADDITIONAL = auto()
+
+
+@dataclass(frozen=True, slots=True)
+class _EquipmentOptionSection:
+    """장비 옵션 섹션 표시 데이터"""
+
+    title: str
+    kind: _OptionSectionKind
+    labels: tuple[str, ...]
+
+
+_POTENTIAL_SECTION: _EquipmentOptionSection = _EquipmentOptionSection(
+    title="잠재능력",
+    kind=_OptionSectionKind.POTENTIAL,
+    labels=_POTENTIAL_OPTIONS,
+)
+_ADDITIONAL_SECTION: _EquipmentOptionSection = _EquipmentOptionSection(
+    title="추가능력",
+    kind=_OptionSectionKind.ADDITIONAL,
+    labels=_ADDITIONAL_OPTIONS,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -536,7 +568,7 @@ class _EquipPickCard(QFrame):
         super().mousePressEvent(event)
 
 
-class EquipmentTab(QFrame):
+class EquipmentTab(CharacterTab):
     """장비 탭"""
 
     def __init__(self, parent: QWidget, on_changed: Callable[[], None]) -> None:
@@ -790,12 +822,8 @@ class EquipmentTab(QFrame):
             option_group: ResponsiveColumnsBox = ResponsiveColumnsBox(
                 self._detail_content, min_column_width=300, spacing=18
             )
-            option_group.addWidget(
-                self._build_option_section("잠재능력", _POTENTIAL_OPTIONS)
-            )
-            option_group.addWidget(
-                self._build_option_section("추가능력", _ADDITIONAL_OPTIONS)
-            )
+            option_group.addWidget(self._build_option_section(_POTENTIAL_SECTION))
+            option_group.addWidget(self._build_option_section(_ADDITIONAL_SECTION))
             self._detail_layout.addWidget(option_group)
 
         self._detail_content.updateGeometry()
@@ -1333,54 +1361,34 @@ class EquipmentTab(QFrame):
         box.addWidget(wrap)
         return section
 
-    def _build_option_section(self, title: str, options: tuple[str, ...]) -> QFrame:
+    def _build_option_section(self, option_section: _EquipmentOptionSection) -> QFrame:
         """잠재/추가능력 섹션 (3줄 고정)"""
 
-        section, box = self._section(title)
+        section, box = self._section(option_section.title)
         item: OwnedEquipment | None = self._current_item()
         if item is None:
             raise ValueError("equipped item is required")
 
-        for index in range(3):
+        for index in range(EQUIPMENT_OPTION_SLOT_COUNT):
             row = QHBoxLayout()
             row.setSpacing(10)
-            combo: CharComboBox = CharComboBox(section, ["미설정", *options])
+            combo: CharComboBox = CharComboBox(
+                section,
+                ["미설정", *option_section.labels],
+            )
             # 입력칸은 고정 폭으로 두어 창 크기에 따라 늘어나지 않게 한다
             field: StepperField = StepperField(section, "0")
             field.setFixedWidth(100)
-            if title == "잠재능력":
-                line: PotentialLine | None = item.potentials[index]
-                if line is not None:
-                    combo.setCurrentText(_POTENTIAL_OPTION_TO_LABEL[line.option])
-                    field.set_number(line.value)
 
-                combo.currentTextChanged.connect(
-                    lambda text, target=item, line_index=index, value_field=field: self._set_potential_line(
-                        target,
-                        line_index,
-                        text,
-                        value_field,
-                        sync_field=True,
+            # 옵션 종류별 저장 라인 표시
+            if option_section.kind == _OptionSectionKind.POTENTIAL:
+                potential_line: PotentialLine | None = item.potentials[index]
+                if potential_line is not None:
+                    combo.setCurrentText(
+                        _POTENTIAL_OPTION_TO_LABEL[potential_line.option]
                     )
-                )
-                field.value_changed.connect(
-                    lambda target=item, line_index=index, option_combo=combo, value_field=field: self._set_potential_line(
-                        target,
-                        line_index,
-                        option_combo.currentText(),
-                        value_field,
-                        sync_field=False,
-                    )
-                )
-                field.input.editingFinished.connect(
-                    lambda target=item, line_index=index, option_combo=combo, value_field=field: self._set_potential_line(
-                        target,
-                        line_index,
-                        option_combo.currentText(),
-                        value_field,
-                        sync_field=True,
-                    )
-                )
+                    field.set_number(potential_line.value)
+
             else:
                 additional_line: AdditionalLine | None = item.additionals[index]
                 if additional_line is not None:
@@ -1389,33 +1397,24 @@ class EquipmentTab(QFrame):
                     )
                     field.set_number(additional_line.value)
 
-                combo.currentTextChanged.connect(
-                    lambda text, target=item, line_index=index, value_field=field: self._set_additional_line(
-                        target,
-                        line_index,
-                        text,
-                        value_field,
-                        sync_field=True,
-                    )
+            combo.currentTextChanged.connect(
+                lambda text, target=item, line_index=index, value_field=field, kind=option_section.kind: self._set_option_line(
+                    target,
+                    kind,
+                    line_index,
+                    text,
+                    value_field,
                 )
-                field.value_changed.connect(
-                    lambda target=item, line_index=index, option_combo=combo, value_field=field: self._set_additional_line(
-                        target,
-                        line_index,
-                        option_combo.currentText(),
-                        value_field,
-                        sync_field=False,
-                    )
+            )
+            field.value_changed.connect(
+                lambda target=item, line_index=index, option_combo=combo, value_field=field, kind=option_section.kind: self._set_option_line(
+                    target,
+                    kind,
+                    line_index,
+                    option_combo.currentText(),
+                    value_field,
                 )
-                field.input.editingFinished.connect(
-                    lambda target=item, line_index=index, option_combo=combo, value_field=field: self._set_additional_line(
-                        target,
-                        line_index,
-                        option_combo.currentText(),
-                        value_field,
-                        sync_field=True,
-                    )
-                )
+            )
 
             row.addWidget(combo, 1)
             row.addWidget(field)
@@ -1543,74 +1542,66 @@ class EquipmentTab(QFrame):
         )
         self._on_changed()
 
-    def _set_potential_line(
+    def _set_option_line(
         self,
         item: OwnedEquipment,
+        kind: _OptionSectionKind,
         index: int,
         label: str,
         field: StepperField,
-        sync_field: bool,
     ) -> None:
-        """잠재능력 라인 모델 반영
+        """잠재/추가능력 라인 모델 반영"""
 
-        입력 도중에는 칸을 건드리지 않아 자유롭게 지우고 다시 칠 수 있게 하고,
-        모델에는 허용 범위로 보정한 값만 저장한다. 종류 변경·입력 확정(sync_field)
-        시에만 칸 표시를 보정 값으로 맞춘다.
-        """
-
-        lines: list[PotentialLine | None] = list(item.potentials)
+        # 미설정 선택 시 해당 종류의 옵션 라인 제거
         if label == "미설정":
-            lines[index] = None
-            item.potentials = tuple(lines)
+            if kind == _OptionSectionKind.POTENTIAL:
+                potential_lines: list[PotentialLine | None] = list(item.potentials)
+                potential_lines[index] = None
+                item.potentials = tuple(potential_lines)
+
+            else:
+                additional_lines: list[AdditionalLine | None] = list(item.additionals)
+                additional_lines[index] = None
+                item.additionals = tuple(additional_lines)
+
             self._on_changed()
             return
 
-        option: PotentialOption = _POTENTIAL_LABEL_TO_OPTION[label]
-        option_range = POTENTIAL_OPTION_SPECS[option].value_range
+        # 옵션 종류별 허용 범위 조회
+        if kind == _OptionSectionKind.POTENTIAL:
+            potential_option: PotentialOption = _POTENTIAL_LABEL_TO_OPTION[label]
+            option_range: ValueRange = POTENTIAL_OPTION_SPECS[
+                potential_option
+            ].value_range
+
+        else:
+            additional_option: AdditionalOption = _ADDITIONAL_LABEL_TO_OPTION[label]
+            option_range = ADDITIONAL_OPTION_SPECS[additional_option].value_range
+
+        # 허용 범위 기준 입력값 보정
         value: float = min(
             max(field.number(), option_range.minimum),
             option_range.maximum,
         )
-        if sync_field:
-            field.set_number(value)
+        field.set_number(value)
 
-        lines[index] = PotentialLine(option=option, value=value)
-        item.potentials = tuple(lines)
-        self._on_changed()
+        # 옵션 종류별 모델 저장
+        if kind == _OptionSectionKind.POTENTIAL:
+            potential_lines: list[PotentialLine | None] = list(item.potentials)
+            potential_lines[index] = PotentialLine(
+                option=potential_option,
+                value=value,
+            )
+            item.potentials = tuple(potential_lines)
 
-    def _set_additional_line(
-        self,
-        item: OwnedEquipment,
-        index: int,
-        label: str,
-        field: StepperField,
-        sync_field: bool,
-    ) -> None:
-        """추가능력 라인 모델 반영
+        else:
+            additional_lines: list[AdditionalLine | None] = list(item.additionals)
+            additional_lines[index] = AdditionalLine(
+                option=additional_option,
+                value=value,
+            )
+            item.additionals = tuple(additional_lines)
 
-        입력 도중에는 칸을 건드리지 않아 자유롭게 지우고 다시 칠 수 있게 하고,
-        모델에는 허용 범위로 보정한 값만 저장한다. 종류 변경·입력 확정(sync_field)
-        시에만 칸 표시를 보정 값으로 맞춘다.
-        """
-
-        lines: list[AdditionalLine | None] = list(item.additionals)
-        if label == "미설정":
-            lines[index] = None
-            item.additionals = tuple(lines)
-            self._on_changed()
-            return
-
-        option: AdditionalOption = _ADDITIONAL_LABEL_TO_OPTION[label]
-        option_range = ADDITIONAL_OPTION_SPECS[option].value_range
-        value: float = min(
-            max(field.number(), option_range.minimum),
-            option_range.maximum,
-        )
-        if sync_field:
-            field.set_number(value)
-
-        lines[index] = AdditionalLine(option=option, value=value)
-        item.additionals = tuple(lines)
         self._on_changed()
 
     # 장비 교체 (선택) 화면
@@ -1809,7 +1800,7 @@ class EquipmentTab(QFrame):
         )
         return OwnedEquipment(
             name=self._unique_equipment_name(item_spec.name),
-            kind=EquipmentKind(slot.value),
+            kind=EQUIPMENT_SLOT_KIND[slot],
             item_name=item_spec.name if slot == EquipmentSlot.NECKLACE else None,
             level=item_spec.level,
             tier=item_spec.tier,

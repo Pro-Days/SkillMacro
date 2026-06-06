@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, TypeVar
 from uuid import uuid4
 
 from app.scripts.calculator_models import RealmTier, StatKey
@@ -61,6 +62,24 @@ class ScrollTier(str, Enum):
     FIFTY = "50"
     SIXTY = "60"
     HUNDRED = "100"
+
+
+EQUIPMENT_KIND_SLOTS: dict[EquipmentKind, tuple[EquipmentSlot, ...]] = {
+    EquipmentKind.HELMET: (EquipmentSlot.HELMET,),
+    EquipmentKind.ARMOR: (EquipmentSlot.ARMOR,),
+    EquipmentKind.BELT: (EquipmentSlot.BELT,),
+    EquipmentKind.SHOES: (EquipmentSlot.SHOES,),
+    EquipmentKind.WEAPON: (EquipmentSlot.WEAPON,),
+    EquipmentKind.RING: (EquipmentSlot.RING1, EquipmentSlot.RING2),
+    EquipmentKind.NECKLACE: (EquipmentSlot.NECKLACE,),
+    EquipmentKind.EARRING: (EquipmentSlot.EARRING,),
+}
+
+EQUIPMENT_SLOT_KIND: dict[EquipmentSlot, EquipmentKind] = {
+    slot: kind
+    for kind, slots in EQUIPMENT_KIND_SLOTS.items()
+    for slot in slots
+}
 
 
 class PotentialOption(str, Enum):
@@ -201,70 +220,32 @@ def _read_list(data: dict[str, Any], key: str) -> list[Any]:
     return value
 
 
-def _read_optional_stat_slots(
-    raw_slots: list[Any],
-) -> tuple["TitleStatSlot | None", ...]:
-    """칭호 스탯 슬롯 복원"""
+_OptionT = TypeVar("_OptionT")
 
-    if len(raw_slots) != TITLE_STAT_SLOT_COUNT:
-        raise ValueError("title stat slots must have exactly 3 items")
 
-    slots: list[TitleStatSlot | None] = []
-    for raw_slot in raw_slots:
-        if raw_slot is None:
-            slots.append(None)
+def _read_fixed_optional(
+    raw_items: list[Any],
+    count: int,
+    factory: Callable[[dict[str, Any]], _OptionT],
+    label: str,
+) -> tuple[_OptionT | None, ...]:
+    """고정 길이 옵션 슬롯 복원 (None 허용)"""
+
+    if len(raw_items) != count:
+        raise ValueError(f"{label} must have exactly {count} items")
+
+    items: list[_OptionT | None] = []
+    for raw_item in raw_items:
+        if raw_item is None:
+            items.append(None)
             continue
 
-        if not isinstance(raw_slot, dict):
-            raise TypeError("title stat slot must be a dict or null")
+        if not isinstance(raw_item, dict):
+            raise TypeError(f"{label} item must be a dict or null")
 
-        slots.append(TitleStatSlot.from_dict(raw_slot))
+        items.append(factory(raw_item))
 
-    return tuple(slots)
-
-
-def _read_optional_potential_lines(
-    raw_lines: list[Any],
-) -> tuple["PotentialLine | None", ...]:
-    """잠재능력 슬롯 복원"""
-
-    if len(raw_lines) != EQUIPMENT_OPTION_SLOT_COUNT:
-        raise ValueError("potential lines must have exactly 3 items")
-
-    lines: list[PotentialLine | None] = []
-    for raw_line in raw_lines:
-        if raw_line is None:
-            lines.append(None)
-            continue
-
-        if not isinstance(raw_line, dict):
-            raise TypeError("potential line must be a dict or null")
-
-        lines.append(PotentialLine.from_dict(raw_line))
-
-    return tuple(lines)
-
-
-def _read_optional_additional_lines(
-    raw_lines: list[Any],
-) -> tuple["AdditionalLine | None", ...]:
-    """추가능력 슬롯 복원"""
-
-    if len(raw_lines) != EQUIPMENT_OPTION_SLOT_COUNT:
-        raise ValueError("additional lines must have exactly 3 items")
-
-    lines: list[AdditionalLine | None] = []
-    for raw_line in raw_lines:
-        if raw_line is None:
-            lines.append(None)
-            continue
-
-        if not isinstance(raw_line, dict):
-            raise TypeError("additional line must be a dict or null")
-
-        lines.append(AdditionalLine.from_dict(raw_line))
-
-    return tuple(lines)
+    return tuple(items)
 
 
 def _stat_float_map_from_dict(data: dict[str, Any]) -> dict[StatKey, float]:
@@ -385,7 +366,12 @@ class CharacterTitle:
         return cls(
             id=str(data["id"]),
             name=str(data["name"]),
-            slots=_read_optional_stat_slots(raw_slots),
+            slots=_read_fixed_optional(
+                raw_slots,
+                TITLE_STAT_SLOT_COUNT,
+                TitleStatSlot.from_dict,
+                "title stat slots",
+            ),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -588,9 +574,17 @@ class OwnedEquipment:
             reforge_step=int(data["reforge_step"]),
             reforge_stats=_stat_float_map_from_dict(_read_dict(data, "reforge_stats")),
             scrolls=scrolls,
-            potentials=_read_optional_potential_lines(_read_list(data, "potentials")),
-            additionals=_read_optional_additional_lines(
-                _read_list(data, "additionals")
+            potentials=_read_fixed_optional(
+                _read_list(data, "potentials"),
+                EQUIPMENT_OPTION_SLOT_COUNT,
+                PotentialLine.from_dict,
+                "potential lines",
+            ),
+            additionals=_read_fixed_optional(
+                _read_list(data, "additionals"),
+                EQUIPMENT_OPTION_SLOT_COUNT,
+                AdditionalLine.from_dict,
+                "additional lines",
             ),
         )
 

@@ -24,6 +24,7 @@ from app.scripts.character_models import (
 )
 from app.scripts.custom_classes import CustomFont, StyledButton
 from app.scripts.ui.character_ui.constants import GRADE_COLORS
+from app.scripts.ui.character_ui.tabs.base import CharacterTab
 from app.scripts.ui.character_ui.widgets import (
     CharCard,
     CharComboBox,
@@ -37,7 +38,7 @@ _OWNED_TALISMAN_HEIGHT: int = 140
 _EQUIPPED_TALISMAN_HEIGHT: int = 132
 
 
-class TalismanTab(QFrame):
+class TalismanTab(CharacterTab):
     """부적 탭"""
 
     def __init__(self, parent: QWidget, on_changed: Callable[[], None]) -> None:
@@ -279,13 +280,6 @@ class TalismanTab(QFrame):
                 label,
             )
         )
-        level_field.input.editingFinished.connect(
-            lambda field=level_field, target=talisman, label=stat_label: self._finish_level(
-                field,
-                target,
-                label,
-            )
-        )
         level_row.addWidget(level_field)
 
         max_label: QLabel = QLabel(f"/ {MAX_TALISMAN_LEVEL}", row)
@@ -373,19 +367,9 @@ class TalismanTab(QFrame):
             return
 
         talisman.level = max(0, min(MAX_TALISMAN_LEVEL, int(field.number())))
-        self._refresh_talisman_stat_labels(talisman, stat_label)
-        self._on_changed()
-
-    def _finish_level(
-        self,
-        field: StepperField,
-        talisman: CharacterTalisman,
-        stat_label: QLabel,
-    ) -> None:
-        """레벨 입력 종료 시 표시값 정규화"""
-
         field.set_number(float(talisman.level))
         self._refresh_talisman_stat_labels(talisman, stat_label)
+        self._on_changed()
 
     def _refresh_talisman_stat_labels(
         self,

@@ -34,6 +34,7 @@ from app.scripts.character_models import (
 )
 from app.scripts.custom_classes import CustomFont, StyledButton
 from app.scripts.ui.character_ui.constants import DISPLAY_STAND_COLUMNS
+from app.scripts.ui.character_ui.tabs.base import CharacterTab
 from app.scripts.ui.character_ui.widgets import (
     CharCard,
     FlowLayout,
@@ -82,7 +83,7 @@ class _NumericDelegate(QStyledItemDelegate):
         model.setData(index, editor.text())
 
 
-class DisplayStandTab(QFrame):
+class DisplayStandTab(CharacterTab):
     """진열대 탭"""
 
     def __init__(self, parent: QWidget, on_changed: Callable[[], None]) -> None:

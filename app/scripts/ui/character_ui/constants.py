@@ -12,17 +12,16 @@ class CharacterTabSpec:
 
     key: str
     label: str
-    color: str
 
 
 CHARACTER_TABS: tuple[CharacterTabSpec, ...] = (
-    CharacterTabSpec("title", "기본정보", "#e6e0f5"),
-    CharacterTabSpec("equip", "장비", "#dcecfa"),
-    CharacterTabSpec("dist", "스탯·단전 분배", "#d9f3e1"),
-    CharacterTabSpec("shelf", "진열대", "#f8f5e8"),
-    CharacterTabSpec("talisman", "부적", "#fde0ec"),
-    CharacterTabSpec("yeongdan", "영단", "#e6e0f5"),
-    CharacterTabSpec("hwan", "환", "#fef7d6"),
+    CharacterTabSpec("title", "기본정보"),
+    CharacterTabSpec("equip", "장비"),
+    CharacterTabSpec("dist", "스탯·단전 분배"),
+    CharacterTabSpec("shelf", "진열대"),
+    CharacterTabSpec("talisman", "부적"),
+    CharacterTabSpec("yeongdan", "영단"),
+    CharacterTabSpec("hwan", "환"),
 )
 
 STAT_DISTRIBUTION_ITEMS: tuple[tuple[str, str, str], ...] = (

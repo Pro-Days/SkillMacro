@@ -30,7 +30,6 @@ from app.scripts.character_data import (
     EQUIPMENT_REFORGE_STAT_KEYS,
     EQUIPMENT_SCROLL_EFFECTS,
     EQUIPMENT_SCROLL_LIMITS,
-    FREE_BASE_STAT_EQUIPMENT_SLOTS,
     NECKLACE_REFORGE_STAT_KEYS,
     PILL_SPECS,
     POTENTIAL_EQUIPMENT_SLOTS,
@@ -40,6 +39,7 @@ from app.scripts.character_data import (
 )
 from app.scripts.character_models import (
     CHARACTER_DATA_VERSION,
+    EQUIPMENT_KIND_SLOTS,
     EQUIPMENT_OPTION_SLOT_COUNT,
     MAX_ELIXIR_COUNT,
     MAX_EQUIPPED_TALISMAN_COUNT,
@@ -160,10 +160,7 @@ def _new_id() -> str:
 def _equipment_slots(kind: EquipmentKind) -> tuple[EquipmentSlot, ...]:
     """장비 종류별 장착 가능 슬롯 조회"""
 
-    if kind == EquipmentKind.RING:
-        return (EquipmentSlot.RING1, EquipmentSlot.RING2)
-
-    return (EquipmentSlot(kind.value),)
+    return EQUIPMENT_KIND_SLOTS[kind]
 
 
 def _equipment_primary_slot(equipment: OwnedEquipment) -> EquipmentSlot:
@@ -191,7 +188,7 @@ def equipment_item_spec(equipment: OwnedEquipment) -> EquipmentItemSpec | None:
         if (
             equipment.level == item_spec.level
             and equipment.tier == item_spec.tier
-            and EquipmentSlot(equipment.kind.value) in item_spec.slots
+            and _equipment_primary_slot(equipment) in item_spec.slots
         ):
             return item_spec
 
@@ -561,17 +558,22 @@ def validate_character_store(store: CharacterStore) -> None:
         validate_character_profile(character)
 
 
+def _ensure_unique_owned_names(profile: CharacterProfile) -> None:
+    """보유 장비 이름 유일성 검증"""
+
+    seen: set[str] = set()
+    for equipment in profile.equipment.owned:
+        if equipment.name in seen:
+            raise ValueError("equipment names must be unique")
+
+        seen.add(equipment.name)
+
+
 def _equipment_by_name(profile: CharacterProfile) -> dict[str, OwnedEquipment]:
     """장비 이름 기준 보유 장비 맵 구성"""
 
-    equipment_by_name: dict[str, OwnedEquipment] = {}
-    for equipment in profile.equipment.owned:
-        if equipment.name in equipment_by_name:
-            raise ValueError("equipment names must be unique")
-
-        equipment_by_name[equipment.name] = equipment
-
-    return equipment_by_name
+    _ensure_unique_owned_names(profile)
+    return {equipment.name: equipment for equipment in profile.equipment.owned}
 
 
 def list_equippable_equipment(
@@ -580,7 +582,7 @@ def list_equippable_equipment(
 ) -> list[OwnedEquipment]:
     """슬롯에 장착 가능한 보유 장비 목록 반환"""
 
-    _equipment_by_name(profile)
+    _ensure_unique_owned_names(profile)
     return [
         equipment
         for equipment in profile.equipment.owned
@@ -634,7 +636,9 @@ def unequip_equipment(profile: CharacterProfile, slot: EquipmentSlot) -> None:
 def remove_equipment(profile: CharacterProfile, equipment_name: str) -> None:
     """보유 장비 삭제 및 장착 참조 정리"""
 
-    _equipment_by_name(profile)[equipment_name]
+    if all(equipment.name != equipment_name for equipment in profile.equipment.owned):
+        raise ValueError("equipment does not exist")
+
     profile.equipment.owned = [
         equipment
         for equipment in profile.equipment.owned
@@ -836,9 +840,7 @@ def _add_equipment(
 ) -> None:
     """장비 전체 기여 누적"""
 
-    equipment_by_name: dict[str, OwnedEquipment] = {
-        equipment.name: equipment for equipment in profile.equipment.owned
-    }
+    equipment_by_name: dict[str, OwnedEquipment] = _equipment_by_name(profile)
     for slot, equipment_name in profile.equipment.equipped.items():
         if equipment_name is None:
             continue
@@ -875,10 +877,8 @@ def _add_consumables(
         _merge_stats(accumulated, PILL_SPECS[pill].effects)
 
 
-def aggregate_base_stats(profile: CharacterProfile) -> BaseStats:
-    """캐릭터 입력값으로부터 원시 스탯 합산"""
-
-    validate_character_profile(profile)
+def _accumulate_base_stats(profile: CharacterProfile) -> dict[StatKey, float]:
+    """검증 없이 캐릭터 입력 기여를 원시 스탯 맵으로 합산"""
 
     accumulated: dict[StatKey, float] = _character_base_stat_map(profile)
     _add_distribution(accumulated, profile.distribution)
@@ -888,7 +888,14 @@ def aggregate_base_stats(profile: CharacterProfile) -> BaseStats:
     _add_equipment(accumulated, profile)
     _add_display_stand(accumulated, profile)
     _add_consumables(accumulated, profile)
-    return BaseStats.from_stat_map(accumulated)
+    return accumulated
+
+
+def aggregate_base_stats(profile: CharacterProfile) -> BaseStats:
+    """캐릭터 입력값으로부터 원시 스탯 합산"""
+
+    validate_character_profile(profile)
+    return BaseStats.from_stat_map(_accumulate_base_stats(profile))
 
 
 def compute_live_view(profile: CharacterProfile) -> LiveStatView:
@@ -948,9 +955,7 @@ def build_calculator_input_fill(
 
 
 def optimize_danjeon(profile: CharacterProfile) -> DanjeonDistribution:
-    """공식 전투력 기준 단전 분배 최적화"""
-
-    validate_character_profile(profile)
+    """단전 분배 자동 설정 (중단전 공격력% 집중 고정)"""
 
     total_points: int = REALM_TIER_SPECS[profile.realm].danjeon_points
     return DanjeonDistribution(
@@ -960,12 +965,74 @@ def optimize_danjeon(profile: CharacterProfile) -> DanjeonDistribution:
     )
 
 
+def clamp_profile_allocations(profile: CharacterProfile) -> None:
+    """레벨·경지 한도 기준 분배 초과값 정리"""
+
+    remaining_stat_points: int = profile.level * 5
+    profile.distribution.strength = min(
+        profile.distribution.strength,
+        remaining_stat_points,
+    )
+    remaining_stat_points -= profile.distribution.strength
+    profile.distribution.dexterity = min(
+        profile.distribution.dexterity,
+        remaining_stat_points,
+    )
+    remaining_stat_points -= profile.distribution.dexterity
+    profile.distribution.vitality = min(
+        profile.distribution.vitality,
+        remaining_stat_points,
+    )
+    remaining_stat_points -= profile.distribution.vitality
+    profile.distribution.luck = min(
+        profile.distribution.luck,
+        remaining_stat_points,
+    )
+
+    remaining_danjeon_points: int = REALM_TIER_SPECS[profile.realm].danjeon_points
+    profile.danjeon.upper = min(profile.danjeon.upper, remaining_danjeon_points)
+    remaining_danjeon_points -= profile.danjeon.upper
+    profile.danjeon.middle = min(profile.danjeon.middle, remaining_danjeon_points)
+    remaining_danjeon_points -= profile.danjeon.middle
+    profile.danjeon.lower = min(profile.danjeon.lower, remaining_danjeon_points)
+
+
+def _final_stats_with_distribution(
+    fixed_stats: dict[StatKey, float],
+    distribution: StatDistribution,
+) -> FinalStats:
+    """고정 기여값에 후보 분배를 적용한 최종 스탯 계산"""
+
+    candidate_stats: dict[StatKey, float] = fixed_stats.copy()
+    _add_distribution(candidate_stats, distribution)
+    return BaseStats.from_stat_map(candidate_stats).resolve()
+
+
+def _damage_score(final_stats: FinalStats) -> float:
+    """스탯 분배 비교용 데미지 점수"""
+
+    values: dict[StatKey, float] = final_stats.values
+    return values[StatKey.ATTACK] * (
+        1.0
+        + values[StatKey.CRIT_RATE_PERCENT]
+        * (values[StatKey.CRIT_DAMAGE_PERCENT] - 100.0)
+        / 10000.0
+    )
+
+
 def optimize_stat_distribution(profile: CharacterProfile) -> StatDistribution:
     """자동 최적화 전용 데미지 기준 스탯 분배 최적화"""
 
     validate_character_profile(profile)
 
-    # 힘 우선 초기 후보 구성
+    # 후보마다 변하지 않는 캐릭터 기여값 사전 합산
+    fixed_profile: CharacterProfile = replace(
+        profile,
+        distribution=StatDistribution(),
+    )
+    fixed_stats: dict[StatKey, float] = _accumulate_base_stats(fixed_profile)
+
+    # 동점일 때 힘 우선 결과를 유지하기 위한 초기 후보 구성
     total_points: int = profile.level * 5
     best_distribution: StatDistribution = StatDistribution(
         strength=total_points,
@@ -973,37 +1040,20 @@ def optimize_stat_distribution(profile: CharacterProfile) -> StatDistribution:
         vitality=0,
         luck=0,
     )
-    best_profile: CharacterProfile = replace(
-        profile,
-        distribution=best_distribution,
-    )
-    best_final_stats: FinalStats = compute_live_view(best_profile).final
-    best_damage_score: float = best_final_stats.values[StatKey.ATTACK] * (
-        1.0
-        + best_final_stats.values[StatKey.CRIT_RATE_PERCENT]
-        * (best_final_stats.values[StatKey.CRIT_DAMAGE_PERCENT] - 100.0)
-        / 10000.0
+    best_damage_score: float = _damage_score(
+        _final_stats_with_distribution(fixed_stats, best_distribution)
     )
 
-    # 힘과 민첩의 전체 배분 조합 평가
+    # 힘과 민첩의 전체 배분 조합별 최종 스탯 평가
     for strength in range(total_points - 1, -1, -1):
-        dexterity: int = total_points - strength
         candidate: StatDistribution = StatDistribution(
             strength=strength,
-            dexterity=dexterity,
+            dexterity=total_points - strength,
             vitality=0,
             luck=0,
         )
-        candidate_profile: CharacterProfile = replace(
-            profile,
-            distribution=candidate,
-        )
-        candidate_final_stats: FinalStats = compute_live_view(candidate_profile).final
-        damage_score: float = candidate_final_stats.values[StatKey.ATTACK] * (
-            1.0
-            + candidate_final_stats.values[StatKey.CRIT_RATE_PERCENT]
-            * (candidate_final_stats.values[StatKey.CRIT_DAMAGE_PERCENT] - 100.0)
-            / 10000.0
+        damage_score: float = _damage_score(
+            _final_stats_with_distribution(fixed_stats, candidate)
         )
 
         # 더 높은 데미지 후보 반영
@@ -1017,9 +1067,7 @@ def optimize_stat_distribution(profile: CharacterProfile) -> StatDistribution:
 def clone_character_profile(profile: CharacterProfile) -> CharacterProfile:
     """캐릭터 복제본 생성"""
 
-    payload: dict[str, Any] = profile.to_dict()
-    cloned: CharacterProfile = CharacterProfile.from_dict(payload)
-    return _regenerate_character_ids(cloned)
+    return _regenerate_character_ids(profile)
 
 
 def serialize_character_profile(profile: CharacterProfile) -> str:

@@ -16,6 +16,7 @@ from app.scripts.calculator_models import STAT_SPECS
 from app.scripts.character_data import PILL_SPECS
 from app.scripts.character_models import CharacterProfile, Pill
 from app.scripts.custom_classes import CustomFont
+from app.scripts.ui.character_ui.tabs.base import CharacterTab
 from app.scripts.ui.character_ui.widgets import CharCard, ColorOrb, FlowLayout, ToggleSwitch
 
 _PILL_COLORS: dict[Pill, str] = {
@@ -113,7 +114,7 @@ class _PillCard(QFrame):
         self._on_changed(self._pill, active)
 
 
-class PillTab(QFrame):
+class PillTab(CharacterTab):
     """환 탭"""
 
     def __init__(self, parent: QWidget, on_changed: Callable[[], None]) -> None:

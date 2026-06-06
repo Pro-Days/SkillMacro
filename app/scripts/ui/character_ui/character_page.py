@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -19,11 +20,11 @@ from PySide6.QtWidgets import (
 from app.scripts.app_state import app_state
 from app.scripts.calculator_models import REALM_TIER_SPECS
 from app.scripts.character_engine import (
+    clamp_profile_allocations,
     clone_character_profile,
     compute_live_view,
     deserialize_character_profile,
     serialize_character_profile,
-    validate_character_store,
 )
 from app.scripts.character_models import CharacterProfile, CharacterStore
 from app.scripts.custom_classes import CustomFont, StyledButton
@@ -31,6 +32,7 @@ from app.scripts.data_manager import save_characters
 from app.scripts.ui.character_ui.constants import CHARACTER_TABS
 from app.scripts.ui.character_ui.panels.character_list import CharacterListPanel
 from app.scripts.ui.character_ui.panels.live_stats import LiveStatsPanel
+from app.scripts.ui.character_ui.tabs.base import CharacterTab
 from app.scripts.ui.character_ui.tabs.display_stand_tab import DisplayStandTab
 from app.scripts.ui.character_ui.tabs.distribution_tab import DistributionTab
 from app.scripts.ui.character_ui.tabs.elixir_tab import ElixirTab
@@ -44,9 +46,25 @@ _LEFT_WIDTH: int = 236
 _RIGHT_WIDTH: int = 340
 _SAVE_DELAY_MS: int = 400
 
+# 탭 키와 입력 탭 클래스 연결 (CHARACTER_TABS 순서로 탭을 생성한다)
+_TAB_FACTORIES: dict[str, type[CharacterTab]] = {
+    "title": TitleTab,
+    "equip": EquipmentTab,
+    "dist": DistributionTab,
+    "shelf": DisplayStandTab,
+    "talisman": TalismanTab,
+    "yeongdan": ElixirTab,
+    "hwan": PillEffectTab,
+}
+
 
 class _TabStack(QWidget):
-    """표시/숨김 방식 탭 스택"""
+    """표시/숨김 방식 탭 스택
+
+    QStackedWidget 은 항상 가장 큰 페이지 높이를 예약하지만, 이 스택은 본문
+    스크롤 영역을 공유하므로 현재 페이지 높이에만 맞아야 한다. 숨긴 페이지가
+    레이아웃 높이에 기여하지 않도록 단순 표시/숨김으로 직접 구현한다.
+    """
 
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
@@ -199,7 +217,7 @@ class CharacterPage(QFrame):
 
         self._tabs: list[PillTab] = []
         for index, tab in enumerate(CHARACTER_TABS):
-            pill: PillTab = PillTab(bar, tab.label, tab.color, index, self._go)
+            pill: PillTab = PillTab(bar, tab.label, index, self._go)
             self._tabs.append(pill)
             layout.addWidget(pill)
 
@@ -214,8 +232,6 @@ class CharacterPage(QFrame):
         wrapper_layout = QVBoxLayout(wrapper)
         wrapper_layout.setContentsMargins(0, 0, 0, 0)
         wrapper_layout.setSpacing(0)
-
-        from PySide6.QtWidgets import QScrollArea
 
         scroll: QScrollArea = QScrollArea(wrapper)
         scroll.setObjectName("charBodyScroll")
@@ -244,16 +260,12 @@ class CharacterPage(QFrame):
         content_layout.addWidget(self._stack)
         scroll.setWidget(self._body_content)
 
-        self._profile_tabs: list[QWidget] = [
-            TitleTab(self._stack, self._on_profile_changed),
-            EquipmentTab(self._stack, self._on_profile_changed),
-            DistributionTab(self._stack, self._on_profile_changed),
-            DisplayStandTab(self._stack, self._on_profile_changed),
-            TalismanTab(self._stack, self._on_profile_changed),
-            ElixirTab(self._stack, self._on_profile_changed),
-            PillEffectTab(self._stack, self._on_profile_changed),
-        ]
-        for page in self._profile_tabs:
+        self._profile_tabs: list[CharacterTab] = []
+        for tab in CHARACTER_TABS:
+            page: CharacterTab = _TAB_FACTORIES[tab.key](
+                self._stack, self._on_profile_changed
+            )
+            self._profile_tabs.append(page)
             self._stack.addWidget(page)
 
         self._go(0)
@@ -281,8 +293,7 @@ class CharacterPage(QFrame):
             self._right_panel.set_live_view(compute_live_view(profile))
 
         for page in self._profile_tabs:
-            if hasattr(page, "set_profile"):
-                page.set_profile(profile)
+            page.set_profile(profile)
 
     def _selected_profile(self) -> CharacterProfile | None:
         """현재 선택 캐릭터 조회"""
@@ -373,7 +384,7 @@ class CharacterPage(QFrame):
         if profile is None:
             return
 
-        self._clamp_profile_allocations(profile)
+        clamp_profile_allocations(profile)
         self._title_label.setText(profile.name if profile.name.strip() else "이름 없음")
         self._subtitle_label.setText(
             f"Lv. {profile.level} · {REALM_TIER_SPECS[profile.realm].label}"
@@ -384,48 +395,14 @@ class CharacterPage(QFrame):
         )
         self._right_panel.set_live_view(compute_live_view(profile))
         for page in self._profile_tabs:
-            if isinstance(page, DistributionTab):
+            if page.refresh_on_any_change:
                 page.set_profile(profile)
 
         self._save_timer.start(_SAVE_DELAY_MS)
 
-    def _clamp_profile_allocations(self, profile: CharacterProfile) -> None:
-        """레벨·경지 변경 후 분배 한도 초과값 정리"""
-
-        # 스탯 분배 한도 기준 순차 보존
-        remaining_stat_points: int = profile.level * 5
-        profile.distribution.strength = min(
-            profile.distribution.strength,
-            remaining_stat_points,
-        )
-        remaining_stat_points -= profile.distribution.strength
-        profile.distribution.dexterity = min(
-            profile.distribution.dexterity,
-            remaining_stat_points,
-        )
-        remaining_stat_points -= profile.distribution.dexterity
-        profile.distribution.vitality = min(
-            profile.distribution.vitality,
-            remaining_stat_points,
-        )
-        remaining_stat_points -= profile.distribution.vitality
-        profile.distribution.luck = min(
-            profile.distribution.luck,
-            remaining_stat_points,
-        )
-
-        # 단전 분배 한도 기준 순차 보존
-        remaining_danjeon_points: int = REALM_TIER_SPECS[profile.realm].danjeon_points
-        profile.danjeon.upper = min(profile.danjeon.upper, remaining_danjeon_points)
-        remaining_danjeon_points -= profile.danjeon.upper
-        profile.danjeon.middle = min(profile.danjeon.middle, remaining_danjeon_points)
-        remaining_danjeon_points -= profile.danjeon.middle
-        profile.danjeon.lower = min(profile.danjeon.lower, remaining_danjeon_points)
-
     def _save_current_store(self) -> None:
-        """현재 캐릭터 저장소 검증 및 저장"""
+        """현재 캐릭터 저장소 저장"""
 
-        validate_character_store(app_state.character_store)
         save_characters()
 
     def _use_selected_character(self) -> None:
