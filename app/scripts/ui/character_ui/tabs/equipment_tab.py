@@ -391,6 +391,7 @@ class _EquipSlotData:
     slot: EquipmentSlot
     owned: list[OwnedEquipment]
     equipped_index: int
+    unavailable_names: set[str]
 
     def equipped(self) -> OwnedEquipment | None:
         """현재 장착 장비"""
@@ -494,7 +495,12 @@ class _EquipPickCard(QFrame):
 
         self.setObjectName("charEquipPick")
         self.setProperty("current", current)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._selectable: bool = item.name not in slot.unavailable_names
+        self.setCursor(
+            Qt.CursorShape.PointingHandCursor
+            if self._selectable
+            else Qt.CursorShape.ForbiddenCursor
+        )
 
         self._index: int = index
         self._tab: "EquipmentTab" = tab
@@ -565,6 +571,10 @@ class _EquipPickCard(QFrame):
     def mousePressEvent(self, event) -> None:  # type: ignore[override]
         """카드 클릭 시 해당 장비 장착"""
 
+        if not self._selectable:
+            super().mousePressEvent(event)
+            return
+
         self._tab.select_owned(self._index)
         super().mousePressEvent(event)
 
@@ -613,10 +623,21 @@ class EquipmentTab(CharacterTab):
         for slot in _SLOT_ORDER:
             if profile is None:
                 slots_data.append(
-                    _EquipSlotData(slot=slot, owned=[], equipped_index=-1)
+                    _EquipSlotData(
+                        slot=slot,
+                        owned=[],
+                        equipped_index=-1,
+                        unavailable_names=set(),
+                    )
                 )
                 continue
 
+            # 다른 슬롯에 장착된 장비의 선택 차단 목록 구성
+            other_equipped_names: set[str] = {
+                equipment_name
+                for equipped_slot, equipment_name in profile.equipment.equipped.items()
+                if equipped_slot != slot and equipment_name is not None
+            }
             owned: list[OwnedEquipment] = list_equippable_equipment(profile, slot)
             equipped_name: str | None = profile.equipment.equipped[slot]
             equipped_index: int = -1
@@ -632,6 +653,7 @@ class EquipmentTab(CharacterTab):
                     slot=slot,
                     owned=owned,
                     equipped_index=equipped_index,
+                    unavailable_names=other_equipped_names,
                 )
             )
 
@@ -1661,7 +1683,7 @@ class EquipmentTab(CharacterTab):
         remaining_names: list[str] = [
             item.name
             for item_index, item in enumerate(slot.owned)
-            if item_index != index
+            if item_index != index and item.name not in slot.unavailable_names
         ]
         remove_equipment(self._profile, removed_name)
         if was_equipped and remaining_names:

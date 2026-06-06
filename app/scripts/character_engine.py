@@ -617,13 +617,6 @@ def equip_equipment(
     if slot not in _equipment_slots(equipment.kind):
         raise ValueError("equipment cannot be equipped in this slot")
 
-    for equipped_slot, equipped_name in profile.equipment.equipped.items():
-        if equipped_slot == slot:
-            continue
-
-        if equipped_name == equipment_name:
-            raise ValueError("same equipment cannot be equipped twice")
-
     profile.equipment.equipped[slot] = equipment_name
 
 

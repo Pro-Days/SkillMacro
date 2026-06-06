@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -345,7 +346,19 @@ class CharacterPage(QFrame):
             return
 
         store: CharacterStore = app_state.character_store
-        pasted: CharacterProfile = deserialize_character_profile(text)
+        try:
+            # 클립보드 캐릭터 데이터 파싱 및 전체 무결성 검증
+            pasted: CharacterProfile = deserialize_character_profile(text)
+
+        except (KeyError, TypeError, ValueError):
+            # 잘못된 클립보드 입력 안내 및 기존 저장소 유지
+            QMessageBox.warning(
+                self,
+                "캐릭터 붙여넣기 실패",
+                "올바른 캐릭터 데이터가 아닙니다.",
+            )
+            return
+
         store.characters.append(pasted)
         store.selected_index = len(store.characters) - 1
         save_characters()
