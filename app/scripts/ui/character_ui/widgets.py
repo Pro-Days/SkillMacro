@@ -25,12 +25,13 @@ from PySide6.QtWidgets import (
     QLayoutItem,
     QLineEdit,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
-from app.scripts.custom_classes import CustomFont
+from app.scripts.custom_classes import CustomFont, StyledButton
 
 
 class CharComboBox(QComboBox):
@@ -80,9 +81,7 @@ class NormalizingLineEdit(QLineEdit):
 
         if isinstance(validator, QDoubleValidator):
             float_value: float = self._number()
-            float_value = min(
-                max(float_value, validator.bottom()), validator.top()
-            )
+            float_value = min(max(float_value, validator.bottom()), validator.top())
             decimals: int = validator.decimals()
             if decimals >= 0:
                 float_value = round(float_value, decimals)
@@ -284,6 +283,155 @@ class CharCard(QFrame):
         """콘텐츠 영역에 레이아웃 추가"""
 
         self._layout.addLayout(layout)
+
+
+class ChoiceListPanels:
+    """선택 패널과 목록 패널 공용 구성"""
+
+    def __init__(
+        self,
+        parent: QWidget,
+        selector_title: str,
+        list_title: str,
+        panel_object_name: str,
+        scroll_area_object_name: str,
+        scroll_content_object_name: str,
+        add_text: str,
+        add_clicked: Callable[[], None],
+        option_title: str = "",
+        selector_min_width: int = 0,
+        list_min_width: int = 0,
+        selector_scroll_min_height: int = 150,
+        list_scroll_min_height: int = 150,
+    ) -> None:
+        self.selector_panel: QFrame = QFrame(parent)
+        self.selector_panel.setObjectName(panel_object_name)
+        if selector_min_width:
+            self.selector_panel.setMinimumWidth(selector_min_width)
+
+        selector_layout = QVBoxLayout(self.selector_panel)
+        selector_layout.setContentsMargins(12, 12, 12, 12)
+        selector_layout.setSpacing(10)
+        selector_layout.addWidget(
+            self._title_label(self.selector_panel, selector_title)
+        )
+
+        self.group_container: QFrame = QFrame(self.selector_panel)
+        self.group_layout = QHBoxLayout(self.group_container)
+        self.group_layout.setContentsMargins(0, 0, 0, 0)
+        self.group_layout.setSpacing(6)
+        selector_layout.addWidget(self.group_container)
+
+        if option_title:
+            selector_layout.addWidget(
+                self._title_label(self.selector_panel, option_title, point_size=10)
+            )
+
+        (
+            self.option_scroll_area,
+            self.option_scroll_content,
+            self.option_layout,
+        ) = self._scroll_box(
+            self.selector_panel,
+            scroll_area_object_name,
+            scroll_content_object_name,
+            selector_scroll_min_height,
+            6,
+        )
+        selector_layout.addWidget(self.option_scroll_area, 1)
+
+        self.add_button: StyledButton = StyledButton(
+            self.selector_panel,
+            add_text,
+            kind="normal",
+            point_size=9,
+        )
+        self.add_button.clicked.connect(add_clicked)
+        selector_layout.addWidget(self.add_button)
+
+        self.list_panel: QFrame = QFrame(parent)
+        self.list_panel.setObjectName(panel_object_name)
+        if list_min_width:
+            self.list_panel.setMinimumWidth(list_min_width)
+
+        list_panel_layout = QVBoxLayout(self.list_panel)
+        list_panel_layout.setContentsMargins(12, 12, 12, 12)
+        list_panel_layout.setSpacing(10)
+        list_panel_layout.addWidget(self._title_label(self.list_panel, list_title))
+
+        (
+            self.list_scroll_area,
+            self.list_scroll_content,
+            self.list_layout,
+        ) = self._scroll_box(
+            self.list_panel,
+            scroll_area_object_name,
+            scroll_content_object_name,
+            list_scroll_min_height,
+            8,
+        )
+        list_panel_layout.addWidget(self.list_scroll_area, 1)
+
+    def make_choice_button(
+        self,
+        parent: QWidget,
+        text: str,
+        object_name: str,
+        point_size: int = 9,
+        minimum_height: int = 30,
+        checked: bool = False,
+        enabled: bool = True,
+    ) -> QPushButton:
+        """선택형 버튼 생성"""
+
+        button = QPushButton(text, parent)
+        button.setObjectName(object_name)
+        button.setCheckable(True)
+        button.setChecked(checked)
+        button.setEnabled(enabled)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setFont(CustomFont(point_size, bold=True))
+        button.setMinimumHeight(minimum_height)
+        return button
+
+    def _title_label(
+        self,
+        parent: QWidget,
+        text: str,
+        point_size: int = 11,
+    ) -> QLabel:
+        """패널 제목 라벨 생성"""
+
+        title_label: QLabel = QLabel(text, parent)
+        title_label.setObjectName("charEdTitle")
+        title_label.setFont(CustomFont(point_size, bold=True))
+        return title_label
+
+    def _scroll_box(
+        self,
+        parent: QWidget,
+        area_object_name: str,
+        content_object_name: str,
+        minimum_height: int,
+        spacing: int,
+    ) -> tuple[QScrollArea, QWidget, QVBoxLayout]:
+        """스크롤 영역과 콘텐츠 레이아웃 생성"""
+
+        scroll_area: QScrollArea = QScrollArea(parent)
+        scroll_area.setObjectName(area_object_name)
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+        scroll_area.setMinimumHeight(minimum_height)
+
+        scroll_content: QWidget = QWidget(scroll_area)
+        scroll_content.setObjectName(content_object_name)
+        scroll_layout = QVBoxLayout(scroll_content)
+        scroll_layout.setContentsMargins(0, 0, 0, 0)
+        scroll_layout.setSpacing(spacing)
+        scroll_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        scroll_content.setLayout(scroll_layout)
+        scroll_area.setWidget(scroll_content)
+        return scroll_area, scroll_content, scroll_layout
 
 
 class PillTab(QPushButton):

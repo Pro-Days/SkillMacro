@@ -19,13 +19,11 @@ from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
     QBoxLayout,
     QFrame,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLayout,
     QLineEdit,
     QPushButton,
-    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -65,6 +63,7 @@ from app.scripts.character_models import (
     EquipmentFreeStatLine,
     EquipmentGrade,
     EquipmentKind,
+    EquipmentScrollLine,
     EquipmentSlot,
     OwnedEquipment,
     PotentialLine,
@@ -83,8 +82,8 @@ from app.scripts.ui.character_ui.edit_session import CharacterEditSession
 from app.scripts.ui.character_ui.tabs.base import CharacterTab
 from app.scripts.ui.character_ui.widgets import (
     CharComboBox,
+    ChoiceListPanels,
     FlowLayout,
-    NormalizingLineEdit,
     ResponsiveColumnsBox,
     StaticValueField,
     StepperField,
@@ -354,9 +353,14 @@ def _equipment_pick_info_rows(
     info_rows: list[tuple[str, list[str]]] = []
 
     # 주문서 성공 횟수 요약
+    scroll_totals: dict[StatKey, int] = {}
+    for scroll in equipment.scrolls:
+        scroll_totals[scroll.stat_key] = (
+            scroll_totals.get(scroll.stat_key, 0) + scroll.count
+        )
+
     scroll_tokens: list[str] = []
-    for stat_key, tier_counts in equipment.scrolls.items():
-        total_count: int = sum(tier_counts.values())
+    for stat_key, total_count in scroll_totals.items():
         if total_count <= 0:
             continue
 
@@ -435,9 +439,9 @@ class _BaseSection:
     free_rows: QVBoxLayout | None = None
     static_flow: FlowLayout | None = None
     static_fields: dict[str, tuple[QWidget, StaticValueField]] | None = None
-    make_static_field: Callable[[str, float], tuple[QWidget, StaticValueField]] | None = (
-        None
-    )
+    make_static_field: (
+        Callable[[str, float], tuple[QWidget, StaticValueField]] | None
+    ) = None
 
     def update_values(self, slot: EquipmentSlot, item: OwnedEquipment) -> None:
         """자동 기본 스탯 표시값 갱신"""
@@ -477,19 +481,114 @@ class _BaseSection:
 
 
 @dataclass(slots=True)
+class _ScrollRow:
+    """적용 주문서 행 참조"""
+
+    line_id: str
+    widget: QFrame
+    select_button: QPushButton
+    effect_label: QLabel
+    count_field: StepperField
+
+
+@dataclass(slots=True)
 class _ScrollSection:
-    """주문서 섹션과 입력칸 참조"""
+    """주문서 섹션 참조"""
 
     widget: QFrame
-    cells: dict[tuple[StatKey, ScrollTier], NormalizingLineEdit]
+    selector_panel: QFrame
+    list_panel: QFrame
+    stat_buttons: dict[StatKey, QPushButton]
+    tier_content: QWidget
+    tier_layout: QVBoxLayout
+    tier_buttons: dict[ScrollTier, QPushButton]
+    add_button: StyledButton
+    list_content: QWidget
+    list_layout: QVBoxLayout
+    rows: dict[str, _ScrollRow]
+    row_ids: tuple[str, ...]
 
-    def clear_values(self, slot: EquipmentSlot, item: OwnedEquipment) -> None:
-        """레벨 변경 후 주문서 입력값과 제한 갱신"""
+    def update_selector(
+        self,
+        selected_stat_key: StatKey | None,
+        selected_tier: ScrollTier | None,
+        stat_enabled: dict[StatKey, bool],
+        tier_effects: dict[ScrollTier, dict[StatKey, float]],
+        tier_enabled: dict[ScrollTier, bool],
+        add_button_text: str,
+        add_enabled: bool,
+        tier_button_text: Callable[[ScrollTier, dict[StatKey, float]], str],
+        make_tier_button: Callable[
+            [ScrollTier, dict[StatKey, float]],
+            QPushButton,
+        ],
+    ) -> None:
+        """주문서 선택 상태와 확률 버튼 목록 동기화"""
 
-        limit: int | None = _equipment_scroll_limit(slot, item)
-        for field in self.cells.values():
-            field.setValidator(QIntValidator(0, limit or 999, field))
-            field.set_committed_text("0")
+        for stat_key, button in self.stat_buttons.items():
+            button.setEnabled(stat_enabled.get(stat_key, False))
+            button.setChecked(stat_key is selected_stat_key)
+
+        tier_keys: tuple[ScrollTier, ...] = tuple(tier_effects)
+        if tuple(self.tier_buttons) != tier_keys:
+            for button in self.tier_buttons.values():
+                self.tier_layout.removeWidget(button)
+                button.deleteLater()
+            self.tier_buttons.clear()
+
+            for tier, effects in tier_effects.items():
+                button = make_tier_button(tier, effects)
+                self.tier_buttons[tier] = button
+                self.tier_layout.insertWidget(
+                    max(0, self.tier_layout.count() - 1),
+                    button,
+                )
+            self.tier_content.updateGeometry()
+
+        for tier, button in self.tier_buttons.items():
+            button.setText(tier_button_text(tier, tier_effects[tier]))
+            button.setEnabled(tier_enabled.get(tier, False))
+            button.setChecked(tier is selected_tier)
+
+        self.add_button.setText(add_button_text)
+        self.add_button.setEnabled(add_enabled)
+
+    def update_rows(
+        self,
+        entries: list[tuple[EquipmentScrollLine, dict[StatKey, float]]],
+        selected_line_id: str | None,
+        row_title: Callable[[EquipmentScrollLine], str],
+        effect_text: Callable[[dict[StatKey, float]], str],
+        make_row: Callable[
+            [EquipmentScrollLine, dict[StatKey, float]],
+            _ScrollRow,
+        ],
+    ) -> None:
+        """적용 주문서 행 구성과 횟수 입력값 동기화"""
+
+        row_ids: tuple[str, ...] = tuple(line.id for line, _effects in entries)
+        if row_ids != self.row_ids:
+            for row in self.rows.values():
+                self.list_layout.removeWidget(row.widget)
+                row.widget.deleteLater()
+            self.rows.clear()
+
+            for line, effects in entries:
+                row = make_row(line, effects)
+                self.rows[line.id] = row
+                self.list_layout.insertWidget(
+                    max(0, self.list_layout.count() - 1),
+                    row.widget,
+                )
+            self.row_ids = row_ids
+            self.list_content.updateGeometry()
+
+        for line, effects in entries:
+            row = self.rows[line.id]
+            row.select_button.setText(row_title(line))
+            row.select_button.setChecked(line.id == selected_line_id)
+            row.effect_label.setText(effect_text(effects))
+            row.count_field.set_number(float(line.count))
 
 
 @dataclass(slots=True)
@@ -542,6 +641,7 @@ class _EquipmentDetailView:
         self.name_label.setText(
             _equipment_display_name(self.item, self.slot, has_grade)
         )
+
 
 class _DetailStack(QWidget):
     """현재 장비 상세 페이지만 높이에 반영하는 고정 페이지 스택"""
@@ -796,6 +896,7 @@ class EquipmentTab(CharacterTab):
         self._slots_data: list[_EquipSlotData] = self._build_slots_data(None)
         self._active_index: int = 0
         self._picker_open: bool = False
+        self._selected_scroll_id: str | None = None
 
         self._root_layout: QHBoxLayout = QHBoxLayout(self)
         self._root_layout.setContentsMargins(0, 0, 0, 0)
@@ -1279,7 +1380,8 @@ class EquipmentTab(CharacterTab):
 
             # 레벨 변경 시 티어와 주문서 입력 상태 초기화
             item.tier = 1
-            item.scrolls = {}
+            item.scrolls = []
+            self._selected_scroll_id = None
             view: _EquipmentDetailView = self._require_equipped_view(item)
             if view.item_section is None:
                 raise ValueError("item section is not available")
@@ -1287,7 +1389,7 @@ class EquipmentTab(CharacterTab):
             if view.base_section is not None:
                 view.base_section.update_values(view.slot, item)
             if view.scroll_section is not None:
-                view.scroll_section.clear_values(view.slot, item)
+                self._refresh_scroll_section(item)
             self._commit_active_item()
 
     def _pick_tier(self, text: str) -> None:
@@ -1480,9 +1582,7 @@ class EquipmentTab(CharacterTab):
             for index, line in enumerate(item.base_stat_lines):
                 stat: str = STAT_SPECS[line.stat_key]
                 value: str = f"{line.value:g}"
-                free_rows.addLayout(
-                    self._build_free_stat_row(item, index, stat, value)
-                )
+                free_rows.addLayout(self._build_free_stat_row(item, index, stat, value))
             box.addLayout(free_rows)
 
             add_btn: StyledButton = StyledButton(
@@ -1668,7 +1768,7 @@ class EquipmentTab(CharacterTab):
         self._session.commit_stats()
 
     def _build_scroll_section(self, slot: _EquipSlotData) -> _ScrollSection:
-        """주문서 섹션 (행=종류, 열=% 단계, 칸=성공 횟수)"""
+        """주문서 섹션 (좌: 선택 / 우: 적용 목록)"""
 
         section, box = self._section("주문서")
 
@@ -1680,85 +1780,439 @@ class EquipmentTab(CharacterTab):
             raise ValueError("equipped item is required")
 
         scroll_set: _ScrollSet = _SCROLL_SETS[slot.slot]
-        scroll_limit: int | None = _equipment_scroll_limit(slot.slot, item)
-
-        wrap: QScrollArea = QScrollArea(section)
-        wrap.setObjectName("charScrollTableWrap")
-        wrap.setWidgetResizable(True)
-        wrap.setFixedHeight(40 + len(scroll_set.stat_keys) * 38)
-        wrap.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-
-        table: QFrame = QFrame()
-        table.setObjectName("charScrollTable")
-        grid = QGridLayout(table)
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setHorizontalSpacing(6)
-        grid.setVerticalSpacing(6)
-
         slot_effects: dict[StatKey, dict[ScrollTier, dict[StatKey, float]]] = (
             EQUIPMENT_SCROLL_EFFECTS[slot.slot]
         )
-        cells: dict[tuple[StatKey, ScrollTier], NormalizingLineEdit] = {}
+        self._ensure_selected_scroll_id(item)
+        selected_line: EquipmentScrollLine | None = self._selected_scroll_line(item)
+        selected_stat_key, selected_tier, stat_enabled, tier_effects, tier_enabled = (
+            self._scroll_selector_state(
+                item,
+                scroll_set,
+                slot_effects,
+                selected_line,
+            )
+        )
 
-        # 머리글
-        head_label: QLabel = QLabel("주문서", table)
-        head_label.setObjectName("charScrollHead")
-        head_label.setFont(CustomFont(9, bold=True))
-        grid.addWidget(head_label, 0, 0)
-        for col, tier in enumerate(scroll_set.tiers):
-            tier_label: QLabel = QLabel(_SCROLL_TIER_LABELS[tier], table)
-            tier_label.setObjectName("charScrollHead")
-            tier_label.setFont(CustomFont(9, bold=True))
-            tier_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            grid.addWidget(tier_label, 0, col + 2)
+        root = QHBoxLayout()
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(12)
+        (
+            selector_panel,
+            list_panel,
+            stat_buttons,
+            tier_content,
+            tier_layout,
+            tier_buttons,
+            add_button,
+            list_content,
+            list_layout,
+            rows,
+            row_ids,
+        ) = self._build_scroll_panels(
+            slot,
+            item,
+            scroll_set,
+            slot_effects,
+            selected_stat_key,
+            selected_tier,
+            stat_enabled,
+            tier_effects,
+            tier_enabled,
+        )
+        root.addWidget(selector_panel, 1)
+        root.addWidget(list_panel, 1)
+        box.addLayout(root)
 
-        # 본문
-        for row, stat_key in enumerate(scroll_set.stat_keys):
-            stat_label: QLabel = QLabel(STAT_SPECS[stat_key], table)
-            stat_label.setObjectName("charScrollStat")
-            stat_label.setFont(CustomFont(9, bold=True))
-            grid.addWidget(stat_label, row + 1, 0)
-            for col, tier in enumerate(scroll_set.tiers):
-                # 해당 스탯이 지원하지 않는 단계는 입력칸을 두지 않는다
-                if tier not in slot_effects[stat_key]:
-                    dash: QLabel = QLabel("—", table)
-                    dash.setObjectName("charMuted")
-                    dash.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    grid.addWidget(dash, row + 1, col + 2)
-                else:
-                    count: int = item.scrolls.get(stat_key, {}).get(
-                        tier,
-                        0,
-                    )
-                    cell: NormalizingLineEdit = NormalizingLineEdit(
-                        str(count),
-                        table,
-                    )
-                    cell.setObjectName("charMiniNum")
-                    cell.setFont(CustomFont(9))
-                    cell.setFixedWidth(30)
-                    cell.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    cell.setValidator(QIntValidator(0, scroll_limit or 999, cell))
-                    cell.value_committed.connect(
-                        lambda target=item, slot_key=slot.slot, key=stat_key, scroll_key=tier, count_field=cell: self._finish_scroll_count(
-                            target,
-                            slot_key,
-                            key,
-                            scroll_key,
-                            count_field,
-                        )
-                    )
-                    cells[(stat_key, tier)] = cell
-                    grid.addWidget(cell, row + 1, col + 2)
+        return _ScrollSection(
+            widget=section,
+            selector_panel=selector_panel,
+            list_panel=list_panel,
+            stat_buttons=stat_buttons,
+            tier_content=tier_content,
+            tier_layout=tier_layout,
+            tier_buttons=tier_buttons,
+            add_button=add_button,
+            list_content=list_content,
+            list_layout=list_layout,
+            rows=rows,
+            row_ids=row_ids,
+        )
 
-        # 종류 텍스트와 입력칸 사이 간격
-        grid.setColumnMinimumWidth(1, 16)
-        # 잉여 가로 공간을 마지막 열 뒤로 몰아 입력칸을 종류 라벨 쪽에 붙인다
-        grid.setColumnStretch(len(scroll_set.tiers) + 2, 1)
+    def _refresh_scroll_section(self, item: OwnedEquipment) -> None:
+        """현재 장비 주문서 섹션 갱신"""
 
-        wrap.setWidget(table)
-        box.addWidget(wrap)
-        return _ScrollSection(widget=section, cells=cells)
+        view: _EquipmentDetailView = self._require_equipped_view(item)
+        scroll_section: _ScrollSection | None = view.scroll_section
+        if scroll_section is None:
+            raise ValueError("scroll section is not available")
+
+        slot: _EquipSlotData = self._slots_data[self._active_index]
+        if slot.equipped() is not item:
+            raise ValueError("active equipment is not bound")
+
+        scroll_set: _ScrollSet = _SCROLL_SETS[slot.slot]
+        slot_effects: dict[StatKey, dict[ScrollTier, dict[StatKey, float]]] = (
+            EQUIPMENT_SCROLL_EFFECTS[slot.slot]
+        )
+        self._ensure_selected_scroll_id(item)
+        selected_line: EquipmentScrollLine | None = self._selected_scroll_line(item)
+        selected_stat_key, selected_tier, stat_enabled, tier_effects, tier_enabled = (
+            self._scroll_selector_state(
+                item,
+                scroll_set,
+                slot_effects,
+                selected_line,
+            )
+        )
+        scroll_section.update_selector(
+            selected_stat_key,
+            selected_tier,
+            stat_enabled,
+            tier_effects,
+            tier_enabled,
+            self._scroll_add_button_text(slot.slot, item),
+            self._can_add_scroll_line(slot.slot, item, scroll_set, slot_effects),
+            self._scroll_option_text,
+            lambda tier, effects: self._build_scroll_tier_button(
+                scroll_section.tier_content,
+                tier,
+                effects,
+            ),
+        )
+        scroll_section.update_rows(
+            self._scroll_row_entries(item, scroll_set, slot_effects),
+            self._selected_scroll_id,
+            self._scroll_row_title,
+            self._scroll_effect_text,
+            lambda line, effects: self._build_scroll_row(
+                scroll_section.list_content,
+                slot.slot,
+                item,
+                line,
+                effects,
+            ),
+        )
+        scroll_section.widget.updateGeometry()
+
+    def _ensure_selected_scroll_id(self, item: OwnedEquipment) -> None:
+        """현재 장비의 선택 주문서 라인 보정"""
+
+        if self._selected_scroll_id in {scroll.id for scroll in item.scrolls}:
+            return
+
+        self._selected_scroll_id = item.scrolls[0].id if item.scrolls else None
+
+    def _selected_scroll_line(
+        self,
+        item: OwnedEquipment,
+    ) -> EquipmentScrollLine | None:
+        """현재 선택 주문서 라인 조회"""
+
+        if self._selected_scroll_id is None:
+            return None
+
+        for scroll in item.scrolls:
+            if scroll.id == self._selected_scroll_id:
+                return scroll
+
+        return None
+
+    def _scroll_selector_state(
+        self,
+        item: OwnedEquipment,
+        scroll_set: _ScrollSet,
+        slot_effects: dict[StatKey, dict[ScrollTier, dict[StatKey, float]]],
+        selected_line: EquipmentScrollLine | None,
+    ) -> tuple[
+        StatKey | None,
+        ScrollTier | None,
+        dict[StatKey, bool],
+        dict[ScrollTier, dict[StatKey, float]],
+        dict[ScrollTier, bool],
+    ]:
+        """선택 주문서 라인 기준 선택 패널 상태 구성"""
+
+        selected_stat_key: StatKey | None = (
+            selected_line.stat_key if selected_line is not None else None
+        )
+        selected_tier: ScrollTier | None = (
+            selected_line.tier if selected_line is not None else None
+        )
+        stat_enabled: dict[StatKey, bool] = {
+            stat_key: (
+                selected_line is not None
+                and self._first_available_scroll_tier(
+                    item,
+                    selected_line,
+                    stat_key,
+                    slot_effects,
+                )
+                is not None
+            )
+            for stat_key in scroll_set.stat_keys
+        }
+        tier_effects: dict[ScrollTier, dict[StatKey, float]] = (
+            slot_effects[selected_stat_key] if selected_stat_key is not None else {}
+        )
+        tier_enabled: dict[ScrollTier, bool] = {
+            tier: (
+                selected_line is not None
+                and self._can_use_scroll_key(
+                    item,
+                    selected_line,
+                    selected_stat_key,
+                    tier,
+                )
+            )
+            for tier in tier_effects
+        }
+        return (
+            selected_stat_key,
+            selected_tier,
+            stat_enabled,
+            tier_effects,
+            tier_enabled,
+        )
+
+    def _build_scroll_panels(
+        self,
+        slot: _EquipSlotData,
+        item: OwnedEquipment,
+        scroll_set: _ScrollSet,
+        slot_effects: dict[StatKey, dict[ScrollTier, dict[StatKey, float]]],
+        selected_stat_key: StatKey | None,
+        selected_tier: ScrollTier | None,
+        stat_enabled: dict[StatKey, bool],
+        tier_effects: dict[ScrollTier, dict[StatKey, float]],
+        tier_enabled: dict[ScrollTier, bool],
+    ) -> tuple[
+        QFrame,
+        QFrame,
+        dict[StatKey, QPushButton],
+        QWidget,
+        QVBoxLayout,
+        dict[ScrollTier, QPushButton],
+        StyledButton,
+        QWidget,
+        QVBoxLayout,
+        dict[str, _ScrollRow],
+        tuple[str, ...],
+    ]:
+        """주문서 선택 패널과 목록 패널 구성"""
+
+        panels = ChoiceListPanels(
+            self,
+            selector_title="주문서 선택",
+            list_title="적용된 주문서",
+            panel_object_name="charScrollPanel",
+            scroll_area_object_name="charScrollArea",
+            scroll_content_object_name="charScrollContent",
+            add_text=self._scroll_add_button_text(slot.slot, item),
+            add_clicked=lambda: self._add_selected_scroll(slot.slot, item),
+            option_title="확률",
+            selector_scroll_min_height=150,
+            list_scroll_min_height=150,
+        )
+        stat_buttons: dict[StatKey, QPushButton] = {}
+        for stat_key in scroll_set.stat_keys:
+            stat_button: QPushButton = panels.make_choice_button(
+                panels.selector_panel,
+                STAT_SPECS[stat_key],
+                "charScrollChoiceBtn",
+                checked=stat_key is selected_stat_key,
+                enabled=stat_enabled.get(stat_key, False),
+            )
+            stat_button.clicked.connect(
+                lambda _checked=False, key=stat_key: self._select_scroll_stat(
+                    key,
+                    slot.slot,
+                )
+            )
+            stat_buttons[stat_key] = stat_button
+            panels.group_layout.addWidget(stat_button)
+
+        panels.group_layout.addStretch(1)
+        tier_buttons: dict[ScrollTier, QPushButton] = {}
+        for tier, effects in tier_effects.items():
+            tier_button: QPushButton = self._build_scroll_tier_button(
+                panels.option_scroll_content,
+                tier,
+                effects,
+            )
+            tier_button.setChecked(tier is selected_tier)
+            tier_button.setEnabled(tier_enabled.get(tier, False))
+            tier_buttons[tier] = tier_button
+            panels.option_layout.addWidget(tier_button)
+
+        panels.option_layout.addStretch(1)
+        panels.add_button.setEnabled(
+            self._can_add_scroll_line(slot.slot, item, scroll_set, slot_effects)
+        )
+        rows: dict[str, _ScrollRow] = {}
+        row_ids: list[str] = []
+        for line, effects in self._scroll_row_entries(
+            item,
+            scroll_set,
+            slot_effects,
+        ):
+            row = self._build_scroll_row(
+                panels.list_scroll_content,
+                slot.slot,
+                item,
+                line,
+                effects,
+            )
+            rows[line.id] = row
+            row_ids.append(line.id)
+            panels.list_layout.addWidget(row.widget)
+
+        panels.list_layout.addStretch(1)
+        return (
+            panels.selector_panel,
+            panels.list_panel,
+            stat_buttons,
+            panels.option_scroll_content,
+            panels.option_layout,
+            tier_buttons,
+            panels.add_button,
+            panels.list_scroll_content,
+            panels.list_layout,
+            rows,
+            tuple(row_ids),
+        )
+
+    def _build_scroll_tier_button(
+        self,
+        parent: QWidget,
+        tier: ScrollTier,
+        effects: dict[StatKey, float],
+    ) -> QPushButton:
+        """주문서 확률 선택 버튼 구성"""
+
+        tier_button: QPushButton = QPushButton(
+            self._scroll_option_text(tier, effects),
+            parent,
+        )
+        tier_button.setObjectName("charScrollChoiceBtn")
+        tier_button.setCheckable(True)
+        tier_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        tier_button.setFont(CustomFont(9, bold=True))
+        tier_button.setMinimumHeight(36)
+        tier_button.clicked.connect(
+            lambda _checked=False, scroll_tier=tier: self._select_scroll_tier(
+                scroll_tier
+            )
+        )
+        return tier_button
+
+    def _scroll_row_entries(
+        self,
+        item: OwnedEquipment,
+        scroll_set: _ScrollSet,
+        slot_effects: dict[StatKey, dict[ScrollTier, dict[StatKey, float]]],
+    ) -> list[tuple[EquipmentScrollLine, dict[StatKey, float]]]:
+        """적용 주문서 행 표시 데이터 구성"""
+
+        entries: list[tuple[EquipmentScrollLine, dict[StatKey, float]]] = []
+        valid_order: dict[tuple[StatKey, ScrollTier], int] = {
+            (stat_key, tier): stat_index * len(scroll_set.tiers) + tier_index
+            for stat_index, stat_key in enumerate(scroll_set.stat_keys)
+            for tier_index, tier in enumerate(scroll_set.tiers)
+        }
+        sorted_scrolls: list[EquipmentScrollLine] = sorted(
+            item.scrolls,
+            key=lambda scroll: valid_order[(scroll.stat_key, scroll.tier)],
+        )
+        for scroll in sorted_scrolls:
+            entries.append(
+                (
+                    scroll,
+                    slot_effects[scroll.stat_key][scroll.tier],
+                )
+            )
+        return entries
+
+    def _build_scroll_row(
+        self,
+        parent: QWidget,
+        slot: EquipmentSlot,
+        item: OwnedEquipment,
+        line: EquipmentScrollLine,
+        effects: dict[StatKey, float],
+    ) -> _ScrollRow:
+        """적용 주문서 행 구성"""
+
+        row: QFrame = QFrame(parent)
+        row.setObjectName("charScrollCard")
+        layout = QVBoxLayout(row)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(9)
+
+        title_row = QHBoxLayout()
+        title_row.setSpacing(8)
+        select_btn: QPushButton = QPushButton(
+            self._scroll_row_title(line),
+            row,
+        )
+        select_btn.setObjectName("charTalListSelectBtn")
+        select_btn.setCheckable(True)
+        select_btn.setChecked(line.id == self._selected_scroll_id)
+        select_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        select_btn.setFont(CustomFont(10, bold=True))
+        select_btn.clicked.connect(lambda: self._select_scroll_line(item, line))
+        title_row.addWidget(select_btn, 1)
+        remove_btn: StyledButton = StyledButton(
+            row, "삭제", kind="danger", point_size=9
+        )
+        remove_btn.setFixedWidth(58)
+        remove_btn.clicked.connect(lambda: self._remove_scroll_entry(item, line))
+        title_row.addWidget(remove_btn)
+        layout.addLayout(title_row)
+
+        effect_label: QLabel = QLabel(self._scroll_effect_text(effects), row)
+        effect_label.setObjectName("charScrollEffect")
+        effect_label.setFont(CustomFont(9))
+        effect_label.setWordWrap(True)
+        layout.addWidget(effect_label)
+
+        count_row = QHBoxLayout()
+        count_row.setSpacing(8)
+        count_field: StepperField = StepperField(
+            row,
+            str(line.count),
+            unit="회",
+            max_width=80,
+        )
+        scroll_limit: int | None = _equipment_scroll_limit(slot, item)
+        count_field.input.setValidator(
+            QIntValidator(1, scroll_limit or 999, count_field.input)
+        )
+        count_field.value_changed.connect(
+            lambda target=item, target_line=line, field=count_field: self._set_scroll_count_from_field(
+                target,
+                target_line,
+                field,
+            )
+        )
+        count_field.input.editingFinished.connect(
+            lambda target=item, slot_key=slot, target_line=line, field=count_field: self._finish_scroll_count(
+                target,
+                slot_key,
+                target_line,
+                field,
+            )
+        )
+        count_row.addWidget(count_field)
+        count_row.addStretch(1)
+        layout.addLayout(count_row)
+        return _ScrollRow(
+            line_id=line.id,
+            widget=row,
+            select_button=select_btn,
+            effect_label=effect_label,
+            count_field=count_field,
+        )
 
     def _build_option_section(self, option_section: _EquipmentOptionSection) -> QFrame:
         """잠재/추가능력 섹션 (3줄 고정)"""
@@ -1865,72 +2319,290 @@ class EquipmentTab(CharacterTab):
 
         self._session.commit_stats()
 
+    def _scroll_effect_text(self, effects: dict[StatKey, float]) -> str:
+        """주문서 효과 표시 문자열"""
+
+        return ", ".join(
+            f"{STAT_SPECS[stat_key]} {value:+g}" for stat_key, value in effects.items()
+        )
+
+    def _scroll_option_text(
+        self,
+        tier: ScrollTier,
+        effects: dict[StatKey, float],
+    ) -> str:
+        """주문서 확률 선택 버튼 표시 문자열"""
+
+        return f"{_SCROLL_TIER_LABELS[tier]} - {self._scroll_effect_text(effects)}"
+
+    def _scroll_total_count(self, item: OwnedEquipment) -> int:
+        """장비 주문서 총 적용 횟수 계산"""
+
+        return sum(scroll.count for scroll in item.scrolls)
+
+    def _scroll_add_button_text(
+        self,
+        slot: EquipmentSlot,
+        item: OwnedEquipment,
+    ) -> str:
+        """주문서 추가 버튼 문구 구성"""
+
+        scroll_limit: int | None = _equipment_scroll_limit(slot, item)
+        if scroll_limit is None:
+            return "주문서 추가"
+
+        return f"주문서 추가 ({self._scroll_total_count(item)} / {scroll_limit})"
+
+    def _select_scroll_stat(self, stat_key: StatKey, slot: EquipmentSlot) -> None:
+        """주문서 종류 선택"""
+
+        item: OwnedEquipment | None = self._current_item()
+        if item is None:
+            return
+
+        selected_line: EquipmentScrollLine | None = self._selected_scroll_line(item)
+        if selected_line is None:
+            return
+
+        slot_effects: dict[StatKey, dict[ScrollTier, dict[StatKey, float]]] = (
+            EQUIPMENT_SCROLL_EFFECTS[slot]
+        )
+        tier: ScrollTier | None = self._first_available_scroll_tier(
+            item,
+            selected_line,
+            stat_key,
+            slot_effects,
+        )
+        if tier is None:
+            self._refresh_scroll_section(item)
+            return
+
+        selected_line.stat_key = stat_key
+        selected_line.tier = tier
+        self._refresh_scroll_section(item)
+        self._session.commit_stats()
+
+    def _select_scroll_tier(self, tier: ScrollTier) -> None:
+        """주문서 확률 선택"""
+
+        item: OwnedEquipment | None = self._current_item()
+        if item is None:
+            return
+
+        selected_line: EquipmentScrollLine | None = self._selected_scroll_line(item)
+        if selected_line is None:
+            return
+
+        if not self._can_use_scroll_key(
+            item,
+            selected_line,
+            selected_line.stat_key,
+            tier,
+        ):
+            self._refresh_scroll_section(item)
+            return
+
+        selected_line.tier = tier
+        self._refresh_scroll_section(item)
+        self._session.commit_stats()
+
+    def _select_scroll_line(
+        self,
+        item: OwnedEquipment,
+        line: EquipmentScrollLine,
+    ) -> None:
+        """적용 주문서 라인 선택"""
+
+        self._selected_scroll_id = line.id
+        self._refresh_scroll_section(item)
+
+    def _can_use_scroll_key(
+        self,
+        item: OwnedEquipment,
+        selected_line: EquipmentScrollLine,
+        stat_key: StatKey | None,
+        tier: ScrollTier,
+    ) -> bool:
+        """선택 주문서 라인의 조합 변경 가능 여부"""
+
+        if stat_key is None:
+            return False
+
+        for scroll in item.scrolls:
+            if scroll.id == selected_line.id:
+                continue
+
+            if scroll.stat_key == stat_key and scroll.tier == tier:
+                return False
+
+        return True
+
+    def _first_available_scroll_tier(
+        self,
+        item: OwnedEquipment,
+        selected_line: EquipmentScrollLine,
+        stat_key: StatKey,
+        slot_effects: dict[StatKey, dict[ScrollTier, dict[StatKey, float]]],
+    ) -> ScrollTier | None:
+        """종류 변경 시 선택 가능한 첫 주문서 확률 조회"""
+
+        for tier in slot_effects[stat_key]:
+            if self._can_use_scroll_key(item, selected_line, stat_key, tier):
+                return tier
+
+        return None
+
+    def _first_available_scroll_line(
+        self,
+        item: OwnedEquipment,
+        scroll_set: _ScrollSet,
+        slot_effects: dict[StatKey, dict[ScrollTier, dict[StatKey, float]]],
+    ) -> tuple[StatKey, ScrollTier] | None:
+        """아직 적용되지 않은 첫 주문서 조합 조회"""
+
+        used_keys: set[tuple[StatKey, ScrollTier]] = {
+            (scroll.stat_key, scroll.tier) for scroll in item.scrolls
+        }
+        for stat_key in scroll_set.stat_keys:
+            for tier in slot_effects[stat_key]:
+                if (stat_key, tier) not in used_keys:
+                    return stat_key, tier
+
+        return None
+
+    def _can_add_scroll_line(
+        self,
+        slot: EquipmentSlot,
+        item: OwnedEquipment,
+        scroll_set: _ScrollSet,
+        slot_effects: dict[StatKey, dict[ScrollTier, dict[StatKey, float]]],
+    ) -> bool:
+        """주문서 라인 추가 가능 여부"""
+
+        scroll_limit: int | None = _equipment_scroll_limit(slot, item)
+        if scroll_limit is not None and self._scroll_total_count(item) >= scroll_limit:
+            return False
+
+        return self._first_available_scroll_line(
+            item,
+            scroll_set,
+            slot_effects,
+        ) is not None
+
+    def _scroll_row_title(self, line: EquipmentScrollLine) -> str:
+        """적용 주문서 행 제목 구성"""
+
+        return f"{STAT_SPECS[line.stat_key]} {_SCROLL_TIER_LABELS[line.tier]}"
+
     def _set_scroll_count(
         self,
         item: OwnedEquipment,
-        stat_key: StatKey,
-        tier: ScrollTier,
-        text: str,
+        line: EquipmentScrollLine,
+        count: int,
     ) -> None:
         """주문서 성공 횟수 모델 반영"""
 
-        count: int = 0 if not text.strip() else int(text)
-        tier_counts: dict[ScrollTier, int] = item.scrolls.setdefault(
-            stat_key,
-            {},
-        )
         if count <= 0:
-            tier_counts.pop(tier, None)
+            item.scrolls = [scroll for scroll in item.scrolls if scroll.id != line.id]
+            if self._selected_scroll_id == line.id:
+                self._selected_scroll_id = item.scrolls[0].id if item.scrolls else None
         else:
-            tier_counts[tier] = count
+            line.count = count
 
-        if not tier_counts:
-            item.scrolls.pop(stat_key, None)
+    def _set_scroll_count_from_field(
+        self,
+        item: OwnedEquipment,
+        line: EquipmentScrollLine,
+        field: StepperField,
+    ) -> None:
+        """주문서 횟수 입력값 모델 반영"""
+
+        text: str = field.input.text().strip()
+        if not text:
+            return
+
+        count: int = max(1, int(field.number()))
+        self._set_scroll_count(item, line, count)
 
     def _finish_scroll_count(
         self,
         item: OwnedEquipment,
         slot: EquipmentSlot,
-        stat_key: StatKey,
-        tier: ScrollTier,
-        field: NormalizingLineEdit,
+        line: EquipmentScrollLine,
+        field: StepperField,
     ) -> None:
         """주문서 입력 종료 시 최대 성공 횟수 기준 보정"""
 
-        self._set_scroll_count(
+        field.input.normalize_to_validator()
+        self._set_scroll_count_from_field(
             item,
-            stat_key,
-            tier,
-            field.text(),
+            line,
+            field,
         )
 
-        # 총합 제한이 없는 슬롯은 정규화된 값으로만 갱신
         scroll_limit: int | None = _equipment_scroll_limit(slot, item)
         if scroll_limit is None:
+            self._refresh_scroll_section(item)
             self._session.commit_stats()
             return
 
-        # 전체 주문서 성공 횟수와 마지막 수정 칸의 초과분 계산
-        total_count: int = sum(
-            count
-            for tier_counts in item.scrolls.values()
-            for count in tier_counts.values()
-        )
+        total_count: int = self._scroll_total_count(item)
         overflow_count: int = total_count - scroll_limit
         if overflow_count <= 0:
+            self._refresh_scroll_section(item)
             self._session.commit_stats()
             return
 
-        # 초과를 만든 입력칸만 낮춰 엔진 최대 개수에 맞춤
-        current_count: int = item.scrolls[stat_key][tier]
+        current_count: int = line.count
         adjusted_count: int = max(0, current_count - overflow_count)
-        field.set_committed_text(str(adjusted_count))
-        self._set_scroll_count(
+        if adjusted_count <= 0:
+            self._set_scroll_count(item, line, 0)
+            self._refresh_scroll_section(item)
+            self._session.commit_stats()
+            return
+
+        field.set_number(float(adjusted_count))
+        self._set_scroll_count_from_field(
             item,
-            stat_key,
-            tier,
-            field.text(),
+            line,
+            field,
         )
+        self._refresh_scroll_section(item)
+        self._session.commit_stats()
+
+    def _add_selected_scroll(self, slot: EquipmentSlot, item: OwnedEquipment) -> None:
+        """첫 미적용 주문서 라인 추가"""
+
+        scroll_limit: int | None = _equipment_scroll_limit(slot, item)
+        if scroll_limit is not None and self._scroll_total_count(item) >= scroll_limit:
+            return
+
+        scroll_set: _ScrollSet = _SCROLL_SETS[slot]
+        slot_effects: dict[StatKey, dict[ScrollTier, dict[StatKey, float]]] = (
+            EQUIPMENT_SCROLL_EFFECTS[slot]
+        )
+        scroll_key: tuple[StatKey, ScrollTier] | None = (
+            self._first_available_scroll_line(item, scroll_set, slot_effects)
+        )
+        if scroll_key is None:
+            return
+
+        stat_key, tier = scroll_key
+        scroll = EquipmentScrollLine(stat_key=stat_key, tier=tier, count=1)
+        item.scrolls.append(scroll)
+        self._selected_scroll_id = scroll.id
+        self._refresh_scroll_section(item)
+        self._session.commit_stats()
+
+    def _remove_scroll_entry(
+        self,
+        item: OwnedEquipment,
+        line: EquipmentScrollLine,
+    ) -> None:
+        """적용 주문서 항목 삭제"""
+
+        self._set_scroll_count(item, line, 0)
+        self._refresh_scroll_section(item)
         self._session.commit_stats()
 
     def _set_option_line(
@@ -2066,9 +2738,7 @@ class EquipmentTab(CharacterTab):
         slot: _EquipSlotData = self._slots_data[self._active_index]
         removed_item: OwnedEquipment = slot.owned[index]
         removed_name: str = removed_item.name
-        was_equipped: bool = (
-            removed_name in self._profile.equipment.equipped.values()
-        )
+        was_equipped: bool = removed_name in self._profile.equipment.equipped.values()
         remaining_names: list[str] = [
             item.name
             for item_index, item in enumerate(slot.owned)

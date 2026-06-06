@@ -517,6 +517,37 @@ class EquipmentFreeStatLine:
 
 
 @dataclass(slots=True)
+class EquipmentScrollLine:
+    """장비 주문서 적용 라인"""
+
+    id: str = field(default_factory=_new_id)
+    stat_key: StatKey = StatKey.ATTACK
+    tier: ScrollTier = ScrollTier.HUNDRED
+    count: int = 1
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "EquipmentScrollLine":
+        """저장 데이터로부터 주문서 적용 라인 복원"""
+
+        return cls(
+            id=str(data["id"]),
+            stat_key=StatKey(str(data["stat_key"])),
+            tier=ScrollTier(str(data["tier"])),
+            count=int(data["count"]),
+        )
+
+    def to_dict(self) -> dict[str, str | int]:
+        """주문서 적용 라인 직렬화"""
+
+        return {
+            "id": self.id,
+            "stat_key": self.stat_key.value,
+            "tier": self.tier.value,
+            "count": int(self.count),
+        }
+
+
+@dataclass(slots=True)
 class OwnedEquipment:
     """캐릭터 장비 입력 상태"""
 
@@ -529,7 +560,7 @@ class OwnedEquipment:
     base_stat_lines: list[EquipmentFreeStatLine] = field(default_factory=list)
     reforge_step: int = 0
     reforge_stats: dict[StatKey, float] = field(default_factory=dict)
-    scrolls: dict[StatKey, dict[ScrollTier, int]] = field(default_factory=dict)
+    scrolls: list[EquipmentScrollLine] = field(default_factory=list)
     potentials: tuple[PotentialLine | None, ...] = field(
         default_factory=lambda: (None, None, None)
     )
@@ -549,16 +580,12 @@ class OwnedEquipment:
         if raw_grade is not None:
             grade = EquipmentGrade(str(raw_grade))
 
-        raw_scrolls: dict[str, Any] = _read_dict(data, "scrolls")
-        scrolls: dict[StatKey, dict[ScrollTier, int]] = {}
-        for stat_key_value, raw_tiers in raw_scrolls.items():
-            if not isinstance(raw_tiers, dict):
-                raise TypeError("scroll tier map must be a dict")
+        scrolls: list[EquipmentScrollLine] = []
+        for raw_scroll in _read_list(data, "scrolls"):
+            if not isinstance(raw_scroll, dict):
+                raise TypeError("scroll line must be a dict")
 
-            scrolls[StatKey(str(stat_key_value))] = {
-                ScrollTier(str(tier)): int(count)
-                for tier, count in raw_tiers.items()
-            }
+            scrolls.append(EquipmentScrollLine.from_dict(raw_scroll))
 
         return cls(
             name=str(data["name"]),
@@ -601,12 +628,7 @@ class OwnedEquipment:
             "base_stat_lines": [line.to_dict() for line in self.base_stat_lines],
             "reforge_step": self.reforge_step,
             "reforge_stats": _stat_float_map_to_dict(self.reforge_stats),
-            "scrolls": {
-                stat_key.value: {
-                    tier.value: int(count) for tier, count in tier_counts.items()
-                }
-                for stat_key, tier_counts in self.scrolls.items()
-            },
+            "scrolls": [line.to_dict() for line in self.scrolls],
             "potentials": [
                 line.to_dict() if line is not None else None for line in self.potentials
             ],

@@ -1655,14 +1655,37 @@ QPushButton#charSwitch {{
 }}
 QPushButton#charSwitch:checked {{ background-color: #9180F7; text-align: right; padding-right: 4px; }}
 
-/* 부적 */
+/* 부적 / 주문서 카드형 선택 UI */
 QFrame#charTalSlot {{
     background-color: #FAFAF9; border: 1px dashed #C8C4BE; border-radius: 12px;
 }}
 QFrame#charTalSlot[filled=true] {{ background-color: #FFFFFF; border: 1px solid #9180F7; }}
-QFrame#charTalCard {{ background-color: #FFFFFF; border: 1px solid #E5E3DF; border-radius: 8px; }}
-QLabel#charTalName {{ color: #1A1A1A; background: transparent; }}
-QLabel#charTalStat {{ color: #5D5B54; background: transparent; }}
+QFrame#charTalCard, QFrame#charScrollCard {{ background-color: #FFFFFF; border: 1px solid #E5E3DF; border-radius: 8px; }}
+QFrame#charTalCard[selected=true] {{ background-color: #EFECFD; border-color: #9180F7; }}
+QFrame#charTalPanel, QFrame#charScrollPanel {{ background-color: #FAFAF9; border: 1px solid #E5E3DF; border-radius: 8px; }}
+QLabel#charTalName, QLabel#charScrollName {{ color: #1A1A1A; background: transparent; }}
+QLabel#charTalStat, QLabel#charScrollEffect {{ color: #5D5B54; background: transparent; }}
+QScrollArea#charTalScrollArea, QScrollArea#charScrollArea {{
+    background-color: transparent; border: 0px;
+}}
+QScrollArea#charTalScrollArea QWidget#qt_scrollarea_viewport,
+QScrollArea#charScrollArea QWidget#qt_scrollarea_viewport {{
+    background-color: transparent;
+}}
+QWidget#charTalScrollContent, QWidget#charScrollContent {{ background-color: transparent; }}
+QPushButton#charTalChoiceBtn, QPushButton#charTalListSelectBtn, QPushButton#charScrollChoiceBtn {{
+    background-color: #FFFFFF; border: 1px solid #E5E3DF; border-radius: 8px;
+    color: #37352F; padding: 6px 10px; text-align: left;
+}}
+QPushButton#charTalChoiceBtn:hover, QPushButton#charTalListSelectBtn:hover, QPushButton#charScrollChoiceBtn:hover {{
+    background-color: #F6F5F4; border-color: #C8C4BE;
+}}
+QPushButton#charTalChoiceBtn:checked, QPushButton#charTalListSelectBtn:checked, QPushButton#charScrollChoiceBtn:checked {{
+    background-color: #E6E0F5; border-color: #9180F7; color: #1A1A1A;
+}}
+QPushButton#charTalChoiceBtn:disabled, QPushButton#charTalListSelectBtn:disabled, QPushButton#charScrollChoiceBtn:disabled {{
+    background-color: #F1F0EE; border-color: #E5E3DF; color: #A8A39B;
+}}
 
 /* 검색 / 미니 입력 */
 QLineEdit#charSearch, QLineEdit#charMiniNum {{
@@ -3242,14 +3265,37 @@ QPushButton#charSwitch {{
 }}
 QPushButton#charSwitch:checked {{ background-color: #9180F7; text-align: right; padding-right: 4px; }}
 
-/* 부적 */
+/* 부적 / 주문서 카드형 선택 UI */
 QFrame#charTalSlot {{
     background-color: #242434; border: 1px dashed #4A4A60; border-radius: 12px;
 }}
 QFrame#charTalSlot[filled=true] {{ background-color: #1E1E2E; border: 1px solid #9180F7; }}
-QFrame#charTalCard {{ background-color: #1E1E2E; border: 1px solid #363650; border-radius: 8px; }}
-QLabel#charTalName {{ color: #E8E8F0; background: transparent; }}
-QLabel#charTalStat {{ color: #A0A0C0; background: transparent; }}
+QFrame#charTalCard, QFrame#charScrollCard {{ background-color: #1E1E2E; border: 1px solid #363650; border-radius: 8px; }}
+QFrame#charTalCard[selected=true] {{ background-color: #2E2A4A; border-color: #9180F7; }}
+QFrame#charTalPanel, QFrame#charScrollPanel {{ background-color: #242434; border: 1px solid #363650; border-radius: 8px; }}
+QLabel#charTalName, QLabel#charScrollName {{ color: #E8E8F0; background: transparent; }}
+QLabel#charTalStat, QLabel#charScrollEffect {{ color: #A0A0C0; background: transparent; }}
+QScrollArea#charTalScrollArea, QScrollArea#charScrollArea {{
+    background-color: transparent; border: 0px;
+}}
+QScrollArea#charTalScrollArea QWidget#qt_scrollarea_viewport,
+QScrollArea#charScrollArea QWidget#qt_scrollarea_viewport {{
+    background-color: transparent;
+}}
+QWidget#charTalScrollContent, QWidget#charScrollContent {{ background-color: transparent; }}
+QPushButton#charTalChoiceBtn, QPushButton#charTalListSelectBtn, QPushButton#charScrollChoiceBtn {{
+    background-color: #1E1E2E; border: 1px solid #363650; border-radius: 8px;
+    color: #C8C8E8; padding: 6px 10px; text-align: left;
+}}
+QPushButton#charTalChoiceBtn:hover, QPushButton#charTalListSelectBtn:hover, QPushButton#charScrollChoiceBtn:hover {{
+    background-color: #242434; border-color: #4A4A68;
+}}
+QPushButton#charTalChoiceBtn:checked, QPushButton#charTalListSelectBtn:checked, QPushButton#charScrollChoiceBtn:checked {{
+    background-color: #2E2A4A; border-color: #9180F7; color: #E8E8F0;
+}}
+QPushButton#charTalChoiceBtn:disabled, QPushButton#charTalListSelectBtn:disabled, QPushButton#charScrollChoiceBtn:disabled {{
+    background-color: #202030; border-color: #303048; color: #6F6F8D;
+}}
 
 /* 검색 / 미니 입력 */
 QLineEdit#charSearch, QLineEdit#charMiniNum {{

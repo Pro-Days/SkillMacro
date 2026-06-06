@@ -125,6 +125,13 @@ def _validate_non_negative_int(value: int, field_name: str) -> None:
         raise ValueError(f"{field_name} must be greater than or equal to 0")
 
 
+def _validate_positive_int(value: int, field_name: str) -> None:
+    """양수 정수 입력 검증"""
+
+    if value <= 0:
+        raise ValueError(f"{field_name} must be greater than 0")
+
+
 def _validate_non_negative_float(value: float, field_name: str) -> None:
     """음수 실수 입력 차단"""
 
@@ -243,6 +250,9 @@ def _validate_equipped(profile: CharacterProfile) -> None:
         raise ValueError("equipped title id does not exist")
 
     talisman_ids: set[str] = {talisman.id for talisman in profile.talismans}
+    talisman_key_by_id: dict[str, str] = {
+        talisman.id: talisman.talisman_key for talisman in profile.talismans
+    }
     if len(profile.equipped.talisman_ids) > MAX_EQUIPPED_TALISMAN_COUNT:
         raise ValueError("equipped talismans exceed slot count")
 
@@ -252,6 +262,12 @@ def _validate_equipped(profile: CharacterProfile) -> None:
     for talisman_id in profile.equipped.talisman_ids:
         if talisman_id not in talisman_ids:
             raise ValueError("equipped talisman id does not exist")
+
+    equipped_talisman_keys: list[str] = [
+        talisman_key_by_id[talisman_id] for talisman_id in profile.equipped.talisman_ids
+    ]
+    if len(equipped_talisman_keys) != len(set(equipped_talisman_keys)):
+        raise ValueError("equipped talisman keys must be unique")
 
 
 def _validate_titles(profile: CharacterProfile) -> None:
@@ -274,6 +290,7 @@ def _validate_talismans(profile: CharacterProfile) -> None:
     """부적 입력 검증"""
 
     talisman_ids: set[str] = set()
+    talisman_keys: set[str] = set()
     talisman_specs: dict[str, TalismanSpec] = _talisman_spec_map()
     for talisman in profile.talismans:
         if talisman.id in talisman_ids:
@@ -283,6 +300,10 @@ def _validate_talismans(profile: CharacterProfile) -> None:
         if talisman.talisman_key not in talisman_specs:
             raise ValueError("talisman key does not exist")
 
+        if talisman.talisman_key in talisman_keys:
+            raise ValueError("talisman keys must be unique")
+
+        talisman_keys.add(talisman.talisman_key)
         if talisman.level < 0 or talisman.level > MAX_TALISMAN_LEVEL:
             raise ValueError("talisman level is out of range")
 
@@ -415,19 +436,24 @@ def _validate_equipment_scrolls(
     """장비 주문서 입력값 검증"""
 
     total_count: int = 0
+    seen_scrolls: set[tuple[StatKey, ScrollTier]] = set()
     allowed_effects: dict[StatKey, dict[ScrollTier, dict[StatKey, float]]] = (
         EQUIPMENT_SCROLL_EFFECTS[slot]
     )
-    for stat_key, tier_counts in equipment.scrolls.items():
-        if stat_key not in allowed_effects:
+    for scroll in equipment.scrolls:
+        if scroll.stat_key not in allowed_effects:
             raise ValueError("scroll stat is not allowed for this equipment")
 
-        for tier, count in tier_counts.items():
-            if tier not in allowed_effects[stat_key]:
-                raise ValueError("scroll tier is not allowed for this equipment stat")
+        if scroll.tier not in allowed_effects[scroll.stat_key]:
+            raise ValueError("scroll tier is not allowed for this equipment stat")
 
-            _validate_non_negative_int(count, "scroll count")
-            total_count += count
+        scroll_key: tuple[StatKey, ScrollTier] = (scroll.stat_key, scroll.tier)
+        if scroll_key in seen_scrolls:
+            raise ValueError("scroll line must be unique")
+
+        seen_scrolls.add(scroll_key)
+        _validate_positive_int(scroll.count, "scroll count")
+        total_count += scroll.count
 
     limit_map: dict[int, int] | None = EQUIPMENT_SCROLL_LIMITS[slot]
     if limit_map is None:
@@ -797,13 +823,12 @@ def _add_equipment_scrolls(
     slot_effects: dict[StatKey, dict[ScrollTier, dict[StatKey, float]]] = (
         EQUIPMENT_SCROLL_EFFECTS[slot]
     )
-    for stat_key, tier_counts in equipment.scrolls.items():
-        for tier, count in tier_counts.items():
-            _merge_stats(
-                accumulated,
-                slot_effects[stat_key][tier],
-                multiplier=float(count),
-            )
+    for scroll in equipment.scrolls:
+        _merge_stats(
+            accumulated,
+            slot_effects[scroll.stat_key][scroll.tier],
+            multiplier=float(scroll.count),
+        )
 
 
 def _add_equipment_options(
