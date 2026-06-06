@@ -152,14 +152,6 @@ class TalismanTab(CharacterTab):
             selector_scroll_min_height=210,
             list_scroll_min_height=210,
         )
-        self._grade_button_container = self._choice_panels.group_container
-        self._grade_button_layout = self._choice_panels.group_layout
-        self._template_scroll_area = self._choice_panels.option_scroll_area
-        self._template_scroll_content = self._choice_panels.option_scroll_content
-        self._template_layout = self._choice_panels.option_layout
-        self._owned_scroll_area = self._choice_panels.list_scroll_area
-        self._owned_scroll_content = self._choice_panels.list_scroll_content
-        self._owned_layout = self._choice_panels.list_layout
         for grade in _GRADE_ORDER:
             if not self._specs_by_grade[grade]:
                 continue
@@ -171,9 +163,9 @@ class TalismanTab(CharacterTab):
             )
             grade_button.clicked.connect(partial(self._select_grade, grade))
             self._grade_buttons[grade] = grade_button
-            self._grade_button_layout.addWidget(grade_button)
+            self._choice_panels.group_layout.addWidget(grade_button)
 
-        self._grade_button_layout.addStretch(1)
+        self._choice_panels.group_layout.addStretch(1)
         return self._choice_panels.selector_panel
 
     def _build_owned_panel(self) -> QFrame:
@@ -203,8 +195,8 @@ class TalismanTab(CharacterTab):
             ].grade
 
         has_selected_talisman: bool = selected_talisman is not None
-        self._grade_button_container.setEnabled(has_selected_talisman)
-        self._template_scroll_area.setEnabled(has_selected_talisman)
+        self._choice_panels.group_container.setEnabled(has_selected_talisman)
+        self._choice_panels.option_scroll_area.setEnabled(has_selected_talisman)
         self._choice_panels.add_button.setEnabled(
             self._first_available_spec() is not None
         )
@@ -220,7 +212,7 @@ class TalismanTab(CharacterTab):
     ) -> None:
         """선택 등급 기준 부적 종류 버튼 갱신"""
 
-        self._clear_layout(self._template_layout)
+        self._clear_layout(self._choice_panels.option_layout)
         self._template_buttons.clear()
 
         for template in self._specs_by_grade[self._selected_grade]:
@@ -232,7 +224,7 @@ class TalismanTab(CharacterTab):
                 )
             )
             option_button: QPushButton = self._choice_panels.make_choice_button(
-                self._template_scroll_content,
+                self._choice_panels.option_scroll_content,
                 self._template_option_text(template),
                 "charTalChoiceBtn",
                 minimum_height=36,
@@ -246,9 +238,9 @@ class TalismanTab(CharacterTab):
                 and selected_talisman.talisman_key == template.name
             )
             self._template_buttons[template.name] = option_button
-            self._template_layout.addWidget(option_button)
+            self._choice_panels.option_layout.addWidget(option_button)
 
-        self._template_layout.addStretch(1)
+        self._choice_panels.option_layout.addStretch(1)
 
     def _template_option_text(self, template: TalismanSpec) -> str:
         """부적 종류 선택 버튼 표시 문자열"""
@@ -542,7 +534,7 @@ class TalismanTab(CharacterTab):
     def _render_owned(self) -> None:
         """보유 목록 갱신"""
 
-        self._clear_layout(self._owned_layout)
+        self._clear_layout(self._choice_panels.list_layout)
         self._owned_rows = {}
         if self._profile is None:
             return
@@ -555,24 +547,24 @@ class TalismanTab(CharacterTab):
 
         row: QFrame = self._build_owned_row(talisman)
         self._owned_rows[talisman.id] = row
-        self._owned_layout.addWidget(row)
+        self._choice_panels.list_layout.addWidget(row)
 
     def _replace_owned_row(self, talisman: CharacterTalisman) -> None:
         """보유 부적 카드 하나 교체"""
 
         current_row: QFrame = self._owned_rows[talisman.id]
-        row_index: int = self._owned_layout.indexOf(current_row)
-        self._owned_layout.removeWidget(current_row)
+        row_index: int = self._choice_panels.list_layout.indexOf(current_row)
+        self._choice_panels.list_layout.removeWidget(current_row)
         current_row.deleteLater()
         replacement: QFrame = self._build_owned_row(talisman)
         self._owned_rows[talisman.id] = replacement
-        self._owned_layout.insertWidget(row_index, replacement)
+        self._choice_panels.list_layout.insertWidget(row_index, replacement)
 
     def _remove_owned_row(self, talisman_id: str) -> None:
         """보유 부적 카드 하나 제거"""
 
         row: QFrame = self._owned_rows.pop(talisman_id)
-        self._owned_layout.removeWidget(row)
+        self._choice_panels.list_layout.removeWidget(row)
         row.deleteLater()
 
     def _build_owned_row(self, talisman: CharacterTalisman) -> QFrame:
