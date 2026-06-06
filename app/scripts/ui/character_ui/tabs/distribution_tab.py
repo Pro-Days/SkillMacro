@@ -23,6 +23,7 @@ from app.scripts.ui.character_ui.constants import (
     DANJEON_DISTRIBUTION_ITEMS,
     STAT_DISTRIBUTION_ITEMS,
 )
+from app.scripts.ui.character_ui.tabs.base import CharacterTab
 from app.scripts.ui.character_ui.widgets import (
     CharCard,
     ResponsiveColumnsBox,
@@ -102,8 +103,11 @@ class _Budget(QFrame):
         self.bar.setValue(ratio)
 
 
-class DistributionTab(QFrame):
+class DistributionTab(CharacterTab):
     """스탯·단전 분배 탭"""
+
+    # 레벨·경지(기본정보 탭)에 따라 분배 가능 포인트가 달라지므로 다른 입력 변경에도 갱신
+    refresh_on_any_change: bool = True
 
     def __init__(self, parent: QWidget, on_changed: Callable[[], None]) -> None:
         super().__init__(parent)
@@ -282,6 +286,7 @@ class DistributionTab(QFrame):
             other_used: int = used - int(self._stat_fields[changed_key].number())
             clamped_value: int = max(0, total - other_used)
             self._stat_fields[changed_key].set_number(float(clamped_value))
+            self._recalc_stat()
             return
 
         self._stat_budget.recalc(total, float(used))
@@ -310,6 +315,7 @@ class DistributionTab(QFrame):
             other_used: int = used - int(self._danjeon_fields[changed_key].number())
             clamped_value: int = max(0, total - other_used)
             self._danjeon_fields[changed_key].set_number(float(clamped_value))
+            self._recalc_danjeon()
             return
 
         self._danjeon_budget.recalc(total, float(used))

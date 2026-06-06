@@ -144,7 +144,7 @@ class StepperField(QFrame):
         self.input.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.input.setMinimumWidth(0)
         self.input.setValidator(QDoubleValidator(0.0, 1_000_000.0, 2, self))
-        self.input.textChanged.connect(self._on_text_changed)
+        self.input.editingFinished.connect(self._on_editing_finished)
         layout.addWidget(self.input, 1)
 
         # 단위 라벨 (좌측 여백과 동일 폭으로 좌우 대칭 유지)
@@ -184,9 +184,10 @@ class StepperField(QFrame):
         """현재 값에 가감"""
 
         self.set_number(max(0.0, self.number() + delta))
+        self.value_changed.emit()
 
-    def _on_text_changed(self, _text: str) -> None:
-        """입력 변경 시그널 전달"""
+    def _on_editing_finished(self) -> None:
+        """입력 확정 시그널 전달"""
 
         self.value_changed.emit()
 

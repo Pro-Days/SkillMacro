@@ -17,17 +17,21 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.scripts.calculator_models import REALM_TIER_SPECS, STAT_SPECS, RealmTier, StatKey
+from app.scripts.calculator_models import (
+    REALM_TIER_SPECS,
+    STAT_SPECS,
+    RealmTier,
+    StatKey,
+)
 from app.scripts.character_models import (
+    TITLE_STAT_SLOT_COUNT,
     CharacterProfile,
     CharacterTitle,
     TitleStatSlot,
 )
 from app.scripts.custom_classes import CustomFont, StyledButton
-from app.scripts.ui.character_ui.constants import (
-    STAT_CHOICE_LABELS,
-    STAT_LABEL_TO_KEY,
-)
+from app.scripts.ui.character_ui.constants import STAT_CHOICE_LABELS, STAT_LABEL_TO_KEY
+from app.scripts.ui.character_ui.tabs.base import CharacterTab
 from app.scripts.ui.character_ui.widgets import (
     CharCard,
     CharComboBox,
@@ -74,7 +78,9 @@ class _TitleItem(QFrame):
         name_edit: QLineEdit = QLineEdit(title.name, self)
         name_edit.setObjectName("charTitleName")
         name_edit.setFont(CustomFont(12, bold=True))
-        name_edit.textChanged.connect(self._on_name_changed)
+        name_edit.editingFinished.connect(
+            lambda field=name_edit: self._on_name_changed(field.text())
+        )
 
         self.equip_radio: QPushButton = QPushButton("장착", self)
         self.equip_radio.setObjectName("charEquipToggle")
@@ -85,7 +91,9 @@ class _TitleItem(QFrame):
         equip_group.addButton(self.equip_radio)
         self.equip_radio.clicked.connect(lambda: on_equip(title))
 
-        delete_btn: StyledButton = StyledButton(self, "삭제", kind="danger", point_size=9)
+        delete_btn: StyledButton = StyledButton(
+            self, "삭제", kind="danger", point_size=9
+        )
         delete_btn.clicked.connect(lambda: on_delete(title))
 
         head.addWidget(name_edit, 1)
@@ -96,7 +104,7 @@ class _TitleItem(QFrame):
         # 칭호 스탯 3슬롯 구성
         self._slot_combos: list[CharComboBox] = []
         self._slot_fields: list[StepperField] = []
-        for slot_index in range(3):
+        for slot_index in range(TITLE_STAT_SLOT_COUNT):
             layout.addLayout(self._build_slot_row(slot_index))
 
     def _build_slot_row(self, slot_index: int) -> QHBoxLayout:
@@ -163,7 +171,7 @@ class _TitleItem(QFrame):
         self.style().polish(self)
 
 
-class TitleTab(QFrame):
+class TitleTab(CharacterTab):
     """기본정보와 칭호 탭"""
 
     def __init__(self, parent: QWidget, on_changed: Callable[[], None]) -> None:
@@ -193,7 +201,9 @@ class TitleTab(QFrame):
         self._name_edit: QLineEdit = QLineEdit(self)
         self._name_edit.setObjectName("charTitleName")
         self._name_edit.setFont(CustomFont(12, bold=True))
-        self._name_edit.textChanged.connect(self._on_name_changed)
+        self._name_edit.editingFinished.connect(
+            lambda field=self._name_edit: self._on_name_changed(field.text())
+        )
         realm_card.add_widget(self._name_edit)
 
         level_label: QLabel = QLabel("캐릭터 레벨", self)
@@ -201,7 +211,9 @@ class TitleTab(QFrame):
         level_label.setFont(CustomFont(9, bold=True))
         realm_card.add_widget(level_label)
 
-        self._level_field: StepperField = StepperField(self, "0", unit="Lv", max_width=100)
+        self._level_field: StepperField = StepperField(
+            self, "0", unit="Lv", max_width=100
+        )
         self._level_field.input.setValidator(QIntValidator(0, 1_000_000, self))
         self._level_field.value_changed.connect(self._on_level_changed)
         realm_card.add_widget(self._level_field)
@@ -229,7 +241,9 @@ class TitleTab(QFrame):
         )
         self._title_card.add_widget(self._titles_container)
 
-        add_title_btn: StyledButton = StyledButton(self, "+ 칭호 추가", kind="normal", point_size=9)
+        add_title_btn: StyledButton = StyledButton(
+            self, "+ 칭호 추가", kind="normal", point_size=9
+        )
         add_title_btn.clicked.connect(self._add_title)
         self._title_card.add_widget(add_title_btn)
         self._layout.addWidget(self._title_card)
@@ -258,7 +272,9 @@ class TitleTab(QFrame):
 
         container.setLayout(flow)
 
-        uniform_width: int = max(button.sizeHint().width() for button in self._realm_buttons)
+        uniform_width: int = max(
+            button.sizeHint().width() for button in self._realm_buttons
+        )
         for button in self._realm_buttons:
             button.setFixedWidth(uniform_width)
 

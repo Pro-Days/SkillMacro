@@ -63,6 +63,24 @@ class ScrollTier(str, Enum):
     HUNDRED = "100"
 
 
+EQUIPMENT_KIND_SLOTS: dict[EquipmentKind, tuple[EquipmentSlot, ...]] = {
+    EquipmentKind.HELMET: (EquipmentSlot.HELMET,),
+    EquipmentKind.ARMOR: (EquipmentSlot.ARMOR,),
+    EquipmentKind.BELT: (EquipmentSlot.BELT,),
+    EquipmentKind.SHOES: (EquipmentSlot.SHOES,),
+    EquipmentKind.WEAPON: (EquipmentSlot.WEAPON,),
+    EquipmentKind.RING: (EquipmentSlot.RING1, EquipmentSlot.RING2),
+    EquipmentKind.NECKLACE: (EquipmentSlot.NECKLACE,),
+    EquipmentKind.EARRING: (EquipmentSlot.EARRING,),
+}
+
+EQUIPMENT_SLOT_KIND: dict[EquipmentSlot, EquipmentKind] = {
+    slot: kind
+    for kind, slots in EQUIPMENT_KIND_SLOTS.items()
+    for slot in slots
+}
+
+
 class PotentialOption(str, Enum):
     """잠재능력 옵션"""
 

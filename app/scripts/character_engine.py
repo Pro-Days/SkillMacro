@@ -39,6 +39,7 @@ from app.scripts.character_data import (
 )
 from app.scripts.character_models import (
     CHARACTER_DATA_VERSION,
+    EQUIPMENT_KIND_SLOTS,
     EQUIPMENT_OPTION_SLOT_COUNT,
     MAX_ELIXIR_COUNT,
     MAX_EQUIPPED_TALISMAN_COUNT,
@@ -159,10 +160,7 @@ def _new_id() -> str:
 def _equipment_slots(kind: EquipmentKind) -> tuple[EquipmentSlot, ...]:
     """장비 종류별 장착 가능 슬롯 조회"""
 
-    if kind == EquipmentKind.RING:
-        return (EquipmentSlot.RING1, EquipmentSlot.RING2)
-
-    return (EquipmentSlot(kind.value),)
+    return EQUIPMENT_KIND_SLOTS[kind]
 
 
 def _equipment_primary_slot(equipment: OwnedEquipment) -> EquipmentSlot:
@@ -190,7 +188,7 @@ def equipment_item_spec(equipment: OwnedEquipment) -> EquipmentItemSpec | None:
         if (
             equipment.level == item_spec.level
             and equipment.tier == item_spec.tier
-            and EquipmentSlot(equipment.kind.value) in item_spec.slots
+            and _equipment_primary_slot(equipment) in item_spec.slots
         ):
             return item_spec
 
@@ -967,10 +965,47 @@ def optimize_danjeon(profile: CharacterProfile) -> DanjeonDistribution:
     )
 
 
-def _final_stats_unchecked(profile: CharacterProfile) -> FinalStats:
-    """검증 없이 최종 스탯만 계산 (반복 평가용)"""
+def clamp_profile_allocations(profile: CharacterProfile) -> None:
+    """레벨·경지 한도 기준 분배 초과값 정리"""
 
-    return BaseStats.from_stat_map(_accumulate_base_stats(profile)).resolve()
+    remaining_stat_points: int = profile.level * 5
+    profile.distribution.strength = min(
+        profile.distribution.strength,
+        remaining_stat_points,
+    )
+    remaining_stat_points -= profile.distribution.strength
+    profile.distribution.dexterity = min(
+        profile.distribution.dexterity,
+        remaining_stat_points,
+    )
+    remaining_stat_points -= profile.distribution.dexterity
+    profile.distribution.vitality = min(
+        profile.distribution.vitality,
+        remaining_stat_points,
+    )
+    remaining_stat_points -= profile.distribution.vitality
+    profile.distribution.luck = min(
+        profile.distribution.luck,
+        remaining_stat_points,
+    )
+
+    remaining_danjeon_points: int = REALM_TIER_SPECS[profile.realm].danjeon_points
+    profile.danjeon.upper = min(profile.danjeon.upper, remaining_danjeon_points)
+    remaining_danjeon_points -= profile.danjeon.upper
+    profile.danjeon.middle = min(profile.danjeon.middle, remaining_danjeon_points)
+    remaining_danjeon_points -= profile.danjeon.middle
+    profile.danjeon.lower = min(profile.danjeon.lower, remaining_danjeon_points)
+
+
+def _final_stats_with_distribution(
+    fixed_stats: dict[StatKey, float],
+    distribution: StatDistribution,
+) -> FinalStats:
+    """고정 기여값에 후보 분배를 적용한 최종 스탯 계산"""
+
+    candidate_stats: dict[StatKey, float] = fixed_stats.copy()
+    _add_distribution(candidate_stats, distribution)
+    return BaseStats.from_stat_map(candidate_stats).resolve()
 
 
 def _damage_score(final_stats: FinalStats) -> float:
@@ -990,7 +1025,14 @@ def optimize_stat_distribution(profile: CharacterProfile) -> StatDistribution:
 
     validate_character_profile(profile)
 
-    # 힘 우선 초기 후보 구성
+    # 후보마다 변하지 않는 캐릭터 기여값 사전 합산
+    fixed_profile: CharacterProfile = replace(
+        profile,
+        distribution=StatDistribution(),
+    )
+    fixed_stats: dict[StatKey, float] = _accumulate_base_stats(fixed_profile)
+
+    # 동점일 때 힘 우선 결과를 유지하기 위한 초기 후보 구성
     total_points: int = profile.level * 5
     best_distribution: StatDistribution = StatDistribution(
         strength=total_points,
@@ -999,10 +1041,10 @@ def optimize_stat_distribution(profile: CharacterProfile) -> StatDistribution:
         luck=0,
     )
     best_damage_score: float = _damage_score(
-        _final_stats_unchecked(replace(profile, distribution=best_distribution))
+        _final_stats_with_distribution(fixed_stats, best_distribution)
     )
 
-    # 힘과 민첩의 전체 배분 조합 평가
+    # 힘과 민첩의 전체 배분 조합별 최종 스탯 평가
     for strength in range(total_points - 1, -1, -1):
         candidate: StatDistribution = StatDistribution(
             strength=strength,
@@ -1011,7 +1053,7 @@ def optimize_stat_distribution(profile: CharacterProfile) -> StatDistribution:
             luck=0,
         )
         damage_score: float = _damage_score(
-            _final_stats_unchecked(replace(profile, distribution=candidate))
+            _final_stats_with_distribution(fixed_stats, candidate)
         )
 
         # 더 높은 데미지 후보 반영

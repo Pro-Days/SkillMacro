@@ -17,6 +17,7 @@ from app.scripts.calculator_models import STAT_SPECS
 from app.scripts.character_data import ELIXIR_SPECS
 from app.scripts.character_models import MAX_ELIXIR_COUNT, CharacterProfile, Elixir
 from app.scripts.custom_classes import CustomFont
+from app.scripts.ui.character_ui.tabs.base import CharacterTab
 from app.scripts.ui.character_ui.widgets import (
     CharCard,
     ColorOrb,
@@ -131,7 +132,7 @@ class _ElixirCard(QFrame):
         self._on_changed(self._elixir, count)
 
 
-class ElixirTab(QFrame):
+class ElixirTab(CharacterTab):
     """영단 탭"""
 
     def __init__(self, parent: QWidget, on_changed: Callable[[], None]) -> None:
