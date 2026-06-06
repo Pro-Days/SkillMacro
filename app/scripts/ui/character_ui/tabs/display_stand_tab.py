@@ -204,7 +204,7 @@ class DisplayStandTab(CharacterTab):
 
         self._table.viewport().setCursor(Qt.CursorShape.PointingHandCursor)
 
-        corner: QAbstractButton | None = self._table.findChild(QAbstractButton)
+        corner: QAbstractButton | None = self._table.findChild(QAbstractButton)  # type: ignore[assignment]
         if corner is not None:
             corner.setCursor(Qt.CursorShape.PointingHandCursor)
             corner.clicked.connect(self._clear_selection)

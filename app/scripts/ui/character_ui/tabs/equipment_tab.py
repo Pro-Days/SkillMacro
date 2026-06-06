@@ -160,6 +160,7 @@ _ADDITIONAL_LABEL_TO_OPTION: dict[str, AdditionalOption] = {
 }
 _ADDITIONAL_OPTIONS: tuple[str, ...] = tuple(_ADDITIONAL_OPTION_TO_LABEL.values())
 
+
 class _OptionSectionKind(Enum):
     """장비 옵션 섹션 종류"""
 
@@ -1126,11 +1127,9 @@ class EquipmentTab(CharacterTab):
         auto_provided: bool = _has_grade(equipment_item_spec(item))
 
         flow: FlowLayout = FlowLayout(spacing=14)
-        for label_text, value in base_rows:
+        for label_text, v in base_rows:
             flow.addWidget(
-                self._build_labeled_field(
-                    label_text, str(value), readonly=auto_provided
-                )
+                self._build_labeled_field(label_text, str(v), readonly=auto_provided)
             )
         box.addLayout(flow)
         return section
@@ -1326,10 +1325,7 @@ class EquipmentTab(CharacterTab):
                     cell.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     cell.setValidator(QIntValidator(0, scroll_limit or 999, cell))
                     cell.textChanged.connect(
-                        lambda text,
-                        target=item,
-                        key=stat_key,
-                        scroll_key=tier: self._set_scroll_count(
+                        lambda text, target=item, key=stat_key, scroll_key=tier: self._set_scroll_count(
                             target,
                             key,
                             scroll_key,
@@ -1338,11 +1334,7 @@ class EquipmentTab(CharacterTab):
                         )
                     )
                     cell.editingFinished.connect(
-                        lambda target=item,
-                        slot_key=slot.slot,
-                        key=stat_key,
-                        scroll_key=tier,
-                        count_field=cell: self._finish_scroll_count(
+                        lambda target=item, slot_key=slot.slot, key=stat_key, scroll_key=tier, count_field=cell: self._finish_scroll_count(
                             target,
                             slot_key,
                             key,
@@ -1552,54 +1544,47 @@ class EquipmentTab(CharacterTab):
     ) -> None:
         """잠재/추가능력 라인 모델 반영"""
 
-        # 미설정 선택 시 해당 종류의 옵션 라인 제거
-        if label == "미설정":
-            if kind == _OptionSectionKind.POTENTIAL:
-                potential_lines: list[PotentialLine | None] = list(item.potentials)
-                potential_lines[index] = None
-                item.potentials = tuple(potential_lines)
-
-            else:
-                additional_lines: list[AdditionalLine | None] = list(item.additionals)
-                additional_lines[index] = None
-                item.additionals = tuple(additional_lines)
-
-            self._on_changed()
-            return
-
-        # 옵션 종류별 허용 범위 조회
-        if kind == _OptionSectionKind.POTENTIAL:
-            potential_option: PotentialOption = _POTENTIAL_LABEL_TO_OPTION[label]
-            option_range: ValueRange = POTENTIAL_OPTION_SPECS[
-                potential_option
-            ].value_range
-
-        else:
-            additional_option: AdditionalOption = _ADDITIONAL_LABEL_TO_OPTION[label]
-            option_range = ADDITIONAL_OPTION_SPECS[additional_option].value_range
-
-        # 허용 범위 기준 입력값 보정
-        value: float = min(
-            max(field.number(), option_range.minimum),
-            option_range.maximum,
-        )
-        field.set_number(value)
-
-        # 옵션 종류별 모델 저장
+        # 옵션 종류별 모델 라인 갱신
         if kind == _OptionSectionKind.POTENTIAL:
             potential_lines: list[PotentialLine | None] = list(item.potentials)
-            potential_lines[index] = PotentialLine(
-                option=potential_option,
-                value=value,
-            )
+
+            # 잠재능력 미설정 또는 선택 라인 반영
+            if label == "미설정":
+                potential_lines[index] = None
+
+            else:
+                potential_option: PotentialOption = _POTENTIAL_LABEL_TO_OPTION[label]
+                option_range: ValueRange = POTENTIAL_OPTION_SPECS[
+                    potential_option
+                ].value_range
+                value: float = min(
+                    max(field.number(), option_range.minimum),
+                    option_range.maximum,
+                )
+                field.set_number(value)
+                potential_lines[index] = PotentialLine(potential_option, value)
+
             item.potentials = tuple(potential_lines)
 
         else:
             additional_lines: list[AdditionalLine | None] = list(item.additionals)
-            additional_lines[index] = AdditionalLine(
-                option=additional_option,
-                value=value,
-            )
+
+            # 추가능력 미설정 또는 선택 라인 반영
+            if label == "미설정":
+                additional_lines[index] = None
+
+            else:
+                additional_option: AdditionalOption = _ADDITIONAL_LABEL_TO_OPTION[label]
+                option_range: ValueRange = ADDITIONAL_OPTION_SPECS[
+                    additional_option
+                ].value_range
+                value: float = min(
+                    max(field.number(), option_range.minimum),
+                    option_range.maximum,
+                )
+                field.set_number(value)
+                additional_lines[index] = AdditionalLine(additional_option, value)
+
             item.additionals = tuple(additional_lines)
 
         self._on_changed()

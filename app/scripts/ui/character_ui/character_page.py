@@ -263,7 +263,7 @@ class CharacterPage(QFrame):
         self._profile_tabs: list[CharacterTab] = []
         for tab in CHARACTER_TABS:
             page: CharacterTab = _TAB_FACTORIES[tab.key](
-                self._stack, self._on_profile_changed
+                self._stack, self._on_profile_changed  # type: ignore[list-item]
             )
             self._profile_tabs.append(page)
             self._stack.addWidget(page)

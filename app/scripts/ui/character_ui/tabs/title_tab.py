@@ -323,7 +323,7 @@ class TitleTab(CharacterTab):
 
         while self._titles_container.flow.count():
             item = self._titles_container.flow.takeAt(0)
-            widget: QWidget | None = item.widget()
+            widget: QWidget | None = item.widget()  # type: ignore[assignment]
             if widget is not None:
                 widget.deleteLater()
 
