@@ -1,5 +1,3 @@
-"""캐릭터 입력 탭 공통 베이스"""
-
 from __future__ import annotations
 
 from PySide6.QtWidgets import QFrame, QWidget

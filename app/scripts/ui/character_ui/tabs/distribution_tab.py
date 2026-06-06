@@ -1,5 +1,3 @@
-"""스탯·단전 분배 탭"""
-
 from __future__ import annotations
 
 from collections.abc import Callable

@@ -1,9 +1,3 @@
-"""캐릭터 창 전용 공용 위젯
-
-목업 고유 컴포넌트(KV 스텝퍼, 빠른가감 칩, 알약 탭, 세그 버튼, 등급 뱃지,
-색 구슬, 토글 스위치)와 카드 자동 래핑용 FlowLayout 을 정의한다.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -35,7 +29,7 @@ from app.scripts.custom_classes import CustomFont, StyledButton
 
 
 class CharComboBox(QComboBox):
-    """캐릭터 창 전용 콤보박스 (신규 UI 스타일에 맞춘 외형)"""
+    """공유 콤보박스"""
 
     def __init__(self, parent: QWidget, items: list[str], point_size: int = 10) -> None:
         super().__init__(parent)
@@ -51,11 +45,12 @@ class CharComboBox(QComboBox):
         if self.view().isVisible():
             super().wheelEvent(event)
             return
+
         event.ignore()
 
 
 class NormalizingLineEdit(QLineEdit):
-    """validator 기준 편집 종료 정규화 입력칸"""
+    """편집 종료 시 정규화 입력칸"""
 
     value_committed = Signal()
 
@@ -76,12 +71,15 @@ class NormalizingLineEdit(QLineEdit):
         if isinstance(validator, QIntValidator):
             int_value: int = int(self._number())
             int_value = min(max(int_value, validator.bottom()), validator.top())
+
             self.setText(str(int_value))
             return
 
         if isinstance(validator, QDoubleValidator):
             float_value: float = self._number()
             float_value = min(max(float_value, validator.bottom()), validator.top())
+
+            # 자리수 제한
             decimals: int = validator.decimals()
             if decimals >= 0:
                 float_value = round(float_value, decimals)
@@ -128,10 +126,9 @@ class NormalizingLineEdit(QLineEdit):
 
 
 class StepperField(QFrame):
-    """값 [단위] 형태의 수치 입력 필드 (목업 .kv .field)"""
+    """값 [단위] 형태의 수치 입력 필드"""
 
     value_changed = Signal()
-
     _UNIT_WIDTH: int = 16
 
     def __init__(
@@ -180,7 +177,7 @@ class StepperField(QFrame):
         self.setMaximumWidth(max_width if max_width else 132)
 
     def number(self) -> float:
-        """현재 입력 수치 (숫자 변환 실패 시 0)"""
+        """현재 입력 수치"""
 
         text: str = self.input.text().replace(",", "").strip()
         try:
@@ -196,10 +193,7 @@ class StepperField(QFrame):
 
 
 class StaticValueField(QFrame):
-    """읽기 전용 수치 표시 (자동 제공되는 기본 스탯 등)
-
-    StepperField 와 같은 폭·정렬을 유지하되 입력이 아닌 표시 전용이다.
-    """
+    """읽기 전용 수치 표시"""
 
     _UNIT_WIDTH: int = 16
 
@@ -286,19 +280,28 @@ class CharCard(QFrame):
 
 
 class ChoiceListPanels:
-    """선택 패널과 목록 패널 공용 구성"""
+    """
+    선택, 목록 패널 세트. 주문서와 보유 부적에서 사용됨
+        - selector_panel: 선택 패널 (좌측). 선택 버튼과 옵션 목록으로 구성
+        - list_panel: 목록 패널 (우측). 선택된 항목들의 목록으로 구성
+    """
 
     def __init__(
         self,
         parent: QWidget,
+        # 좌측 패널
         selector_title: str,
+        # 우측 패널
         list_title: str,
+        # 패널: selector & list
         panel_object_name: str,
         scroll_area_object_name: str,
         scroll_content_object_name: str,
+        # selector 패널 추가 버튼
         add_text: str,
         add_clicked: Callable[[], None],
-        option_title: str = "",
+        # selector 아래쪽 제목
+        option_title: str,
         selector_min_width: int = 0,
         list_min_width: int = 0,
         selector_scroll_min_height: int = 150,
@@ -306,6 +309,7 @@ class ChoiceListPanels:
     ) -> None:
         self.selector_panel: QFrame = QFrame(parent)
         self.selector_panel.setObjectName(panel_object_name)
+
         if selector_min_width:
             self.selector_panel.setMinimumWidth(selector_min_width)
 
@@ -322,10 +326,9 @@ class ChoiceListPanels:
         self.group_layout.setSpacing(6)
         selector_layout.addWidget(self.group_container)
 
-        if option_title:
-            selector_layout.addWidget(
-                self._title_label(self.selector_panel, option_title, point_size=10)
-            )
+        selector_layout.addWidget(
+            self._title_label(self.selector_panel, option_title, point_size=10)
+        )
 
         (
             self.option_scroll_area,
@@ -370,6 +373,7 @@ class ChoiceListPanels:
             list_scroll_min_height,
             8,
         )
+
         list_panel_layout.addWidget(self.list_scroll_area, 1)
 
     def make_choice_button(
@@ -392,6 +396,7 @@ class ChoiceListPanels:
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.setFont(CustomFont(point_size, bold=True))
         button.setMinimumHeight(minimum_height)
+
         return button
 
     def _title_label(
@@ -405,6 +410,7 @@ class ChoiceListPanels:
         title_label: QLabel = QLabel(text, parent)
         title_label.setObjectName("charEdTitle")
         title_label.setFont(CustomFont(point_size, bold=True))
+
         return title_label
 
     def _scroll_box(
@@ -431,6 +437,7 @@ class ChoiceListPanels:
         scroll_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         scroll_content.setLayout(scroll_layout)
         scroll_area.setWidget(scroll_content)
+
         return scroll_area, scroll_content, scroll_layout
 
 
@@ -455,7 +462,7 @@ class PillTab(QPushButton):
 
 
 class SegButton(QFrame):
-    """세그먼트 버튼 (경지/등급 선택). sub_text 가 있으면 작은 보조 라벨 표시
+    """세그먼트 버튼 (경지 선택). sub_text 가 있으면 작은 보조 라벨 표시
 
     QPushButton 내부 라벨이 표시되지 않는 문제를 피하기 위해 QFrame 기반으로 구현.
     """
@@ -466,7 +473,7 @@ class SegButton(QFrame):
         text: str,
         index: int,
         on_click: Callable[[int], None],
-        sub_text: str = "",
+        sub_text: str,
     ) -> None:
         super().__init__(parent)
 
@@ -487,12 +494,11 @@ class SegButton(QFrame):
         main_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(main_label)
 
-        if sub_text:
-            self.sub_label: QLabel = QLabel(sub_text, self)
-            self.sub_label.setObjectName("charSegSub")
-            self.sub_label.setFont(CustomFont(8))
-            self.sub_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            layout.addWidget(self.sub_label)
+        self.sub_label: QLabel = QLabel(sub_text, self)
+        self.sub_label.setObjectName("charSegSub")
+        self.sub_label.setFont(CustomFont(8))
+        self.sub_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.sub_label)
 
     def setChecked(self, checked: bool) -> None:
         """선택 상태 스타일 갱신"""
@@ -516,23 +522,12 @@ class SegButton(QFrame):
 class GradeBadge(QLabel):
     """등급 색 뱃지"""
 
-    def __init__(
-        self, parent: QWidget, grade: str, color: str, dot: bool = False
-    ) -> None:
-        super().__init__("" if dot else grade, parent)
+    def __init__(self, parent: QWidget, grade: str, color: str) -> None:
+        super().__init__(grade, parent)
 
         self.setObjectName("charGradeBadge")
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-
-        # 텍스트 없이 색 점만 표시하는 모드
-        if dot:
-            size: int = 12
-            self.setFixedSize(size, size)
-            self.setStyleSheet(
-                f"background-color: {color}; border-radius: {size // 2}px;"
-            )
-            return
 
         self.setFont(CustomFont(8, bold=True))
         self.setStyleSheet(
@@ -544,12 +539,14 @@ class GradeBadge(QLabel):
 class ColorOrb(QLabel):
     """영단/환 색 구슬"""
 
-    def __init__(self, parent: QWidget, color: str, size: int = 26) -> None:
+    def __init__(self, parent: QWidget, color: str) -> None:
         super().__init__(parent)
 
+        size: int = 26
         self.setFixedSize(size, size)
         radius: int = size // 2
-        # 단순 radial gradient 로 입체감 표현 (QSS 범위 내)
+
+        # radial gradient 로 입체감 표현
         self.setStyleSheet(
             "background: qradialgradient(cx:0.35, cy:0.3, radius:0.8, "
             f"fx:0.35, fy:0.3, stop:0 #ffffff, stop:1 {color});"
@@ -564,7 +561,7 @@ class ToggleSwitch(QPushButton):
         self,
         parent: QWidget,
         active: bool,
-        on_toggle: Callable[[bool], None] | None = None,
+        on_toggle: Callable[[bool], None],
     ) -> None:
         super().__init__(parent)
 
@@ -573,7 +570,8 @@ class ToggleSwitch(QPushButton):
         self.setChecked(active)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedSize(42, 24)
-        self._on_toggle: Callable[[bool], None] | None = on_toggle
+
+        self._on_toggle: Callable[[bool], None] = on_toggle
         self._sync_text()
         self.clicked.connect(self._handle_toggle)
 
@@ -581,17 +579,16 @@ class ToggleSwitch(QPushButton):
         """토글 시 상태 반영"""
 
         self._sync_text()
-        if self._on_toggle:
-            self._on_toggle(self.isChecked())
+        self._on_toggle(self.isChecked())
 
     def _sync_text(self) -> None:
-        """on/off 표시용 텍스트 (핸들 위치 표현)"""
+        """on/off 표시용 텍스트"""
 
-        self.setText("　●" if self.isChecked() else "●　")
+        self.setText("  ●" if self.isChecked() else "●  ")
 
 
 class FlowLayout(QLayout):
-    """폭에 따라 자식 위젯을 자동 줄바꿈하는 레이아웃 (Qt 공식 예제 이식)"""
+    """폭에 따라 자식 위젯을 자동 줄바꿈하는 레이아웃"""
 
     def __init__(
         self,
@@ -604,6 +601,7 @@ class FlowLayout(QLayout):
 
         if parent is not None:
             self.setContentsMargins(margin, margin, margin, margin)
+
         self.setSpacing(spacing)
 
         self._items: list[QLayoutItem] = []
@@ -660,7 +658,7 @@ class FlowLayout(QLayout):
         )
         spacing: int = self.spacing()
 
-        # 1) 한 줄에 들어갈 아이템들을 행 단위로 묶는다
+        # 1. 한 줄에 들어갈 아이템들을 행 단위로 묶는다
         rows: list[tuple[list[QLayoutItem], int, int]] = []
         current: list[QLayoutItem] = []
         row_width: int = 0
@@ -682,7 +680,7 @@ class FlowLayout(QLayout):
         if current:
             rows.append((current, row_width, row_height))
 
-        # 2) 행별로 배치 (center 모드면 행을 가로 가운데 정렬)
+        # 2. 행별로 배치 (center 모드면 행을 가로 가운데 정렬)
         y: int = effective.y()
         for index, (items, line_width, line_height) in enumerate(rows):
             if index > 0:

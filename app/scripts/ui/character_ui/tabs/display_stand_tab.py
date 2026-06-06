@@ -1,5 +1,3 @@
-"""진열대 탭"""
-
 from __future__ import annotations
 
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt
@@ -19,10 +17,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.scripts.calculator_models import STAT_SPECS
+from app.scripts.calculator_models import STAT_SPECS, StatKey
 from app.scripts.character_data import (
     DISPLAY_STAND_COLUMN_STAT_KEYS,
     DISPLAY_STAND_SPECS,
+    DisplayStandSpec,
 )
 from app.scripts.character_models import (
     CharacterProfile,
@@ -42,7 +41,7 @@ from app.scripts.ui.character_ui.widgets import (
 
 
 def _column_stat_label(column: DisplayStandColumn) -> str:
-    """진열대 열의 표시 스탯 이름 (열→스탯 매핑에서 파생)"""
+    """진열대 열의 표시 스탯 이름"""
 
     return "·".join(
         STAT_SPECS[stat_key] for stat_key in DISPLAY_STAND_COLUMN_STAT_KEYS[column]
@@ -52,12 +51,12 @@ def _column_stat_label(column: DisplayStandColumn) -> str:
 def _column_is_percent(column: DisplayStandColumn) -> bool:
     """진열대 열 합계 표시에 % 단위를 붙일지 여부"""
 
-    first_stat_key = DISPLAY_STAND_COLUMN_STAT_KEYS[column][0]
+    first_stat_key: StatKey = DISPLAY_STAND_COLUMN_STAT_KEYS[column][0]
     return "(%)" in STAT_SPECS[first_stat_key]
 
 
 class _NumericDelegate(QStyledItemDelegate):
-    """셀 편집 시 숫자만 허용하는 델리게이트"""
+    """셀 편집 시 숫자만 허용하는 델리게이트 (진열대 표에 사용)"""
 
     def createEditor(  # type: ignore[override]
         self,
@@ -66,7 +65,7 @@ class _NumericDelegate(QStyledItemDelegate):
         _index: QModelIndex,
     ) -> NormalizingLineEdit:
         editor: NormalizingLineEdit = NormalizingLineEdit(parent=parent)
-        editor.setValidator(QDoubleValidator(0.0, 1_000_000.0, 1, editor))
+        editor.setValidator(QDoubleValidator(0.0, 100.0, 2, editor))
         editor.setAlignment(Qt.AlignmentFlag.AlignCenter)
         return editor
 
@@ -138,7 +137,7 @@ class DisplayStandTab(CharacterTab):
 
         self._search: QLineEdit = QLineEdit(self)
         self._search.setObjectName("charSearch")
-        self._search.setPlaceholderText("진열대 이름 검색…")
+        self._search.setPlaceholderText("진열대 이름 검색")
         self._search.setFont(CustomFont(10))
         self._search.textChanged.connect(self._filter)
         toolbar.addWidget(self._search, 1)
@@ -153,7 +152,7 @@ class DisplayStandTab(CharacterTab):
         self._value_input.setFont(CustomFont(10))
         self._value_input.setFixedWidth(64)
         self._value_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._value_input.setValidator(QDoubleValidator(0.0, 1_000_000.0, 1, self))
+        self._value_input.setValidator(QDoubleValidator(0.0, 100.0, 2, self))
         toolbar.addWidget(self._value_input)
 
         apply_btn: StyledButton = StyledButton(
@@ -191,22 +190,26 @@ class DisplayStandTab(CharacterTab):
         self._table.setMaximumHeight(360)
         self._table.setMinimumWidth(0)
 
+        # 열 설정
         header = self._table.horizontalHeader()
         header.setSectionResizeMode(header.ResizeMode.Stretch)
         header.sectionClicked.connect(self._table.selectColumn)
         header.setCursor(Qt.CursorShape.PointingHandCursor)
 
+        # 행 설정
         vheader = self._table.verticalHeader()
         vheader.setDefaultSectionSize(34)
         vheader.setSectionResizeMode(vheader.ResizeMode.Fixed)
 
         self._table.viewport().setCursor(Qt.CursorShape.PointingHandCursor)
 
+        # 좌상단 코너 클릭 시 선택 해제
         corner: QAbstractButton | None = self._table.findChild(QAbstractButton)  # type: ignore[assignment]
         if corner is not None:
             corner.setCursor(Qt.CursorShape.PointingHandCursor)
             corner.clicked.connect(self._clear_selection)
 
+        # 초기값 설정
         for row_index in range(len(DISPLAY_STAND_SPECS)):
             for col_index in range(len(DISPLAY_STAND_COLUMNS)):
                 item: QTableWidgetItem = QTableWidgetItem("0")
@@ -215,6 +218,7 @@ class DisplayStandTab(CharacterTab):
 
         self._table.itemChanged.connect(self._on_item_changed)
         self._table.itemSelectionChanged.connect(self._update_selection_info)
+
         return self._table
 
     def _build_summary(self) -> QFrame:
@@ -246,6 +250,7 @@ class DisplayStandTab(CharacterTab):
             layout.addWidget(item)
 
         summary.setLayout(layout)
+
         return summary
 
     def _format(self, value: float) -> str:
@@ -258,7 +263,6 @@ class DisplayStandTab(CharacterTab):
 
         try:
             return float(text.replace(",", "").strip())
-
         except ValueError:
             return 0.0
 
@@ -298,16 +302,14 @@ class DisplayStandTab(CharacterTab):
         if self._profile is None or self._loading:
             return
 
-        spec = DISPLAY_STAND_SPECS[item.row()]
+        spec: DisplayStandSpec = DISPLAY_STAND_SPECS[item.row()]
         column: DisplayStandColumn = self._column_keys[item.column()]
         value: float = self._parse(item.text())
         entries: dict[DisplayStand, DisplayStandEntry] = (
             self._profile.display_stand.entries
         )
         entry: DisplayStandEntry | None = entries.get(spec.stand)
-        current_value: float = (
-            0.0 if entry is None else entry.values.get(column, 0.0)
-        )
+        current_value: float = 0.0 if entry is None else entry.values.get(column, 0.0)
         if current_value == value:
             return
 

@@ -1,10 +1,9 @@
-"""캐릭터 창 3분할 셸"""
-
 from __future__ import annotations
 
 from collections.abc import Callable
 
 from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer
+from PySide6.QtGui import QClipboard
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -60,31 +59,24 @@ _TAB_FACTORIES: dict[str, type[CharacterTab]] = {
 
 
 class _TabStack(QWidget):
-    """표시/숨김 방식 탭 스택
-
-    QStackedWidget 은 항상 가장 큰 페이지 높이를 예약하지만, 이 스택은 본문
-    스크롤 영역을 공유하므로 현재 페이지 높이에만 맞아야 한다. 숨긴 페이지가
-    레이아웃 높이에 기여하지 않도록 단순 표시/숨김으로 직접 구현한다.
-    """
+    """표시/숨김 방식 탭 스택"""
 
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
+
         self._stack_layout = QVBoxLayout(self)
         self._stack_layout.setContentsMargins(0, 0, 0, 0)
         self._stack_layout.setSpacing(0)
+
         self._pages: list[QWidget] = []
         self._current: int = 0
 
     def addWidget(self, widget: QWidget) -> None:
-        """탭 페이지 추가"""
-
         self._pages.append(widget)
         self._stack_layout.addWidget(widget)
         widget.setVisible(len(self._pages) == 1)
 
     def setCurrentIndex(self, index: int) -> None:
-        """현재 탭만 표시"""
-
         for page_index, page in enumerate(self._pages):
             page.setVisible(page_index == index)
 
@@ -92,8 +84,6 @@ class _TabStack(QWidget):
         self.updateGeometry()
 
     def currentWidget(self) -> QWidget | None:
-        """현재 탭 위젯"""
-
         return self._pages[self._current] if self._pages else None
 
 
@@ -107,11 +97,15 @@ class CharacterPage(QFrame):
     ) -> None:
         super().__init__(parent)
 
+        # 캐릭터 상태 계산기 입력 페이지에 반영하는 함수
         self._on_use_calculator: Callable[[CharacterProfile], None] = on_use_calculator
-        self._session: CharacterEditSession = CharacterEditSession(self)
+
         self._save_timer: QTimer = QTimer(self)
         self._save_timer.setSingleShot(True)
         self._save_timer.timeout.connect(self._save_current_store)
+
+        # 캐릭터 편집 세션: 변경 전파 담당
+        self._session: CharacterEditSession = CharacterEditSession(self)
         self._session.name_changed.connect(self._refresh_name)
         self._session.progression_changed.connect(self._refresh_progression)
         self._session.live_stats_invalidated.connect(self._refresh_live_stats)
@@ -150,6 +144,7 @@ class CharacterPage(QFrame):
 
         self._left_anim: QPropertyAnimation | None = None
         self._right_anim: QPropertyAnimation | None = None
+
         self._update_toggle_labels()
         self.refresh_from_store()
 
@@ -158,6 +153,7 @@ class CharacterPage(QFrame):
 
         center: QFrame = QFrame(self)
         center.setObjectName("charPanel")
+
         center_layout = QVBoxLayout(center)
         center_layout.setContentsMargins(0, 0, 0, 0)
         center_layout.setSpacing(0)
@@ -165,6 +161,7 @@ class CharacterPage(QFrame):
         center_layout.addWidget(self._build_header())
         center_layout.addWidget(self._build_tab_bar())
         center_layout.addWidget(self._build_stack(), 1)
+
         return center
 
     def _build_header(self) -> QFrame:
@@ -176,6 +173,7 @@ class CharacterPage(QFrame):
         layout.setContentsMargins(12, 7, 12, 7)
         layout.setSpacing(10)
 
+        # 좌측 패널 토글 버튼
         self._toggle_left_btn: QPushButton = QPushButton("❮", header)
         self._toggle_left_btn.setObjectName("charIconBtn")
         self._toggle_left_btn.setFixedSize(28, 28)
@@ -186,6 +184,7 @@ class CharacterPage(QFrame):
         self._title_label: QLabel = QLabel("캐릭터 없음", header)
         self._title_label.setObjectName("charHeadTitle")
         self._title_label.setFont(CustomFont(13, bold=True))
+
         self._subtitle_label: QLabel = QLabel("미입력", header)
         self._subtitle_label.setObjectName("charSub")
         self._subtitle_label.setFont(CustomFont(9))
@@ -205,19 +204,22 @@ class CharacterPage(QFrame):
         self._use_calculator_btn.clicked.connect(self._use_selected_character)
         layout.addWidget(self._use_calculator_btn)
 
+        # 우측 패널 토글 버튼
         self._toggle_right_btn: QPushButton = QPushButton("❯", header)
         self._toggle_right_btn.setObjectName("charIconBtn")
         self._toggle_right_btn.setFixedSize(28, 28)
         self._toggle_right_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._toggle_right_btn.clicked.connect(lambda: self._toggle_panel("right"))
         layout.addWidget(self._toggle_right_btn)
+
         return header
 
     def _build_tab_bar(self) -> QFrame:
         """알약 탭 바 구성"""
 
-        bar: QFrame = QFrame(self)
+        bar = QFrame(self)
         bar.setObjectName("charTabBar")
+
         layout: FlowLayout = FlowLayout(bar, margin=0, spacing=6)
         layout.setContentsMargins(12, 8, 12, 8)
 
@@ -244,7 +246,7 @@ class CharacterPage(QFrame):
         scroll.setWidgetResizable(True)
         wrapper_layout.addWidget(scroll)
 
-        self._body_content: QWidget = QWidget()
+        self._body_content = QWidget()
         self._body_content.setObjectName("charBodyContent")
         self._body_content.setMinimumWidth(0)
         self._body_margin: int = 16
@@ -274,6 +276,7 @@ class CharacterPage(QFrame):
             self._session.profile_bound.connect(page.set_profile)
 
         self._go(0)
+
         return wrapper
 
     def refresh_from_store(self) -> None:
@@ -284,13 +287,14 @@ class CharacterPage(QFrame):
         self._refresh_selected_profile()
 
     def _refresh_selected_profile(self) -> None:
-        """선택 캐릭터 기준 헤더·스탯·입력 탭 갱신"""
+        """선택 캐릭터 기준 헤더, 스탯, 입력 탭 갱신"""
 
         profile: CharacterProfile | None = self._selected_profile()
 
         if profile is None:
             self._title_label.setText("캐릭터 없음")
             self._subtitle_label.setText("미입력")
+
             self._use_calculator_btn.setEnabled(False)
             self._right_panel.set_live_view(None)
 
@@ -299,6 +303,7 @@ class CharacterPage(QFrame):
             realm_label: str = REALM_TIER_SPECS[profile.realm].label
             self._title_label.setText(name_text)
             self._subtitle_label.setText(f"Lv. {profile.level} · {realm_label}")
+
             self._use_calculator_btn.setEnabled(True)
             self._right_panel.set_live_view(compute_live_view(profile))
 
@@ -308,9 +313,9 @@ class CharacterPage(QFrame):
         """현재 선택 캐릭터 조회"""
 
         store: CharacterStore = app_state.character_store
+
         if store.selected_index == -1:
             return None
-
         return store.characters[store.selected_index]
 
     def _on_character_selected(self, index: int) -> None:
@@ -327,6 +332,7 @@ class CharacterPage(QFrame):
         new_character: CharacterProfile = CharacterProfile(name="새 캐릭터")
         store.characters.append(new_character)
         store.selected_index = len(store.characters) - 1
+
         save_characters()
         self._left_panel.append_character(new_character, store.selected_index)
         self._refresh_selected_profile()
@@ -341,8 +347,10 @@ class CharacterPage(QFrame):
         store: CharacterStore = app_state.character_store
         cloned: CharacterProfile = clone_character_profile(profile)
         cloned.name = f"{profile.name} 복사"
+
         store.characters.append(cloned)
         store.selected_index = len(store.characters) - 1
+
         save_characters()
         self._left_panel.append_character(cloned, store.selected_index)
         self._refresh_selected_profile()
@@ -350,27 +358,28 @@ class CharacterPage(QFrame):
     def _paste_character(self) -> None:
         """클립보드 캐릭터 붙여넣기"""
 
-        clipboard = QApplication.clipboard()
+        clipboard: QClipboard = QApplication.clipboard()
         text: str = clipboard.text()
         if not text:
             return
 
-        store: CharacterStore = app_state.character_store
         try:
             # 클립보드 캐릭터 데이터 파싱 및 전체 무결성 검증
             pasted: CharacterProfile = deserialize_character_profile(text)
 
         except (KeyError, TypeError, ValueError):
-            # 잘못된 클립보드 입력 안내 및 기존 저장소 유지
             QMessageBox.warning(
                 self,
                 "캐릭터 붙여넣기 실패",
                 "올바른 캐릭터 데이터가 아닙니다.",
             )
+
             return
 
+        store: CharacterStore = app_state.character_store
         store.characters.append(pasted)
         store.selected_index = len(store.characters) - 1
+
         save_characters()
         self._left_panel.append_character(pasted, store.selected_index)
         self._refresh_selected_profile()
@@ -384,6 +393,7 @@ class CharacterPage(QFrame):
 
         removed_index: int = store.selected_index
         store.characters.pop(removed_index)
+
         if not store.characters:
             store.selected_index = -1
 
@@ -442,8 +452,6 @@ class CharacterPage(QFrame):
         return profile
 
     def _save_current_store(self) -> None:
-        """현재 캐릭터 저장소 저장"""
-
         save_characters()
 
     def _use_selected_character(self) -> None:

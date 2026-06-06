@@ -116,7 +116,9 @@ class TalismanTab(CharacterTab):
         elif self._selected_talisman_id not in {item.id for item in profile.talismans}:
             first_talisman: CharacterTalisman = profile.talismans[0]
             self._selected_talisman_id = first_talisman.id
-            self._selected_grade = self._specs_by_name[first_talisman.talisman_key].grade
+            self._selected_grade = self._specs_by_name[
+                first_talisman.talisman_key
+            ].grade
 
         self._render_slots()
         self._render_owned()
@@ -144,6 +146,7 @@ class TalismanTab(CharacterTab):
             scroll_content_object_name="charTalScrollContent",
             add_text="+ 부적 추가",
             add_clicked=self._add_talisman,
+            option_title="종류",
             selector_min_width=320,
             list_min_width=_OWNED_TALISMAN_WIDTH,
             selector_scroll_min_height=210,
@@ -648,16 +651,12 @@ class TalismanTab(CharacterTab):
             self._profile is not None
             and talisman.id in self._profile.equipped.talisman_ids
         )
-        can_equip: bool = (
-            equipped
-            or (
-                self._profile is not None
-                and len(self._profile.equipped.talisman_ids)
-                < MAX_EQUIPPED_TALISMAN_COUNT
-                and not self._has_equipped_talisman_key(
-                    talisman,
-                    talisman.talisman_key,
-                )
+        can_equip: bool = equipped or (
+            self._profile is not None
+            and len(self._profile.equipped.talisman_ids) < MAX_EQUIPPED_TALISMAN_COUNT
+            and not self._has_equipped_talisman_key(
+                talisman,
+                talisman.talisman_key,
             )
         )
         equip_btn: StyledButton = StyledButton(
@@ -791,12 +790,11 @@ class TalismanTab(CharacterTab):
             self._profile.equipped.talisman_ids.remove(talisman.id)
             changed = True
 
-        elif (
-            len(self._profile.equipped.talisman_ids) < MAX_EQUIPPED_TALISMAN_COUNT
-            and not self._has_equipped_talisman_key(
-                talisman,
-                talisman.talisman_key,
-            )
+        elif len(
+            self._profile.equipped.talisman_ids
+        ) < MAX_EQUIPPED_TALISMAN_COUNT and not self._has_equipped_talisman_key(
+            talisman,
+            talisman.talisman_key,
         ):
             changed_index = len(self._profile.equipped.talisman_ids)
             self._profile.equipped.talisman_ids.append(talisman.id)
@@ -817,9 +815,7 @@ class TalismanTab(CharacterTab):
 
         equipped: bool = talisman.id in self._profile.equipped.talisman_ids
         equipped_index: int | None = (
-            self._profile.equipped.talisman_ids.index(talisman.id)
-            if equipped
-            else None
+            self._profile.equipped.talisman_ids.index(talisman.id) if equipped else None
         )
         removed_index: int = self._profile.talismans.index(talisman)
         self._profile.talismans = [

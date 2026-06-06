@@ -1,5 +1,3 @@
-"""캐릭터 편집 화면 변경 전파 세션"""
-
 from __future__ import annotations
 
 from PySide6.QtCore import QObject, Signal

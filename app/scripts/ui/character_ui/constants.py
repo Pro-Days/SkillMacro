@@ -45,13 +45,15 @@ DISPLAY_STAND_COLUMNS: tuple[tuple[DisplayStandColumn, str], ...] = (
     (DisplayStandColumn.SET, "세트효과"),
 )
 
-# 스탯 선택 라벨 역조회와 콤보 표시 목록 (칭호·자유 스탯 공용)
+# 스탯 선택 라벨 역조회
 STAT_LABEL_TO_KEY: dict[str, StatKey] = {
     label: stat_key for stat_key, label in STAT_SPECS.items()
 }
 
+# 스탯 콤보 표시 목록
 STAT_CHOICE_LABELS: tuple[str, ...] = ("미설정", *STAT_SPECS.values())
 
+# 부적 등급 색상
 GRADE_COLORS: dict[str, str] = {
     "일반": "#9b9690",
     "고급": "#2a9d99",
@@ -72,6 +74,7 @@ EQUIPMENT_SLOT_LABELS: dict[EquipmentSlot, str] = {
     EquipmentSlot.EARRING: "귀걸이",
 }
 
+# 장비 슬롯 표시 순서
 EQUIPMENT_COL_LEFT: tuple[EquipmentSlot, ...] = (
     EquipmentSlot.WEAPON,
     EquipmentSlot.HELMET,
@@ -79,7 +82,6 @@ EQUIPMENT_COL_LEFT: tuple[EquipmentSlot, ...] = (
     EquipmentSlot.BELT,
     EquipmentSlot.SHOES,
 )
-
 EQUIPMENT_COL_RIGHT: tuple[EquipmentSlot, ...] = (
     EquipmentSlot.RING1,
     EquipmentSlot.RING2,
