@@ -17,6 +17,7 @@ from app.scripts.calculator_models import STAT_SPECS
 from app.scripts.character_data import ELIXIR_SPECS
 from app.scripts.character_models import MAX_ELIXIR_COUNT, CharacterProfile, Elixir
 from app.scripts.custom_classes import CustomFont
+from app.scripts.ui.character_ui.edit_session import CharacterEditSession
 from app.scripts.ui.character_ui.tabs.base import CharacterTab
 from app.scripts.ui.character_ui.widgets import (
     CharCard,
@@ -135,11 +136,10 @@ class _ElixirCard(QFrame):
 class ElixirTab(CharacterTab):
     """영단 탭"""
 
-    def __init__(self, parent: QWidget, on_changed: Callable[[], None]) -> None:
-        super().__init__(parent)
+    def __init__(self, parent: QWidget, session: CharacterEditSession) -> None:
+        super().__init__(parent, session)
 
         self._profile: CharacterProfile | None = None
-        self._on_changed: Callable[[], None] = on_changed
         self._loading: bool = False
 
         layout = QVBoxLayout(self)
@@ -187,10 +187,13 @@ class ElixirTab(CharacterTab):
         if self._profile is None or self._loading:
             return
 
+        if self._profile.elixir.counts.get(elixir, 0) == count:
+            return
+
         if count == 0:
             self._profile.elixir.counts.pop(elixir, None)
 
         else:
             self._profile.elixir.counts[elixir] = count
 
-        self._on_changed()
+        self._session.commit_stats()

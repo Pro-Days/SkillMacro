@@ -64,6 +64,28 @@ class _CharacterRow(QFrame):
         self.style().unpolish(self)
         self.style().polish(self)
 
+    def set_index(self, index: int) -> None:
+        """목록 구조 변경 후 클릭 인덱스 갱신"""
+
+        self._index = index
+
+    def update_name(self, character: CharacterProfile) -> None:
+        """캐릭터 이름 표시 갱신"""
+
+        name_text: str = character.name if character.name.strip() else "이름 없음"
+        self.name_label.setText(name_text)
+
+    def update_meta(self, character: CharacterProfile) -> None:
+        """캐릭터 레벨·경지 표시 갱신"""
+
+        realm_label: str = REALM_TIER_SPECS[character.realm].label
+        meta_text: str = (
+            "미입력"
+            if character.level <= 0
+            else f"Lv. {character.level} · {realm_label}"
+        )
+        self.meta_label.setText(meta_text)
+
     def mousePressEvent(self, event) -> None:  # type: ignore[override]
         """행 클릭 시 선택 콜백 호출"""
 
@@ -103,6 +125,7 @@ class CharacterListPanel(QFrame):
         layout.addLayout(self._list_layout)
 
         self._rows: list[_CharacterRow] = []
+        self._selected_index: int = -1
         self._on_select: Callable[[int], None] = on_select
 
         # 캐릭터 관리 버튼 영역
@@ -145,6 +168,7 @@ class CharacterListPanel(QFrame):
 
         # 현재 저장소 기준 행 생성
         self._rows = []
+        self._selected_index = selected_index
         for index, character in enumerate(characters):
             row: _CharacterRow = _CharacterRow(
                 self,
@@ -159,8 +183,46 @@ class CharacterListPanel(QFrame):
     def _handle_select(self, index: int) -> None:
         """행 선택 시 활성 표시 갱신 후 콜백 전달"""
 
-        # 선택 행 스타일 갱신
+        self.set_selected_index(index)
+        self._on_select(index)
+
+    def append_character(self, character: CharacterProfile, selected_index: int) -> None:
+        """새 캐릭터 행 하나 추가"""
+
+        row = _CharacterRow(
+            self,
+            character,
+            len(self._rows),
+            self._handle_select,
+        )
+        self._rows.append(row)
+        self._list_layout.addWidget(row)
+        self.set_selected_index(selected_index)
+
+    def remove_character(self, index: int, selected_index: int) -> None:
+        """삭제된 캐릭터 행 하나 제거"""
+
+        row: _CharacterRow = self._rows.pop(index)
+        self._list_layout.removeWidget(row)
+        row.deleteLater()
+        for row_index, current_row in enumerate(self._rows):
+            current_row.set_index(row_index)
+
+        self.set_selected_index(selected_index)
+
+    def set_selected_index(self, index: int) -> None:
+        """선택 행 강조 갱신"""
+
+        self._selected_index = index
         for row_index, row in enumerate(self._rows):
             row.set_active(row_index == index)
 
-        self._on_select(index)
+    def update_selected_name(self, character: CharacterProfile) -> None:
+        """선택 캐릭터 행 이름 갱신"""
+
+        self._rows[self._selected_index].update_name(character)
+
+    def update_selected_meta(self, character: CharacterProfile) -> None:
+        """선택 캐릭터 행 요약 갱신"""
+
+        self._rows[self._selected_index].update_meta(character)

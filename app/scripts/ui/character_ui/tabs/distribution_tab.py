@@ -23,6 +23,7 @@ from app.scripts.ui.character_ui.constants import (
     DANJEON_DISTRIBUTION_ITEMS,
     STAT_DISTRIBUTION_ITEMS,
 )
+from app.scripts.ui.character_ui.edit_session import CharacterEditSession
 from app.scripts.ui.character_ui.tabs.base import CharacterTab
 from app.scripts.ui.character_ui.widgets import (
     CharCard,
@@ -106,15 +107,12 @@ class _Budget(QFrame):
 class DistributionTab(CharacterTab):
     """스탯·단전 분배 탭"""
 
-    # 레벨·경지(기본정보 탭)에 따라 분배 가능 포인트가 달라지므로 다른 입력 변경에도 갱신
-    refresh_on_any_change: bool = True
-
-    def __init__(self, parent: QWidget, on_changed: Callable[[], None]) -> None:
-        super().__init__(parent)
+    def __init__(self, parent: QWidget, session: CharacterEditSession) -> None:
+        super().__init__(parent, session)
 
         self._profile: CharacterProfile | None = None
-        self._on_changed: Callable[[], None] = on_changed
         self._loading: bool = False
+        self._session.progression_changed.connect(self._sync_progression)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -293,11 +291,20 @@ class DistributionTab(CharacterTab):
         if self._loading:
             return
 
+        current_values: tuple[int, int, int, int] = (
+            self._profile.distribution.strength,
+            self._profile.distribution.dexterity,
+            self._profile.distribution.vitality,
+            self._profile.distribution.luck,
+        )
+        if current_values == (strength, dexterity, vitality, luck):
+            return
+
         self._profile.distribution.strength = strength
         self._profile.distribution.dexterity = dexterity
         self._profile.distribution.vitality = vitality
         self._profile.distribution.luck = luck
-        self._on_changed()
+        self._session.commit_stats()
 
     def _recalc_danjeon(self, changed_key: str | None = None) -> None:
         """단전 분배 모델 반영 및 요약 갱신"""
@@ -322,10 +329,18 @@ class DistributionTab(CharacterTab):
         if self._loading:
             return
 
+        current_values: tuple[int, int, int] = (
+            self._profile.danjeon.upper,
+            self._profile.danjeon.middle,
+            self._profile.danjeon.lower,
+        )
+        if current_values == (upper, middle, lower):
+            return
+
         self._profile.danjeon.upper = upper
         self._profile.danjeon.middle = middle
         self._profile.danjeon.lower = lower
-        self._on_changed()
+        self._session.commit_stats()
 
     def _optimize_stat(self) -> None:
         """스탯 분배 자동 최적화 적용"""
@@ -336,7 +351,7 @@ class DistributionTab(CharacterTab):
         optimized = optimize_stat_distribution(self._profile)
         self._profile.distribution = optimized
         self.set_profile(self._profile)
-        self._on_changed()
+        self._session.commit_stats()
 
     def _optimize_danjeon(self) -> None:
         """단전 분배 자동 최적화 적용"""
@@ -347,4 +362,9 @@ class DistributionTab(CharacterTab):
         optimized = optimize_danjeon(self._profile)
         self._profile.danjeon = optimized
         self.set_profile(self._profile)
-        self._on_changed()
+        self._session.commit_stats()
+
+    def _sync_progression(self) -> None:
+        """레벨·경지 기준 분배 한도와 보정값 반영"""
+
+        self.set_profile(self._profile)

@@ -56,6 +56,8 @@ class CharComboBox(QComboBox):
 class NormalizingLineEdit(QLineEdit):
     """validator 기준 편집 종료 정규화 입력칸"""
 
+    value_committed = Signal()
+
     def __init__(
         self,
         text: str = "",
@@ -63,7 +65,8 @@ class NormalizingLineEdit(QLineEdit):
     ) -> None:
         super().__init__(text, parent)
 
-        self.editingFinished.connect(self.normalize_to_validator)
+        self._committed_text: str = text
+        self.editingFinished.connect(self._commit_value)
 
     def normalize_to_validator(self) -> None:
         """입력 종료 시 validator 범위로 표시값 정리"""
@@ -101,6 +104,23 @@ class NormalizingLineEdit(QLineEdit):
 
         return str(int(value)) if value == int(value) else str(value)
 
+    def set_committed_text(self, text: str) -> None:
+        """표시값과 확정값을 함께 설정"""
+
+        self.setText(text)
+        self._committed_text = text
+
+    def _commit_value(self) -> None:
+        """정규화 후 실제로 달라진 값만 확정"""
+
+        self.normalize_to_validator()
+        text: str = self.text()
+        if text == self._committed_text:
+            return
+
+        self._committed_text = text
+        self.value_committed.emit()
+
     def focusOutEvent(self, event: QFocusEvent) -> None:  # type: ignore[override]
         """포커스 이탈 시 validator 상태와 무관하게 표시값 정리"""
 
@@ -120,7 +140,6 @@ class StepperField(QFrame):
         parent: QWidget,
         value: str = "0",
         unit: str = "",
-        on_changed: Callable[[], None] | None = None,
         max_width: int = 0,
     ) -> None:
         super().__init__(parent)
@@ -144,7 +163,7 @@ class StepperField(QFrame):
         self.input.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.input.setMinimumWidth(0)
         self.input.setValidator(QDoubleValidator(0.0, 1_000_000.0, 2, self))
-        self.input.editingFinished.connect(self._on_editing_finished)
+        self.input.value_committed.connect(self.value_changed)
         layout.addWidget(self.input, 1)
 
         # 단위 라벨 (좌측 여백과 동일 폭으로 좌우 대칭 유지)
@@ -161,10 +180,6 @@ class StepperField(QFrame):
         self.setFixedHeight(34)
         self.setMaximumWidth(max_width if max_width else 132)
 
-        self._on_changed: Callable[[], None] | None = on_changed
-        if on_changed:
-            self.value_changed.connect(on_changed)
-
     def number(self) -> float:
         """현재 입력 수치 (숫자 변환 실패 시 0)"""
 
@@ -178,18 +193,7 @@ class StepperField(QFrame):
         """수치 설정 (정수면 정수 형태로 표시)"""
 
         text: str = str(int(value)) if value == int(value) else str(value)
-        self.input.setText(text)
-
-    def add(self, delta: float) -> None:
-        """현재 값에 가감"""
-
-        self.set_number(max(0.0, self.number() + delta))
-        self.value_changed.emit()
-
-    def _on_editing_finished(self) -> None:
-        """입력 확정 시그널 전달"""
-
-        self.value_changed.emit()
+        self.input.set_committed_text(text)
 
 
 class StaticValueField(QFrame):
@@ -234,6 +238,12 @@ class StaticValueField(QFrame):
         self.setFixedHeight(34)
         self.setMaximumWidth(132)
 
+    def set_number(self, value: float) -> None:
+        """표시 수치 갱신"""
+
+        text: str = str(int(value)) if value == int(value) else str(value)
+        self.value_label.setText(text)
+
 
 class CharCard(QFrame):
     """캐릭터 탭 내부 카드 컨테이너 (제목 헤더 + 콘텐츠 영역)"""
@@ -274,20 +284,6 @@ class CharCard(QFrame):
         """콘텐츠 영역에 레이아웃 추가"""
 
         self._layout.addLayout(layout)
-
-
-class QuickChip(QPushButton):
-    """+1/+5/+10/+100 빠른 가감 칩"""
-
-    def __init__(
-        self, parent: QWidget, text: str, on_click: Callable[[], None]
-    ) -> None:
-        super().__init__(text, parent)
-
-        self.setObjectName("charChip")
-        self.setFont(CustomFont(9))
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.clicked.connect(on_click)
 
 
 class PillTab(QPushButton):

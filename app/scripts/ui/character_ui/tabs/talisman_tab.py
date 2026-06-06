@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
@@ -24,6 +22,7 @@ from app.scripts.character_models import (
 )
 from app.scripts.custom_classes import CustomFont, StyledButton
 from app.scripts.ui.character_ui.constants import GRADE_COLORS
+from app.scripts.ui.character_ui.edit_session import CharacterEditSession
 from app.scripts.ui.character_ui.tabs.base import CharacterTab
 from app.scripts.ui.character_ui.widgets import (
     CharCard,
@@ -41,16 +40,17 @@ _EQUIPPED_TALISMAN_HEIGHT: int = 132
 class TalismanTab(CharacterTab):
     """부적 탭"""
 
-    def __init__(self, parent: QWidget, on_changed: Callable[[], None]) -> None:
-        super().__init__(parent)
+    def __init__(self, parent: QWidget, session: CharacterEditSession) -> None:
+        super().__init__(parent, session)
 
         self._profile: CharacterProfile | None = None
-        self._on_changed: Callable[[], None] = on_changed
         self._loading: bool = False
         self._specs_by_name: dict[str, TalismanSpec] = {
             spec.name: spec for spec in TALISMAN_SPECS
         }
         self._equipped_stat_labels: dict[str, QLabel] = {}
+        self._slot_widgets: list[QFrame] = []
+        self._owned_rows: dict[str, QFrame] = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -113,9 +113,52 @@ class TalismanTab(CharacterTab):
 
         self._clear_layout(self._slot_layout)
         self._equipped_stat_labels = {}
+        self._slot_widgets = []
         for slot_index in range(MAX_EQUIPPED_TALISMAN_COUNT):
             talisman: CharacterTalisman | None = self._equipped_talisman(slot_index)
-            self._slot_layout.addWidget(self._build_slot(talisman), 1)
+            slot_widget: QFrame = self._build_slot(talisman)
+            self._slot_widgets.append(slot_widget)
+            self._slot_layout.addWidget(slot_widget, 1)
+
+    def _refresh_slots(
+        self,
+        start_index: int = 0,
+        talisman_id: str | None = None,
+    ) -> None:
+        """영향받은 장착 슬롯 위젯 갱신"""
+
+        if talisman_id is None:
+            if self._profile is None:
+                self._equipped_stat_labels = {}
+
+            else:
+                unaffected_ids: set[str] = set(
+                    self._profile.equipped.talisman_ids[:start_index]
+                )
+                self._equipped_stat_labels = {
+                    current_id: label
+                    for current_id, label in self._equipped_stat_labels.items()
+                    if current_id in unaffected_ids
+                }
+
+        else:
+            self._equipped_stat_labels.pop(talisman_id, None)
+
+        for slot_index, slot_widget in enumerate(self._slot_widgets):
+            if slot_index < start_index:
+                continue
+
+            talisman: CharacterTalisman | None = self._equipped_talisman(slot_index)
+            if talisman_id is not None and (
+                talisman is None or talisman.id != talisman_id
+            ):
+                continue
+
+            self._slot_layout.removeWidget(slot_widget)
+            slot_widget.deleteLater()
+            replacement: QFrame = self._build_slot(talisman)
+            self._slot_widgets[slot_index] = replacement
+            self._slot_layout.insertWidget(slot_index, replacement, 1)
 
     def _equipped_talisman(self, slot_index: int) -> CharacterTalisman | None:
         """장착 슬롯의 부적 조회"""
@@ -208,13 +251,42 @@ class TalismanTab(CharacterTab):
         """보유 목록 갱신"""
 
         self._clear_layout(self._owned_layout)
+        self._owned_rows = {}
         if self._profile is None:
             self._owned_container.sync_height()
             return
 
         for talisman in self._profile.talismans:
-            self._owned_layout.addWidget(self._build_owned_row(talisman))
+            self._add_owned_row(talisman)
 
+        self._owned_container.sync_height()
+
+    def _add_owned_row(self, talisman: CharacterTalisman) -> None:
+        """보유 부적 카드 하나 추가"""
+
+        row: QFrame = self._build_owned_row(talisman)
+        self._owned_rows[talisman.id] = row
+        self._owned_layout.addWidget(row)
+        self._owned_container.sync_height()
+
+    def _replace_owned_row(self, talisman: CharacterTalisman) -> None:
+        """보유 부적 카드 하나 교체"""
+
+        current_row: QFrame = self._owned_rows[talisman.id]
+        row_index: int = self._owned_layout.indexOf(current_row)
+        self._owned_layout.removeWidget(current_row)
+        current_row.deleteLater()
+        replacement: QFrame = self._build_owned_row(talisman)
+        self._owned_rows[talisman.id] = replacement
+        self._owned_layout.insertWidget(row_index, replacement)
+        self._owned_container.sync_height()
+
+    def _remove_owned_row(self, talisman_id: str) -> None:
+        """보유 부적 카드 하나 제거"""
+
+        row: QFrame = self._owned_rows.pop(talisman_id)
+        self._owned_layout.removeWidget(row)
+        row.deleteLater()
         self._owned_container.sync_height()
 
     def _build_owned_row(self, talisman: CharacterTalisman) -> QFrame:
@@ -341,8 +413,8 @@ class TalismanTab(CharacterTab):
                 level=0,
             )
         )
-        self._render_owned()
-        self._on_changed()
+        self._add_owned_row(self._profile.talismans[-1])
+        self._session.commit_saved_value()
 
     def _change_talisman_key(self, talisman: CharacterTalisman, name: str) -> None:
         """부적 종류 변경"""
@@ -350,10 +422,20 @@ class TalismanTab(CharacterTab):
         if self._loading:
             return
 
+        if talisman.talisman_key == name:
+            return
+
         talisman.talisman_key = name
-        self._render_slots()
-        self._render_owned()
-        self._on_changed()
+        self._refresh_slots(talisman_id=talisman.id)
+        self._replace_owned_row(talisman)
+        if self._profile is None:
+            raise ValueError("character profile is not bound")
+
+        if talisman.id in self._profile.equipped.talisman_ids:
+            self._session.commit_stats()
+
+        else:
+            self._session.commit_saved_value()
 
     def _on_level(
         self,
@@ -366,10 +448,21 @@ class TalismanTab(CharacterTab):
         if self._loading:
             return
 
-        talisman.level = max(0, min(MAX_TALISMAN_LEVEL, int(field.number())))
-        field.set_number(float(talisman.level))
+        level: int = max(0, min(MAX_TALISMAN_LEVEL, int(field.number())))
+        field.set_number(float(level))
+        if talisman.level == level:
+            return
+
+        talisman.level = level
         self._refresh_talisman_stat_labels(talisman, stat_label)
-        self._on_changed()
+        if self._profile is None:
+            raise ValueError("character profile is not bound")
+
+        if talisman.id in self._profile.equipped.talisman_ids:
+            self._session.commit_stats()
+
+        else:
+            self._session.commit_saved_value()
 
     def _refresh_talisman_stat_labels(
         self,
@@ -397,15 +490,23 @@ class TalismanTab(CharacterTab):
         if self._profile is None:
             return
 
+        changed: bool = False
         if talisman.id in self._profile.equipped.talisman_ids:
+            changed_index: int = self._profile.equipped.talisman_ids.index(talisman.id)
             self._profile.equipped.talisman_ids.remove(talisman.id)
+            changed = True
 
         elif len(self._profile.equipped.talisman_ids) < MAX_EQUIPPED_TALISMAN_COUNT:
+            changed_index = len(self._profile.equipped.talisman_ids)
             self._profile.equipped.talisman_ids.append(talisman.id)
+            changed = True
 
-        self._render_slots()
-        self._render_owned()
-        self._on_changed()
+        if not changed:
+            return
+
+        self._refresh_slots(start_index=changed_index)
+        self._replace_owned_row(talisman)
+        self._session.commit_stats()
 
     def _delete_talisman(self, talisman: CharacterTalisman) -> None:
         """보유 부적 삭제 및 장착 참조 제거"""
@@ -414,6 +515,12 @@ class TalismanTab(CharacterTab):
             return
 
         # 보유 목록에서 선택 부적 제거
+        equipped: bool = talisman.id in self._profile.equipped.talisman_ids
+        equipped_index: int | None = (
+            self._profile.equipped.talisman_ids.index(talisman.id)
+            if equipped
+            else None
+        )
         self._profile.talismans = [
             current_talisman
             for current_talisman in self._profile.talismans
@@ -427,9 +534,15 @@ class TalismanTab(CharacterTab):
             if talisman_id != talisman.id
         ]
 
-        self._render_slots()
-        self._render_owned()
-        self._on_changed()
+        if equipped_index is not None:
+            self._refresh_slots(start_index=equipped_index)
+
+        self._remove_owned_row(talisman.id)
+        if equipped:
+            self._session.commit_stats()
+
+        else:
+            self._session.commit_saved_value()
 
     def _unequip(self, talisman: CharacterTalisman) -> None:
         """슬롯에서 장착 해제"""
@@ -438,8 +551,12 @@ class TalismanTab(CharacterTab):
             return
 
         if talisman.id in self._profile.equipped.talisman_ids:
+            equipped_index: int = self._profile.equipped.talisman_ids.index(talisman.id)
             self._profile.equipped.talisman_ids.remove(talisman.id)
 
-        self._render_slots()
-        self._render_owned()
-        self._on_changed()
+        else:
+            raise ValueError("equipped talisman is not available")
+
+        self._refresh_slots(start_index=equipped_index)
+        self._replace_owned_row(talisman)
+        self._session.commit_stats()

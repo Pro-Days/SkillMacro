@@ -32,6 +32,7 @@ from app.scripts.character_models import (
 )
 from app.scripts.custom_classes import CustomFont, StyledButton
 from app.scripts.ui.character_ui.constants import STAT_CHOICE_LABELS, STAT_LABEL_TO_KEY
+from app.scripts.ui.character_ui.edit_session import CharacterEditSession
 from app.scripts.ui.character_ui.tabs.base import CharacterTab
 from app.scripts.ui.character_ui.widgets import (
     CharCard,
@@ -55,7 +56,7 @@ class _TitleItem(QFrame):
         title: CharacterTitle,
         equipped: bool,
         equip_group: QButtonGroup,
-        on_changed: Callable[[], None],
+        session: CharacterEditSession,
         on_equip: Callable[[CharacterTitle], None],
         on_delete: Callable[[CharacterTitle], None],
     ) -> None:
@@ -66,7 +67,7 @@ class _TitleItem(QFrame):
         self.setFixedSize(_TITLE_ITEM_WIDTH, _TITLE_ITEM_HEIGHT)
 
         self._title: CharacterTitle = title
-        self._on_changed: Callable[[], None] = on_changed
+        self._session: CharacterEditSession = session
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 14, 14, 14)
@@ -145,8 +146,11 @@ class _TitleItem(QFrame):
     def _on_name_changed(self, text: str) -> None:
         """칭호명 모델 반영"""
 
+        if self._title.name == text:
+            return
+
         self._title.name = text
-        self._on_changed()
+        self._session.commit_saved_value()
 
     def _sync_slots(self) -> None:
         """칭호 스탯 슬롯 모델 반영"""
@@ -160,8 +164,16 @@ class _TitleItem(QFrame):
             stat_key: StatKey = STAT_LABEL_TO_KEY[combo.currentText()]
             slots.append(TitleStatSlot(stat_key=stat_key, value=field.number()))
 
-        self._title.slots = tuple(slots)
-        self._on_changed()
+        updated_slots: tuple[TitleStatSlot | None, ...] = tuple(slots)
+        if self._title.slots == updated_slots:
+            return
+
+        self._title.slots = updated_slots
+        if self.equip_radio.isChecked():
+            self._session.commit_stats()
+
+        else:
+            self._session.commit_saved_value()
 
     def set_equipped_style(self, equipped: bool) -> None:
         """장착 강조 스타일 갱신"""
@@ -175,11 +187,10 @@ class _TitleItem(QFrame):
 class TitleTab(CharacterTab):
     """기본정보와 칭호 탭"""
 
-    def __init__(self, parent: QWidget, on_changed: Callable[[], None]) -> None:
-        super().__init__(parent)
+    def __init__(self, parent: QWidget, session: CharacterEditSession) -> None:
+        super().__init__(parent, session)
 
         self._profile: CharacterProfile | None = None
-        self._on_changed: Callable[[], None] = on_changed
         self._loading: bool = False
 
         self._layout = QVBoxLayout(self)
@@ -321,6 +332,9 @@ class TitleTab(CharacterTab):
     def _render_titles(self) -> None:
         """칭호 목록 재구성"""
 
+        for item in self._title_items:
+            self._equip_group.removeButton(item.equip_radio)
+
         while self._titles_container.flow.count():
             item = self._titles_container.flow.takeAt(0)
             widget: QWidget | None = item.widget()  # type: ignore[assignment]
@@ -333,27 +347,28 @@ class TitleTab(CharacterTab):
             return
 
         for title in self._profile.titles:
-            item = _TitleItem(
-                self,
-                title,
-                title.id == self._profile.equipped.title_id,
-                self._equip_group,
-                self._notify_changed,
-                self._equip_title,
-                self._delete_title,
-            )
-            self._title_items.append(item)
-            self._titles_container.addWidget(item)
+            self._add_title_item(title)
 
         self._titles_container.sync_height()
 
-    def _notify_changed(self) -> None:
-        """외부 변경 콜백 호출"""
+    def _add_title_item(self, title: CharacterTitle) -> None:
+        """칭호 카드 하나 추가"""
 
-        if self._loading:
-            return
+        if self._profile is None:
+            raise ValueError("character profile is not bound")
 
-        self._on_changed()
+        item = _TitleItem(
+            self,
+            title,
+            title.id == self._profile.equipped.title_id,
+            self._equip_group,
+            self._session,
+            self._equip_title,
+            self._delete_title,
+        )
+        self._title_items.append(item)
+        self._titles_container.addWidget(item)
+        self._titles_container.sync_height()
 
     def _on_name_changed(self, text: str) -> None:
         """캐릭터 이름 모델 반영"""
@@ -361,8 +376,11 @@ class TitleTab(CharacterTab):
         if self._profile is None or self._loading:
             return
 
+        if self._profile.name == text:
+            return
+
         self._profile.name = text
-        self._on_changed()
+        self._session.commit_name()
 
     def _on_level_changed(self) -> None:
         """캐릭터 레벨 모델 반영"""
@@ -370,8 +388,12 @@ class TitleTab(CharacterTab):
         if self._profile is None or self._loading:
             return
 
-        self._profile.level = int(self._level_field.number())
-        self._on_changed()
+        level: int = int(self._level_field.number())
+        if self._profile.level == level:
+            return
+
+        self._profile.level = level
+        self._session.commit_progression()
 
     def _pick_realm(self, index: int) -> None:
         """경지 선택 모델 반영"""
@@ -380,9 +402,13 @@ class TitleTab(CharacterTab):
             return
 
         realm_values: list[RealmTier] = list(REALM_TIER_SPECS.keys())
-        self._profile.realm = realm_values[index]
+        realm: RealmTier = realm_values[index]
+        if self._profile.realm == realm:
+            return
+
+        self._profile.realm = realm
         self._sync_realm_buttons()
-        self._on_changed()
+        self._session.commit_progression()
 
     def _add_title(self) -> None:
         """칭호 추가"""
@@ -395,8 +421,8 @@ class TitleTab(CharacterTab):
         if self._profile.equipped.title_id is None:
             self._profile.equipped.title_id = title.id
 
-        self._render_titles()
-        self._on_changed()
+        self._add_title_item(title)
+        self._session.commit_saved_value()
 
     def _equip_title(self, title: CharacterTitle) -> None:
         """칭호 장착"""
@@ -404,11 +430,14 @@ class TitleTab(CharacterTab):
         if self._profile is None:
             return
 
+        if self._profile.equipped.title_id == title.id:
+            return
+
         self._profile.equipped.title_id = title.id
         for item in self._title_items:
             item.set_equipped_style(item._title is title)
 
-        self._on_changed()
+        self._session.commit_stats()
 
     def _delete_title(self, title: CharacterTitle) -> None:
         """칭호 삭제"""
@@ -416,13 +445,25 @@ class TitleTab(CharacterTab):
         if self._profile is None:
             return
 
+        equipped: bool = self._profile.equipped.title_id == title.id
         self._profile.titles = [
             current_title
             for current_title in self._profile.titles
             if current_title.id != title.id
         ]
-        if self._profile.equipped.title_id == title.id:
+        if equipped:
             self._profile.equipped.title_id = None
 
-        self._render_titles()
-        self._on_changed()
+        target_item: _TitleItem = next(
+            item for item in self._title_items if item._title.id == title.id
+        )
+        self._titles_container.flow.removeWidget(target_item)
+        self._equip_group.removeButton(target_item.equip_radio)
+        self._title_items.remove(target_item)
+        target_item.deleteLater()
+        self._titles_container.sync_height()
+        if equipped:
+            self._session.commit_stats()
+
+        else:
+            self._session.commit_saved_value()

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, Qt
 from PySide6.QtGui import QDoubleValidator
 from PySide6.QtWidgets import (
@@ -34,6 +32,7 @@ from app.scripts.character_models import (
 )
 from app.scripts.custom_classes import CustomFont, StyledButton
 from app.scripts.ui.character_ui.constants import DISPLAY_STAND_COLUMNS
+from app.scripts.ui.character_ui.edit_session import CharacterEditSession
 from app.scripts.ui.character_ui.tabs.base import CharacterTab
 from app.scripts.ui.character_ui.widgets import (
     CharCard,
@@ -86,11 +85,10 @@ class _NumericDelegate(QStyledItemDelegate):
 class DisplayStandTab(CharacterTab):
     """진열대 탭"""
 
-    def __init__(self, parent: QWidget, on_changed: Callable[[], None]) -> None:
-        super().__init__(parent)
+    def __init__(self, parent: QWidget, session: CharacterEditSession) -> None:
+        super().__init__(parent, session)
 
         self._profile: CharacterProfile | None = None
-        self._on_changed: Callable[[], None] = on_changed
         self._loading: bool = False
         self._column_keys: tuple[DisplayStandColumn, ...] = tuple(
             column for column, _title in DISPLAY_STAND_COLUMNS
@@ -306,10 +304,15 @@ class DisplayStandTab(CharacterTab):
         entries: dict[DisplayStand, DisplayStandEntry] = (
             self._profile.display_stand.entries
         )
+        entry: DisplayStandEntry | None = entries.get(spec.stand)
+        current_value: float = (
+            0.0 if entry is None else entry.values.get(column, 0.0)
+        )
+        if current_value == value:
+            return
 
         # 0 값은 저장하지 않고, 비어 버린 진열대 엔트리는 제거한다
         if value <= 0.0:
-            entry: DisplayStandEntry | None = entries.get(spec.stand)
             if entry is not None:
                 entry.values.pop(column, None)
                 if not entry.values:
@@ -317,7 +320,7 @@ class DisplayStandTab(CharacterTab):
         else:
             entries.setdefault(spec.stand, DisplayStandEntry()).values[column] = value
 
-        self._on_changed()
+        self._session.commit_stats()
 
     def _recalc(self) -> None:
         """열별 합계 갱신"""

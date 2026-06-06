@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLayout,
     QLineEdit,
     QPushButton,
     QScrollArea,
@@ -78,6 +79,7 @@ from app.scripts.ui.character_ui.constants import (
     STAT_CHOICE_LABELS,
     STAT_LABEL_TO_KEY,
 )
+from app.scripts.ui.character_ui.edit_session import CharacterEditSession
 from app.scripts.ui.character_ui.tabs.base import CharacterTab
 from app.scripts.ui.character_ui.widgets import (
     CharComboBox,
@@ -402,6 +404,181 @@ class _EquipSlotData:
         return self.owned[self.equipped_index]
 
 
+@dataclass(slots=True)
+class _ItemSection:
+    """아이템 선택 컨트롤 참조"""
+
+    widget: QFrame
+    level: CharComboBox | None = None
+    tier: CharComboBox | None = None
+    grade: QPushButton | None = None
+    necklace_type: CharComboBox | None = None
+
+    def update_tiers(self, slot: EquipmentSlot, item: OwnedEquipment) -> None:
+        """레벨에 맞는 티어 선택지 갱신"""
+
+        if self.tier is None:
+            raise ValueError("tier field is not available")
+
+        self.tier.blockSignals(True)
+        self.tier.clear()
+        self.tier.addItems([str(tier) for tier in _equipment_tiers(slot, item.level)])
+        self.tier.setCurrentText(str(item.tier))
+        self.tier.blockSignals(False)
+
+
+@dataclass(slots=True)
+class _BaseSection:
+    """기본 스탯 섹션 참조"""
+
+    widget: QFrame
+    free_rows: QVBoxLayout | None = None
+    static_flow: FlowLayout | None = None
+    static_fields: dict[str, tuple[QWidget, StaticValueField]] | None = None
+    make_static_field: Callable[[str, float], tuple[QWidget, StaticValueField]] | None = (
+        None
+    )
+
+    def update_values(self, slot: EquipmentSlot, item: OwnedEquipment) -> None:
+        """자동 기본 스탯 표시값 갱신"""
+
+        if self.static_fields is None:
+            return
+
+        rows: list[tuple[str, float]] = _equipment_base_rows(item, slot)
+        if [label for label, _value in rows] != list(self.static_fields):
+            self._rebuild_static_fields(rows)
+            return
+
+        values: dict[str, float] = dict(rows)
+        for label, (_container, field) in self.static_fields.items():
+            field.set_number(values[label])
+
+    def _rebuild_static_fields(self, rows: list[tuple[str, float]]) -> None:
+        """기본 스탯 항목 구성이 바뀐 경우 내부 필드 동기화"""
+
+        if (
+            self.static_flow is None
+            or self.static_fields is None
+            or self.make_static_field is None
+        ):
+            raise ValueError("static base stat fields are not available")
+
+        for container, _field in self.static_fields.values():
+            self.static_flow.removeWidget(container)
+            container.deleteLater()
+        self.static_fields.clear()
+
+        for label, value in rows:
+            container, field = self.make_static_field(label, value)
+            self.static_fields[label] = (container, field)
+            self.static_flow.addWidget(container)
+        self.widget.updateGeometry()
+
+
+@dataclass(slots=True)
+class _ScrollSection:
+    """주문서 섹션과 입력칸 참조"""
+
+    widget: QFrame
+    cells: dict[tuple[StatKey, ScrollTier], NormalizingLineEdit]
+
+    def clear_values(self, slot: EquipmentSlot, item: OwnedEquipment) -> None:
+        """레벨 변경 후 주문서 입력값과 제한 갱신"""
+
+        limit: int | None = _equipment_scroll_limit(slot, item)
+        for field in self.cells.values():
+            field.setValidator(QIntValidator(0, limit or 999, field))
+            field.set_committed_text("0")
+
+
+@dataclass(slots=True)
+class _ReforgeSection:
+    """재련 섹션과 종류별 스탯 입력칸"""
+
+    widget: QFrame
+    flow: FlowLayout
+    stat_fields: dict[StatKey, QWidget]
+    make_stat_field: Callable[[StatKey, float], QWidget]
+
+    def update_stat_fields(self, slot: EquipmentSlot, item: OwnedEquipment) -> None:
+        """장비 종류에 맞는 재련 스탯 입력칸 동기화"""
+
+        for container in self.stat_fields.values():
+            self.flow.removeWidget(container)
+            container.deleteLater()
+        self.stat_fields.clear()
+
+        for stat_key in _reforge_stat_keys(slot, item.item_name):
+            container: QWidget = self.make_stat_field(
+                stat_key,
+                item.reforge_stats.get(stat_key, 0.0),
+            )
+            self.stat_fields[stat_key] = container
+            self.flow.addWidget(container)
+        self.widget.updateGeometry()
+
+
+@dataclass(slots=True)
+class _EquipmentDetailView:
+    """현재 장착 장비 상세 페이지와 기능별 위젯 참조"""
+
+    item: OwnedEquipment
+    slot: EquipmentSlot
+    page: QFrame
+    name_label: QLabel | None
+    item_section: _ItemSection | None
+    base_section: _BaseSection | None
+    reforge_section: _ReforgeSection | None
+    scroll_section: _ScrollSection | None
+
+    def update_name(self) -> None:
+        """장비 이름 표시 갱신"""
+
+        if self.name_label is None:
+            return
+
+        has_grade: bool = _has_grade(equipment_item_spec(self.item))
+        self.name_label.setText(
+            _equipment_display_name(self.item, self.slot, has_grade)
+        )
+
+class _DetailStack(QWidget):
+    """현재 장비 상세 페이지만 높이에 반영하는 고정 페이지 스택"""
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+
+        self._layout = QVBoxLayout(self)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setSpacing(0)
+        self._pages: list[QWidget] = []
+
+    def addWidget(self, page: QWidget) -> None:
+        """페이지 추가"""
+
+        self._pages.append(page)
+        self._layout.addWidget(page)
+        page.setVisible(len(self._pages) == 1)
+
+    def removeWidget(self, page: QWidget) -> None:
+        """페이지 제거"""
+
+        self._layout.removeWidget(page)
+        self._pages.remove(page)
+        page.setVisible(False)
+
+    def setCurrentWidget(self, current: QWidget) -> None:
+        """현재 페이지만 표시"""
+
+        if current not in self._pages:
+            raise ValueError("detail page is not attached")
+
+        for page in self._pages:
+            page.setVisible(page is current)
+        self.updateGeometry()
+
+
 class _EquipSlot(QFrame):
     """장비창 슬롯 1칸 (장착 장비 또는 빈 상태 표시)"""
 
@@ -484,25 +661,13 @@ class _EquipPickCard(QFrame):
     def __init__(
         self,
         parent: QWidget,
-        slot: _EquipSlotData,
-        item: OwnedEquipment,
-        index: int,
         tab: "EquipmentTab",
-        has_grade: bool,
-        current: bool,
     ) -> None:
         super().__init__(parent)
 
         self.setObjectName("charEquipPick")
-        self.setProperty("current", current)
-        self._selectable: bool = item.name not in slot.unavailable_names
-        self.setCursor(
-            Qt.CursorShape.PointingHandCursor
-            if self._selectable
-            else Qt.CursorShape.ForbiddenCursor
-        )
-
-        self._index: int = index
+        self._index: int = -1
+        self._selectable: bool = False
         self._tab: "EquipmentTab" = tab
 
         card = QVBoxLayout(self)
@@ -518,33 +683,75 @@ class _EquipPickCard(QFrame):
         name_row = QHBoxLayout()
         name_row.setSpacing(8)
         # 실제 장비 등급 기반 표시 이름
-        display_name: str = _equipment_display_name(item, slot.slot, has_grade)
-        name_label: QLabel = QLabel(display_name, self)
-        name_label.setObjectName("charDetailName")
-        name_label.setFont(CustomFont(13, bold=True))
-        name_row.addWidget(name_label)
-        if slot.slot in _REFORGE_EQUIPMENT_SLOTS:
-            reforge_label: QLabel = QLabel(f"+{item.reforge_step}", self)
-            reforge_label.setObjectName("charPickReforge")
-            reforge_label.setFont(CustomFont(10, bold=True))
-            name_row.addWidget(reforge_label)
+        self._name_label: QLabel = QLabel(self)
+        self._name_label.setObjectName("charDetailName")
+        self._name_label.setFont(CustomFont(13, bold=True))
+        name_row.addWidget(self._name_label)
+        self._reforge_label: QLabel = QLabel(self)
+        self._reforge_label.setObjectName("charPickReforge")
+        self._reforge_label.setFont(CustomFont(10, bold=True))
+        name_row.addWidget(self._reforge_label)
         name_row.addStretch(1)
         head.addLayout(name_row, 1)
 
         del_btn: StyledButton = StyledButton(self, "삭제", kind="danger", point_size=9)
-        del_btn.clicked.connect(lambda: tab.remove_owned(index))
+        del_btn.clicked.connect(self._remove)
         head.addWidget(del_btn, alignment=Qt.AlignmentFlag.AlignVCenter)
         card.addLayout(head)
 
-        # 실제 장비 입력값 기반 카드 요약
+        self._info_box = QVBoxLayout()
+        self._info_box.setContentsMargins(58, 0, 0, 0)
+        self._info_box.setSpacing(7)
+        card.addLayout(self._info_box)
+
+    def update_from_slot(
+        self,
+        slot: _EquipSlotData,
+        item: OwnedEquipment,
+        index: int,
+    ) -> None:
+        """보유 장비 모델 기준 카드 표시 갱신"""
+
+        self._index = index
+        self._selectable = item.name not in slot.unavailable_names
+        self.setCursor(
+            Qt.CursorShape.PointingHandCursor
+            if self._selectable
+            else Qt.CursorShape.ForbiddenCursor
+        )
+        self.setProperty("current", index == slot.equipped_index)
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+        has_grade: bool = _has_grade(equipment_item_spec(item))
+        self._name_label.setText(_equipment_display_name(item, slot.slot, has_grade))
+        self._reforge_label.setVisible(slot.slot in _REFORGE_EQUIPMENT_SLOTS)
+        self._reforge_label.setText(f"+{item.reforge_step}")
+
+        while self._info_box.count():
+            layout_item = self._info_box.takeAt(0)
+            layout = layout_item.layout()
+            if layout is not None:
+                self._clear_info_row(layout)
+
         info_rows: list[tuple[str, list[str]]] = _equipment_pick_info_rows(item)
-        if info_rows:
-            info_box = QVBoxLayout()
-            info_box.setContentsMargins(58, 0, 0, 0)
-            info_box.setSpacing(7)
-            for key_text, tokens in info_rows:
-                info_box.addLayout(self._info_row(key_text, tokens))
-            card.addLayout(info_box)
+        for key_text, tokens in info_rows:
+            self._info_box.addLayout(self._info_row(key_text, tokens))
+        self.updateGeometry()
+
+    def _clear_info_row(self, layout: QLayout) -> None:
+        """요약 행 위젯 정리"""
+
+        while layout.count():
+            item = layout.takeAt(0)
+            widget: QWidget | None = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+
+    def _remove(self) -> None:
+        """현재 카드 장비 삭제"""
+
+        self._tab.remove_owned(self._index)
 
     def _info_row(self, key_text: str, tokens: list[str]) -> QHBoxLayout:
         """라벨 + 스탯 값 줄바꿈 행"""
@@ -582,11 +789,10 @@ class _EquipPickCard(QFrame):
 class EquipmentTab(CharacterTab):
     """장비 탭"""
 
-    def __init__(self, parent: QWidget, on_changed: Callable[[], None]) -> None:
-        super().__init__(parent)
+    def __init__(self, parent: QWidget, session: CharacterEditSession) -> None:
+        super().__init__(parent, session)
 
         self._profile: CharacterProfile | None = None
-        self._on_changed: Callable[[], None] = on_changed
         self._slots_data: list[_EquipSlotData] = self._build_slots_data(None)
         self._active_index: int = 0
         self._picker_open: bool = False
@@ -602,7 +808,7 @@ class EquipmentTab(CharacterTab):
 
         self._stacked: bool = False
         self._render_slots()
-        self._render_detail()
+        self._show_detail()
 
     def set_profile(self, profile: CharacterProfile | None) -> None:
         """선택 캐릭터 모델 반영"""
@@ -610,8 +816,10 @@ class EquipmentTab(CharacterTab):
         self._profile = profile
         self._slots_data = self._build_slots_data(profile)
         self.setEnabled(profile is not None)
+        self._clear_equipped_views()
+        self._clear_picker_cards()
         self._refresh_slots()
-        self._render_detail()
+        self._show_detail()
 
     def _build_slots_data(
         self,
@@ -752,7 +960,7 @@ class EquipmentTab(CharacterTab):
         self._active_index = index
         self._picker_open = False
         self._highlight_active()
-        self._render_detail()
+        self._show_detail()
 
     # 우측 상세
 
@@ -764,103 +972,123 @@ class EquipmentTab(CharacterTab):
         self._detail_layout = QVBoxLayout(self._detail_content)
         self._detail_layout.setContentsMargins(18, 18, 18, 18)
         self._detail_layout.setSpacing(0)
+
+        self._detail_stack: _DetailStack = _DetailStack(self._detail_content)
+        self._equipped_stack: _DetailStack = _DetailStack(self._detail_stack)
+        self._equipped_view: _EquipmentDetailView | None = None
+        self._slot_views: dict[EquipmentSlot, list[_EquipmentDetailView]] = {}
+        self._picker_cards: list[_EquipPickCard] = []
+        self._picker_page: QFrame = self._build_picker_page()
+        self._empty_page: QFrame = self._build_empty_page()
+
+        self._detail_stack.addWidget(self._equipped_stack)
+        self._detail_stack.addWidget(self._picker_page)
+        self._detail_stack.addWidget(self._empty_page)
+        self._detail_layout.addWidget(self._detail_stack)
         return self._detail_content
 
-    def _clear_detail(self) -> None:
-        """상세 레이아웃 비우기"""
+    def _show_detail(self) -> None:
+        """현재 상태에 맞는 고정 상세 페이지 표시"""
 
-        while self._detail_layout.count():
-            item = self._detail_layout.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
-            else:
-                self._clear_sub_layout(item.layout())
-
-    def _clear_sub_layout(self, layout) -> None:
-        """중첩 레이아웃 정리"""
-
-        if layout is None:
-            return
-        while layout.count():
-            item = layout.takeAt(0)
-            widget = item.widget()
-            if widget is not None:
-                widget.deleteLater()
-            else:
-                self._clear_sub_layout(item.layout())
-
-    def _render_detail(self) -> None:
-        """선택 장비 상세 / 장비 교체 화면 / 빈 상태 재구성"""
-
-        self._clear_detail()
         slot: _EquipSlotData = self._slots_data[self._active_index]
 
         if self._picker_open:
-            self._render_picker(slot)
-            self._detail_content.updateGeometry()
-            self.updateGeometry()
+            self._equipped_view = None
+            self._sync_picker_list(slot)
+            self._detail_stack.setCurrentWidget(self._picker_page)
             return
 
         item = slot.equipped()
         if item is None:
-            self._render_empty(slot)
-            self._detail_content.updateGeometry()
-            self.updateGeometry()
+            self._equipped_view = None
+            self._empty_title_label.setText(EQUIPMENT_SLOT_LABELS[slot.slot])
+            self._detail_stack.setCurrentWidget(self._empty_page)
             return
 
+        view: _EquipmentDetailView = self._bind_equipped_view(slot, item)
+        self._equipped_stack.setCurrentWidget(view.page)
+        self._detail_stack.setCurrentWidget(self._equipped_stack)
+        self._detail_content.updateGeometry()
+        self.updateGeometry()
+
+    def _bind_equipped_view(
+        self,
+        slot: _EquipSlotData,
+        item: OwnedEquipment,
+    ) -> _EquipmentDetailView:
+        """현재 장비가 바뀐 경우에만 상세 페이지 바인딩"""
+
+        for view in self._slot_views.setdefault(slot.slot, []):
+            if view.item is item:
+                self._equipped_view = view
+                return view
+
+        view: _EquipmentDetailView = self._build_equipped_view(slot, item)
+        self._slot_views[slot.slot].append(view)
+        self._equipped_view = view
+        self._equipped_stack.addWidget(view.page)
+        return view
+
+    def _build_equipped_view(
+        self,
+        slot: _EquipSlotData,
+        item: OwnedEquipment,
+    ) -> _EquipmentDetailView:
+        """장착 장비 상세 페이지 최초 구성"""
+
+        page: QFrame = QFrame(self._equipped_stack)
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
         item_spec: EquipmentItemSpec | None = equipment_item_spec(item)
         has_grade: bool = _has_grade(item_spec)
         has_potential: bool = slot.slot in POTENTIAL_EQUIPMENT_SLOTS
-        is_necklace: bool = slot.slot == EquipmentSlot.NECKLACE
         is_free_stat: bool = item.kind in (
             EquipmentKind.RING,
             EquipmentKind.EARRING,
         )
 
-        self._detail_layout.addLayout(self._build_detail_head(slot, item, has_grade))
+        head, name_label = self._build_detail_head(slot, item, has_grade)
+        layout.addWidget(head)
 
-        # 아이템 섹션: 무기·방어구(레벨/티어/등급) 또는 목걸이(종류). 반지·귀걸이는 표시하지 않는다
+        item_section: _ItemSection | None = None
         if not is_free_stat:
-            self._detail_layout.addWidget(
-                self._build_item_section(slot, item, has_grade)
-            )
+            item_section = self._build_item_section(slot, item, has_grade)
+            layout.addWidget(item_section.widget)
 
-        # 기본 스탯 + 재련: 공간이 남으면 기본 스탯 오른쪽에 재련을 나란히 배치
-        base_group: ResponsiveColumnsBox = ResponsiveColumnsBox(
-            self._detail_content, min_column_width=300, spacing=18
-        )
-        # 목걸이는 기본 스탯 없이 재련만 입력한다
-        if not is_necklace:
-            base_group.addWidget(self._build_base_section(slot, item))
-        if slot.slot in _REFORGE_EQUIPMENT_SLOTS:
-            base_group.addWidget(self._build_reforge_section(slot, item))
-        self._detail_layout.addWidget(base_group)
+        base_group, base_section, reforge_section = self._build_base_group(slot, item)
+        layout.addWidget(base_group)
 
+        scroll_section: _ScrollSection | None = None
         if slot.slot in _SCROLL_SETS:
-            self._detail_layout.addWidget(self._build_scroll_section(slot))
+            scroll_section = self._build_scroll_section(slot)
+            layout.addWidget(scroll_section.widget)
 
-        # 잠재능력 + 추가능력: 공간이 남으면 나란히 배치
         if has_potential:
-            option_group: ResponsiveColumnsBox = ResponsiveColumnsBox(
-                self._detail_content, min_column_width=300, spacing=18
-            )
-            option_group.addWidget(self._build_option_section(_POTENTIAL_SECTION))
-            option_group.addWidget(self._build_option_section(_ADDITIONAL_SECTION))
-            self._detail_layout.addWidget(option_group)
+            layout.addWidget(self._build_option_group())
 
-        self._detail_content.updateGeometry()
-        self.updateGeometry()
+        layout.addStretch(1)
+        return _EquipmentDetailView(
+            item=item,
+            slot=slot.slot,
+            page=page,
+            name_label=name_label,
+            item_section=item_section,
+            base_section=base_section,
+            reforge_section=reforge_section,
+            scroll_section=scroll_section,
+        )
 
     def _build_detail_head(
         self,
         slot: _EquipSlotData,
         item: OwnedEquipment,
         has_grade: bool,
-    ) -> QHBoxLayout:
+    ) -> tuple[QFrame, QLabel | None]:
         """상세 헤더 (아이콘 + 이름 + 교체 버튼)"""
 
-        head = QHBoxLayout()
+        container: QFrame = QFrame(self)
+        head = QHBoxLayout(container)
         head.setContentsMargins(0, 0, 0, 12)
         head.setSpacing(12)
 
@@ -869,6 +1097,7 @@ class EquipmentTab(CharacterTab):
 
         name_box = QVBoxLayout()
         name_box.setSpacing(4)
+        name_label: QLabel | None = None
         # 반지·귀걸이는 사용자가 직접 이름을 정한다 (그 외 부위는 카탈로그/종류 이름 표시)
         if item.kind in (EquipmentKind.RING, EquipmentKind.EARRING):
             name_edit: QLineEdit = QLineEdit(item.name, self)
@@ -881,7 +1110,7 @@ class EquipmentTab(CharacterTab):
         else:
             # 실제 장비 등급 기반 표시 이름
             display_name: str = _equipment_display_name(item, slot.slot, has_grade)
-            name_label: QLabel = QLabel(display_name, self)
+            name_label = QLabel(display_name, self)
             name_label.setObjectName("charDetailName")
             name_label.setFont(CustomFont(15, bold=True))
             name_box.addWidget(name_label)
@@ -897,11 +1126,88 @@ class EquipmentTab(CharacterTab):
         )
         change_btn.clicked.connect(self.open_picker)
         head.addWidget(change_btn)
-        return head
+        return container, name_label
+
+    def _build_base_group(
+        self,
+        slot: _EquipSlotData,
+        item: OwnedEquipment,
+    ) -> tuple[
+        ResponsiveColumnsBox,
+        _BaseSection | None,
+        _ReforgeSection | None,
+    ]:
+        """기본 스탯과 재련 섹션 그룹 구성"""
+
+        group: ResponsiveColumnsBox = ResponsiveColumnsBox(
+            self._detail_content, min_column_width=300, spacing=18
+        )
+        base_section: _BaseSection | None = None
+        reforge_section: _ReforgeSection | None = None
+        if slot.slot != EquipmentSlot.NECKLACE:
+            base_section = self._build_base_section(slot, item)
+            group.addWidget(base_section.widget)
+        if slot.slot in _REFORGE_EQUIPMENT_SLOTS:
+            reforge_section = self._build_reforge_section(slot, item)
+            group.addWidget(reforge_section.widget)
+        return group, base_section, reforge_section
+
+    def _build_option_group(self) -> ResponsiveColumnsBox:
+        """잠재능력과 추가능력 섹션 그룹 구성"""
+
+        group: ResponsiveColumnsBox = ResponsiveColumnsBox(
+            self._detail_content, min_column_width=300, spacing=18
+        )
+        group.addWidget(self._build_option_section(_POTENTIAL_SECTION))
+        group.addWidget(self._build_option_section(_ADDITIONAL_SECTION))
+        return group
+
+    def _require_equipped_view(self, item: OwnedEquipment) -> _EquipmentDetailView:
+        """현재 장비에 바인딩된 상세 조회"""
+
+        view: _EquipmentDetailView | None = self._equipped_view
+        if view is None or view.item is not item:
+            raise ValueError("current equipment detail is not bound")
+        return view
+
+    def _discard_equipment_views(self, item: OwnedEquipment) -> None:
+        """삭제된 장비의 상세 페이지 정리"""
+
+        for slot, views in tuple(self._slot_views.items()):
+            matching_views: list[_EquipmentDetailView] = [
+                view for view in views if view.item is item
+            ]
+            for view in matching_views:
+                views.remove(view)
+                self._equipped_stack.removeWidget(view.page)
+                view.page.deleteLater()
+                if self._equipped_view is view:
+                    self._equipped_view = None
+
+            if not views:
+                self._slot_views.pop(slot)
+
+    def _clear_equipped_views(self) -> None:
+        """프로필에 종속된 슬롯 상세 페이지 정리"""
+
+        for views in self._slot_views.values():
+            for view in views:
+                self._equipped_stack.removeWidget(view.page)
+                view.page.deleteLater()
+        self._slot_views.clear()
+        self._equipped_view = None
+
+    def _clear_picker_cards(self) -> None:
+        """장비 선택 카드 목록 정리"""
+
+        for card in self._picker_cards:
+            self._picker_list.removeWidget(card)
+            card.deleteLater()
+        self._picker_cards = []
 
     def _build_level_tier_row(
         self, item: OwnedEquipment, slot: EquipmentSlot
-    ) -> QHBoxLayout:
+    ) -> tuple[QHBoxLayout, CharComboBox, CharComboBox]:
         """레벨/티어 콤보박스 선택 행"""
 
         controls = QHBoxLayout()
@@ -928,9 +1234,12 @@ class EquipmentTab(CharacterTab):
         controls.addWidget(tier_combo)
 
         controls.addStretch(1)
-        return controls
+        return controls, level_combo, tier_combo
 
-    def _build_necklace_type_row(self, item: OwnedEquipment) -> QHBoxLayout:
+    def _build_necklace_type_row(
+        self,
+        item: OwnedEquipment,
+    ) -> tuple[QHBoxLayout, CharComboBox]:
         """목걸이 종류 선택 행"""
 
         controls = QHBoxLayout()
@@ -948,7 +1257,7 @@ class EquipmentTab(CharacterTab):
         controls.addWidget(type_combo)
 
         controls.addStretch(1)
-        return controls
+        return controls, type_combo
 
     def _current_item(self) -> OwnedEquipment | None:
         """현재 슬롯의 장착 장비"""
@@ -956,13 +1265,10 @@ class EquipmentTab(CharacterTab):
         return self._slots_data[self._active_index].equipped()
 
     def _commit_active_item(self) -> None:
-        """현재 장비를 제자리 수정한 뒤 타일·상세·실시간 표시를 갱신"""
+        """현재 장비 변경 후 슬롯 타일과 실시간 표시 갱신"""
 
-        # 레벨/티어/등급/목걸이 종류는 보유 목록을 바꾸지 않으므로 슬롯 데이터를
-        # 다시 만들 필요 없이 현재 타일과 상세만 갱신한다.
         self._refresh_active_slot()
-        self._render_detail()
-        self._on_changed()
+        self._session.commit_stats()
 
     def _pick_level(self, text: str) -> None:
         """선택한 장비 레벨을 현재 장비에 반영"""
@@ -974,6 +1280,14 @@ class EquipmentTab(CharacterTab):
             # 레벨 변경 시 티어와 주문서 입력 상태 초기화
             item.tier = 1
             item.scrolls = {}
+            view: _EquipmentDetailView = self._require_equipped_view(item)
+            if view.item_section is None:
+                raise ValueError("item section is not available")
+            view.item_section.update_tiers(view.slot, item)
+            if view.base_section is not None:
+                view.base_section.update_values(view.slot, item)
+            if view.scroll_section is not None:
+                view.scroll_section.clear_values(view.slot, item)
             self._commit_active_item()
 
     def _pick_tier(self, text: str) -> None:
@@ -982,6 +1296,9 @@ class EquipmentTab(CharacterTab):
         item = self._current_item()
         if item is not None:
             item.tier = int(text)
+            view: _EquipmentDetailView = self._require_equipped_view(item)
+            if view.base_section is not None:
+                view.base_section.update_values(view.slot, item)
             self._commit_active_item()
 
     def _rename_current(self, field: QLineEdit, item: OwnedEquipment) -> None:
@@ -1009,7 +1326,7 @@ class EquipmentTab(CharacterTab):
         # 이름은 제자리 수정되어 슬롯 데이터의 참조에 그대로 반영된다. 입력 중인
         # 칸을 흔들지 않도록 상세는 다시 그리지 않고 타일만 갱신한다.
         self._refresh_active_slot()
-        self._on_changed()
+        self._session.commit_saved_value()
 
     def _pick_necklace_type(self, text: str) -> None:
         """목걸이 종류 변경 (종류별 허용 재련 스탯으로 정리)"""
@@ -1025,6 +1342,11 @@ class EquipmentTab(CharacterTab):
             for stat_key, value in item.reforge_stats.items()
             if stat_key in allowed_keys
         }
+        view: _EquipmentDetailView = self._require_equipped_view(item)
+        view.update_name()
+        if view.reforge_section is None:
+            raise ValueError("reforge section is not available")
+        view.reforge_section.update_stat_fields(view.slot, item)
         self._commit_active_item()
 
     def _section(self, title: str) -> tuple[QFrame, QVBoxLayout]:
@@ -1055,20 +1377,26 @@ class EquipmentTab(CharacterTab):
         slot: _EquipSlotData,
         item: OwnedEquipment,
         has_grade: bool,
-    ) -> QFrame:
+    ) -> _ItemSection:
         """아이템 섹션 (레벨/티어 + 등급)"""
 
         section, box = self._section("아이템")
 
         # 목걸이는 레벨·티어 대신 종류를 선택한다
         if slot.slot == EquipmentSlot.NECKLACE:
-            box.addLayout(self._build_necklace_type_row(item))
-            return section
+            row, type_combo = self._build_necklace_type_row(item)
+            box.addLayout(row)
+            return _ItemSection(widget=section, necklace_type=type_combo)
 
         # 등급(기본/찬란한)은 무기·방어구만. 공간이 남으면 레벨·티어 오른쪽에 등급을 배치
         if not has_grade:
-            box.addLayout(self._build_level_tier_row(item, slot.slot))
-            return section
+            row, level_combo, tier_combo = self._build_level_tier_row(item, slot.slot)
+            box.addLayout(row)
+            return _ItemSection(
+                widget=section,
+                level=level_combo,
+                tier=tier_combo,
+            )
 
         fields_group: ResponsiveColumnsBox = ResponsiveColumnsBox(
             section, min_column_width=160, spacing=18, fill=False
@@ -1078,20 +1406,32 @@ class EquipmentTab(CharacterTab):
         level_tier_box = QVBoxLayout(level_tier_block)
         level_tier_box.setContentsMargins(0, 0, 0, 0)
         level_tier_box.setSpacing(0)
-        level_tier_box.addLayout(self._build_level_tier_row(item, slot.slot))
+        level_tier_row, level_combo, tier_combo = self._build_level_tier_row(
+            item, slot.slot
+        )
+        level_tier_box.addLayout(level_tier_row)
         fields_group.addWidget(level_tier_block)
 
         grade_block: QFrame = QFrame(section)
         grade_box = QVBoxLayout(grade_block)
         grade_box.setContentsMargins(0, 0, 0, 0)
         grade_box.setSpacing(0)
-        grade_box.addLayout(self._build_grade_row(item))
+        grade_row, grade_button = self._build_grade_row(item)
+        grade_box.addLayout(grade_row)
         fields_group.addWidget(grade_block)
 
         box.addWidget(fields_group)
-        return section
+        return _ItemSection(
+            widget=section,
+            level=level_combo,
+            tier=tier_combo,
+            grade=grade_button,
+        )
 
-    def _build_grade_row(self, item: OwnedEquipment) -> QHBoxLayout:
+    def _build_grade_row(
+        self,
+        item: OwnedEquipment,
+    ) -> tuple[QHBoxLayout, QPushButton]:
         """등급 행 (레벨/티어처럼 라벨 + 찬란한 토글 버튼, ON 시 강조색)"""
 
         controls = QHBoxLayout()
@@ -1109,7 +1449,7 @@ class EquipmentTab(CharacterTab):
         controls.addWidget(grade_btn)
 
         controls.addStretch(1)
-        return controls
+        return controls, grade_btn
 
     def _on_grade_toggle(self, active: bool) -> None:
         """찬란한 버튼 토글 시 등급 반영 및 표시 이름 갱신"""
@@ -1117,44 +1457,72 @@ class EquipmentTab(CharacterTab):
         item = self._current_item()
         if item is not None:
             item.grade = EquipmentGrade.RADIANT if active else EquipmentGrade.BASIC
+            view: _EquipmentDetailView = self._require_equipped_view(item)
+            view.update_name()
+            if view.base_section is not None:
+                view.base_section.update_values(view.slot, item)
             self._commit_active_item()
 
-    def _build_base_section(self, slot: _EquipSlotData, item: OwnedEquipment) -> QFrame:
+    def _build_base_section(
+        self,
+        slot: _EquipSlotData,
+        item: OwnedEquipment,
+    ) -> _BaseSection:
         """기본 스탯 섹션 (방어구/무기 자동 표시 vs 반지/귀걸이 자유 입력)"""
 
         section, box = self._section("기본 스탯")
 
         # 반지/귀걸이: 자유 스탯 라인
         if slot.slot in FREE_BASE_STAT_EQUIPMENT_SLOTS:
-            self._free_rows = QVBoxLayout()
-            self._free_rows.setSpacing(8)
+            free_rows = QVBoxLayout()
+            free_rows.setSpacing(8)
             # 저장된 자유 기본 스탯 라인 표시값 구성
             for index, line in enumerate(item.base_stat_lines):
                 stat: str = STAT_SPECS[line.stat_key]
                 value: str = f"{line.value:g}"
-                self._free_rows.addLayout(
+                free_rows.addLayout(
                     self._build_free_stat_row(item, index, stat, value)
                 )
-            box.addLayout(self._free_rows)
+            box.addLayout(free_rows)
 
             add_btn: StyledButton = StyledButton(
                 section, "+ 스탯 추가", kind="normal", point_size=9
             )
             add_btn.clicked.connect(lambda: self._add_free_stat(item))
             box.addWidget(add_btn, alignment=Qt.AlignmentFlag.AlignLeft)
-            return section
+            return _BaseSection(widget=section, free_rows=free_rows)
 
         # 무기·방어구: 자동 제공되는 읽기 전용 스탯 / 그 외(목걸이 등): 직접 입력
         base_rows: list[tuple[str, float]] = _equipment_base_rows(item, slot.slot)
         auto_provided: bool = _has_grade(equipment_item_spec(item))
+        static_fields: dict[str, tuple[QWidget, StaticValueField]] = {}
 
         flow: FlowLayout = FlowLayout(spacing=14)
-        for label_text, v in base_rows:
-            flow.addWidget(
-                self._build_labeled_field(label_text, str(v), readonly=auto_provided)
+
+        def make_static_field(
+            label: str,
+            value: float,
+        ) -> tuple[QWidget, StaticValueField]:
+            container, field = self._build_labeled_field(
+                label,
+                str(value),
+                readonly=auto_provided,
             )
+            if not isinstance(field, StaticValueField):
+                raise ValueError("automatic base stat must be read-only")
+            return container, field
+
+        for label_text, v in base_rows:
+            container, field = make_static_field(label_text, v)
+            flow.addWidget(container)
+            static_fields[label_text] = (container, field)
         box.addLayout(flow)
-        return section
+        return _BaseSection(
+            widget=section,
+            static_flow=flow,
+            static_fields=static_fields,
+            make_static_field=make_static_field,
+        )
 
     def _build_free_stat_row(
         self,
@@ -1197,8 +1565,21 @@ class EquipmentTab(CharacterTab):
         item.base_stat_lines.append(
             EquipmentFreeStatLine(stat_key=StatKey.ATTACK, value=0.0)
         )
-        self._render_detail()
-        self._on_changed()
+        index: int = len(item.base_stat_lines) - 1
+        view: _EquipmentDetailView | None = self._equipped_view
+        if (
+            view is None
+            or view.item is not item
+            or view.base_section is None
+            or view.base_section.free_rows is None
+        ):
+            raise ValueError("free stat detail is not bound")
+
+        free_rows: QVBoxLayout = view.base_section.free_rows
+        free_rows.addLayout(
+            self._build_free_stat_row(item, index, STAT_SPECS[StatKey.ATTACK], "0")
+        )
+        self._session.commit_saved_value()
 
     def _set_free_stat_line(
         self,
@@ -1216,36 +1597,47 @@ class EquipmentTab(CharacterTab):
             stat_key=STAT_LABEL_TO_KEY[stat],
             value=value,
         )
-        self._on_changed()
+        self._session.commit_stats()
 
     def _build_reforge_section(
         self, slot: _EquipSlotData, item: OwnedEquipment
-    ) -> QFrame:
+    ) -> _ReforgeSection:
         """재련 섹션 (부위/목걸이 종류별 허용 스탯 입력)"""
 
         section, box = self._section("재련")
 
-        stat_keys: tuple[StatKey, ...] = _reforge_stat_keys(slot.slot, item.item_name)
-
         flow: FlowLayout = FlowLayout(spacing=14)
         # 맨 처음에 재련 단계(0~20강) 입력칸
         flow.addWidget(self._build_step_field(item))
-        for stat_key in stat_keys:
+        stat_fields: dict[StatKey, QWidget] = {}
+
+        def make_stat_field(stat_key: StatKey, value: float) -> QWidget:
             label: str = STAT_SPECS[stat_key]
-            value: float = item.reforge_stats.get(stat_key, 0.0)
-            flow.addWidget(
-                self._build_labeled_field(
-                    label,
-                    f"{value:g}",
-                    on_changed=lambda field, key=stat_key, target=item: self._set_reforge_stat(
-                        target,
-                        key,
-                        field.number(),
-                    ),
-                )
+            container, _field = self._build_labeled_field(
+                label,
+                f"{value:g}",
+                on_changed=lambda field, key=stat_key, target=item: self._set_reforge_stat(
+                    target,
+                    key,
+                    field.number(),
+                ),
             )
+            return container
+
+        for stat_key in _reforge_stat_keys(slot.slot, item.item_name):
+            container: QWidget = make_stat_field(
+                stat_key,
+                item.reforge_stats.get(stat_key, 0.0),
+            )
+            stat_fields[stat_key] = container
+            flow.addWidget(container)
         box.addLayout(flow)
-        return section
+        return _ReforgeSection(
+            widget=section,
+            flow=flow,
+            stat_fields=stat_fields,
+            make_stat_field=make_stat_field,
+        )
 
     def _build_step_field(self, item: OwnedEquipment) -> QWidget:
         """재련 단계(0~20강) 입력 묶음"""
@@ -1273,9 +1665,9 @@ class EquipmentTab(CharacterTab):
         """재련 단계 모델 반영"""
 
         item.reforge_step = int(field.number())
-        self._on_changed()
+        self._session.commit_stats()
 
-    def _build_scroll_section(self, slot: _EquipSlotData) -> QFrame:
+    def _build_scroll_section(self, slot: _EquipSlotData) -> _ScrollSection:
         """주문서 섹션 (행=종류, 열=% 단계, 칸=성공 횟수)"""
 
         section, box = self._section("주문서")
@@ -1306,6 +1698,7 @@ class EquipmentTab(CharacterTab):
         slot_effects: dict[StatKey, dict[ScrollTier, dict[StatKey, float]]] = (
             EQUIPMENT_SCROLL_EFFECTS[slot.slot]
         )
+        cells: dict[tuple[StatKey, ScrollTier], NormalizingLineEdit] = {}
 
         # 머리글
         head_label: QLabel = QLabel("주문서", table)
@@ -1346,16 +1739,7 @@ class EquipmentTab(CharacterTab):
                     cell.setFixedWidth(30)
                     cell.setAlignment(Qt.AlignmentFlag.AlignCenter)
                     cell.setValidator(QIntValidator(0, scroll_limit or 999, cell))
-                    cell.textChanged.connect(
-                        lambda text, target=item, key=stat_key, scroll_key=tier: self._set_scroll_count(
-                            target,
-                            key,
-                            scroll_key,
-                            text,
-                            emit_changed=False,
-                        )
-                    )
-                    cell.editingFinished.connect(
+                    cell.value_committed.connect(
                         lambda target=item, slot_key=slot.slot, key=stat_key, scroll_key=tier, count_field=cell: self._finish_scroll_count(
                             target,
                             slot_key,
@@ -1364,6 +1748,7 @@ class EquipmentTab(CharacterTab):
                             count_field,
                         )
                     )
+                    cells[(stat_key, tier)] = cell
                     grid.addWidget(cell, row + 1, col + 2)
 
         # 종류 텍스트와 입력칸 사이 간격
@@ -1373,7 +1758,7 @@ class EquipmentTab(CharacterTab):
 
         wrap.setWidget(table)
         box.addWidget(wrap)
-        return section
+        return _ScrollSection(widget=section, cells=cells)
 
     def _build_option_section(self, option_section: _EquipmentOptionSection) -> QFrame:
         """잠재/추가능력 섹션 (3줄 고정)"""
@@ -1441,7 +1826,7 @@ class EquipmentTab(CharacterTab):
         value: str,
         readonly: bool = False,
         on_changed: Callable[[StepperField], None] | None = None,
-    ) -> QWidget:
+    ) -> tuple[QWidget, QWidget]:
         """라벨 + 수치 묶음 (readonly 면 입력 대신 읽기 전용 표시)"""
 
         container: QFrame = QFrame(self)
@@ -1463,7 +1848,7 @@ class EquipmentTab(CharacterTab):
 
         field.setFixedWidth(84)
         box.addWidget(field)
-        return container
+        return container, field
 
     def _set_reforge_stat(
         self,
@@ -1478,7 +1863,7 @@ class EquipmentTab(CharacterTab):
         else:
             item.reforge_stats[stat_key] = value
 
-        self._on_changed()
+        self._session.commit_stats()
 
     def _set_scroll_count(
         self,
@@ -1486,7 +1871,6 @@ class EquipmentTab(CharacterTab):
         stat_key: StatKey,
         tier: ScrollTier,
         text: str,
-        emit_changed: bool,
     ) -> None:
         """주문서 성공 횟수 모델 반영"""
 
@@ -1503,9 +1887,6 @@ class EquipmentTab(CharacterTab):
         if not tier_counts:
             item.scrolls.pop(stat_key, None)
 
-        if emit_changed:
-            self._on_changed()
-
     def _finish_scroll_count(
         self,
         item: OwnedEquipment,
@@ -1516,20 +1897,17 @@ class EquipmentTab(CharacterTab):
     ) -> None:
         """주문서 입력 종료 시 최대 성공 횟수 기준 보정"""
 
-        # 입력칸 validator 기준 표시값 정규화 및 모델 동기화
-        field.normalize_to_validator()
         self._set_scroll_count(
             item,
             stat_key,
             tier,
             field.text(),
-            emit_changed=False,
         )
 
         # 총합 제한이 없는 슬롯은 정규화된 값으로만 갱신
         scroll_limit: int | None = _equipment_scroll_limit(slot, item)
         if scroll_limit is None:
-            self._on_changed()
+            self._session.commit_stats()
             return
 
         # 전체 주문서 성공 횟수와 마지막 수정 칸의 초과분 계산
@@ -1540,21 +1918,20 @@ class EquipmentTab(CharacterTab):
         )
         overflow_count: int = total_count - scroll_limit
         if overflow_count <= 0:
-            self._on_changed()
+            self._session.commit_stats()
             return
 
         # 초과를 만든 입력칸만 낮춰 엔진 최대 개수에 맞춤
         current_count: int = item.scrolls[stat_key][tier]
         adjusted_count: int = max(0, current_count - overflow_count)
-        field.setText(str(adjusted_count))
+        field.set_committed_text(str(adjusted_count))
         self._set_scroll_count(
             item,
             stat_key,
             tier,
             field.text(),
-            emit_changed=False,
         )
-        self._on_changed()
+        self._session.commit_stats()
 
     def _set_option_line(
         self,
@@ -1609,7 +1986,7 @@ class EquipmentTab(CharacterTab):
 
             item.additionals = tuple(additional_lines)
 
-        self._on_changed()
+        self._session.commit_stats()
 
     # 장비 교체 (선택) 화면
 
@@ -1617,24 +1994,33 @@ class EquipmentTab(CharacterTab):
         """장비 교체 화면 열기"""
 
         self._picker_open = True
-        self._render_detail()
+        self._show_detail()
 
     def close_picker(self) -> None:
         """장비 교체 화면 닫고 상세로 복귀"""
 
         self._picker_open = False
-        self._render_detail()
+        self._show_detail()
 
-    def _commit_owned_change(self, refresh_active: bool = True) -> None:
+    def _commit_owned_change(
+        self,
+        refresh_slots: bool = True,
+        stats_changed: bool = True,
+    ) -> None:
         """보유 목록·장착이 바뀐 뒤 슬롯 데이터를 다시 만들고 화면을 갱신"""
 
         # 장비 추가/삭제/장착/해제는 (반지처럼) 두 슬롯이 공유하는 보유 목록에
         # 영향을 줄 수 있으므로 전체 슬롯 데이터를 다시 구성한다.
         self._slots_data = self._build_slots_data(self._profile)
-        if refresh_active:
-            self._refresh_active_slot()
-        self._render_detail()
-        self._on_changed()
+        if refresh_slots:
+            self._refresh_slots()
+
+        self._show_detail()
+        if stats_changed:
+            self._session.commit_stats()
+
+        else:
+            self._session.commit_saved_value()
 
     def select_owned(self, index: int) -> None:
         """선택한 장비를 슬롯에 장착하고 상세로 복귀"""
@@ -1669,7 +2055,7 @@ class EquipmentTab(CharacterTab):
         create_equipment(self._profile, self._default_equipment_for_slot(slot.slot))
 
         # 새 장비는 장착되지 않으므로 장착 타일은 그대로다
-        self._commit_owned_change(refresh_active=False)
+        self._commit_owned_change(refresh_slots=False, stats_changed=False)
 
     def remove_owned(self, index: int) -> None:
         """보유 장비 삭제"""
@@ -1678,8 +2064,11 @@ class EquipmentTab(CharacterTab):
             return
 
         slot: _EquipSlotData = self._slots_data[self._active_index]
-        removed_name: str = slot.owned[index].name
-        was_equipped: bool = slot.equipped_index == index
+        removed_item: OwnedEquipment = slot.owned[index]
+        removed_name: str = removed_item.name
+        was_equipped: bool = (
+            removed_name in self._profile.equipment.equipped.values()
+        )
         remaining_names: list[str] = [
             item.name
             for item_index, item in enumerate(slot.owned)
@@ -1690,28 +2079,40 @@ class EquipmentTab(CharacterTab):
             next_index: int = min(index, len(remaining_names) - 1)
             equip_equipment(self._profile, slot.slot, remaining_names[next_index])
 
-        self._commit_owned_change()
+        self._discard_equipment_views(removed_item)
+        self._commit_owned_change(stats_changed=was_equipped)
 
-    def _render_picker(self, slot: _EquipSlotData) -> None:
-        """장비 교체 화면 구성 (보유 장비 카드 목록)"""
+    def _build_picker_page(self) -> QFrame:
+        """장비 교체 고정 페이지 구성"""
 
-        self._detail_layout.addLayout(self._build_picker_head())
+        page: QFrame = QFrame(self._detail_stack)
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        layout.addLayout(self._build_picker_head())
 
-        list_box = QVBoxLayout()
-        list_box.setContentsMargins(0, 4, 0, 0)
-        list_box.setSpacing(10)
+        self._picker_list = QVBoxLayout()
+        self._picker_list.setContentsMargins(0, 4, 0, 0)
+        self._picker_list.setSpacing(10)
+        layout.addLayout(self._picker_list)
+        layout.addStretch(1)
+        return page
+
+    def _sync_picker_list(self, slot: _EquipSlotData) -> None:
+        """현재 슬롯 보유 장비 카드 목록 동기화"""
+
+        while len(self._picker_cards) > len(slot.owned):
+            card: _EquipPickCard = self._picker_cards.pop()
+            self._picker_list.removeWidget(card)
+            card.deleteLater()
+
         for index, item in enumerate(slot.owned):
-            card: _EquipPickCard = _EquipPickCard(
-                self._detail_content,
-                slot,
-                item,
-                index,
-                self,
-                _has_grade(equipment_item_spec(item)),
-                index == slot.equipped_index,
-            )
-            list_box.addWidget(card)
-        self._detail_layout.addLayout(list_box)
+            if index == len(self._picker_cards):
+                card = _EquipPickCard(self._picker_page, self)
+                self._picker_cards.append(card)
+                self._picker_list.addWidget(card)
+
+            self._picker_cards[index].update_from_slot(slot, item, index)
 
     def _build_picker_head(self) -> QHBoxLayout:
         """장비 교체 화면 헤더 (뒤로 + 제목 + 새 장비/해제)"""
@@ -1748,25 +2149,31 @@ class EquipmentTab(CharacterTab):
         head.addWidget(unequip_btn)
         return head
 
-    def _render_empty(self, slot: _EquipSlotData) -> None:
-        """장착 장비가 없는 빈 상태 화면"""
+    def _build_empty_page(self) -> QFrame:
+        """장착 장비가 없는 고정 페이지 구성"""
+
+        page: QFrame = QFrame(self._detail_stack)
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
         head = QHBoxLayout()
         head.setContentsMargins(0, 0, 0, 12)
         head.setSpacing(12)
 
-        icon: QLabel = _make_icon(self, 46, muted=True)
+        icon: QLabel = _make_icon(page, 46, muted=True)
         head.addWidget(icon)
 
         name_box = QVBoxLayout()
         name_box.setSpacing(4)
-        title_label: QLabel = QLabel(EQUIPMENT_SLOT_LABELS[slot.slot], self)
-        title_label.setObjectName("charMuted")
-        title_label.setFont(CustomFont(15, bold=True))
-        sub_label: QLabel = QLabel("장착된 장비가 없습니다", self)
+        name_label: QLabel | None = None
+        self._empty_title_label: QLabel = QLabel(page)
+        self._empty_title_label.setObjectName("charMuted")
+        self._empty_title_label.setFont(CustomFont(15, bold=True))
+        sub_label: QLabel = QLabel("장착된 장비가 없습니다", page)
         sub_label.setObjectName("charSub")
         sub_label.setFont(CustomFont(9))
-        name_box.addWidget(title_label)
+        name_box.addWidget(self._empty_title_label)
         name_box.addWidget(sub_label)
         head.addLayout(name_box)
 
@@ -1776,16 +2183,18 @@ class EquipmentTab(CharacterTab):
         )
         select_btn.clicked.connect(self.open_picker)
         head.addWidget(select_btn)
-        self._detail_layout.addLayout(head)
+        layout.addLayout(head)
 
         hint: QLabel = QLabel(
-            "장비 교체로 보유 장비를 선택하거나 새 장비를 추가하세요.", self
+            "장비 교체로 보유 장비를 선택하거나 새 장비를 추가하세요.", page
         )
         hint.setObjectName("charEquipPickEmpty")
         hint.setFont(CustomFont(9))
         hint.setWordWrap(True)
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._detail_layout.addWidget(hint)
+        layout.addWidget(hint)
+        layout.addStretch(1)
+        return page
 
     def _default_equipment_for_slot(self, slot: EquipmentSlot) -> OwnedEquipment:
         """슬롯별 새 장비 기본 모델 생성"""
