@@ -78,6 +78,29 @@ class LiveStatsPanel(QFrame):
         power_row.addWidget(self._power_value)
         layout.addLayout(power_row)
 
+        skill_speed_boss_row = QHBoxLayout()
+        skill_speed_boss_row.setContentsMargins(0, 0, 0, 4)
+
+        skill_speed_boss_label: QLabel = QLabel(
+            "보스데미지 기댓값",
+            self,
+        )
+        skill_speed_boss_label.setObjectName("charSub")
+        skill_speed_boss_label.setFont(CustomFont(9))
+        skill_speed_boss_label.setWordWrap(True)
+
+        self._skill_speed_boss_value: QLabel = QLabel("-", self)
+        self._skill_speed_boss_value.setObjectName("charPowerValue")
+        self._skill_speed_boss_value.setFont(CustomFont(13, bold=True))
+        self._skill_speed_boss_value.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+
+        skill_speed_boss_row.addWidget(skill_speed_boss_label)
+        skill_speed_boss_row.addStretch(1)
+        skill_speed_boss_row.addWidget(self._skill_speed_boss_value)
+        layout.addLayout(skill_speed_boss_row)
+
         # 전체 스탯 그리드 구성
         grid = QGridLayout()
         grid.setContentsMargins(0, 14, 0, 0)
@@ -148,6 +171,7 @@ class LiveStatsPanel(QFrame):
         # 선택 캐릭터가 없는 경우 빈 값 표시
         if live_view is None:
             self._power_value.setText("-")
+            self._skill_speed_boss_value.setText("-")
             for value_label in self._value_labels.values():
                 value_label.setText("0")
 
@@ -156,6 +180,9 @@ class LiveStatsPanel(QFrame):
 
         # 공식 전투력 표시
         self._power_value.setText(f"{live_view.official_power:,.0f}")
+        self._skill_speed_boss_value.setText(
+            f"{live_view.skill_speed_boss_damage_check_power:,.0f}"
+        )
         self._copy_button.setEnabled(True)
 
         # 최종 스탯 표시

@@ -1306,23 +1306,43 @@ _POWER_FORMULA_NODES: dict[PowerMetric, CompiledPowerFormula] = (
 )
 
 
-def evaluate_official_power(resolved_stats: FinalStats) -> float:
-    """공식 전투력 값 계산"""
+def _build_resolved_stat_formula_variables(
+    resolved_stats: FinalStats,
+) -> dict[str, float | int]:
+    """최종 스탯 기준 내장 전투력 공식 변수 구성"""
 
-    # 공식 전투력 공식에 필요한 최종 스탯 변수 구성
-    formula_variables: dict[str, float] = {
+    formula_variables: dict[str, float | int] = {
         stat_key.value: resolved_stats.values[stat_key]
         for stat_key in OVERALL_STAT_ORDER
     }
-
-    # 내장 공식 공통 변수 이름의 최소 기본값 구성
     formula_variables[_POWER_FORMULA_LEVEL_NAME] = 0
     formula_variables[_POWER_FORMULA_BOSS_DAMAGE_NAME] = 0.0
     formula_variables[_POWER_FORMULA_NORMAL_DAMAGE_NAME] = 0.0
 
+    for variable_name in _POWER_FORMULA_SKILL_VARIABLE_NAMES:
+        formula_variables[variable_name] = 0.0
+
+    return formula_variables
+
+
+def evaluate_official_power(resolved_stats: FinalStats) -> float:
+    """공식 전투력 값 계산"""
+
     return _evaluate_compiled_power_formula(
         _POWER_FORMULA_NODES[PowerMetric.OFFICIAL],
-        formula_variables,
+        _build_resolved_stat_formula_variables(resolved_stats),
+    )
+
+
+def evaluate_builtin_power_metric(
+    resolved_stats: FinalStats,
+    power_metric: PowerMetric,
+) -> float:
+    """최종 스탯 기준 내장 전투력 공식 값 계산"""
+
+    return _evaluate_compiled_power_formula(
+        _POWER_FORMULA_NODES[power_metric],
+        _build_resolved_stat_formula_variables(resolved_stats),
     )
 
 

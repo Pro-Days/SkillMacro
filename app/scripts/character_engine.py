@@ -2,10 +2,14 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, replace
+from math import isfinite
 from typing import Any
 from uuid import uuid4
 
-from app.scripts.calculator_engine import evaluate_official_power
+from app.scripts.calculator_engine import (
+    evaluate_builtin_power_metric,
+    evaluate_official_power,
+)
 from app.scripts.calculator_models import (
     REALM_TIER_SPECS,
     TALISMAN_SPECS,
@@ -16,6 +20,7 @@ from app.scripts.calculator_models import (
     FinalStats,
     OwnedTalisman,
     OwnedTitle,
+    PowerMetric,
     RealmTier,
     StatKey,
     TalismanSpec,
@@ -62,6 +67,7 @@ from app.scripts.character_models import (
 
 CHARACTER_BASE_HP: float = 50.0
 CHARACTER_HP_PER_LEVEL: float = 5.0
+LIVE_POWER_DISPLAY_LIMIT: float = 1_000_000.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +77,7 @@ class LiveStatView:
     base: BaseStats
     final: FinalStats
     official_power: float
+    skill_speed_boss_damage_check_power: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -933,6 +940,22 @@ def aggregate_base_stats(profile: CharacterProfile) -> BaseStats:
     return BaseStats.from_stat_map(_accumulate_base_stats(profile))
 
 
+def _evaluate_live_power_metric(
+    final_stats: FinalStats,
+    power_metric: PowerMetric,
+) -> float:
+    """캐릭터 실시간 패널에 표시할 내장 전투력 값 계산"""
+
+    if final_stats.values[StatKey.SKILL_SPEED_PERCENT] >= 90.0:
+        return 0.0
+
+    power_value: float = evaluate_builtin_power_metric(final_stats, power_metric)
+    if not isfinite(power_value) or power_value >= LIVE_POWER_DISPLAY_LIMIT:
+        return 0.0
+
+    return power_value
+
+
 def compute_live_view(profile: CharacterProfile) -> LiveStatView:
     """캐릭터 실시간 최종 스탯과 공식 전투력 계산"""
 
@@ -942,10 +965,15 @@ def compute_live_view(profile: CharacterProfile) -> LiveStatView:
         _accumulate_pill_excluded_base_stats(profile)
     )
     official_power: float = evaluate_official_power(official_power_base_stats.resolve())
+    skill_speed_boss_damage_check_power: float = _evaluate_live_power_metric(
+        final_stats,
+        PowerMetric.SKILL_SPEED_BOSS_DAMAGE_CHECK,
+    )
     return LiveStatView(
         base=base_stats,
         final=final_stats,
         official_power=official_power,
+        skill_speed_boss_damage_check_power=skill_speed_boss_damage_check_power,
     )
 
 
