@@ -2901,7 +2901,9 @@ class CustomPowerFormulaManageDialog(QDialog):
 
             app_state.macro.presets[
                 preset_index
-            ].info.calculator.selected_formula_id = PowerMetric.BOSS_DAMAGE.value
+            ].info.calculator.selected_formula_id = (
+                PowerMetric.SKILL_SPEED_BOSS_DAMAGE_CHECK.value
+            )
 
         save_data()
         self._rebuild_formula_rows()

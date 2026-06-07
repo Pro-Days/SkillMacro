@@ -682,7 +682,7 @@ class CalculatorPresetInput:
     base_stats: BaseStats = field(default_factory=BaseStats.create_default)
     level: int = 0
     realm_tier: RealmTier = RealmTier.THIRD_RATE
-    selected_formula_id: str = PowerMetric.BOSS_DAMAGE.value
+    selected_formula_id: str = PowerMetric.SKILL_SPEED_BOSS_DAMAGE_CHECK.value
 
     # 현재 분배 상태 저장
     distribution: DistributionState = field(default_factory=DistributionState)
@@ -708,7 +708,7 @@ class CalculatorPresetInput:
         return cls(
             base_stats=BaseStats.create_default(),
             custom_stat_changes=custom_stat_changes,
-            selected_formula_id=PowerMetric.BOSS_DAMAGE.value,
+            selected_formula_id=PowerMetric.SKILL_SPEED_BOSS_DAMAGE_CHECK.value,
         )
 
     @classmethod
