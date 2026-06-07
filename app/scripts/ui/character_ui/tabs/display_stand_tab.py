@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QSizePolicy,
     QStyledItemDelegate,
     QStyleOptionViewItem,
     QTableWidget,
@@ -108,13 +109,16 @@ class DisplayStandTab(CharacterTab):
         layout.setSpacing(0)
 
         card: CharCard = CharCard(self, "진열대")
+        card.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
 
         card.add_layout(self._build_toolbar())
         card.add_widget(self._build_table())
         card.add_widget(self._build_summary())
 
-        layout.addWidget(card)
-        layout.addStretch(1)
+        layout.addWidget(card, 1)
 
         self._recalc()
         self._update_selection_info()
@@ -200,8 +204,12 @@ class DisplayStandTab(CharacterTab):
                 for column, title in DISPLAY_STAND_COLUMNS
             ]
         )
-        self._table.setMaximumHeight(360)
         self._table.setMinimumWidth(0)
+        self._table.setMinimumHeight(220)
+        self._table.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
 
         # 열 설정
         header = self._table.horizontalHeader()
