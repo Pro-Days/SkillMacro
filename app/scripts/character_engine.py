@@ -927,21 +927,23 @@ def _accumulate_pill_excluded_base_stats(
     return accumulated
 
 
-def _accumulate_base_stats(profile: CharacterProfile) -> dict[StatKey, float]:
-    """캐릭터 입력 기여를 원시 스탯 맵으로 합산"""
+def _apply_pills_and_vip(
+    accumulated: dict[StatKey, float],
+    profile: CharacterProfile,
+) -> dict[StatKey, float]:
+    """환 제외 스탯 맵에 환과 VIP 기여를 추가"""
 
-    accumulated: dict[StatKey, float] = _accumulate_pill_excluded_base_stats(profile)
     _add_pills(accumulated, profile)
     if profile.vip:
         _add_stat(accumulated, StatKey.DROP_RATE_PERCENT, 3.0)
     return accumulated
 
 
-def aggregate_base_stats(profile: CharacterProfile) -> BaseStats:
-    """캐릭터 입력값으로부터 원시 스탯 합산"""
+def _accumulate_base_stats(profile: CharacterProfile) -> dict[StatKey, float]:
+    """캐릭터 입력 기여를 원시 스탯 맵으로 합산"""
 
-    validate_character_profile(profile)
-    return BaseStats.from_stat_map(_accumulate_base_stats(profile))
+    accumulated: dict[StatKey, float] = _accumulate_pill_excluded_base_stats(profile)
+    return _apply_pills_and_vip(accumulated, profile)
 
 
 def _evaluate_live_power_metric(
@@ -963,12 +965,18 @@ def _evaluate_live_power_metric(
 def compute_live_view(profile: CharacterProfile) -> LiveStatView:
     """캐릭터 실시간 최종 스탯과 공식 전투력 계산"""
 
-    base_stats: BaseStats = aggregate_base_stats(profile)
-    final_stats: FinalStats = base_stats.resolve()
-    official_power_base_stats: BaseStats = BaseStats.from_stat_map(
-        _accumulate_pill_excluded_base_stats(profile)
+    validate_character_profile(profile)
+
+    pill_excluded_stats: dict[StatKey, float] = _accumulate_pill_excluded_base_stats(
+        profile
     )
+    official_power_base_stats: BaseStats = BaseStats.from_stat_map(pill_excluded_stats)
     official_power: float = evaluate_official_power(official_power_base_stats.resolve())
+
+    base_stats: BaseStats = BaseStats.from_stat_map(
+        _apply_pills_and_vip(dict(pill_excluded_stats), profile)
+    )
+    final_stats: FinalStats = base_stats.resolve()
     skill_speed_boss_damage_check_power: float = _evaluate_live_power_metric(
         final_stats,
         PowerMetric.SKILL_SPEED_BOSS_DAMAGE_CHECK,

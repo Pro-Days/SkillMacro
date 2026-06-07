@@ -314,7 +314,7 @@ class CharacterPage(QFrame):
         """좌측 캐릭터 선택 처리"""
 
         app_state.character_store.selected_index = index
-        save_characters()
+        self._schedule_save()
         self._refresh_selected_profile()
 
     def _add_character(self) -> None:

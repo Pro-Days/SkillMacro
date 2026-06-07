@@ -84,7 +84,10 @@ from app.scripts.calculator_models import (
     TargetDanjeonState,
     TargetDistributionState,
 )
-from app.scripts.character_engine import build_calculator_input_fill
+from app.scripts.character_engine import (
+    CalculatorInputFill,
+    build_calculator_input_fill,
+)
 from app.scripts.character_models import CharacterProfile
 from app.scripts.config import config
 from app.scripts.custom_classes import (
@@ -262,6 +265,20 @@ class SimUI:
                 self._start_results_calculation,
             )
         )
+        self._character_apply_confirm_overlay: _CalculationInputConfirmOverlay = (
+            _CalculationInputConfirmOverlay(
+                self.parent,
+                self._apply_character_to_calculator,
+                title="계산기에 적용",
+                message=(
+                    "이 캐릭터의 스탯을 계산기 입력에 적용합니다.\n"
+                    "계산기에 입력한 칭호·부적·장착 정보는 초기화됩니다."
+                ),
+                confirm_text="적용",
+                show_summary=False,
+            )
+        )
+        self._pending_character_fill: CalculatorInputFill | None = None
         self._calc_thread: _CalculatorThread | None = None
         self._results_cache_key: _CalculatorResultsCacheKey | None = None
         self._results_cache_output_rows: ResultsPage.OutputRows | None = None
@@ -274,10 +291,21 @@ class SimUI:
         self.adjust_main_frame_height()
 
     def _use_character_for_calculator(self, profile: CharacterProfile) -> None:
-        """캐릭터 상태를 계산기 입력 페이지에 반영"""
+        """캐릭터 상태를 계산기 입력에 반영하기 전 확인 오버레이 표시"""
 
-        # 캐릭터 합산 결과를 계산기 입력 구조로 변환
-        fill = build_calculator_input_fill(profile)
+        # 적용 시점에 사용할 합산 결과를 미리 계산해 보관
+        fill: CalculatorInputFill = build_calculator_input_fill(profile)
+        self._pending_character_fill = fill
+        self._character_apply_confirm_overlay.show_confirmation()
+
+    def _apply_character_to_calculator(self) -> None:
+        """확인 후 캐릭터 상태를 계산기 입력 페이지에 반영"""
+
+        fill: CalculatorInputFill | None = self._pending_character_fill
+        if fill is None:
+            return
+
+        self._pending_character_fill = None
         calculator_input: CalculatorPresetInput = (
             app_state.macro.current_preset.info.calculator
         )
@@ -1119,15 +1147,22 @@ class _CalculationOverlay(QFrame):
 
 
 class _CalculationInputConfirmOverlay(QFrame):
+    _SUMMARY_VALUE_WIDTH: int = 250
+
     def __init__(
         self,
         parent: QWidget,
         confirm_handler: Callable[[], None],
+        title: str = "계산 전 입력 확인",
+        message: str = "입력한 내용이 맞으면 계산을 시작하세요.",
+        confirm_text: str = "계산 시작",
+        show_summary: bool = True,
     ) -> None:
         super().__init__(parent)
 
         # 부모 전체를 덮는 입력 확인 오버레이 기본 설정
         self._confirm_handler: Callable[[], None] = confirm_handler
+        self._show_summary: bool = show_summary
         self.setObjectName("calcOverlay")
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setGeometry(parent.rect())
@@ -1135,32 +1170,39 @@ class _CalculationInputConfirmOverlay(QFrame):
         parent.installEventFilter(self)
 
         # 입력 확인 카드 구성
+        card_width: int = 400
+        card_horizontal_margin: int = 24
         container: QFrame = QFrame(self)
         container.setObjectName("calcOverlayCard")
-        container.setFixedWidth(400)
+        container.setFixedWidth(card_width)
 
-        title_label: QLabel = QLabel("계산 전 입력 확인", container)
+        title_label: QLabel = QLabel(title, container)
         title_label.setObjectName("calcOverlayTitle")
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title_label.setFont(CustomFont(14, bold=True))
 
-        message_label: QLabel = QLabel(
-            "입력한 내용이 맞으면 계산을 시작하세요.", container
-        )
+        message_label: QLabel = QLabel(message, container)
         message_label.setObjectName("calcConfirmMessage")
         message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        message_label.setWordWrap(True)
         message_label.setFont(CustomFont(12))
 
-        # 주요 계산 입력 요약 그리드 구성
+        # 줄바꿈 라벨은 최소 높이를 따로 잡지 않으면 카드가 짧아져 내용이 잘린다
+        message_label.setMinimumHeight(
+            message_label.heightForWidth(card_width - card_horizontal_margin * 2)
+        )
+
+        # 주요 계산 입력 요약 그리드 구성 (요약 표시 시에만 구성)
         self._summary_grid: QGridLayout = QGridLayout()
         self._summary_grid.setContentsMargins(0, 8, 0, 8)
         self._summary_grid.setHorizontalSpacing(12)
         self._summary_grid.setVerticalSpacing(12)
         self._value_labels: dict[str, QLabel] = {}
-        self._add_summary_row(0, "레벨", "level", container)
-        self._add_summary_row(1, "경지", "realm", container)
-        self._add_summary_row(2, "스탯 분배", "distribution", container)
-        self._add_summary_row(3, "단전", "danjeon", container)
+        if self._show_summary:
+            self._add_summary_row(0, "레벨", "level", container)
+            self._add_summary_row(1, "경지", "realm", container)
+            self._add_summary_row(2, "스탯 분배", "distribution", container)
+            self._add_summary_row(3, "단전", "danjeon", container)
 
         # 확인과 취소 버튼 구성
         cancel_button: QPushButton = QPushButton("취소", container)
@@ -1170,7 +1212,7 @@ class _CalculationInputConfirmOverlay(QFrame):
         cancel_button.setFixedHeight(40)
         cancel_button.clicked.connect(self.hide)
 
-        confirm_button: QPushButton = QPushButton("계산 시작", container)
+        confirm_button: QPushButton = QPushButton(confirm_text, container)
         confirm_button.setObjectName("calcConfirmBtn")
         confirm_button.setFont(CustomFont(11, bold=True))
         confirm_button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -1185,13 +1227,18 @@ class _CalculationInputConfirmOverlay(QFrame):
 
         # 카드 내부 레이아웃 구성
         container_layout: QVBoxLayout = QVBoxLayout(container)
-        container_layout.setContentsMargins(24, 22, 24, 22)
+        container_layout.setContentsMargins(
+            card_horizontal_margin, 22, card_horizontal_margin, 22
+        )
         container_layout.setSpacing(10)
         container_layout.addWidget(title_label)
         container_layout.addWidget(message_label)
-        container_layout.addLayout(self._summary_grid)
+        if self._show_summary:
+            container_layout.addLayout(self._summary_grid)
         container_layout.addSpacing(4)
         container_layout.addLayout(button_layout)
+        # 카드가 내용 높이만큼 늘어나도록 최소 크기 제약 적용
+        container_layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         container.setLayout(container_layout)
 
         # 오버레이 전체 중앙 배치
@@ -1212,21 +1259,31 @@ class _CalculationInputConfirmOverlay(QFrame):
 
         return super().eventFilter(watched, event)
 
-    def show_confirmation(self, calculator_input: "CalculatorPresetInput") -> None:
+    def show_confirmation(
+        self,
+        calculator_input: "CalculatorPresetInput | CalculatorInputFill | None" = None,
+    ) -> None:
         """현재 계산 입력 요약 표시"""
 
-        # 기준 입력 요약 문구 반영
-        realm_label: str = REALM_TIER_SPECS[calculator_input.realm_tier].label
-        self._value_labels["level"].setText(str(calculator_input.level))
-        self._value_labels["realm"].setText(realm_label)
+        # 요약을 사용하는 오버레이만 기준 입력 문구 반영
+        if self._show_summary and calculator_input is not None:
+            realm_label: str = REALM_TIER_SPECS[calculator_input.realm_tier].label
+            self._value_labels["level"].setText(str(calculator_input.level))
+            self._value_labels["realm"].setText(realm_label)
 
-        # 최적화 입력 요약 문구 반영
-        self._value_labels["distribution"].setText(
-            self._format_distribution_state(calculator_input.distribution)
-        )
-        self._value_labels["danjeon"].setText(
-            self._format_danjeon_state(calculator_input.danjeon)
-        )
+            # 최적화 입력 요약 문구 반영
+            self._value_labels["distribution"].setText(
+                self._format_distribution_state(calculator_input.distribution)
+            )
+            self._value_labels["danjeon"].setText(
+                self._format_danjeon_state(calculator_input.danjeon)
+            )
+
+            # 줄바꿈 값 라벨은 텍스트 적용 후 최소 높이를 잡아야 카드가 잘리지 않는다
+            for value_label in self._value_labels.values():
+                value_label.setMinimumHeight(
+                    value_label.heightForWidth(self._SUMMARY_VALUE_WIDTH)
+                )
 
         # 최상단 확인 오버레이 표시
         self.show()
@@ -1260,7 +1317,7 @@ class _CalculationInputConfirmOverlay(QFrame):
         value_label.setObjectName("calcConfirmValue")
         value_label.setFont(CustomFont(11))
         value_label.setWordWrap(True)
-        value_label.setFixedWidth(250)
+        value_label.setFixedWidth(self._SUMMARY_VALUE_WIDTH)
         value_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self._value_labels[value_key] = value_label
 
