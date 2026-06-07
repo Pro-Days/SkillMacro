@@ -69,11 +69,11 @@ class SegButton(QFrame):
         layout.setContentsMargins(12, 6, 12, 6)
         layout.setSpacing(1)
 
-        main_label: QLabel = QLabel(text, self)
-        main_label.setObjectName("charSegMain")
-        main_label.setFont(CustomFont(10, bold=True))
-        main_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(main_label)
+        self.main_label: QLabel = QLabel(text, self)
+        self.main_label.setObjectName("charSegMain")
+        self.main_label.setFont(CustomFont(10, bold=True))
+        self.main_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.main_label)
 
         self.sub_label: QLabel = QLabel(sub_text, self)
         self.sub_label.setObjectName("charSegSub")
@@ -85,8 +85,10 @@ class SegButton(QFrame):
         """선택 상태 스타일 갱신"""
 
         self.setProperty("checked", checked)
-        self.style().unpolish(self)
-        self.style().polish(self)
+        for widget in (self, self.main_label, self.sub_label):
+            widget.style().unpolish(widget)
+            widget.style().polish(widget)
+            widget.update()
 
     def isChecked(self) -> bool:
         """선택 상태 반환"""
