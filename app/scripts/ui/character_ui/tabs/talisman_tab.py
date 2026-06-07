@@ -35,6 +35,7 @@ from app.scripts.ui.character_ui.tabs.base import CharacterTab
 from app.scripts.ui.character_ui.widgets import (
     CharCard,
     ChoiceListPanels,
+    ResponsiveColumnsBox,
     StepperField,
 )
 
@@ -107,15 +108,17 @@ class TalismanTab(CharacterTab):
 
         # 보유 부적 카드
         owned_card: CharCard = CharCard(self, "보유 부적")
-        owned_layout = QHBoxLayout()
-        owned_layout.setContentsMargins(0, 0, 0, 0)
-        owned_layout.setSpacing(12)
+        owned_columns: ResponsiveColumnsBox = ResponsiveColumnsBox(
+            owned_card, min_column_width=280, spacing=12
+        )
 
         self._selector_panel: QFrame = self._build_selector_panel()
         self._owned_panel: QFrame = self._build_owned_panel()
-        owned_layout.addWidget(self._selector_panel, 1)
-        owned_layout.addWidget(self._owned_panel, 1)
-        owned_card.add_layout(owned_layout)
+        self._selector_panel.setMinimumWidth(260)
+        self._owned_panel.setMinimumWidth(260)
+        owned_columns.addWidget(self._selector_panel)
+        owned_columns.addWidget(self._owned_panel)
+        owned_card.add_widget(owned_columns)
         layout.addWidget(owned_card)
         layout.addStretch(1)
 

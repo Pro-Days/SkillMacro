@@ -1807,9 +1807,9 @@ class EquipmentTab(CharacterTab):
             )
         )
 
-        root = QHBoxLayout()
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(12)
+        scroll_columns: ResponsiveColumnsBox = ResponsiveColumnsBox(
+            section, min_column_width=280, spacing=12
+        )
         (
             selector_panel,
             list_panel,
@@ -1833,9 +1833,11 @@ class EquipmentTab(CharacterTab):
             tier_effects,
             tier_enabled,
         )
-        root.addWidget(selector_panel, 1)
-        root.addWidget(list_panel, 1)
-        box.addLayout(root)
+        selector_panel.setMinimumWidth(260)
+        list_panel.setMinimumWidth(260)
+        scroll_columns.addWidget(selector_panel)
+        scroll_columns.addWidget(list_panel)
+        box.addWidget(scroll_columns)
 
         return _ScrollSection(
             widget=section,
