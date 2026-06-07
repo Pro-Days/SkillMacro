@@ -240,12 +240,10 @@ def migrate_macro_data_file(file_path: str) -> None:
             stored_version_obj = 5
             migrated = True
 
-        # v5 -> v6: 첫 가이드 안내 처리 상태 추가
+        # v5 -> v6: 첫 가이드 안내 상태 및 목표 단전 기본 구조 주입
         if stored_version_obj == 5:
             raw["guide_prompt_handled"] = False
 
-        # v5 -> v6: 목표 단전 미리보기 기본 구조 주입
-        if stored_version_obj == 5:
             raw_preset: dict[str, Any]
             for raw_preset in raw["preset"]:
                 raw_info: dict[str, Any] = raw_preset["info"]
