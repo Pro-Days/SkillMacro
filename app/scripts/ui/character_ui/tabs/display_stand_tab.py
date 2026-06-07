@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, QSignalBlocker, Qt
-from PySide6.QtGui import QDoubleValidator
 from PySide6.QtWidgets import (
     QAbstractButton,
     QAbstractItemView,
@@ -27,11 +26,10 @@ from app.scripts.character_models import (
     CharacterProfile,
     DisplayStand,
     DisplayStandColumn,
-    DisplayStandEntry,
 )
 from app.scripts.custom_classes import CustomFont, StyledButton
+from app.scripts.ui.character_ui.change_handler import CharacterChangeHandler
 from app.scripts.ui.character_ui.constants import DISPLAY_STAND_COLUMNS
-from app.scripts.ui.character_ui.edit_session import CharacterEditSession
 from app.scripts.ui.character_ui.tabs.base import CharacterTab
 from app.scripts.ui.character_ui.widgets import (
     CharCard,
@@ -64,8 +62,10 @@ class _NumericDelegate(QStyledItemDelegate):
         _option: QStyleOptionViewItem,
         _index: QModelIndex,
     ) -> NormalizingLineEdit:
-        editor: NormalizingLineEdit = NormalizingLineEdit(parent=parent)
-        editor.setValidator(QDoubleValidator(0.0, 100.0, 2, editor))
+        editor: NormalizingLineEdit = NormalizingLineEdit(
+            "",
+            parent,
+        )
         editor.setAlignment(Qt.AlignmentFlag.AlignCenter)
         return editor
 
@@ -84,11 +84,10 @@ class _NumericDelegate(QStyledItemDelegate):
 class DisplayStandTab(CharacterTab):
     """진열대 탭"""
 
-    def __init__(self, parent: QWidget, session: CharacterEditSession) -> None:
-        super().__init__(parent, session)
+    def __init__(self, parent: QWidget, changes: CharacterChangeHandler) -> None:
+        super().__init__(parent, changes)
 
         self._profile: CharacterProfile | None = None
-        self._loading: bool = False
         self._column_keys: tuple[DisplayStandColumn, ...] = tuple(
             column for column, _title in DISPLAY_STAND_COLUMNS
         )
@@ -112,7 +111,6 @@ class DisplayStandTab(CharacterTab):
     def set_profile(self, profile: CharacterProfile | None) -> None:
         """선택 캐릭터 모델 반영"""
 
-        self._loading = True
         self._profile = profile
         self.setEnabled(profile is not None)
 
@@ -126,14 +124,13 @@ class DisplayStandTab(CharacterTab):
                         profile is not None
                         and spec.stand in profile.display_stand.entries
                     ):
-                        entry: DisplayStandEntry = profile.display_stand.entries[
-                            spec.stand
-                        ]
-                        value = entry.values[column] if column in entry.values else 0.0
+                        entry: dict[DisplayStandColumn, float] = (
+                            profile.display_stand.entries[spec.stand]
+                        )
+                        value = entry[column] if column in entry else 0.0
 
                     item.setText(self._format(value))
 
-        self._loading = False
         self._recalc()
 
     def _build_toolbar(self) -> QHBoxLayout:
@@ -154,12 +151,14 @@ class DisplayStandTab(CharacterTab):
         self._selection_label.setFont(CustomFont(9))
         toolbar.addWidget(self._selection_label)
 
-        self._value_input: NormalizingLineEdit = NormalizingLineEdit("0", self)
+        self._value_input: NormalizingLineEdit = NormalizingLineEdit(
+            "0",
+            self,
+        )
         self._value_input.setObjectName("charMiniNum")
         self._value_input.setFont(CustomFont(10))
         self._value_input.setFixedWidth(64)
         self._value_input.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._value_input.setValidator(QDoubleValidator(0.0, 100.0, 2, self))
         toolbar.addWidget(self._value_input)
 
         apply_btn: StyledButton = StyledButton(
@@ -292,7 +291,7 @@ class DisplayStandTab(CharacterTab):
             for item in selected_items:
                 item.setText(value_text)
 
-        if self._profile is None or self._loading:
+        if self._profile is None:
             self._recalc()
             return
 
@@ -306,7 +305,7 @@ class DisplayStandTab(CharacterTab):
 
         self._recalc()
         if changed:
-            self._session.commit_stats()
+            self._changes.stats_changed()
 
     def _clear_selection(self) -> None:
         """좌상단 코너 클릭 시 선택 해제 후 화면 반영"""
@@ -325,7 +324,7 @@ class DisplayStandTab(CharacterTab):
     def _on_item_changed(self, item: QTableWidgetItem) -> None:
         """셀 변경 시 해당 칸만 모델 반영"""
 
-        if self._profile is None or self._loading:
+        if self._profile is None:
             return
 
         # 사용자 편집 결과 합계 반영
@@ -337,7 +336,7 @@ class DisplayStandTab(CharacterTab):
         if not self._set_display_stand_value(spec, column, value):
             return
 
-        self._session.commit_stats()
+        self._changes.stats_changed()
 
     def _set_display_stand_value(
         self,
@@ -351,26 +350,26 @@ class DisplayStandTab(CharacterTab):
             raise ValueError("character profile is not bound")
 
         # 희소 저장 엔트리 조회 및 현재 값 비교
-        entries: dict[DisplayStand, DisplayStandEntry] = (
+        entries: dict[DisplayStand, dict[DisplayStandColumn, float]] = (
             self._profile.display_stand.entries
         )
-        entry: DisplayStandEntry | None = entries.get(spec.stand)
-        current_value: float = 0.0 if entry is None else entry.values.get(column, 0.0)
+        entry: dict[DisplayStandColumn, float] | None = entries.get(spec.stand)
+        current_value: float = 0.0 if entry is None else entry.get(column, 0.0)
         if current_value == value:
             return False
 
         # 0 값 제거 및 비어 있는 진열대 엔트리 정리
         if value <= 0.0:
             if entry is not None:
-                entry.values.pop(column, None)
-                if not entry.values:
+                entry.pop(column, None)
+                if not entry:
                     entries.pop(spec.stand, None)
         else:
             if entry is None:
-                entry = DisplayStandEntry()
+                entry = {}
                 entries[spec.stand] = entry
 
-            entry.values[column] = value
+            entry[column] = value
 
         return True
 

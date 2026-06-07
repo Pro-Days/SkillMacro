@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from functools import partial
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QIntValidator
+from PySide6.QtCore import QSignalBlocker, Qt
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -30,13 +29,12 @@ from app.scripts.character_models import (
     CharacterTalisman,
 )
 from app.scripts.custom_classes import CustomFont, StyledButton
+from app.scripts.ui.character_ui.change_handler import CharacterChangeHandler
 from app.scripts.ui.character_ui.constants import GRADE_COLORS
-from app.scripts.ui.character_ui.edit_session import CharacterEditSession
 from app.scripts.ui.character_ui.tabs.base import CharacterTab
 from app.scripts.ui.character_ui.widgets import (
     CharCard,
     ChoiceListPanels,
-    GradeBadge,
     StepperField,
 )
 
@@ -51,14 +49,30 @@ _GRADE_ORDER: tuple[TalismanGrade, ...] = (
 )
 
 
+class GradeBadge(QLabel):
+    """부적 등급 색 뱃지"""
+
+    def __init__(self, parent: QWidget, grade: str, color: str) -> None:
+        super().__init__(grade, parent)
+
+        self.setObjectName("charGradeBadge")
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+
+        self.setFont(CustomFont(8, bold=True))
+        self.setStyleSheet(
+            f"background-color: {color}; color: white;"
+            "border-radius: 8px; padding: 2px 8px;"
+        )
+
+
 class TalismanTab(CharacterTab):
     """부적 탭"""
 
-    def __init__(self, parent: QWidget, session: CharacterEditSession) -> None:
-        super().__init__(parent, session)
+    def __init__(self, parent: QWidget, changes: CharacterChangeHandler) -> None:
+        super().__init__(parent, changes)
 
         self._profile: CharacterProfile | None = None
-        self._loading: bool = False
         self._selected_talisman_id: str | None = None
         self._selected_grade: TalismanGrade = TALISMAN_SPECS[0].grade
         self._specs_by_name: dict[str, TalismanSpec] = {
@@ -105,7 +119,6 @@ class TalismanTab(CharacterTab):
         """선택 캐릭터 모델 반영"""
 
         self._equipped_stat_labels = {}
-        self._loading = True
         self._profile = profile
         self.setEnabled(profile is not None)
 
@@ -123,7 +136,6 @@ class TalismanTab(CharacterTab):
         self._render_slots()
         self._render_owned()
         self._render_selector()
-        self._loading = False
 
     def _clear_layout(self, layout: QLayout) -> None:
         """레이아웃 자식 위젯 제거"""
@@ -141,9 +153,6 @@ class TalismanTab(CharacterTab):
             self,
             selector_title="부적 선택",
             list_title="부적 목록",
-            panel_object_name="charTalPanel",
-            scroll_area_object_name="charTalScrollArea",
-            scroll_content_object_name="charTalScrollContent",
             add_text="+ 부적 추가",
             add_clicked=self._add_talisman,
             option_title="종류",
@@ -202,7 +211,8 @@ class TalismanTab(CharacterTab):
         )
 
         for grade, grade_button in self._grade_buttons.items():
-            grade_button.setChecked(grade is self._selected_grade)
+            with QSignalBlocker(grade_button):
+                grade_button.setChecked(grade is self._selected_grade)
 
         self._rebuild_template_buttons(selected_talisman)
 
@@ -255,9 +265,6 @@ class TalismanTab(CharacterTab):
     def _select_grade(self, grade: TalismanGrade, _checked: bool = False) -> None:
         """부적 선택 등급 변경"""
 
-        if self._loading:
-            return
-
         if self._profile is None:
             return
 
@@ -286,10 +293,10 @@ class TalismanTab(CharacterTab):
 
         self._render_owned()
         if is_equipped:
-            self._session.commit_stats()
+            self._changes.stats_changed()
 
         else:
-            self._session.commit_saved_value()
+            self._changes.saved_value_changed()
 
     def _change_selected_talisman(
         self,
@@ -297,9 +304,6 @@ class TalismanTab(CharacterTab):
         _checked: bool = False,
     ) -> None:
         """선택된 보유 부적 종류 변경"""
-
-        if self._loading:
-            return
 
         if self._profile is None:
             return
@@ -325,10 +329,10 @@ class TalismanTab(CharacterTab):
 
         self._render_owned()
         if is_equipped:
-            self._session.commit_stats()
+            self._changes.stats_changed()
 
         else:
-            self._session.commit_saved_value()
+            self._changes.saved_value_changed()
 
     def _render_slots(self) -> None:
         """장착 슬롯 3개 갱신"""
@@ -655,9 +659,7 @@ class TalismanTab(CharacterTab):
             str(talisman.level),
             unit="Lv",
             max_width=80,
-        )
-        level_field.input.setValidator(
-            QIntValidator(0, MAX_TALISMAN_LEVEL, level_field.input)
+            integer=True,
         )
         level_field.value_changed.connect(
             lambda field=level_field, target=talisman, label=stat_label: self._on_level(
@@ -741,13 +743,10 @@ class TalismanTab(CharacterTab):
         self._selected_grade = first_spec.grade
         self._render_selector()
         self._render_owned()
-        self._session.commit_saved_value()
+        self._changes.saved_value_changed()
 
     def _select_talisman(self, talisman: CharacterTalisman) -> None:
         """보유 목록 선택 부적 전환"""
-
-        if self._loading:
-            return
 
         if self._selected_talisman_id == talisman.id:
             return
@@ -765,9 +764,6 @@ class TalismanTab(CharacterTab):
     ) -> None:
         """레벨 변경 시 모델 반영"""
 
-        if self._loading:
-            return
-
         level: int = max(0, min(MAX_TALISMAN_LEVEL, int(field.number())))
         field.set_number(float(level))
         if talisman.level == level:
@@ -779,10 +775,10 @@ class TalismanTab(CharacterTab):
             raise ValueError("character profile is not bound")
 
         if talisman.id in self._profile.equipped.talisman_ids:
-            self._session.commit_stats()
+            self._changes.stats_changed()
 
         else:
-            self._session.commit_saved_value()
+            self._changes.saved_value_changed()
 
     def _finish_level(
         self,
@@ -842,7 +838,7 @@ class TalismanTab(CharacterTab):
 
         self._refresh_slots(start_index=changed_index)
         self._render_owned()
-        self._session.commit_stats()
+        self._changes.stats_changed()
 
     def _delete_talisman(self, talisman: CharacterTalisman) -> None:
         """보유 부적 삭제 및 장착 참조 제거"""
@@ -881,10 +877,10 @@ class TalismanTab(CharacterTab):
         self._render_selector()
         self._render_owned()
         if equipped:
-            self._session.commit_stats()
+            self._changes.stats_changed()
 
         else:
-            self._session.commit_saved_value()
+            self._changes.saved_value_changed()
 
     def _unequip(self, talisman: CharacterTalisman) -> None:
         """슬롯에서 장착 해제"""
@@ -901,4 +897,4 @@ class TalismanTab(CharacterTab):
 
         self._refresh_slots(start_index=equipped_index)
         self._render_owned()
-        self._session.commit_stats()
+        self._changes.stats_changed()

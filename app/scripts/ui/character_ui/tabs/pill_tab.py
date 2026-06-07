@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from PySide6.QtCore import QSignalBlocker
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -16,7 +17,7 @@ from app.scripts.calculator_models import STAT_SPECS
 from app.scripts.character_data import PILL_SPECS
 from app.scripts.character_models import CharacterProfile, Pill
 from app.scripts.custom_classes import CustomFont
-from app.scripts.ui.character_ui.edit_session import CharacterEditSession
+from app.scripts.ui.character_ui.change_handler import CharacterChangeHandler
 from app.scripts.ui.character_ui.tabs.base import CharacterTab
 from app.scripts.ui.character_ui.widgets import CharCard, ColorOrb, FlowLayout, ToggleSwitch
 
@@ -101,7 +102,8 @@ class _PillCard(QFrame):
     def set_active(self, active: bool) -> None:
         """사용 여부 표시 반영"""
 
-        self._toggle.setChecked(active)
+        with QSignalBlocker(self._toggle):
+            self._toggle.setChecked(active)
         self.setProperty("on", active)
         self.style().unpolish(self)
         self.style().polish(self)
@@ -118,11 +120,10 @@ class _PillCard(QFrame):
 class PillTab(CharacterTab):
     """환 탭"""
 
-    def __init__(self, parent: QWidget, session: CharacterEditSession) -> None:
-        super().__init__(parent, session)
+    def __init__(self, parent: QWidget, changes: CharacterChangeHandler) -> None:
+        super().__init__(parent, changes)
 
         self._profile: CharacterProfile | None = None
-        self._loading: bool = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -153,7 +154,6 @@ class PillTab(CharacterTab):
     def set_profile(self, profile: CharacterProfile | None) -> None:
         """선택 캐릭터 모델 반영"""
 
-        self._loading = True
         self._profile = profile
         self.setEnabled(profile is not None)
 
@@ -161,12 +161,10 @@ class PillTab(CharacterTab):
             active: bool = False if profile is None else pill in profile.pill.active
             card.set_active(active)
 
-        self._loading = False
-
     def _set_active(self, pill: Pill, active: bool) -> None:
         """환 사용 여부 모델 반영"""
 
-        if self._profile is None or self._loading:
+        if self._profile is None:
             return
 
         if (pill in self._profile.pill.active) == active:
@@ -178,4 +176,4 @@ class PillTab(CharacterTab):
         else:
             self._profile.pill.active.discard(pill)
 
-        self._session.commit_stats()
+        self._changes.stats_changed()

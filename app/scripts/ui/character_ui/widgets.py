@@ -20,7 +20,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QScrollArea,
-    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -56,18 +55,28 @@ class NormalizingLineEdit(QLineEdit):
 
     def __init__(
         self,
-        text: str = "",
+        text: str,
         parent: QWidget | None = None,
+        *,
+        min_value: float = 0.0,
+        max_value: float = 100.0,
+        integer: bool = False,
     ) -> None:
         super().__init__(text, parent)
 
         self._committed_text: str = text
+        if integer:
+            self.setValidator(QIntValidator(int(min_value), int(max_value), self))
+        else:
+            self.setValidator(QDoubleValidator(min_value, max_value, 2, self))
+
         self.editingFinished.connect(self._commit_value)
 
     def normalize_to_validator(self) -> None:
         """입력 종료 시 validator 범위로 표시값 정리"""
 
-        validator: QValidator | None = self.validator()
+        validator: QValidator = self.validator()
+
         if isinstance(validator, QIntValidator):
             int_value: int = int(self._number())
             int_value = min(max(int_value, validator.bottom()), validator.top())
@@ -137,6 +146,9 @@ class StepperField(QFrame):
         value: str = "0",
         unit: str = "",
         max_width: int = 0,
+        min_value: float = 0.0,
+        max_value: float = 100.0,
+        integer: bool = False,
     ) -> None:
         super().__init__(parent)
 
@@ -153,12 +165,17 @@ class StepperField(QFrame):
             layout.addWidget(left_spacer)
 
         # 수치 입력
-        self.input: NormalizingLineEdit = NormalizingLineEdit(value, self)
+        self.input: NormalizingLineEdit = NormalizingLineEdit(
+            value,
+            self,
+            min_value=min_value,
+            max_value=max_value,
+            integer=integer,
+        )
         self.input.setObjectName("charKVInput")
         self.input.setFont(CustomFont(11))
         self.input.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.input.setMinimumWidth(0)
-        self.input.setValidator(QDoubleValidator(0.0, 1_000_000.0, 2, self))
         self.input.value_committed.connect(self.value_changed)
         layout.addWidget(self.input, 1)
 
@@ -293,10 +310,6 @@ class ChoiceListPanels:
         selector_title: str,
         # 우측 패널
         list_title: str,
-        # 패널: selector & list
-        panel_object_name: str,
-        scroll_area_object_name: str,
-        scroll_content_object_name: str,
         # selector 패널 추가 버튼
         add_text: str,
         add_clicked: Callable[[], None],
@@ -308,7 +321,7 @@ class ChoiceListPanels:
         list_scroll_min_height: int = 150,
     ) -> None:
         self.selector_panel: QFrame = QFrame(parent)
-        self.selector_panel.setObjectName(panel_object_name)
+        self.selector_panel.setObjectName("charChoicePanel")
 
         if selector_min_width:
             self.selector_panel.setMinimumWidth(selector_min_width)
@@ -336,8 +349,6 @@ class ChoiceListPanels:
             self.option_layout,
         ) = self._scroll_box(
             self.selector_panel,
-            scroll_area_object_name,
-            scroll_content_object_name,
             selector_scroll_min_height,
             6,
         )
@@ -353,7 +364,7 @@ class ChoiceListPanels:
         selector_layout.addWidget(self.add_button)
 
         self.list_panel: QFrame = QFrame(parent)
-        self.list_panel.setObjectName(panel_object_name)
+        self.list_panel.setObjectName("charChoicePanel")
         if list_min_width:
             self.list_panel.setMinimumWidth(list_min_width)
 
@@ -368,8 +379,6 @@ class ChoiceListPanels:
             self.list_layout,
         ) = self._scroll_box(
             self.list_panel,
-            scroll_area_object_name,
-            scroll_content_object_name,
             list_scroll_min_height,
             8,
         )
@@ -416,21 +425,19 @@ class ChoiceListPanels:
     def _scroll_box(
         self,
         parent: QWidget,
-        area_object_name: str,
-        content_object_name: str,
         minimum_height: int,
         spacing: int,
     ) -> tuple[QScrollArea, QWidget, QVBoxLayout]:
         """스크롤 영역과 콘텐츠 레이아웃 생성"""
 
         scroll_area: QScrollArea = QScrollArea(parent)
-        scroll_area.setObjectName(area_object_name)
+        scroll_area.setObjectName("charChoiceScrollArea")
         scroll_area.setWidgetResizable(True)
         scroll_area.setFrameShape(QFrame.Shape.NoFrame)
         scroll_area.setMinimumHeight(minimum_height)
 
         scroll_content: QWidget = QWidget(scroll_area)
-        scroll_content.setObjectName(content_object_name)
+        scroll_content.setObjectName("charChoiceScrollContent")
         scroll_layout = QVBoxLayout(scroll_content)
         scroll_layout.setContentsMargins(0, 0, 0, 0)
         scroll_layout.setSpacing(spacing)
@@ -459,81 +466,6 @@ class PillTab(QPushButton):
         self.setFont(CustomFont(10))
 
         self.clicked.connect(lambda: on_click(index))
-
-
-class SegButton(QFrame):
-    """세그먼트 버튼 (경지 선택). sub_text 가 있으면 작은 보조 라벨 표시
-
-    QPushButton 내부 라벨이 표시되지 않는 문제를 피하기 위해 QFrame 기반으로 구현.
-    """
-
-    def __init__(
-        self,
-        parent: QWidget,
-        text: str,
-        index: int,
-        on_click: Callable[[int], None],
-        sub_text: str,
-    ) -> None:
-        super().__init__(parent)
-
-        self.setObjectName("charSegBtn")
-        self.setProperty("checked", False)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-
-        self._index: int = index
-        self._on_click: Callable[[int], None] = on_click
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 6, 12, 6)
-        layout.setSpacing(1)
-
-        main_label: QLabel = QLabel(text, self)
-        main_label.setObjectName("charSegMain")
-        main_label.setFont(CustomFont(10, bold=True))
-        main_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(main_label)
-
-        self.sub_label: QLabel = QLabel(sub_text, self)
-        self.sub_label.setObjectName("charSegSub")
-        self.sub_label.setFont(CustomFont(8))
-        self.sub_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.sub_label)
-
-    def setChecked(self, checked: bool) -> None:
-        """선택 상태 스타일 갱신"""
-
-        self.setProperty("checked", checked)
-        self.style().unpolish(self)
-        self.style().polish(self)
-
-    def isChecked(self) -> bool:
-        """선택 상태 반환"""
-
-        return bool(self.property("checked"))
-
-    def mousePressEvent(self, event) -> None:  # type: ignore[override]
-        """클릭 시 선택 콜백 호출"""
-
-        self._on_click(self._index)
-        super().mousePressEvent(event)
-
-
-class GradeBadge(QLabel):
-    """등급 색 뱃지"""
-
-    def __init__(self, parent: QWidget, grade: str, color: str) -> None:
-        super().__init__(grade, parent)
-
-        self.setObjectName("charGradeBadge")
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-
-        self.setFont(CustomFont(8, bold=True))
-        self.setStyleSheet(
-            f"background-color: {color}; color: white;"
-            "border-radius: 8px; padding: 2px 8px;"
-        )
 
 
 class ColorOrb(QLabel):

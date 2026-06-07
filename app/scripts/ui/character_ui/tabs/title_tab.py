@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QIntValidator
+from PySide6.QtCore import QSignalBlocker, Qt
 from PySide6.QtWidgets import (
     QButtonGroup,
     QFrame,
@@ -31,20 +30,74 @@ from app.scripts.character_models import (
     TitleStatSlot,
 )
 from app.scripts.custom_classes import CustomFont, StyledButton
+from app.scripts.ui.character_ui.change_handler import CharacterChangeHandler
 from app.scripts.ui.character_ui.constants import STAT_CHOICE_LABELS, STAT_LABEL_TO_KEY
-from app.scripts.ui.character_ui.edit_session import CharacterEditSession
 from app.scripts.ui.character_ui.tabs.base import CharacterTab
 from app.scripts.ui.character_ui.widgets import (
     CharCard,
     CharComboBox,
     FlowLayout,
     ResponsiveColumnsBox,
-    SegButton,
     StepperField,
 )
 
 _TITLE_ITEM_WIDTH: int = 360
 _TITLE_ITEM_HEIGHT: int = 210
+
+
+class SegButton(QFrame):
+    """경지 선택 세그먼트 버튼"""
+
+    def __init__(
+        self,
+        parent: QWidget,
+        text: str,
+        index: int,
+        on_click: Callable[[int], None],
+        sub_text: str,
+    ) -> None:
+        super().__init__(parent)
+
+        self.setObjectName("charSegBtn")
+        self.setProperty("checked", False)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        self._index: int = index
+        self._on_click: Callable[[int], None] = on_click
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 6, 12, 6)
+        layout.setSpacing(1)
+
+        main_label: QLabel = QLabel(text, self)
+        main_label.setObjectName("charSegMain")
+        main_label.setFont(CustomFont(10, bold=True))
+        main_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(main_label)
+
+        self.sub_label: QLabel = QLabel(sub_text, self)
+        self.sub_label.setObjectName("charSegSub")
+        self.sub_label.setFont(CustomFont(8))
+        self.sub_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.sub_label)
+
+    def setChecked(self, checked: bool) -> None:
+        """선택 상태 스타일 갱신"""
+
+        self.setProperty("checked", checked)
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def isChecked(self) -> bool:
+        """선택 상태 반환"""
+
+        return bool(self.property("checked"))
+
+    def mousePressEvent(self, event) -> None:  # type: ignore[override]
+        """클릭 시 선택 콜백 호출"""
+
+        self._on_click(self._index)
+        super().mousePressEvent(event)
 
 
 class _TitleItem(QFrame):
@@ -56,7 +109,7 @@ class _TitleItem(QFrame):
         title: CharacterTitle,
         equipped: bool,
         equip_group: QButtonGroup,
-        session: CharacterEditSession,
+        changes: CharacterChangeHandler,
         on_equip: Callable[[CharacterTitle], None],
         on_delete: Callable[[CharacterTitle], None],
     ) -> None:
@@ -67,7 +120,7 @@ class _TitleItem(QFrame):
         self.setFixedSize(_TITLE_ITEM_WIDTH, _TITLE_ITEM_HEIGHT)
 
         self._title: CharacterTitle = title
-        self._session: CharacterEditSession = session
+        self._changes: CharacterChangeHandler = changes
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 14, 14, 14)
@@ -150,7 +203,7 @@ class _TitleItem(QFrame):
             return
 
         self._title.name = text
-        self._session.commit_saved_value()
+        self._changes.saved_value_changed()
 
     def _sync_slots(self) -> None:
         """칭호 스탯 슬롯 모델 반영"""
@@ -170,16 +223,17 @@ class _TitleItem(QFrame):
 
         self._title.slots = updated_slots
         if self.equip_radio.isChecked():
-            self._session.commit_stats()
+            self._changes.stats_changed()
 
         else:
-            self._session.commit_saved_value()
+            self._changes.saved_value_changed()
 
     def set_equipped_style(self, equipped: bool) -> None:
         """장착 강조 스타일 갱신"""
 
         self.setProperty("equipped", equipped)
-        self.equip_radio.setChecked(equipped)
+        with QSignalBlocker(self.equip_radio):
+            self.equip_radio.setChecked(equipped)
         self.style().unpolish(self)
         self.style().polish(self)
 
@@ -187,11 +241,10 @@ class _TitleItem(QFrame):
 class TitleTab(CharacterTab):
     """기본정보와 칭호 탭"""
 
-    def __init__(self, parent: QWidget, session: CharacterEditSession) -> None:
-        super().__init__(parent, session)
+    def __init__(self, parent: QWidget, changes: CharacterChangeHandler) -> None:
+        super().__init__(parent, changes)
 
         self._profile: CharacterProfile | None = None
-        self._loading: bool = False
 
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
@@ -228,9 +281,8 @@ class TitleTab(CharacterTab):
             "0",
             unit="Lv",
             max_width=100,
-        )
-        self._level_field.input.setValidator(
-            QIntValidator(0, MAX_CHARACTER_LEVEL, self)
+            max_value=MAX_CHARACTER_LEVEL,
+            integer=True,
         )
         self._level_field.value_changed.connect(self._on_level_changed)
         realm_card.add_widget(self._level_field)
@@ -300,23 +352,15 @@ class TitleTab(CharacterTab):
     def set_profile(self, profile: CharacterProfile | None) -> None:
         """선택 캐릭터 모델 반영"""
 
-        self._loading = True
         self._profile = profile
 
-        if profile is None:
-            self.setEnabled(False)
-            self._name_edit.setText("")
-            self._level_field.set_number(0)
-            self._render_titles()
-            self._loading = False
-            return
+        self.setEnabled(profile is not None)
+        with QSignalBlocker(self._name_edit), QSignalBlocker(self._level_field.input):
+            self._name_edit.setText("" if profile is None else profile.name)
+            self._level_field.set_number(0 if profile is None else float(profile.level))
 
-        self.setEnabled(True)
-        self._name_edit.setText(profile.name)
-        self._level_field.set_number(float(profile.level))
         self._sync_realm_buttons()
         self._render_titles()
-        self._loading = False
 
     def _sync_realm_buttons(self) -> None:
         """모델 경지 기준 버튼 상태 동기화"""
@@ -326,8 +370,12 @@ class TitleTab(CharacterTab):
 
         realm_values: list[RealmTier] = list(REALM_TIER_SPECS.keys())
         current_index: int = realm_values.index(self._profile.realm)
+        blockers: list[QSignalBlocker] = [
+            QSignalBlocker(button) for button in self._realm_buttons
+        ]
         for index, button in enumerate(self._realm_buttons):
             button.setChecked(index == current_index)
+        blockers.clear()
 
     def _render_titles(self) -> None:
         """칭호 목록 재구성"""
@@ -362,7 +410,7 @@ class TitleTab(CharacterTab):
             title,
             title.id == self._profile.equipped.title_id,
             self._equip_group,
-            self._session,
+            self._changes,
             self._equip_title,
             self._delete_title,
         )
@@ -373,19 +421,19 @@ class TitleTab(CharacterTab):
     def _on_name_changed(self, text: str) -> None:
         """캐릭터 이름 모델 반영"""
 
-        if self._profile is None or self._loading:
+        if self._profile is None:
             return
 
         if self._profile.name == text:
             return
 
         self._profile.name = text
-        self._session.commit_name()
+        self._changes.name_changed()
 
     def _on_level_changed(self) -> None:
         """캐릭터 레벨 모델 반영"""
 
-        if self._profile is None or self._loading:
+        if self._profile is None:
             return
 
         level: int = int(self._level_field.number())
@@ -393,7 +441,7 @@ class TitleTab(CharacterTab):
             return
 
         self._profile.level = level
-        self._session.commit_progression()
+        self._changes.progression_changed()
 
     def _pick_realm(self, index: int) -> None:
         """경지 선택 모델 반영"""
@@ -408,7 +456,7 @@ class TitleTab(CharacterTab):
 
         self._profile.realm = realm
         self._sync_realm_buttons()
-        self._session.commit_progression()
+        self._changes.progression_changed()
 
     def _add_title(self) -> None:
         """칭호 추가"""
@@ -422,7 +470,7 @@ class TitleTab(CharacterTab):
             self._profile.equipped.title_id = title.id
 
         self._add_title_item(title)
-        self._session.commit_saved_value()
+        self._changes.saved_value_changed()
 
     def _equip_title(self, title: CharacterTitle) -> None:
         """칭호 장착"""
@@ -437,7 +485,7 @@ class TitleTab(CharacterTab):
         for item in self._title_items:
             item.set_equipped_style(item._title is title)
 
-        self._session.commit_stats()
+        self._changes.stats_changed()
 
     def _delete_title(self, title: CharacterTitle) -> None:
         """칭호 삭제"""
@@ -463,7 +511,7 @@ class TitleTab(CharacterTab):
         target_item.deleteLater()
         self._titles_container.sync_height()
         if equipped:
-            self._session.commit_stats()
+            self._changes.stats_changed()
 
         else:
-            self._session.commit_saved_value()
+            self._changes.saved_value_changed()

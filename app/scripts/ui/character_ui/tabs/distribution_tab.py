@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QIntValidator
+from PySide6.QtCore import QSignalBlocker, Qt
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -17,11 +16,11 @@ from app.scripts.calculator_models import REALM_TIER_SPECS
 from app.scripts.character_engine import optimize_danjeon, optimize_stat_distribution
 from app.scripts.character_models import CharacterProfile
 from app.scripts.custom_classes import CustomFont, StyledButton
+from app.scripts.ui.character_ui.change_handler import CharacterChangeHandler
 from app.scripts.ui.character_ui.constants import (
     DANJEON_DISTRIBUTION_ITEMS,
     STAT_DISTRIBUTION_ITEMS,
 )
-from app.scripts.ui.character_ui.edit_session import CharacterEditSession
 from app.scripts.ui.character_ui.tabs.base import CharacterTab
 from app.scripts.ui.character_ui.widgets import (
     CharCard,
@@ -105,12 +104,10 @@ class _Budget(QFrame):
 class DistributionTab(CharacterTab):
     """스탯·단전 분배 탭"""
 
-    def __init__(self, parent: QWidget, session: CharacterEditSession) -> None:
-        super().__init__(parent, session)
+    def __init__(self, parent: QWidget, changes: CharacterChangeHandler) -> None:
+        super().__init__(parent, changes)
 
         self._profile: CharacterProfile | None = None
-        self._loading: bool = False
-        self._session.progression_changed.connect(self._sync_progression)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -129,34 +126,43 @@ class DistributionTab(CharacterTab):
     def set_profile(self, profile: CharacterProfile | None) -> None:
         """선택 캐릭터 모델 반영"""
 
-        self._loading = True
         self._profile = profile
         self.setEnabled(profile is not None)
 
         if profile is None:
             for field in self._stat_fields.values():
-                field.set_number(0)
+                with QSignalBlocker(field.input):
+                    field.set_number(0)
 
             for field in self._danjeon_fields.values():
-                field.set_number(0)
+                with QSignalBlocker(field.input):
+                    field.set_number(0)
 
             self._stat_budget.recalc(0, 0)
             self._danjeon_budget.recalc(0, 0)
-            self._loading = False
             return
 
-        self._stat_fields["strength"].set_number(float(profile.distribution.strength))
-        self._stat_fields["dexterity"].set_number(float(profile.distribution.dexterity))
-        self._stat_fields["vitality"].set_number(float(profile.distribution.vitality))
-        self._stat_fields["luck"].set_number(float(profile.distribution.luck))
+        for key, value in (
+            ("strength", profile.distribution.strength),
+            ("dexterity", profile.distribution.dexterity),
+            ("vitality", profile.distribution.vitality),
+            ("luck", profile.distribution.luck),
+        ):
+            field: StepperField = self._stat_fields[key]
+            with QSignalBlocker(field.input):
+                field.set_number(float(value))
 
-        self._danjeon_fields["upper"].set_number(float(profile.danjeon.upper))
-        self._danjeon_fields["middle"].set_number(float(profile.danjeon.middle))
-        self._danjeon_fields["lower"].set_number(float(profile.danjeon.lower))
+        for key, value in (
+            ("upper", profile.danjeon.upper),
+            ("middle", profile.danjeon.middle),
+            ("lower", profile.danjeon.lower),
+        ):
+            field = self._danjeon_fields[key]
+            with QSignalBlocker(field.input):
+                field.set_number(float(value))
 
         self._recalc_stat()
         self._recalc_danjeon()
-        self._loading = False
 
     def _build_stat_card(self) -> CharCard:
         """스탯 분배 카드"""
@@ -176,7 +182,14 @@ class DistributionTab(CharacterTab):
 
         self._stat_fields: dict[str, StepperField] = {}
         items: list[QWidget] = [
-            self._build_item(key, label, effect, self._recalc_stat, self._stat_fields)
+            self._build_item(
+                key,
+                label,
+                effect,
+                self._recalc_stat,
+                self._stat_fields,
+                max_value=1000,
+            )
             for key, label, effect in STAT_DISTRIBUTION_ITEMS
         ]
         card.add_widget(self._build_item_row(items))
@@ -206,6 +219,7 @@ class DistributionTab(CharacterTab):
                 effect,
                 self._recalc_danjeon,
                 self._danjeon_fields,
+                max_value=50,
             )
             for key, label, effect in DANJEON_DISTRIBUTION_ITEMS
         ]
@@ -234,6 +248,7 @@ class DistributionTab(CharacterTab):
         effect: str,
         on_changed: Callable[[str], None],
         field_store: dict[str, StepperField],
+        max_value: int,
     ) -> QWidget:
         """분배 항목 입력 카드"""
 
@@ -248,8 +263,12 @@ class DistributionTab(CharacterTab):
         name_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
         box.addWidget(name_label)
 
-        field: StepperField = StepperField(card, "0")
-        field.input.setValidator(QIntValidator(0, 1_000_000, field.input))
+        field: StepperField = StepperField(
+            card,
+            "0",
+            max_value=max_value,
+            integer=True,
+        )
         field.value_changed.connect(lambda target_key=key: on_changed(target_key))
         field.setFixedWidth(_ITEM_FIELD_WIDTH)
         field_store[key] = field
@@ -286,9 +305,6 @@ class DistributionTab(CharacterTab):
             return
 
         self._stat_budget.recalc(total, float(used))
-        if self._loading:
-            return
-
         current_values: tuple[int, int, int, int] = (
             self._profile.distribution.strength,
             self._profile.distribution.dexterity,
@@ -302,7 +318,7 @@ class DistributionTab(CharacterTab):
         self._profile.distribution.dexterity = dexterity
         self._profile.distribution.vitality = vitality
         self._profile.distribution.luck = luck
-        self._session.commit_stats()
+        self._changes.stats_changed()
 
     def _recalc_danjeon(self, changed_key: str | None = None) -> None:
         """단전 분배 모델 반영 및 요약 갱신"""
@@ -324,9 +340,6 @@ class DistributionTab(CharacterTab):
             return
 
         self._danjeon_budget.recalc(total, float(used))
-        if self._loading:
-            return
-
         current_values: tuple[int, int, int] = (
             self._profile.danjeon.upper,
             self._profile.danjeon.middle,
@@ -338,7 +351,7 @@ class DistributionTab(CharacterTab):
         self._profile.danjeon.upper = upper
         self._profile.danjeon.middle = middle
         self._profile.danjeon.lower = lower
-        self._session.commit_stats()
+        self._changes.stats_changed()
 
     def _optimize_stat(self) -> None:
         """스탯 분배 자동 최적화 적용"""
@@ -349,7 +362,7 @@ class DistributionTab(CharacterTab):
         optimized = optimize_stat_distribution(self._profile)
         self._profile.distribution = optimized
         self.set_profile(self._profile)
-        self._session.commit_stats()
+        self._changes.stats_changed()
 
     def _optimize_danjeon(self) -> None:
         """단전 분배 자동 최적화 적용"""
@@ -360,9 +373,9 @@ class DistributionTab(CharacterTab):
         optimized = optimize_danjeon(self._profile)
         self._profile.danjeon = optimized
         self.set_profile(self._profile)
-        self._session.commit_stats()
+        self._changes.stats_changed()
 
-    def _sync_progression(self) -> None:
+    def on_progression_changed(self) -> None:
         """레벨·경지 기준 분배 한도와 보정값 반영"""
 
         self.set_profile(self._profile)

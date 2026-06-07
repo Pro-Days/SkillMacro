@@ -526,7 +526,7 @@ def _validate_display_stand(profile: CharacterProfile) -> None:
     """진열대 입력값 검증"""
 
     for entry in profile.display_stand.entries.values():
-        for column, value in entry.values.items():
+        for column, value in entry.items():
             if column not in DISPLAY_STAND_COLUMN_STAT_KEYS:
                 raise ValueError("display stand column is not supported")
 
@@ -877,7 +877,7 @@ def _add_display_stand(
     """진열대 기여 누적"""
 
     for entry in profile.display_stand.entries.values():
-        for column, value in entry.values.items():
+        for column, value in entry.items():
             for stat_key in DISPLAY_STAND_COLUMN_STAT_KEYS[column]:
                 _add_stat(accumulated, stat_key, value)
 

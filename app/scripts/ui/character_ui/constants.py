@@ -1,28 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from app.scripts.calculator_models import STAT_SPECS, StatKey
 from app.scripts.character_models import DisplayStandColumn, EquipmentSlot
-
-
-@dataclass(frozen=True, slots=True)
-class CharacterTabSpec:
-    """캐릭터 입력 탭 표시 정의"""
-
-    key: str
-    label: str
-
-
-CHARACTER_TABS: tuple[CharacterTabSpec, ...] = (
-    CharacterTabSpec("title", "기본정보"),
-    CharacterTabSpec("equip", "장비"),
-    CharacterTabSpec("dist", "스탯·단전 분배"),
-    CharacterTabSpec("shelf", "진열대"),
-    CharacterTabSpec("talisman", "부적"),
-    CharacterTabSpec("yeongdan", "영단"),
-    CharacterTabSpec("hwan", "환"),
-)
 
 STAT_DISTRIBUTION_ITEMS: tuple[tuple[str, str, str], ...] = (
     ("strength", "힘", "공격력 +1 · 치명타 공격력% +0.1"),

@@ -696,37 +696,12 @@ class EquipmentState:
 
 
 @dataclass(slots=True)
-class DisplayStandEntry:
-    """진열대 한 행 입력값"""
-
-    values: dict[DisplayStandColumn, float] = field(default_factory=dict)
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "DisplayStandEntry":
-        """저장 데이터로부터 진열대 행 복원"""
-
-        return cls(
-            values={
-                DisplayStandColumn(str(key)): float(value)
-                for key, value in data["values"].items()
-            }
-        )
-
-    def to_dict(self) -> dict[str, dict[str, float]]:
-        """진열대 행 직렬화"""
-
-        return {
-            "values": {
-                column.value: float(value) for column, value in self.values.items()
-            }
-        }
-
-
-@dataclass(slots=True)
 class DisplayStandState:
     """진열대 입력 상태"""
 
-    entries: dict[DisplayStand, DisplayStandEntry] = field(default_factory=dict)
+    entries: dict[DisplayStand, dict[DisplayStandColumn, float]] = field(
+        default_factory=dict
+    )
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "DisplayStandState":
@@ -734,7 +709,10 @@ class DisplayStandState:
 
         return cls(
             entries={
-                DisplayStand(str(key)): DisplayStandEntry.from_dict(value)
+                DisplayStand(str(key)): {
+                    DisplayStandColumn(str(column)): float(column_value)
+                    for column, column_value in value.items()
+                }
                 for key, value in data["entries"].items()
             }
         )
@@ -744,7 +722,10 @@ class DisplayStandState:
 
         return {
             "entries": {
-                stand.value: entry.to_dict() for stand, entry in self.entries.items()
+                stand.value: {
+                    column.value: float(value) for column, value in entry.items()
+                }
+                for stand, entry in self.entries.items()
             }
         }
 

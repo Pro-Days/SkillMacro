@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtGui import QIntValidator
+from PySide6.QtCore import QSignalBlocker
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -17,7 +17,7 @@ from app.scripts.calculator_models import STAT_SPECS
 from app.scripts.character_data import ELIXIR_SPECS
 from app.scripts.character_models import MAX_ELIXIR_COUNT, CharacterProfile, Elixir
 from app.scripts.custom_classes import CustomFont
-from app.scripts.ui.character_ui.edit_session import CharacterEditSession
+from app.scripts.ui.character_ui.change_handler import CharacterChangeHandler
 from app.scripts.ui.character_ui.tabs.base import CharacterTab
 from app.scripts.ui.character_ui.widgets import (
     CharCard,
@@ -101,9 +101,10 @@ class _ElixirCard(QFrame):
         counter = QHBoxLayout()
         counter.setSpacing(8)
 
-        self._count_field: StepperField = StepperField(self, "0")
-        self._count_field.input.setValidator(
-            QIntValidator(0, MAX_ELIXIR_COUNT, self._count_field.input)
+        self._count_field: StepperField = StepperField(
+            self,
+            "0",
+            integer=True,
         )
         self._count_field.value_changed.connect(self._on_count)
 
@@ -118,7 +119,8 @@ class _ElixirCard(QFrame):
     def set_count(self, count: int) -> None:
         """보유 수 표시 반영"""
 
-        self._count_field.set_number(float(count))
+        with QSignalBlocker(self._count_field.input):
+            self._count_field.set_number(float(count))
         self.setProperty("on", count > 0)
         self.style().unpolish(self)
         self.style().polish(self)
@@ -136,11 +138,10 @@ class _ElixirCard(QFrame):
 class ElixirTab(CharacterTab):
     """영단 탭"""
 
-    def __init__(self, parent: QWidget, session: CharacterEditSession) -> None:
-        super().__init__(parent, session)
+    def __init__(self, parent: QWidget, changes: CharacterChangeHandler) -> None:
+        super().__init__(parent, changes)
 
         self._profile: CharacterProfile | None = None
-        self._loading: bool = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -171,7 +172,6 @@ class ElixirTab(CharacterTab):
     def set_profile(self, profile: CharacterProfile | None) -> None:
         """선택 캐릭터 모델 반영"""
 
-        self._loading = True
         self._profile = profile
         self.setEnabled(profile is not None)
 
@@ -179,12 +179,10 @@ class ElixirTab(CharacterTab):
             count: int = 0 if profile is None else profile.elixir.counts.get(elixir, 0)
             card.set_count(count)
 
-        self._loading = False
-
     def _set_count(self, elixir: Elixir, count: int) -> None:
         """영단 보유 수 모델 반영"""
 
-        if self._profile is None or self._loading:
+        if self._profile is None:
             return
 
         if self._profile.elixir.counts.get(elixir, 0) == count:
@@ -196,4 +194,4 @@ class ElixirTab(CharacterTab):
         else:
             self._profile.elixir.counts[elixir] = count
 
-        self._session.commit_stats()
+        self._changes.stats_changed()

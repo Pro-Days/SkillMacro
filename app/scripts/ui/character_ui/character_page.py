@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 from app.scripts.app_state import app_state
 from app.scripts.calculator_models import REALM_TIER_SPECS
 from app.scripts.character_engine import (
+    clamp_profile_allocations,
     clone_character_profile,
     compute_live_view,
     deserialize_character_profile,
@@ -28,8 +29,7 @@ from app.scripts.character_engine import (
 from app.scripts.character_models import CharacterProfile, CharacterStore
 from app.scripts.custom_classes import CustomFont, StyledButton
 from app.scripts.data_manager import save_characters
-from app.scripts.ui.character_ui.constants import CHARACTER_TABS
-from app.scripts.ui.character_ui.edit_session import CharacterEditSession
+from app.scripts.ui.character_ui.change_handler import CharacterChangeHandler
 from app.scripts.ui.character_ui.panels.character_list import CharacterListPanel
 from app.scripts.ui.character_ui.panels.live_stats import LiveStatsPanel
 from app.scripts.ui.character_ui.tabs.base import CharacterTab
@@ -46,16 +46,15 @@ _LEFT_WIDTH: int = 236
 _RIGHT_WIDTH: int = 340
 _SAVE_DELAY_MS: int = 400
 
-# 탭 키와 입력 탭 클래스 연결 (CHARACTER_TABS 순서로 탭을 생성한다)
-_TAB_FACTORIES: dict[str, type[CharacterTab]] = {
-    "title": TitleTab,
-    "equip": EquipmentTab,
-    "dist": DistributionTab,
-    "shelf": DisplayStandTab,
-    "talisman": TalismanTab,
-    "yeongdan": ElixirTab,
-    "hwan": PillEffectTab,
-}
+_CHARACTER_TABS: tuple[tuple[str, type[CharacterTab]], ...] = (
+    ("기본정보", TitleTab),
+    ("장비", EquipmentTab),
+    ("스탯·단전 분배", DistributionTab),
+    ("진열대", DisplayStandTab),
+    ("부적", TalismanTab),
+    ("영단", ElixirTab),
+    ("환", PillEffectTab),
+)
 
 
 class _TabStack(QWidget):
@@ -103,13 +102,12 @@ class CharacterPage(QFrame):
         self._save_timer: QTimer = QTimer(self)
         self._save_timer.setSingleShot(True)
         self._save_timer.timeout.connect(self._save_current_store)
-
-        # 캐릭터 편집 세션: 변경 전파 담당
-        self._session: CharacterEditSession = CharacterEditSession(self)
-        self._session.name_changed.connect(self._refresh_name)
-        self._session.progression_changed.connect(self._refresh_progression)
-        self._session.live_stats_invalidated.connect(self._refresh_live_stats)
-        self._session.save_requested.connect(self._schedule_save)
+        self._changes: CharacterChangeHandler = CharacterChangeHandler(
+            self._commit_name,
+            self._commit_progression,
+            self._live_stats_changed,
+            self._commit_saved_value,
+        )
 
         self.setObjectName("charRoot")
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
@@ -224,8 +222,8 @@ class CharacterPage(QFrame):
         layout.setContentsMargins(12, 8, 12, 8)
 
         self._tabs: list[PillTab] = []
-        for index, tab in enumerate(CHARACTER_TABS):
-            pill: PillTab = PillTab(bar, tab.label, index, self._go)
+        for index, (tab_label, _tab_factory) in enumerate(_CHARACTER_TABS):
+            pill: PillTab = PillTab(bar, tab_label, index, self._go)
             self._tabs.append(pill)
             layout.addWidget(pill)
 
@@ -268,12 +266,11 @@ class CharacterPage(QFrame):
         content_layout.addWidget(self._stack)
         scroll.setWidget(self._body_content)
 
-        for tab in CHARACTER_TABS:
-            page: CharacterTab = _TAB_FACTORIES[tab.key](
-                self._stack, self._session  # type: ignore[list-item]
-            )
+        self._tab_pages: list[CharacterTab] = []
+        for _tab_label, tab_factory in _CHARACTER_TABS:
+            page: CharacterTab = tab_factory(self._stack, self._changes)
+            self._tab_pages.append(page)
             self._stack.addWidget(page)
-            self._session.profile_bound.connect(page.set_profile)
 
         self._go(0)
 
@@ -307,7 +304,8 @@ class CharacterPage(QFrame):
             self._use_calculator_btn.setEnabled(True)
             self._right_panel.set_live_view(compute_live_view(profile))
 
-        self._session.bind_profile(profile)
+        for page in self._tab_pages:
+            page.set_profile(profile)
 
     def _selected_profile(self) -> CharacterProfile | None:
         """현재 선택 캐릭터 조회"""
@@ -441,6 +439,34 @@ class CharacterPage(QFrame):
         """캐릭터 저장 예약"""
 
         self._save_timer.start(_SAVE_DELAY_MS)
+
+    def _commit_name(self) -> None:
+        """캐릭터 이름 변경 반영"""
+
+        self._refresh_name()
+        self._schedule_save()
+
+    def _commit_progression(self) -> None:
+        """레벨·경지 변경 반영"""
+
+        profile: CharacterProfile = self._require_selected_profile()
+        clamp_profile_allocations(profile)
+        self._refresh_progression()
+        for page in self._tab_pages:
+            page.on_progression_changed()
+
+        self._live_stats_changed()
+
+    def _live_stats_changed(self) -> None:
+        """실시간 스탯 변경 반영"""
+
+        self._refresh_live_stats()
+        self._schedule_save()
+
+    def _commit_saved_value(self) -> None:
+        """화면 외부 계산에 영향 없는 저장값 변경 반영"""
+
+        self._schedule_save()
 
     def _require_selected_profile(self) -> CharacterProfile:
         """선택 캐릭터 필수 조회"""

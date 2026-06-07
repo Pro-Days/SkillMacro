@@ -1,5 +1,3 @@
-"""좌측 캐릭터 선택 패널"""
-
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -46,7 +44,11 @@ class _CharacterRow(QFrame):
 
         # 레벨과 경지 요약 표시
         realm_label: str = REALM_TIER_SPECS[character.realm].label
-        meta_text: str = "미입력" if character.level <= 0 else f"Lv. {character.level} · {realm_label}"
+        meta_text: str = (
+            "미입력"
+            if character.level <= 0
+            else f"Lv. {character.level} · {realm_label}"
+        )
         self.meta_label: QLabel = QLabel(meta_text, self)
         self.meta_label.setObjectName("charRowMeta")
         self.meta_label.setFont(CustomFont(9))
@@ -186,7 +188,9 @@ class CharacterListPanel(QFrame):
         self.set_selected_index(index)
         self._on_select(index)
 
-    def append_character(self, character: CharacterProfile, selected_index: int) -> None:
+    def append_character(
+        self, character: CharacterProfile, selected_index: int
+    ) -> None:
         """새 캐릭터 행 하나 추가"""
 
         row = _CharacterRow(

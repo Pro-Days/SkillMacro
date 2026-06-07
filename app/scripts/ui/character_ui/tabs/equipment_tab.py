@@ -15,7 +15,6 @@ from dataclasses import dataclass
 from enum import Enum, auto
 
 from PySide6.QtCore import QSignalBlocker, Qt
-from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
     QBoxLayout,
     QFrame,
@@ -71,6 +70,7 @@ from app.scripts.character_models import (
     ScrollTier,
 )
 from app.scripts.custom_classes import CustomFont, StyledButton
+from app.scripts.ui.character_ui.change_handler import CharacterChangeHandler
 from app.scripts.ui.character_ui.constants import (
     EQUIPMENT_COL_LEFT,
     EQUIPMENT_COL_RIGHT,
@@ -78,7 +78,6 @@ from app.scripts.ui.character_ui.constants import (
     STAT_CHOICE_LABELS,
     STAT_LABEL_TO_KEY,
 )
-from app.scripts.ui.character_ui.edit_session import CharacterEditSession
 from app.scripts.ui.character_ui.tabs.base import CharacterTab
 from app.scripts.ui.character_ui.widgets import (
     CharComboBox,
@@ -891,8 +890,8 @@ class _EquipPickCard(QFrame):
 class EquipmentTab(CharacterTab):
     """장비 탭"""
 
-    def __init__(self, parent: QWidget, session: CharacterEditSession) -> None:
-        super().__init__(parent, session)
+    def __init__(self, parent: QWidget, changes: CharacterChangeHandler) -> None:
+        super().__init__(parent, changes)
 
         self._profile: CharacterProfile | None = None
         self._slots_data: list[_EquipSlotData] = self._build_slots_data(None)
@@ -1370,7 +1369,7 @@ class EquipmentTab(CharacterTab):
         """현재 장비 변경 후 슬롯 타일과 실시간 표시 갱신"""
 
         self._refresh_active_slot()
-        self._session.commit_stats()
+        self._changes.stats_changed()
 
     def _pick_level(self, text: str) -> None:
         """선택한 장비 레벨을 현재 장비에 반영"""
@@ -1429,7 +1428,7 @@ class EquipmentTab(CharacterTab):
         # 이름은 제자리 수정되어 슬롯 데이터의 참조에 그대로 반영된다. 입력 중인
         # 칸을 흔들지 않도록 상세는 다시 그리지 않고 타일만 갱신한다.
         self._refresh_active_slot()
-        self._session.commit_saved_value()
+        self._changes.saved_value_changed()
 
     def _pick_necklace_type(self, text: str) -> None:
         """목걸이 종류 변경 (종류별 허용 재련 스탯으로 정리)"""
@@ -1680,7 +1679,7 @@ class EquipmentTab(CharacterTab):
         free_rows.addLayout(
             self._build_free_stat_row(item, index, STAT_SPECS[StatKey.ATTACK], "0")
         )
-        self._session.commit_saved_value()
+        self._changes.saved_value_changed()
 
     def _set_free_stat_line(
         self,
@@ -1698,7 +1697,7 @@ class EquipmentTab(CharacterTab):
             stat_key=STAT_LABEL_TO_KEY[stat],
             value=value,
         )
-        self._session.commit_stats()
+        self._changes.stats_changed()
 
     def _build_reforge_section(
         self, slot: _EquipSlotData, item: OwnedEquipment
@@ -1750,9 +1749,13 @@ class EquipmentTab(CharacterTab):
 
         box.addWidget(_field_caption(container, "단계"))
 
-        field: StepperField = StepperField(container, str(item.reforge_step), unit="강")
+        field: StepperField = StepperField(
+            container,
+            str(item.reforge_step),
+            unit="강",
+            integer=True,
+        )
         field.setFixedWidth(84)
-        field.input.setValidator(QIntValidator(0, MAX_REFORGE_STEP, field))
         field.value_changed.connect(
             lambda target=item, value_field=field: self._set_reforge_step(
                 target,
@@ -1765,8 +1768,13 @@ class EquipmentTab(CharacterTab):
     def _set_reforge_step(self, item: OwnedEquipment, field: StepperField) -> None:
         """재련 단계 모델 반영"""
 
-        item.reforge_step = int(field.number())
-        self._session.commit_stats()
+        step: int = max(0, min(MAX_REFORGE_STEP, int(field.number())))
+        field.set_number(float(step))
+        if item.reforge_step == step:
+            return
+
+        item.reforge_step = step
+        self._changes.stats_changed()
 
     def _build_scroll_section(self, slot: _EquipSlotData) -> _ScrollSection:
         """주문서 섹션 (좌: 선택 / 우: 적용 목록)"""
@@ -2006,9 +2014,6 @@ class EquipmentTab(CharacterTab):
             self,
             selector_title="주문서 선택",
             list_title="적용된 주문서",
-            panel_object_name="charScrollPanel",
-            scroll_area_object_name="charScrollArea",
-            scroll_content_object_name="charScrollContent",
             add_text=self._scroll_add_button_text(slot.slot, item),
             add_clicked=lambda: self._add_selected_scroll(slot.slot, item),
             option_title="확률",
@@ -2179,15 +2184,14 @@ class EquipmentTab(CharacterTab):
 
         count_row = QHBoxLayout()
         count_row.setSpacing(8)
+        scroll_limit: int | None = _equipment_scroll_limit(slot, item)
         count_field: StepperField = StepperField(
             row,
             str(line.count),
             unit="회",
             max_width=80,
-        )
-        scroll_limit: int | None = _equipment_scroll_limit(slot, item)
-        count_field.input.setValidator(
-            QIntValidator(1, scroll_limit or 999, count_field.input)
+            min_value=1,
+            integer=True,
         )
         count_field.value_changed.connect(
             lambda target=item, target_line=line, field=count_field: self._set_scroll_count_from_field(
@@ -2318,7 +2322,7 @@ class EquipmentTab(CharacterTab):
         else:
             item.reforge_stats[stat_key] = value
 
-        self._session.commit_stats()
+        self._changes.stats_changed()
 
     def _scroll_effect_text(self, effects: dict[StatKey, float]) -> str:
         """주문서 효과 표시 문자열"""
@@ -2381,7 +2385,7 @@ class EquipmentTab(CharacterTab):
         selected_line.stat_key = stat_key
         selected_line.tier = tier
         self._refresh_scroll_section(item)
-        self._session.commit_stats()
+        self._changes.stats_changed()
 
     def _select_scroll_tier(self, tier: ScrollTier) -> None:
         """주문서 확률 선택"""
@@ -2405,7 +2409,7 @@ class EquipmentTab(CharacterTab):
 
         selected_line.tier = tier
         self._refresh_scroll_section(item)
-        self._session.commit_stats()
+        self._changes.stats_changed()
 
     def _select_scroll_line(
         self,
@@ -2547,14 +2551,14 @@ class EquipmentTab(CharacterTab):
         scroll_limit: int | None = _equipment_scroll_limit(slot, item)
         if scroll_limit is None:
             self._refresh_scroll_section(item)
-            self._session.commit_stats()
+            self._changes.stats_changed()
             return
 
         total_count: int = self._scroll_total_count(item)
         overflow_count: int = total_count - scroll_limit
         if overflow_count <= 0:
             self._refresh_scroll_section(item)
-            self._session.commit_stats()
+            self._changes.stats_changed()
             return
 
         current_count: int = line.count
@@ -2562,7 +2566,7 @@ class EquipmentTab(CharacterTab):
         if adjusted_count <= 0:
             self._set_scroll_count(item, line, 0)
             self._refresh_scroll_section(item)
-            self._session.commit_stats()
+            self._changes.stats_changed()
             return
 
         field.set_number(float(adjusted_count))
@@ -2572,7 +2576,7 @@ class EquipmentTab(CharacterTab):
             field,
         )
         self._refresh_scroll_section(item)
-        self._session.commit_stats()
+        self._changes.stats_changed()
 
     def _add_selected_scroll(self, slot: EquipmentSlot, item: OwnedEquipment) -> None:
         """첫 미적용 주문서 라인 추가"""
@@ -2596,7 +2600,7 @@ class EquipmentTab(CharacterTab):
         item.scrolls.append(scroll)
         self._selected_scroll_id = scroll.id
         self._refresh_scroll_section(item)
-        self._session.commit_stats()
+        self._changes.stats_changed()
 
     def _remove_scroll_entry(
         self,
@@ -2607,7 +2611,7 @@ class EquipmentTab(CharacterTab):
 
         self._set_scroll_count(item, line, 0)
         self._refresh_scroll_section(item)
-        self._session.commit_stats()
+        self._changes.stats_changed()
 
     def _set_option_line(
         self,
@@ -2662,7 +2666,7 @@ class EquipmentTab(CharacterTab):
 
             item.additionals = tuple(additional_lines)
 
-        self._session.commit_stats()
+        self._changes.stats_changed()
 
     # 장비 교체 (선택) 화면
 
@@ -2693,10 +2697,10 @@ class EquipmentTab(CharacterTab):
 
         self._show_detail()
         if stats_changed:
-            self._session.commit_stats()
+            self._changes.stats_changed()
 
         else:
-            self._session.commit_saved_value()
+            self._changes.saved_value_changed()
 
     def select_owned(self, index: int) -> None:
         """선택한 장비를 슬롯에 장착하고 상세로 복귀"""
