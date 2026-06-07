@@ -932,6 +932,8 @@ def _accumulate_base_stats(profile: CharacterProfile) -> dict[StatKey, float]:
 
     accumulated: dict[StatKey, float] = _accumulate_pill_excluded_base_stats(profile)
     _add_pills(accumulated, profile)
+    if profile.vip:
+        _add_stat(accumulated, StatKey.DROP_RATE_PERCENT, 3.0)
     return accumulated
 
 

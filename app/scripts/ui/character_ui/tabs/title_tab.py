@@ -274,11 +274,6 @@ class TitleTab(CharacterTab):
         )
         realm_card.add_widget(self._name_edit)
 
-        level_label: QLabel = QLabel("캐릭터 레벨", self)
-        level_label.setObjectName("charFieldLabel")
-        level_label.setFont(CustomFont(9, bold=True))
-        realm_card.add_widget(level_label)
-
         self._level_field: StepperField = StepperField(
             self,
             "0",
@@ -288,7 +283,43 @@ class TitleTab(CharacterTab):
             integer=True,
         )
         self._level_field.value_changed.connect(self._on_level_changed)
-        realm_card.add_widget(self._level_field)
+
+        level_vip_row = QHBoxLayout()
+        level_vip_row.setSpacing(20)
+
+        level_block = QVBoxLayout()
+        level_block.setSpacing(4)
+
+        level_label: QLabel = QLabel("캐릭터 레벨", self)
+        level_label.setObjectName("charFieldLabel")
+        level_label.setFont(CustomFont(9, bold=True))
+
+        level_block.addWidget(level_label)
+        level_block.addWidget(self._level_field)
+        level_vip_row.addLayout(level_block)
+
+        vip_block = QVBoxLayout()
+        vip_block.setSpacing(4)
+
+        vip_label: QLabel = QLabel("VIP", self)
+        vip_label.setObjectName("charFieldLabel")
+        vip_label.setFont(CustomFont(9, bold=True))
+
+        self._vip_btn: QPushButton = QPushButton("VIP", self)
+        self._vip_btn.setObjectName("charEquipToggle")
+        self._vip_btn.setFont(CustomFont(9))
+        self._vip_btn.setCheckable(True)
+        self._vip_btn.setChecked(self._profile.vip)
+        self._vip_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._vip_btn.setFixedHeight(34)
+        self._vip_btn.clicked.connect(self._on_vip_toggle)
+
+        vip_block.addWidget(vip_label)
+        vip_block.addWidget(self._vip_btn)
+        level_vip_row.addLayout(vip_block)
+
+        level_vip_row.addStretch(1)
+        realm_card.add_layout(level_vip_row)
 
         seg_label: QLabel = QLabel("경지", self)
         seg_label.setObjectName("charFieldLabel")
@@ -356,9 +387,14 @@ class TitleTab(CharacterTab):
         """선택 캐릭터 모델 반영"""
 
         self._profile = profile
-        with QSignalBlocker(self._name_edit), QSignalBlocker(self._level_field.input):
+        with (
+            QSignalBlocker(self._name_edit),
+            QSignalBlocker(self._level_field.input),
+            QSignalBlocker(self._vip_btn),
+        ):
             self._name_edit.setText(profile.name)
             self._level_field.set_number(float(profile.level))
+            self._vip_btn.setChecked(profile.vip)
 
         self._sync_realm_buttons()
         self._render_titles()
@@ -427,6 +463,15 @@ class TitleTab(CharacterTab):
 
         self._profile.level = level
         self._changes.progression_changed()
+
+    def _on_vip_toggle(self, active: bool) -> None:
+        """VIP 토글 모델 반영"""
+
+        if self._profile.vip == active:
+            return
+
+        self._profile.vip = active
+        self._changes.stats_changed()
 
     def _pick_realm(self, index: int) -> None:
         """경지 선택 모델 반영"""

@@ -7,7 +7,6 @@ from uuid import uuid4
 
 from app.scripts.calculator_models import RealmTier, StatKey
 
-
 CHARACTER_DATA_VERSION: int = 1
 DEFAULT_CHARACTER_NAME: str = "새 캐릭터"
 TITLE_STAT_SLOT_COUNT: int = 3
@@ -76,9 +75,7 @@ EQUIPMENT_KIND_SLOTS: dict[EquipmentKind, tuple[EquipmentSlot, ...]] = {
 }
 
 EQUIPMENT_SLOT_KIND: dict[EquipmentSlot, EquipmentKind] = {
-    slot: kind
-    for kind, slots in EQUIPMENT_KIND_SLOTS.items()
-    for slot in slots
+    slot: kind for kind, slots in EQUIPMENT_KIND_SLOTS.items() for slot in slots
 }
 
 
@@ -117,6 +114,7 @@ class DisplayStandColumn(str, Enum):
     BELT = "belt"
     SHOES = "shoes"
     SET = "set"
+
 
 def _new_id() -> str:
     """새 저장 식별자 생성"""
@@ -523,10 +521,12 @@ class OwnedEquipment:
             EQUIPMENT_OPTION_SLOT_COUNT,
             "potential lines",
         )
-        additional_items: tuple[dict[str, Any] | None, ...] = _read_fixed_optional_items(
-            _read_list(data, "additionals"),
-            EQUIPMENT_OPTION_SLOT_COUNT,
-            "additional lines",
+        additional_items: tuple[dict[str, Any] | None, ...] = (
+            _read_fixed_optional_items(
+                _read_list(data, "additionals"),
+                EQUIPMENT_OPTION_SLOT_COUNT,
+                "additional lines",
+            )
         )
 
         # 장비 옵션 슬롯 모델 복원
@@ -645,9 +645,7 @@ class DisplayStandState:
 
         return {
             "entries": {
-                stand: {
-                    column.value: float(value) for column, value in entry.items()
-                }
+                stand: {column.value: float(value) for column, value in entry.items()}
                 for stand, entry in self.entries.items()
             }
         }
@@ -670,11 +668,7 @@ class ElixirState:
     def to_dict(self) -> dict[str, dict[str, int]]:
         """영단 상태 직렬화"""
 
-        return {
-            "counts": {
-                elixir: int(count) for elixir, count in self.counts.items()
-            }
-        }
+        return {"counts": {elixir: int(count) for elixir, count in self.counts.items()}}
 
 
 @dataclass(slots=True)
@@ -703,6 +697,7 @@ class CharacterProfile:
     name: str = ""
     level: int = 0
     realm: RealmTier = RealmTier.THIRD_RATE
+    vip: bool = False
     distribution: StatDistribution = field(default_factory=StatDistribution)
     danjeon: DanjeonDistribution = field(default_factory=DanjeonDistribution)
     titles: list[CharacterTitle] = field(default_factory=list)
@@ -722,6 +717,7 @@ class CharacterProfile:
             name=str(data["name"]),
             level=int(data["level"]),
             realm=RealmTier(str(data["realm"])),
+            vip=bool(data["vip"]),
             distribution=StatDistribution.from_dict(_read_dict(data, "distribution")),
             danjeon=DanjeonDistribution.from_dict(_read_dict(data, "danjeon")),
             titles=[
@@ -748,6 +744,7 @@ class CharacterProfile:
             "name": self.name,
             "level": self.level,
             "realm": self.realm.value,
+            "vip": self.vip,
             "distribution": self.distribution.to_dict(),
             "danjeon": self.danjeon.to_dict(),
             "titles": [title.to_dict() for title in self.titles],
