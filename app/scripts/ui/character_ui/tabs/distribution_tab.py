@@ -104,10 +104,13 @@ class _Budget(QFrame):
 class DistributionTab(CharacterTab):
     """스탯·단전 분배 탭"""
 
-    def __init__(self, parent: QWidget, changes: CharacterChangeHandler) -> None:
-        super().__init__(parent, changes)
-
-        self._profile: CharacterProfile | None = None
+    def __init__(
+        self,
+        parent: QWidget,
+        changes: CharacterChangeHandler,
+        profile: CharacterProfile,
+    ) -> None:
+        super().__init__(parent, changes, profile)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -123,24 +126,10 @@ class DistributionTab(CharacterTab):
         layout.addWidget(cards)
         layout.addStretch(1)
 
-    def set_profile(self, profile: CharacterProfile | None) -> None:
+    def set_profile(self, profile: CharacterProfile) -> None:
         """선택 캐릭터 모델 반영"""
 
         self._profile = profile
-        self.setEnabled(profile is not None)
-
-        if profile is None:
-            for field in self._stat_fields.values():
-                with QSignalBlocker(field.input):
-                    field.set_number(0)
-
-            for field in self._danjeon_fields.values():
-                with QSignalBlocker(field.input):
-                    field.set_number(0)
-
-            self._stat_budget.recalc(0, 0)
-            self._danjeon_budget.recalc(0, 0)
-            return
 
         for key, value in (
             ("strength", profile.distribution.strength),
@@ -287,9 +276,6 @@ class DistributionTab(CharacterTab):
     def _recalc_stat(self, changed_key: str | None = None) -> None:
         """스탯 분배 모델 반영 및 요약 갱신"""
 
-        if self._profile is None:
-            return
-
         strength: int = int(self._stat_fields["strength"].number())
         dexterity: int = int(self._stat_fields["dexterity"].number())
         vitality: int = int(self._stat_fields["vitality"].number())
@@ -323,9 +309,6 @@ class DistributionTab(CharacterTab):
     def _recalc_danjeon(self, changed_key: str | None = None) -> None:
         """단전 분배 모델 반영 및 요약 갱신"""
 
-        if self._profile is None:
-            return
-
         upper: int = int(self._danjeon_fields["upper"].number())
         middle: int = int(self._danjeon_fields["middle"].number())
         lower: int = int(self._danjeon_fields["lower"].number())
@@ -356,9 +339,6 @@ class DistributionTab(CharacterTab):
     def _optimize_stat(self) -> None:
         """스탯 분배 자동 최적화 적용"""
 
-        if self._profile is None:
-            return
-
         optimized = optimize_stat_distribution(self._profile)
         self._profile.distribution = optimized
         self.set_profile(self._profile)
@@ -366,9 +346,6 @@ class DistributionTab(CharacterTab):
 
     def _optimize_danjeon(self) -> None:
         """단전 분배 자동 최적화 적용"""
-
-        if self._profile is None:
-            return
 
         optimized = optimize_danjeon(self._profile)
         self._profile.danjeon = optimized

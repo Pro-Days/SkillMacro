@@ -13,11 +13,13 @@ class CharacterTab(QFrame):
         self,
         parent: QWidget,
         changes: CharacterChangeHandler,
+        profile: CharacterProfile,
     ) -> None:
         super().__init__(parent)
         self._changes: CharacterChangeHandler = changes
+        self._profile: CharacterProfile = profile
 
-    def set_profile(self, profile: CharacterProfile | None) -> None:
+    def set_profile(self, profile: CharacterProfile) -> None:
         """선택 캐릭터 모델 반영"""
 
         raise NotImplementedError

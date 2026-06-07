@@ -26,7 +26,11 @@ from app.scripts.character_engine import (
     deserialize_character_profile,
     serialize_character_profile,
 )
-from app.scripts.character_models import CharacterProfile, CharacterStore
+from app.scripts.character_models import (
+    DEFAULT_CHARACTER_NAME,
+    CharacterProfile,
+    CharacterStore,
+)
 from app.scripts.custom_classes import CustomFont, StyledButton
 from app.scripts.data_manager import save_characters
 from app.scripts.ui.character_ui.change_handler import CharacterChangeHandler
@@ -179,7 +183,7 @@ class CharacterPage(QFrame):
         self._toggle_left_btn.clicked.connect(lambda: self._toggle_panel("left"))
         layout.addWidget(self._toggle_left_btn)
 
-        self._title_label: QLabel = QLabel("캐릭터 없음", header)
+        self._title_label: QLabel = QLabel(DEFAULT_CHARACTER_NAME, header)
         self._title_label.setObjectName("charHeadTitle")
         self._title_label.setFont(CustomFont(13, bold=True))
 
@@ -266,9 +270,14 @@ class CharacterPage(QFrame):
         content_layout.addWidget(self._stack)
         scroll.setWidget(self._body_content)
 
+        initial_profile: CharacterProfile = self._selected_profile()
         self._tab_pages: list[CharacterTab] = []
         for _tab_label, tab_factory in _CHARACTER_TABS:
-            page: CharacterTab = tab_factory(self._stack, self._changes)
+            page: CharacterTab = tab_factory(
+                self._stack,
+                self._changes,
+                initial_profile,
+            )
             self._tab_pages.append(page)
             self._stack.addWidget(page)
 
@@ -286,34 +295,21 @@ class CharacterPage(QFrame):
     def _refresh_selected_profile(self) -> None:
         """선택 캐릭터 기준 헤더, 스탯, 입력 탭 갱신"""
 
-        profile: CharacterProfile | None = self._selected_profile()
-
-        if profile is None:
-            self._title_label.setText("캐릭터 없음")
-            self._subtitle_label.setText("미입력")
-
-            self._use_calculator_btn.setEnabled(False)
-            self._right_panel.set_live_view(None)
-
-        else:
-            name_text: str = profile.name if profile.name.strip() else "이름 없음"
-            realm_label: str = REALM_TIER_SPECS[profile.realm].label
-            self._title_label.setText(name_text)
-            self._subtitle_label.setText(f"Lv. {profile.level} · {realm_label}")
-
-            self._use_calculator_btn.setEnabled(True)
-            self._right_panel.set_live_view(compute_live_view(profile))
+        profile: CharacterProfile = self._selected_profile()
+        name_text: str = profile.name if profile.name.strip() else "이름 없음"
+        realm_label: str = REALM_TIER_SPECS[profile.realm].label
+        self._title_label.setText(name_text)
+        self._subtitle_label.setText(f"Lv. {profile.level} · {realm_label}")
+        self._use_calculator_btn.setEnabled(True)
+        self._right_panel.set_live_view(compute_live_view(profile))
 
         for page in self._tab_pages:
             page.set_profile(profile)
 
-    def _selected_profile(self) -> CharacterProfile | None:
+    def _selected_profile(self) -> CharacterProfile:
         """현재 선택 캐릭터 조회"""
 
         store: CharacterStore = app_state.character_store
-
-        if store.selected_index == -1:
-            return None
         return store.characters[store.selected_index]
 
     def _on_character_selected(self, index: int) -> None:
@@ -338,10 +334,7 @@ class CharacterPage(QFrame):
     def _clone_character(self) -> None:
         """선택 캐릭터 복제"""
 
-        profile: CharacterProfile | None = self._selected_profile()
-        if profile is None:
-            return
-
+        profile: CharacterProfile = self._selected_profile()
         store: CharacterStore = app_state.character_store
         cloned: CharacterProfile = clone_character_profile(profile)
         cloned.name = f"{profile.name} 복사"
@@ -386,42 +379,40 @@ class CharacterPage(QFrame):
         """선택 캐릭터 삭제"""
 
         store: CharacterStore = app_state.character_store
-        if store.selected_index == -1:
-            return
-
         removed_index: int = store.selected_index
         store.characters.pop(removed_index)
 
         if not store.characters:
-            store.selected_index = -1
+            store.characters.append(CharacterProfile(name=DEFAULT_CHARACTER_NAME))
+            store.selected_index = 0
 
-        elif store.selected_index >= len(store.characters):
+        elif removed_index >= len(store.characters):
             store.selected_index = len(store.characters) - 1
 
+        else:
+            store.selected_index = removed_index
+
         save_characters()
-        self._left_panel.remove_character(removed_index, store.selected_index)
+        self._left_panel.set_characters(store.characters, store.selected_index)
         self._refresh_selected_profile()
 
     def copy_selected_character(self) -> None:
         """선택 캐릭터 클립보드 복사"""
 
-        profile: CharacterProfile | None = self._selected_profile()
-        if profile is None:
-            return
-
+        profile: CharacterProfile = self._selected_profile()
         QApplication.clipboard().setText(serialize_character_profile(profile))
 
     def _refresh_name(self) -> None:
         """캐릭터 이름 표시 갱신"""
 
-        profile: CharacterProfile = self._require_selected_profile()
+        profile: CharacterProfile = self._selected_profile()
         self._title_label.setText(profile.name if profile.name.strip() else "이름 없음")
         self._left_panel.update_selected_name(profile)
 
     def _refresh_progression(self) -> None:
         """캐릭터 레벨·경지 표시 갱신"""
 
-        profile: CharacterProfile = self._require_selected_profile()
+        profile: CharacterProfile = self._selected_profile()
         self._subtitle_label.setText(
             f"Lv. {profile.level} · {REALM_TIER_SPECS[profile.realm].label}"
         )
@@ -430,10 +421,8 @@ class CharacterPage(QFrame):
     def _refresh_live_stats(self) -> None:
         """선택 캐릭터 실시간 스탯 갱신"""
 
-        profile: CharacterProfile | None = self._selected_profile()
-        self._right_panel.set_live_view(
-            None if profile is None else compute_live_view(profile)
-        )
+        profile: CharacterProfile = self._selected_profile()
+        self._right_panel.set_live_view(compute_live_view(profile))
 
     def _schedule_save(self) -> None:
         """캐릭터 저장 예약"""
@@ -449,7 +438,7 @@ class CharacterPage(QFrame):
     def _commit_progression(self) -> None:
         """레벨·경지 변경 반영"""
 
-        profile: CharacterProfile = self._require_selected_profile()
+        profile: CharacterProfile = self._selected_profile()
         clamp_profile_allocations(profile)
         self._refresh_progression()
         for page in self._tab_pages:
@@ -468,25 +457,13 @@ class CharacterPage(QFrame):
 
         self._schedule_save()
 
-    def _require_selected_profile(self) -> CharacterProfile:
-        """선택 캐릭터 필수 조회"""
-
-        profile: CharacterProfile | None = self._selected_profile()
-        if profile is None:
-            raise ValueError("selected character is not available")
-
-        return profile
-
     def _save_current_store(self) -> None:
         save_characters()
 
     def _use_selected_character(self) -> None:
         """선택 캐릭터를 계산기 입력에 반영"""
 
-        profile: CharacterProfile | None = self._selected_profile()
-        if profile is None:
-            return
-
+        profile: CharacterProfile = self._selected_profile()
         self._save_current_store()
         self._on_use_calculator(profile)
 

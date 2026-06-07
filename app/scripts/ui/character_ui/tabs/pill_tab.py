@@ -120,10 +120,13 @@ class _PillCard(QFrame):
 class PillTab(CharacterTab):
     """환 탭"""
 
-    def __init__(self, parent: QWidget, changes: CharacterChangeHandler) -> None:
-        super().__init__(parent, changes)
-
-        self._profile: CharacterProfile | None = None
+    def __init__(
+        self,
+        parent: QWidget,
+        changes: CharacterChangeHandler,
+        profile: CharacterProfile,
+    ) -> None:
+        super().__init__(parent, changes, profile)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -151,21 +154,17 @@ class PillTab(CharacterTab):
         layout.addWidget(card)
         layout.addStretch(1)
 
-    def set_profile(self, profile: CharacterProfile | None) -> None:
+    def set_profile(self, profile: CharacterProfile) -> None:
         """선택 캐릭터 모델 반영"""
 
         self._profile = profile
-        self.setEnabled(profile is not None)
 
         for pill, card in self._cards.items():
-            active: bool = False if profile is None else pill in profile.pill.active
+            active: bool = pill in profile.pill.active
             card.set_active(active)
 
     def _set_active(self, pill: Pill, active: bool) -> None:
         """환 사용 여부 모델 반영"""
-
-        if self._profile is None:
-            return
 
         if (pill in self._profile.pill.active) == active:
             return

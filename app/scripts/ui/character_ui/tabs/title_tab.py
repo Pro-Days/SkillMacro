@@ -241,10 +241,13 @@ class _TitleItem(QFrame):
 class TitleTab(CharacterTab):
     """기본정보와 칭호 탭"""
 
-    def __init__(self, parent: QWidget, changes: CharacterChangeHandler) -> None:
-        super().__init__(parent, changes)
-
-        self._profile: CharacterProfile | None = None
+    def __init__(
+        self,
+        parent: QWidget,
+        changes: CharacterChangeHandler,
+        profile: CharacterProfile,
+    ) -> None:
+        super().__init__(parent, changes, profile)
 
         self._layout = QVBoxLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
@@ -349,24 +352,19 @@ class TitleTab(CharacterTab):
 
         return container
 
-    def set_profile(self, profile: CharacterProfile | None) -> None:
+    def set_profile(self, profile: CharacterProfile) -> None:
         """선택 캐릭터 모델 반영"""
 
         self._profile = profile
-
-        self.setEnabled(profile is not None)
         with QSignalBlocker(self._name_edit), QSignalBlocker(self._level_field.input):
-            self._name_edit.setText("" if profile is None else profile.name)
-            self._level_field.set_number(0 if profile is None else float(profile.level))
+            self._name_edit.setText(profile.name)
+            self._level_field.set_number(float(profile.level))
 
         self._sync_realm_buttons()
         self._render_titles()
 
     def _sync_realm_buttons(self) -> None:
         """모델 경지 기준 버튼 상태 동기화"""
-
-        if self._profile is None:
-            return
 
         realm_values: list[RealmTier] = list(REALM_TIER_SPECS.keys())
         current_index: int = realm_values.index(self._profile.realm)
@@ -390,10 +388,6 @@ class TitleTab(CharacterTab):
                 widget.deleteLater()
 
         self._title_items = []
-        if self._profile is None:
-            self._titles_container.sync_height()
-            return
-
         for title in self._profile.titles:
             self._add_title_item(title)
 
@@ -401,9 +395,6 @@ class TitleTab(CharacterTab):
 
     def _add_title_item(self, title: CharacterTitle) -> None:
         """칭호 카드 하나 추가"""
-
-        if self._profile is None:
-            raise ValueError("character profile is not bound")
 
         item = _TitleItem(
             self,
@@ -421,9 +412,6 @@ class TitleTab(CharacterTab):
     def _on_name_changed(self, text: str) -> None:
         """캐릭터 이름 모델 반영"""
 
-        if self._profile is None:
-            return
-
         if self._profile.name == text:
             return
 
@@ -432,9 +420,6 @@ class TitleTab(CharacterTab):
 
     def _on_level_changed(self) -> None:
         """캐릭터 레벨 모델 반영"""
-
-        if self._profile is None:
-            return
 
         level: int = int(self._level_field.number())
         if self._profile.level == level:
@@ -445,9 +430,6 @@ class TitleTab(CharacterTab):
 
     def _pick_realm(self, index: int) -> None:
         """경지 선택 모델 반영"""
-
-        if self._profile is None:
-            return
 
         realm_values: list[RealmTier] = list(REALM_TIER_SPECS.keys())
         realm: RealmTier = realm_values[index]
@@ -461,9 +443,6 @@ class TitleTab(CharacterTab):
     def _add_title(self) -> None:
         """칭호 추가"""
 
-        if self._profile is None:
-            return
-
         title: CharacterTitle = CharacterTitle(name="새 칭호")
         self._profile.titles.append(title)
         if self._profile.equipped.title_id is None:
@@ -474,9 +453,6 @@ class TitleTab(CharacterTab):
 
     def _equip_title(self, title: CharacterTitle) -> None:
         """칭호 장착"""
-
-        if self._profile is None:
-            return
 
         if self._profile.equipped.title_id == title.id:
             return
@@ -489,9 +465,6 @@ class TitleTab(CharacterTab):
 
     def _delete_title(self, title: CharacterTitle) -> None:
         """칭호 삭제"""
-
-        if self._profile is None:
-            return
 
         equipped: bool = self._profile.equipped.title_id == title.id
         self._profile.titles = [

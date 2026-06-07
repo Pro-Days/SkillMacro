@@ -162,7 +162,7 @@ class AppState:
 
     macro: MacroState = field(default_factory=MacroState)
     ui: UiState = field(default_factory=UiState)
-    character_store: CharacterStore = field(default_factory=CharacterStore.create_empty)
+    character_store: CharacterStore = field(default_factory=CharacterStore.create_default)
 
     def is_key_using(self, key: KeySpec) -> bool:
         """

@@ -203,17 +203,6 @@ class CharacterListPanel(QFrame):
         self._list_layout.addWidget(row)
         self.set_selected_index(selected_index)
 
-    def remove_character(self, index: int, selected_index: int) -> None:
-        """삭제된 캐릭터 행 하나 제거"""
-
-        row: _CharacterRow = self._rows.pop(index)
-        self._list_layout.removeWidget(row)
-        row.deleteLater()
-        for row_index, current_row in enumerate(self._rows):
-            current_row.set_index(row_index)
-
-        self.set_selected_index(selected_index)
-
     def set_selected_index(self, index: int) -> None:
         """선택 행 강조 갱신"""
 

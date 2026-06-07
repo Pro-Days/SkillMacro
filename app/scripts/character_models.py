@@ -9,6 +9,7 @@ from app.scripts.calculator_models import RealmTier, StatKey
 
 
 CHARACTER_DATA_VERSION: int = 1
+DEFAULT_CHARACTER_NAME: str = "새 캐릭터"
 TITLE_STAT_SLOT_COUNT: int = 3
 EQUIPMENT_OPTION_SLOT_COUNT: int = 3
 MAX_EQUIPPED_TALISMAN_COUNT: int = 3
@@ -844,18 +845,10 @@ class CharacterStore:
     """전역 캐릭터 저장 루트"""
 
     version: int = CHARACTER_DATA_VERSION
-    characters: list[CharacterProfile] = field(default_factory=list)
-    selected_index: int = -1
-
-    @classmethod
-    def create_empty(cls) -> "CharacterStore":
-        """빈 캐릭터 저장 루트 생성"""
-
-        return cls(
-            version=CHARACTER_DATA_VERSION,
-            characters=[],
-            selected_index=-1,
-        )
+    characters: list[CharacterProfile] = field(
+        default_factory=lambda: [CharacterProfile(name=DEFAULT_CHARACTER_NAME)]
+    )
+    selected_index: int = 0
 
     @classmethod
     def create_default(cls) -> "CharacterStore":
@@ -863,7 +856,7 @@ class CharacterStore:
 
         return cls(
             version=CHARACTER_DATA_VERSION,
-            characters=[CharacterProfile(name="새 캐릭터")],
+            characters=[CharacterProfile(name=DEFAULT_CHARACTER_NAME)],
             selected_index=0,
         )
 

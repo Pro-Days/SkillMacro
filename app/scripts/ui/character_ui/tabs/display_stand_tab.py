@@ -84,10 +84,13 @@ class _NumericDelegate(QStyledItemDelegate):
 class DisplayStandTab(CharacterTab):
     """진열대 탭"""
 
-    def __init__(self, parent: QWidget, changes: CharacterChangeHandler) -> None:
-        super().__init__(parent, changes)
-
-        self._profile: CharacterProfile | None = None
+    def __init__(
+        self,
+        parent: QWidget,
+        changes: CharacterChangeHandler,
+        profile: CharacterProfile,
+    ) -> None:
+        super().__init__(parent, changes, profile)
         self._column_keys: tuple[DisplayStandColumn, ...] = tuple(
             column for column, _title in DISPLAY_STAND_COLUMNS
         )
@@ -108,11 +111,10 @@ class DisplayStandTab(CharacterTab):
         self._recalc()
         self._update_selection_info()
 
-    def set_profile(self, profile: CharacterProfile | None) -> None:
+    def set_profile(self, profile: CharacterProfile) -> None:
         """선택 캐릭터 모델 반영"""
 
         self._profile = profile
-        self.setEnabled(profile is not None)
 
         # 프로필 반영 중 셀 변경 신호 재진입 차단
         with QSignalBlocker(self._table):
@@ -120,10 +122,7 @@ class DisplayStandTab(CharacterTab):
                 for col_index, column in enumerate(self._column_keys):
                     item: QTableWidgetItem = self._table.item(row_index, col_index)
                     value: float = 0.0
-                    if (
-                        profile is not None
-                        and spec.stand in profile.display_stand.entries
-                    ):
+                    if spec.stand in profile.display_stand.entries:
                         entry: dict[DisplayStandColumn, float] = (
                             profile.display_stand.entries[spec.stand]
                         )
@@ -291,10 +290,6 @@ class DisplayStandTab(CharacterTab):
             for item in selected_items:
                 item.setText(value_text)
 
-        if self._profile is None:
-            self._recalc()
-            return
-
         # 선택 셀 모델 일괄 반영 및 단일 커밋 여부 계산
         value: float = self._parse(value_text)
         changed: bool = False
@@ -324,9 +319,6 @@ class DisplayStandTab(CharacterTab):
     def _on_item_changed(self, item: QTableWidgetItem) -> None:
         """셀 변경 시 해당 칸만 모델 반영"""
 
-        if self._profile is None:
-            return
-
         # 사용자 편집 결과 합계 반영
         self._recalc()
 
@@ -345,9 +337,6 @@ class DisplayStandTab(CharacterTab):
         value: float,
     ) -> bool:
         """진열대 단일 칸 모델 반영 여부 반환"""
-
-        if self._profile is None:
-            raise ValueError("character profile is not bound")
 
         # 희소 저장 엔트리 조회 및 현재 값 비교
         entries: dict[DisplayStand, dict[DisplayStandColumn, float]] = (

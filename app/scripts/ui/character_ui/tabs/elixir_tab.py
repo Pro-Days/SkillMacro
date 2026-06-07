@@ -138,10 +138,13 @@ class _ElixirCard(QFrame):
 class ElixirTab(CharacterTab):
     """영단 탭"""
 
-    def __init__(self, parent: QWidget, changes: CharacterChangeHandler) -> None:
-        super().__init__(parent, changes)
-
-        self._profile: CharacterProfile | None = None
+    def __init__(
+        self,
+        parent: QWidget,
+        changes: CharacterChangeHandler,
+        profile: CharacterProfile,
+    ) -> None:
+        super().__init__(parent, changes, profile)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -169,21 +172,17 @@ class ElixirTab(CharacterTab):
         layout.addWidget(card)
         layout.addStretch(1)
 
-    def set_profile(self, profile: CharacterProfile | None) -> None:
+    def set_profile(self, profile: CharacterProfile) -> None:
         """선택 캐릭터 모델 반영"""
 
         self._profile = profile
-        self.setEnabled(profile is not None)
 
         for elixir, card in self._cards.items():
-            count: int = 0 if profile is None else profile.elixir.counts.get(elixir, 0)
+            count: int = profile.elixir.counts.get(elixir, 0)
             card.set_count(count)
 
     def _set_count(self, elixir: Elixir, count: int) -> None:
         """영단 보유 수 모델 반영"""
-
-        if self._profile is None:
-            return
 
         if self._profile.elixir.counts.get(elixir, 0) == count:
             return

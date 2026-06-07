@@ -69,10 +69,14 @@ class GradeBadge(QLabel):
 class TalismanTab(CharacterTab):
     """부적 탭"""
 
-    def __init__(self, parent: QWidget, changes: CharacterChangeHandler) -> None:
-        super().__init__(parent, changes)
+    def __init__(
+        self,
+        parent: QWidget,
+        changes: CharacterChangeHandler,
+        profile: CharacterProfile,
+    ) -> None:
+        super().__init__(parent, changes, profile)
 
-        self._profile: CharacterProfile | None = None
         self._selected_talisman_id: str | None = None
         self._selected_grade: TalismanGrade = TALISMAN_SPECS[0].grade
         self._specs_by_name: dict[str, TalismanSpec] = {
@@ -115,14 +119,13 @@ class TalismanTab(CharacterTab):
         layout.addWidget(owned_card)
         layout.addStretch(1)
 
-    def set_profile(self, profile: CharacterProfile | None) -> None:
+    def set_profile(self, profile: CharacterProfile) -> None:
         """선택 캐릭터 모델 반영"""
 
         self._equipped_stat_labels = {}
         self._profile = profile
-        self.setEnabled(profile is not None)
 
-        if profile is None or not profile.talismans:
+        if not profile.talismans:
             self._selected_talisman_id = None
             self._selected_grade = TALISMAN_SPECS[0].grade
 
@@ -185,7 +188,7 @@ class TalismanTab(CharacterTab):
     def _selected_talisman(self) -> CharacterTalisman | None:
         """현재 선택된 보유 부적 조회"""
 
-        if self._profile is None or self._selected_talisman_id is None:
+        if self._selected_talisman_id is None:
             return None
 
         for talisman in self._profile.talismans:
@@ -265,9 +268,6 @@ class TalismanTab(CharacterTab):
     def _select_grade(self, grade: TalismanGrade, _checked: bool = False) -> None:
         """부적 선택 등급 변경"""
 
-        if self._profile is None:
-            return
-
         if grade is self._selected_grade:
             return
 
@@ -304,9 +304,6 @@ class TalismanTab(CharacterTab):
         _checked: bool = False,
     ) -> None:
         """선택된 보유 부적 종류 변경"""
-
-        if self._profile is None:
-            return
 
         selected_talisman: CharacterTalisman | None = self._selected_talisman()
         if selected_talisman is None:
@@ -354,18 +351,14 @@ class TalismanTab(CharacterTab):
         """영향받은 장착 슬롯 위젯 갱신"""
 
         if talisman_id is None:
-            if self._profile is None:
-                self._equipped_stat_labels = {}
-
-            else:
-                unaffected_ids: set[str] = set(
-                    self._profile.equipped.talisman_ids[:start_index]
-                )
-                self._equipped_stat_labels = {
-                    current_id: label
-                    for current_id, label in self._equipped_stat_labels.items()
-                    if current_id in unaffected_ids
-                }
+            unaffected_ids: set[str] = set(
+                self._profile.equipped.talisman_ids[:start_index]
+            )
+            self._equipped_stat_labels = {
+                current_id: label
+                for current_id, label in self._equipped_stat_labels.items()
+                if current_id in unaffected_ids
+            }
 
         else:
             self._equipped_stat_labels.pop(talisman_id, None)
@@ -406,9 +399,6 @@ class TalismanTab(CharacterTab):
     ) -> bool:
         """부적 종류 변경 가능 여부"""
 
-        if self._profile is None:
-            return False
-
         for owned_talisman in self._profile.talismans:
             if owned_talisman.id == talisman.id:
                 continue
@@ -420,9 +410,6 @@ class TalismanTab(CharacterTab):
 
     def _first_available_spec(self) -> TalismanSpec | None:
         """보유하지 않은 첫 부적 정의 조회"""
-
-        if self._profile is None:
-            return None
 
         used_keys: set[str] = {
             talisman.talisman_key for talisman in self._profile.talismans
@@ -439,9 +426,6 @@ class TalismanTab(CharacterTab):
         talisman_key: str,
     ) -> bool:
         """다른 장착 슬롯의 같은 부적 종류 존재 여부"""
-
-        if self._profile is None:
-            return False
 
         for equipped_id in self._profile.equipped.talisman_ids:
             if equipped_id == talisman.id:
@@ -461,9 +445,6 @@ class TalismanTab(CharacterTab):
     def _talisman_by_id(self, talisman_id: str) -> CharacterTalisman | None:
         """식별자 기준 보유 부적 조회"""
 
-        if self._profile is None:
-            return None
-
         for talisman in self._profile.talismans:
             if talisman.id == talisman_id:
                 return talisman
@@ -472,9 +453,6 @@ class TalismanTab(CharacterTab):
 
     def _equipped_talisman(self, slot_index: int) -> CharacterTalisman | None:
         """장착 슬롯의 부적 조회"""
-
-        if self._profile is None:
-            return None
 
         if slot_index >= len(self._profile.equipped.talisman_ids):
             return None
@@ -562,9 +540,6 @@ class TalismanTab(CharacterTab):
 
         self._clear_layout(self._choice_panels.list_layout)
         self._owned_rows = {}
-        if self._profile is None:
-            return
-
         for talisman in self._profile.talismans:
             self._add_owned_row(talisman)
 
@@ -683,13 +658,9 @@ class TalismanTab(CharacterTab):
         foot.addWidget(max_label)
         foot.addStretch(1)
 
-        equipped: bool = (
-            self._profile is not None
-            and talisman.id in self._profile.equipped.talisman_ids
-        )
+        equipped: bool = talisman.id in self._profile.equipped.talisman_ids
         can_equip: bool = equipped or (
-            self._profile is not None
-            and len(self._profile.equipped.talisman_ids) < MAX_EQUIPPED_TALISMAN_COUNT
+            len(self._profile.equipped.talisman_ids) < MAX_EQUIPPED_TALISMAN_COUNT
             and not self._has_equipped_talisman_key(
                 talisman,
                 talisman.talisman_key,
@@ -726,9 +697,6 @@ class TalismanTab(CharacterTab):
 
     def _add_talisman(self) -> None:
         """기본 부적 추가"""
-
-        if self._profile is None:
-            return
 
         first_spec: TalismanSpec | None = self._first_available_spec()
         if first_spec is None:
@@ -771,8 +739,6 @@ class TalismanTab(CharacterTab):
 
         talisman.level = level
         self._refresh_talisman_stat_labels(talisman, stat_label)
-        if self._profile is None:
-            raise ValueError("character profile is not bound")
 
         if talisman.id in self._profile.equipped.talisman_ids:
             self._changes.stats_changed()
@@ -814,9 +780,6 @@ class TalismanTab(CharacterTab):
     def _toggle_equip(self, talisman: CharacterTalisman) -> None:
         """장착/해제 토글"""
 
-        if self._profile is None:
-            return
-
         changed: bool = False
         if talisman.id in self._profile.equipped.talisman_ids:
             changed_index: int = self._profile.equipped.talisman_ids.index(talisman.id)
@@ -842,9 +805,6 @@ class TalismanTab(CharacterTab):
 
     def _delete_talisman(self, talisman: CharacterTalisman) -> None:
         """보유 부적 삭제 및 장착 참조 제거"""
-
-        if self._profile is None:
-            return
 
         equipped: bool = talisman.id in self._profile.equipped.talisman_ids
         equipped_index: int | None = (
@@ -884,9 +844,6 @@ class TalismanTab(CharacterTab):
 
     def _unequip(self, talisman: CharacterTalisman) -> None:
         """슬롯에서 장착 해제"""
-
-        if self._profile is None:
-            return
 
         if talisman.id in self._profile.equipped.talisman_ids:
             equipped_index: int = self._profile.equipped.talisman_ids.index(talisman.id)

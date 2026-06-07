@@ -163,20 +163,10 @@ class LiveStatsPanel(QFrame):
 
         return cell
 
-    def set_live_view(self, live_view: LiveStatView | None) -> None:
+    def set_live_view(self, live_view: LiveStatView) -> None:
         """실시간 계산 결과 표시"""
 
         self._current_live_view = live_view
-
-        # 선택 캐릭터가 없는 경우 빈 값 표시
-        if live_view is None:
-            self._power_value.setText("-")
-            self._skill_speed_boss_value.setText("-")
-            for value_label in self._value_labels.values():
-                value_label.setText("0")
-
-            self._copy_button.setEnabled(False)
-            return
 
         # 공식 전투력 표시
         self._power_value.setText(f"{live_view.official_power:,.0f}")

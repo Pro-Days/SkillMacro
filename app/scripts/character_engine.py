@@ -574,10 +574,7 @@ def validate_character_store(store: CharacterStore) -> None:
         raise ValueError("character data version is newer than supported")
 
     if not store.characters:
-        if store.selected_index != -1:
-            raise ValueError("empty character store must select -1")
-
-        return
+        raise ValueError("character store must contain at least one character")
 
     if not (0 <= store.selected_index < len(store.characters)):
         raise ValueError("selected character index is out of range")

@@ -890,11 +890,15 @@ class _EquipPickCard(QFrame):
 class EquipmentTab(CharacterTab):
     """장비 탭"""
 
-    def __init__(self, parent: QWidget, changes: CharacterChangeHandler) -> None:
-        super().__init__(parent, changes)
+    def __init__(
+        self,
+        parent: QWidget,
+        changes: CharacterChangeHandler,
+        profile: CharacterProfile,
+    ) -> None:
+        super().__init__(parent, changes, profile)
 
-        self._profile: CharacterProfile | None = None
-        self._slots_data: list[_EquipSlotData] = self._build_slots_data(None)
+        self._slots_data: list[_EquipSlotData] = self._build_slots_data(profile)
         self._active_index: int = 0
         self._picker_open: bool = False
         self._selected_scroll_id: str | None = None
@@ -912,12 +916,11 @@ class EquipmentTab(CharacterTab):
         self._render_slots()
         self._show_detail()
 
-    def set_profile(self, profile: CharacterProfile | None) -> None:
+    def set_profile(self, profile: CharacterProfile) -> None:
         """선택 캐릭터 모델 반영"""
 
         self._profile = profile
         self._slots_data = self._build_slots_data(profile)
-        self.setEnabled(profile is not None)
         self._clear_equipped_views()
         self._clear_picker_cards()
         self._refresh_slots()
@@ -925,23 +928,12 @@ class EquipmentTab(CharacterTab):
 
     def _build_slots_data(
         self,
-        profile: CharacterProfile | None,
+        profile: CharacterProfile,
     ) -> list[_EquipSlotData]:
         """실제 장비 모델 기준 슬롯 데이터 구성"""
 
         slots_data: list[_EquipSlotData] = []
         for slot in _SLOT_ORDER:
-            if profile is None:
-                slots_data.append(
-                    _EquipSlotData(
-                        slot=slot,
-                        owned=[],
-                        equipped_index=-1,
-                        unavailable_names=set(),
-                    )
-                )
-                continue
-
             # 다른 슬롯에 장착된 장비의 선택 차단 목록 구성
             other_equipped_names: set[str] = {
                 equipment_name
@@ -1405,9 +1397,6 @@ class EquipmentTab(CharacterTab):
 
     def _rename_current(self, field: QLineEdit, item: OwnedEquipment) -> None:
         """반지·귀걸이 이름 변경 (장착 참조·유일성 유지)"""
-
-        if self._profile is None:
-            return
 
         old_name: str = item.name
         new_name: str = field.text().strip()
@@ -2705,9 +2694,6 @@ class EquipmentTab(CharacterTab):
     def select_owned(self, index: int) -> None:
         """선택한 장비를 슬롯에 장착하고 상세로 복귀"""
 
-        if self._profile is None:
-            return
-
         slot: _EquipSlotData = self._slots_data[self._active_index]
         equipment: OwnedEquipment = slot.owned[index]
         equip_equipment(self._profile, slot.slot, equipment.name)
@@ -2717,9 +2703,6 @@ class EquipmentTab(CharacterTab):
     def unequip(self) -> None:
         """슬롯 장착 해제 후 빈 상태로 복귀"""
 
-        if self._profile is None:
-            return
-
         slot: _EquipSlotData = self._slots_data[self._active_index]
         unequip_equipment(self._profile, slot.slot)
         self._picker_open = False
@@ -2727,9 +2710,6 @@ class EquipmentTab(CharacterTab):
 
     def add_owned(self) -> None:
         """새 기본 장비를 추가 (선택 화면 유지)"""
-
-        if self._profile is None:
-            return
 
         slot: _EquipSlotData = self._slots_data[self._active_index]
         create_equipment(self._profile, self._default_equipment_for_slot(slot.slot))
@@ -2739,9 +2719,6 @@ class EquipmentTab(CharacterTab):
 
     def remove_owned(self, index: int) -> None:
         """보유 장비 삭제"""
-
-        if self._profile is None:
-            return
 
         slot: _EquipSlotData = self._slots_data[self._active_index]
         removed_item: OwnedEquipment = slot.owned[index]
@@ -2907,9 +2884,6 @@ class EquipmentTab(CharacterTab):
 
     def _unique_equipment_name(self, base_name: str) -> str:
         """캐릭터 내부 유일 장비명 생성"""
-
-        if self._profile is None:
-            return base_name
 
         existing_names: set[str] = {
             equipment.name for equipment in self._profile.equipment.owned
