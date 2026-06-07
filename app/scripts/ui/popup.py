@@ -732,6 +732,12 @@ class PopupHost(QWidget):
         self._container.style().polish(self._container)
         self._container.update()
 
+    def current_content(self) -> QWidget | None:
+        """현재 팝업 내용 위젯 반환"""
+
+        # 가이드 대상 조회용 현재 콘텐츠 노출
+        return self._content
+
     def show_for(self) -> None:
         """팝업 표시 (기존 위치 유지)"""
         if self._content is None:
@@ -1165,6 +1171,21 @@ class PopupManager:
         # 팝업 닫힘 시 함께 떠있는 호버 카드 정리
         self.hide_hover_card()
         self._popup_controller.close()
+
+    def current_scroll_add_button(self) -> QPushButton | None:
+        """현재 무공비급 선택 팝업의 새 스킬 추가 버튼 반환"""
+
+        # 무공비급 선택 팝업 외 상태 제외
+        if self._active_popup != PopupKind.SCROLL_SELECT:
+            return None
+
+        # 현재 팝업 내용 타입 확인
+        content: QWidget | None = self._popup_controller.host.current_content()
+        if not isinstance(content, ScrollGridSelectContent):
+            return None
+
+        # 새 스킬 추가 버튼 반환
+        return content.add_skill_button
 
     def bind_hover_card(
         self,
@@ -2020,6 +2041,7 @@ class ScrollGridSelectContent(QFrame):
         self.setObjectName("skillScrollSelectPopup")
 
         self.popup_manager: PopupManager = popup_manager
+        self.add_skill_button: QPushButton | None = None
         columns: int = 5
         margin: int = 8
         spacing: int = 6
@@ -2095,6 +2117,7 @@ class ScrollGridSelectContent(QFrame):
             add_btn.setCursor(Qt.CursorShape.PointingHandCursor)
             add_btn.clicked.connect(on_add_skill)
             root.addWidget(add_btn)
+            self.add_skill_button = add_btn
 
         self.setLayout(root)
 

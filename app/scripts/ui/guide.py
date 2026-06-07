@@ -92,9 +92,15 @@ class GuideStep:
 class GuideDefinition:
     guide_id: str
     title: str
-    description: str
     steps: tuple[GuideStep, ...]
     recommended: bool = False
+
+
+@dataclass(slots=True)
+class CalculatorGuideSession:
+    preset: MacroPreset
+    calculator_input: CalculatorPresetInput
+    scroll_levels: dict[str, int]
 
 
 class GuideTargetRegistry:
@@ -172,6 +178,7 @@ class GuideTargetRegistry:
                 "sidebar.skill.sole": self._first_skill_sole_button,
                 "sidebar.skill.priority": self._first_skill_priority_button,
                 "sidebar.skill.custom_actions": lambda: self.master.sidebar.skill_settings._custom_actions_frame,
+                "sidebar.skill.scroll_add": lambda: self.master.popup_manager.current_scroll_add_button(),
             }
         )
 
@@ -704,8 +711,8 @@ class GuideManager:
         self._current_definition: GuideDefinition | None = None
         self._current_step_index: int = 0
         self._opened_link_editor: bool = False
-        self._calculator_backup_input: CalculatorPresetInput | None = None
-        self._calculator_backup_scroll_levels: dict[str, int] | None = None
+        self._opened_custom_scroll_popup: bool = False
+        self._calculator_guide_session: CalculatorGuideSession | None = None
         self._calculator_results_requested: bool = False
 
     def show_start_prompt_if_needed(self) -> None:
@@ -790,6 +797,11 @@ class GuideManager:
         if self._opened_link_editor:
             self.master.sidebar.link_skill_editor.cancel()
             self._opened_link_editor = False
+
+        # 임시 커스텀 무공비급 선택 팝업 정리
+        if self._opened_custom_scroll_popup:
+            self.master.popup_manager.close_popup()
+            self._opened_custom_scroll_popup = False
 
         # 계산기 예시 입력 복원
         self._restore_calculator_guide_input()
@@ -966,6 +978,27 @@ class GuideManager:
         self.master.sidebar.link_skill_settings.create_new()
         self._opened_link_editor = True
 
+    def _custom_scroll_add_button_page(self) -> None:
+        """커스텀 무공비급 추가 버튼 표시"""
+
+        # 이미 대상 팝업이 열린 상태면 현재 화면 유지
+        add_button: QPushButton | None = (
+            self.master.popup_manager.current_scroll_add_button()
+        )
+        if (
+            self.master.page_navigator.currentIndex() == 0
+            and self.master.sidebar.page_navigator.currentIndex() == 1
+            and add_button is not None
+        ):
+            return
+
+        # 무공비급 사용 설정 화면 진입
+        self._sidebar_page(1)
+
+        # 선택 무공비급 영역 기준 팝업 표시
+        self.master.sidebar.skill_settings.on_scroll_select_clicked()
+        self._opened_custom_scroll_popup = True
+
     def _close_link_editor_page(self) -> None:
         """임시 연계스킬 편집 페이지 취소 후 목록 진입"""
 
@@ -1042,14 +1075,24 @@ class GuideManager:
     def _begin_calculator_guide_input(self) -> None:
         """계산기 가이드 예시 입력 세션 시작"""
 
-        # 기존 예시 세션 재사용
-        if self._calculator_backup_input is not None:
+        # 현재 프리셋 기준 세션 재사용
+        current_preset: MacroPreset = app_state.macro.current_preset
+        current_session: CalculatorGuideSession | None = (
+            self._calculator_guide_session
+        )
+        if current_session is not None and current_session.preset is current_preset:
             return
 
+        # 다른 프리셋 세션 잔여 상태 복원
+        if current_session is not None:
+            self._restore_calculator_guide_input()
+
         # 현재 사용자 입력과 무공비급 레벨 메모리 백업
-        current_preset: MacroPreset = app_state.macro.current_preset
-        self._calculator_backup_input = copy.deepcopy(current_preset.info.calculator)
-        self._calculator_backup_scroll_levels = current_preset.info.scroll_levels.copy()
+        self._calculator_guide_session = CalculatorGuideSession(
+            preset=current_preset,
+            calculator_input=copy.deepcopy(current_preset.info.calculator),
+            scroll_levels=current_preset.info.scroll_levels.copy(),
+        )
 
         # 예시 입력 주입 및 저장 차단
         current_preset.info.calculator = self._build_calculator_guide_input()
@@ -1069,25 +1112,23 @@ class GuideManager:
     def _restore_calculator_guide_input(self) -> None:
         """계산기 가이드 예시 입력 세션 복원"""
 
-        # 백업이 없으면 복원 대상 없음
-        backup_input: CalculatorPresetInput | None = self._calculator_backup_input
-        backup_scroll_levels: dict[str, int] | None = (
-            self._calculator_backup_scroll_levels
-        )
-        if backup_input is None or backup_scroll_levels is None:
+        # 세션이 없으면 복원 대상 없음
+        current_session: CalculatorGuideSession | None = self._calculator_guide_session
+        if current_session is None:
             return
 
         # 진행 중 계산 중단 후 원래 입력 복구
         self.master.sim_ui.cancel_results_calculation_for_shutdown()
-        current_preset: MacroPreset = app_state.macro.current_preset
-        current_preset.info.calculator = backup_input
-        current_preset.info.scroll_levels = backup_scroll_levels
+        current_session.preset.info.calculator = current_session.calculator_input
+        current_session.preset.info.scroll_levels = current_session.scroll_levels
         self.master.sim_ui.input_page.editor.set_persist_enabled(True)
-        self.master.sim_ui.input_page.editor.load_from_preset_state()
+
+        # 현재 화면이 복원 대상 프리셋일 때만 입력 UI 재동기화
+        if app_state.macro.current_preset is current_session.preset:
+            self.master.sim_ui.input_page.editor.load_from_preset_state()
 
         # 예시 세션 상태 초기화
-        self._calculator_backup_input = None
-        self._calculator_backup_scroll_levels = None
+        self._calculator_guide_session = None
         self._calculator_results_requested = False
 
     def _build_calculator_guide_input(self) -> CalculatorPresetInput:
@@ -1213,7 +1254,6 @@ class GuideManager:
             GuideDefinition(
                 guide_id="macro",
                 title="매크로 사용",
-                description="서버, 기본 설정, 무공비급 장착, 스킬 배치, 입력키를 확인합니다.",
                 recommended=True,
                 steps=(
                     GuideStep(
@@ -1317,31 +1357,30 @@ class GuideManager:
             GuideDefinition(
                 guide_id="custom_scroll",
                 title="커스텀 무공비급 추가",
-                description="기본 목록에 없는 무공비급을 추가하는 위치를 확인합니다.",
                 steps=(
                     GuideStep(
                         "커스텀 무공비급 진입 위치",
-                        "커스텀 무공비급은 무공비급 선택 목록에서 추가할 수 있습니다.",
+                        "커스텀 무공비급은 스킬 사용설정의 선택 무공비급 목록에서 추가할 수 있습니다.",
                         "sidebar.skill.selected_scroll",
                         lambda: self._sidebar_page(1),
                     ),
                     GuideStep(
                         "무공비급 선택 팝업 열기",
-                        "선택 무공비급 영역을 누르면 무공비급 목록이 열립니다. 목록 아래의 + 새 스킬 추가에서 직접 추가할 수 있습니다.",
+                        "선택 무공비급 영역을 누르면 현재 서버에서 사용할 수 있는 무공비급 목록이 열립니다.",
                         "sidebar.skill.selected_scroll",
                         lambda: self._sidebar_page(1),
                     ),
                     GuideStep(
-                        "입력 항목 확인",
-                        "추가 화면에서는 무공비급 이름, 스킬 이름, 레벨별 데미지, 쿨타임 같은 값을 확인합니다.",
-                        None,
-                        lambda: self._sidebar_page(1),
+                        "새 스킬 추가 위치",
+                        "목록 아래의 + 새 스킬 추가를 누르면 커스텀 무공비급과 스킬을 입력하는 창이 열립니다. 가이드에서는 버튼 위치만 확인합니다.",
+                        "sidebar.skill.scroll_add",
+                        self._custom_scroll_add_button_page,
                     ),
                     GuideStep(
-                        "저장 전 확인",
-                        "1차 가이드에서는 실제 저장을 유도하지 않습니다. 값을 바꾸는 작업은 사용자가 직접 판단해 진행합니다.",
-                        None,
-                        lambda: self._sidebar_page(1),
+                        "입력 항목 확인",
+                        "추가 창에서는 무공비급 이름, 스킬 이름, 레벨별 데미지, 쿨타임을 입력합니다. 이 버튼을 직접 눌렀을 때만 창이 열립니다.",
+                        "sidebar.skill.scroll_add",
+                        self._custom_scroll_add_button_page,
                     ),
                     GuideStep(
                         "마무리",
@@ -1354,7 +1393,6 @@ class GuideManager:
             GuideDefinition(
                 guide_id="link",
                 title="연계스킬 만들기",
-                description="여러 스킬을 하나의 연계 단위로 묶는 화면을 확인합니다.",
                 steps=(
                     GuideStep(
                         "연계설정 위치 확인",
@@ -1421,7 +1459,6 @@ class GuideManager:
             GuideDefinition(
                 guide_id="calculator",
                 title="계산기",
-                description="예시 입력으로 계산기 결과 화면의 의미를 확인합니다.",
                 recommended=True,
                 steps=(
                     GuideStep(
@@ -1543,7 +1580,6 @@ class GuideManager:
             GuideDefinition(
                 guide_id="character",
                 title="캐릭터 시스템",
-                description="캐릭터별 입력, 계산기 적용 흐름을 확인합니다.",
                 recommended=True,
                 steps=(
                     GuideStep(
@@ -1623,7 +1659,6 @@ class GuideManager:
             GuideDefinition(
                 guide_id="skill_settings",
                 title="스킬 사용 설정",
-                description="배치한 스킬이 언제 자동으로 쓰이는지 확인합니다.",
                 steps=(
                     GuideStep(
                         "스킬 사용설정 위치",
