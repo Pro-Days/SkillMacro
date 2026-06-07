@@ -38,6 +38,15 @@ from app.scripts.ui.character_ui.widgets import (
 )
 
 
+_COLUMN_HEADER_STAT_LABELS: dict[DisplayStandColumn, str] = {
+    DisplayStandColumn.HELMET: "경험치%",
+    DisplayStandColumn.ARMOR: "공격력",
+    DisplayStandColumn.BELT: "드랍률%",
+    DisplayStandColumn.SHOES: "공격력%",
+    DisplayStandColumn.SET: "올스텟%",
+}
+
+
 def _column_stat_label(column: DisplayStandColumn) -> str:
     """진열대 열의 표시 스탯 이름"""
 
@@ -188,7 +197,7 @@ class DisplayStandTab(CharacterTab):
         self._table.setVerticalHeaderLabels([spec.name for spec in DISPLAY_STAND_SPECS])
         self._table.setHorizontalHeaderLabels(
             [
-                f"{title}\n{_column_stat_label(column)}"
+                f"{title}\n{_COLUMN_HEADER_STAT_LABELS[column]}"
                 for column, title in DISPLAY_STAND_COLUMNS
             ]
         )
