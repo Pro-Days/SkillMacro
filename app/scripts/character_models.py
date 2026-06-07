@@ -1,0 +1,800 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any
+from uuid import uuid4
+
+from app.scripts.calculator_models import RealmTier, StatKey
+
+CHARACTER_DATA_VERSION: int = 1
+DEFAULT_CHARACTER_NAME: str = "새 캐릭터"
+TITLE_STAT_SLOT_COUNT: int = 3
+EQUIPMENT_OPTION_SLOT_COUNT: int = 3
+MAX_EQUIPPED_TALISMAN_COUNT: int = 3
+MAX_CHARACTER_LEVEL: int = 200
+MAX_TALISMAN_LEVEL: int = 14
+MAX_ELIXIR_COUNT: int = 10
+MAX_REFORGE_STEP: int = 20
+
+
+class EquipmentSlot(str, Enum):
+    """캐릭터 장비 슬롯"""
+
+    HELMET = "helmet"
+    ARMOR = "armor"
+    BELT = "belt"
+    SHOES = "shoes"
+    WEAPON = "weapon"
+    RING1 = "ring1"
+    RING2 = "ring2"
+    NECKLACE = "necklace"
+    EARRING = "earring"
+
+
+class EquipmentKind(str, Enum):
+    """캐릭터 보유 장비 종류"""
+
+    HELMET = "helmet"
+    ARMOR = "armor"
+    BELT = "belt"
+    SHOES = "shoes"
+    WEAPON = "weapon"
+    RING = "ring"
+    NECKLACE = "necklace"
+    EARRING = "earring"
+
+
+class EquipmentGrade(str, Enum):
+    """장비 등급"""
+
+    BASIC = "basic"
+    RADIANT = "radiant"
+
+
+class ScrollTier(str, Enum):
+    """주문서 성공률 단계"""
+
+    TEN = "10"
+    TWENTY = "20"
+    FORTY = "40"
+    FIFTY = "50"
+    SIXTY = "60"
+    HUNDRED = "100"
+
+
+EQUIPMENT_KIND_SLOTS: dict[EquipmentKind, tuple[EquipmentSlot, ...]] = {
+    EquipmentKind.HELMET: (EquipmentSlot.HELMET,),
+    EquipmentKind.ARMOR: (EquipmentSlot.ARMOR,),
+    EquipmentKind.BELT: (EquipmentSlot.BELT,),
+    EquipmentKind.SHOES: (EquipmentSlot.SHOES,),
+    EquipmentKind.WEAPON: (EquipmentSlot.WEAPON,),
+    EquipmentKind.RING: (EquipmentSlot.RING1, EquipmentSlot.RING2),
+    EquipmentKind.NECKLACE: (EquipmentSlot.NECKLACE,),
+    EquipmentKind.EARRING: (EquipmentSlot.EARRING,),
+}
+
+EQUIPMENT_SLOT_KIND: dict[EquipmentSlot, EquipmentKind] = {
+    slot: kind for kind, slots in EQUIPMENT_KIND_SLOTS.items() for slot in slots
+}
+
+
+class PotentialOption(str, Enum):
+    """잠재능력 옵션"""
+
+    STR_PERCENT = "str_percent"
+    DEXTERITY_PERCENT = "dexterity_percent"
+    VITALITY_PERCENT = "vitality_percent"
+    LUCK_PERCENT = "luck_percent"
+    SKILL_SPEED_PERCENT = "skill_speed_percent"
+    RESIST_PERCENT = "resist_percent"
+    CRIT_DAMAGE_PERCENT = "crit_damage_percent"
+    HP_PERCENT = "hp_percent"
+    BOSS_ATTACK_PERCENT = "boss_attack_percent"
+
+
+class AdditionalOption(str, Enum):
+    """추가능력 옵션"""
+
+    STR = "str"
+    DEXTERITY = "dexterity"
+    VITALITY = "vitality"
+    LUCK = "luck"
+    HP = "hp"
+    CRIT_RATE_PERCENT = "crit_rate_percent"
+    DROP_RATE_PERCENT = "drop_rate_percent"
+    POTION_HEAL_PERCENT = "potion_heal_percent"
+
+
+class DisplayStandColumn(str, Enum):
+    """진열대 입력 열"""
+
+    HELMET = "helmet"
+    ARMOR = "armor"
+    BELT = "belt"
+    SHOES = "shoes"
+    SET = "set"
+
+
+def _new_id() -> str:
+    """새 저장 식별자 생성"""
+
+    return str(uuid4())
+
+
+def _read_dict(data: dict[str, Any], key: str) -> dict[str, Any]:
+    """저장 루트의 하위 딕셔너리 조회"""
+
+    value: Any = data[key]
+    if not isinstance(value, dict):
+        raise TypeError(f"{key} must be a dict")
+
+    return value
+
+
+def _read_list(data: dict[str, Any], key: str) -> list[Any]:
+    """저장 루트의 하위 리스트 조회"""
+
+    value: Any = data[key]
+    if not isinstance(value, list):
+        raise TypeError(f"{key} must be a list")
+
+    return value
+
+
+def _read_fixed_optional_items(
+    raw_items: list[Any],
+    count: int,
+    label: str,
+) -> tuple[dict[str, Any] | None, ...]:
+    """고정 길이 선택 슬롯 저장값 검증"""
+
+    # 저장 슬롯 개수 불변식 검증
+    if len(raw_items) != count:
+        raise ValueError(f"{label} must have exactly {count} items")
+
+    # 선택 슬롯 원소 타입 검증
+    items: list[dict[str, Any] | None] = []
+    for raw_item in raw_items:
+        if raw_item is None:
+            items.append(None)
+            continue
+
+        if not isinstance(raw_item, dict):
+            raise TypeError(f"{label} item must be a dict or null")
+
+        items.append(raw_item)
+
+    return tuple(items)
+
+
+def _stat_float_map_from_dict(data: dict[str, Any]) -> dict[StatKey, float]:
+    """StatKey 문자열 맵 복원"""
+
+    values: dict[StatKey, float] = {}
+    for key, value in data.items():
+        values[StatKey(str(key))] = float(value)
+
+    return values
+
+
+def _stat_float_map_to_dict(data: dict[StatKey, float]) -> dict[str, float]:
+    """StatKey 맵 저장 구조 구성"""
+
+    return {stat_key.value: float(value) for stat_key, value in data.items()}
+
+
+@dataclass(slots=True)
+class StatDistribution:
+    """캐릭터 스탯 분배"""
+
+    strength: int = 0
+    dexterity: int = 0
+    vitality: int = 0
+    luck: int = 0
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "StatDistribution":
+        """저장 데이터로부터 스탯 분배 복원"""
+
+        return cls(
+            strength=int(data["strength"]),
+            dexterity=int(data["dexterity"]),
+            vitality=int(data["vitality"]),
+            luck=int(data["luck"]),
+        )
+
+    def to_dict(self) -> dict[str, int]:
+        """스탯 분배 직렬화"""
+
+        return {
+            "strength": self.strength,
+            "dexterity": self.dexterity,
+            "vitality": self.vitality,
+            "luck": self.luck,
+        }
+
+
+@dataclass(slots=True)
+class DanjeonDistribution:
+    """캐릭터 단전 분배"""
+
+    upper: int = 0
+    middle: int = 0
+    lower: int = 0
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "DanjeonDistribution":
+        """저장 데이터로부터 단전 분배 복원"""
+
+        return cls(
+            upper=int(data["upper"]),
+            middle=int(data["middle"]),
+            lower=int(data["lower"]),
+        )
+
+    def to_dict(self) -> dict[str, int]:
+        """단전 분배 직렬화"""
+
+        return {
+            "upper": self.upper,
+            "middle": self.middle,
+            "lower": self.lower,
+        }
+
+
+@dataclass(slots=True)
+class TitleStatSlot:
+    """칭호 스탯 슬롯"""
+
+    stat_key: StatKey
+    value: float
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "TitleStatSlot":
+        """저장 데이터로부터 칭호 스탯 슬롯 복원"""
+
+        return cls(
+            stat_key=StatKey(str(data["stat_key"])),
+            value=float(data["value"]),
+        )
+
+    def to_dict(self) -> dict[str, str | float]:
+        """칭호 스탯 슬롯 직렬화"""
+
+        return {
+            "stat_key": self.stat_key.value,
+            "value": float(self.value),
+        }
+
+
+@dataclass(slots=True)
+class CharacterTitle:
+    """캐릭터 보유 칭호"""
+
+    id: str = field(default_factory=_new_id)
+    name: str = ""
+    slots: tuple[TitleStatSlot | None, ...] = field(
+        default_factory=lambda: (None, None, None)
+    )
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "CharacterTitle":
+        """저장 데이터로부터 보유 칭호 복원"""
+
+        # 칭호 스탯 슬롯 저장 구조 검증
+        raw_slots: list[Any] = _read_list(data, "slots")
+        slot_items: tuple[dict[str, Any] | None, ...] = _read_fixed_optional_items(
+            raw_slots,
+            TITLE_STAT_SLOT_COUNT,
+            "title stat slots",
+        )
+
+        # 칭호 스탯 슬롯 모델 복원
+        slots: tuple[TitleStatSlot | None, ...] = tuple(
+            None if item is None else TitleStatSlot.from_dict(item)
+            for item in slot_items
+        )
+
+        return cls(
+            id=str(data["id"]),
+            name=str(data["name"]),
+            slots=slots,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """보유 칭호 직렬화"""
+
+        return {
+            "id": self.id,
+            "name": self.name,
+            "slots": [
+                slot.to_dict() if slot is not None else None for slot in self.slots
+            ],
+        }
+
+
+@dataclass(slots=True)
+class CharacterTalisman:
+    """캐릭터 보유 부적"""
+
+    id: str = field(default_factory=_new_id)
+    talisman_key: str = ""
+    level: int = 0
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "CharacterTalisman":
+        """저장 데이터로부터 보유 부적 복원"""
+
+        return cls(
+            id=str(data["id"]),
+            talisman_key=str(data["talisman_key"]),
+            level=int(data["level"]),
+        )
+
+    def to_dict(self) -> dict[str, str | int]:
+        """보유 부적 직렬화"""
+
+        return {
+            "id": self.id,
+            "talisman_key": self.talisman_key,
+            "level": self.level,
+        }
+
+
+@dataclass(slots=True)
+class Equipped:
+    """캐릭터 장착 상태"""
+
+    title_id: str | None = None
+    talisman_ids: list[str] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "Equipped":
+        """저장 데이터로부터 장착 상태 복원"""
+
+        raw_title_id: Any = data["title_id"]
+        title_id: str | None = None if raw_title_id is None else str(raw_title_id)
+        return cls(
+            title_id=title_id,
+            talisman_ids=[str(item) for item in _read_list(data, "talisman_ids")],
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """장착 상태 직렬화"""
+
+        return {
+            "title_id": self.title_id,
+            "talisman_ids": self.talisman_ids.copy(),
+        }
+
+
+@dataclass(slots=True)
+class PotentialLine:
+    """잠재능력 입력 라인"""
+
+    option: PotentialOption
+    value: float
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "PotentialLine":
+        """저장 데이터로부터 잠재능력 라인 복원"""
+
+        return cls(
+            option=PotentialOption(str(data["option"])),
+            value=float(data["value"]),
+        )
+
+    def to_dict(self) -> dict[str, str | float]:
+        """잠재능력 라인 직렬화"""
+
+        return {
+            "option": self.option.value,
+            "value": float(self.value),
+        }
+
+
+@dataclass(slots=True)
+class AdditionalLine:
+    """추가능력 입력 라인"""
+
+    option: AdditionalOption
+    value: float
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AdditionalLine":
+        """저장 데이터로부터 추가능력 라인 복원"""
+
+        return cls(
+            option=AdditionalOption(str(data["option"])),
+            value=float(data["value"]),
+        )
+
+    def to_dict(self) -> dict[str, str | float]:
+        """추가능력 라인 직렬화"""
+
+        return {
+            "option": self.option.value,
+            "value": float(self.value),
+        }
+
+
+@dataclass(slots=True)
+class EquipmentFreeStatLine:
+    """장비 자유 기본 스탯 라인"""
+
+    stat_key: StatKey
+    value: float
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "EquipmentFreeStatLine":
+        """저장 데이터로부터 자유 기본 스탯 라인 복원"""
+
+        return cls(
+            stat_key=StatKey(str(data["stat_key"])),
+            value=float(data["value"]),
+        )
+
+    def to_dict(self) -> dict[str, str | float]:
+        """자유 기본 스탯 라인 직렬화"""
+
+        return {
+            "stat_key": self.stat_key.value,
+            "value": float(self.value),
+        }
+
+
+@dataclass(slots=True)
+class EquipmentScrollLine:
+    """장비 주문서 적용 라인"""
+
+    id: str = field(default_factory=_new_id)
+    stat_key: StatKey = StatKey.ATTACK
+    tier: ScrollTier = ScrollTier.HUNDRED
+    count: int = 1
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "EquipmentScrollLine":
+        """저장 데이터로부터 주문서 적용 라인 복원"""
+
+        return cls(
+            id=str(data["id"]),
+            stat_key=StatKey(str(data["stat_key"])),
+            tier=ScrollTier(str(data["tier"])),
+            count=int(data["count"]),
+        )
+
+    def to_dict(self) -> dict[str, str | int]:
+        """주문서 적용 라인 직렬화"""
+
+        return {
+            "id": self.id,
+            "stat_key": self.stat_key.value,
+            "tier": self.tier.value,
+            "count": int(self.count),
+        }
+
+
+@dataclass(slots=True)
+class OwnedEquipment:
+    """캐릭터 장비 입력 상태"""
+
+    name: str = ""
+    kind: EquipmentKind = EquipmentKind.WEAPON
+    item_name: str | None = None
+    level: int = 0
+    tier: int = 1
+    grade: EquipmentGrade | None = None
+    base_stat_lines: list[EquipmentFreeStatLine] = field(default_factory=list)
+    reforge_step: int = 0
+    reforge_stats: dict[StatKey, float] = field(default_factory=dict)
+    scrolls: list[EquipmentScrollLine] = field(default_factory=list)
+    potentials: tuple[PotentialLine | None, ...] = field(
+        default_factory=lambda: (None, None, None)
+    )
+    additionals: tuple[AdditionalLine | None, ...] = field(
+        default_factory=lambda: (None, None, None)
+    )
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "OwnedEquipment":
+        """저장 데이터로부터 장비 입력 상태 복원"""
+
+        raw_item_name: Any = data["item_name"]
+        item_name: str | None = None if raw_item_name is None else str(raw_item_name)
+
+        raw_grade: Any = data["grade"]
+        grade: EquipmentGrade | None = None
+        if raw_grade is not None:
+            grade = EquipmentGrade(str(raw_grade))
+
+        scrolls: list[EquipmentScrollLine] = []
+        for raw_scroll in _read_list(data, "scrolls"):
+            if not isinstance(raw_scroll, dict):
+                raise TypeError("scroll line must be a dict")
+
+            scrolls.append(EquipmentScrollLine.from_dict(raw_scroll))
+
+        # 장비 옵션 슬롯 저장 구조 검증
+        potential_items: tuple[dict[str, Any] | None, ...] = _read_fixed_optional_items(
+            _read_list(data, "potentials"),
+            EQUIPMENT_OPTION_SLOT_COUNT,
+            "potential lines",
+        )
+        additional_items: tuple[dict[str, Any] | None, ...] = (
+            _read_fixed_optional_items(
+                _read_list(data, "additionals"),
+                EQUIPMENT_OPTION_SLOT_COUNT,
+                "additional lines",
+            )
+        )
+
+        # 장비 옵션 슬롯 모델 복원
+        potentials: tuple[PotentialLine | None, ...] = tuple(
+            None if item is None else PotentialLine.from_dict(item)
+            for item in potential_items
+        )
+        additionals: tuple[AdditionalLine | None, ...] = tuple(
+            None if item is None else AdditionalLine.from_dict(item)
+            for item in additional_items
+        )
+
+        return cls(
+            name=str(data["name"]),
+            kind=EquipmentKind(str(data["kind"])),
+            item_name=item_name,
+            level=int(data["level"]),
+            tier=int(data["tier"]),
+            grade=grade,
+            base_stat_lines=[
+                EquipmentFreeStatLine.from_dict(item)
+                for item in _read_list(data, "base_stat_lines")
+            ],
+            reforge_step=int(data["reforge_step"]),
+            reforge_stats=_stat_float_map_from_dict(_read_dict(data, "reforge_stats")),
+            scrolls=scrolls,
+            potentials=potentials,
+            additionals=additionals,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """장비 입력 상태 직렬화"""
+
+        return {
+            "name": self.name,
+            "kind": self.kind.value,
+            "item_name": self.item_name,
+            "level": self.level,
+            "tier": self.tier,
+            "grade": self.grade.value if self.grade is not None else None,
+            "base_stat_lines": [line.to_dict() for line in self.base_stat_lines],
+            "reforge_step": self.reforge_step,
+            "reforge_stats": _stat_float_map_to_dict(self.reforge_stats),
+            "scrolls": [line.to_dict() for line in self.scrolls],
+            "potentials": [
+                line.to_dict() if line is not None else None for line in self.potentials
+            ],
+            "additionals": [
+                line.to_dict() if line is not None else None
+                for line in self.additionals
+            ],
+        }
+
+
+@dataclass(slots=True)
+class EquipmentState:
+    """캐릭터 보유 장비와 장착 상태"""
+
+    owned: list[OwnedEquipment] = field(default_factory=list)
+    equipped: dict[EquipmentSlot, str | None] = field(
+        default_factory=lambda: {slot: None for slot in EquipmentSlot}
+    )
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "EquipmentState":
+        """저장 데이터로부터 보유 장비와 장착 상태 복원"""
+
+        owned: list[OwnedEquipment] = [
+            OwnedEquipment.from_dict(item) for item in _read_list(data, "owned")
+        ]
+        equipped: dict[EquipmentSlot, str | None] = {}
+        for slot in EquipmentSlot:
+            raw_name: Any = _read_dict(data, "equipped")[slot.value]
+            if raw_name is None:
+                equipped[slot] = None
+                continue
+
+            equipped[slot] = str(raw_name)
+
+        return cls(owned=owned, equipped=equipped)
+
+    def to_dict(self) -> dict[str, Any]:
+        """보유 장비와 장착 상태 직렬화"""
+
+        return {
+            "owned": [equipment.to_dict() for equipment in self.owned],
+            "equipped": {
+                slot.value: equipment_name
+                for slot, equipment_name in self.equipped.items()
+            },
+        }
+
+
+@dataclass(slots=True)
+class DisplayStandState:
+    """진열대 입력 상태"""
+
+    entries: dict[str, dict[DisplayStandColumn, float]] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "DisplayStandState":
+        """저장 데이터로부터 진열대 상태 복원"""
+
+        return cls(
+            entries={
+                str(key): {
+                    DisplayStandColumn(str(column)): float(column_value)
+                    for column, column_value in value.items()
+                }
+                for key, value in data["entries"].items()
+            }
+        )
+
+    def to_dict(self) -> dict[str, dict[str, dict[str, float]]]:
+        """진열대 상태 직렬화"""
+
+        return {
+            "entries": {
+                stand: {column.value: float(value) for column, value in entry.items()}
+                for stand, entry in self.entries.items()
+            }
+        }
+
+
+@dataclass(slots=True)
+class ElixirState:
+    """영단 사용 상태"""
+
+    counts: dict[str, int] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ElixirState":
+        """저장 데이터로부터 영단 상태 복원"""
+
+        return cls(
+            counts={str(key): int(value) for key, value in data["counts"].items()}
+        )
+
+    def to_dict(self) -> dict[str, dict[str, int]]:
+        """영단 상태 직렬화"""
+
+        return {"counts": {elixir: int(count) for elixir, count in self.counts.items()}}
+
+
+@dataclass(slots=True)
+class PillState:
+    """환 사용 상태"""
+
+    active: set[str] = field(default_factory=set)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "PillState":
+        """저장 데이터로부터 환 상태 복원"""
+
+        return cls(active={str(item) for item in _read_list(data, "active")})
+
+    def to_dict(self) -> dict[str, list[str]]:
+        """환 상태 직렬화"""
+
+        return {"active": sorted(self.active)}
+
+
+@dataclass(slots=True)
+class CharacterProfile:
+    """전역 캐릭터 프로필"""
+
+    id: str = field(default_factory=_new_id)
+    name: str = ""
+    level: int = 0
+    realm: RealmTier = RealmTier.THIRD_RATE
+    vip: bool = False
+    distribution: StatDistribution = field(default_factory=StatDistribution)
+    danjeon: DanjeonDistribution = field(default_factory=DanjeonDistribution)
+    titles: list[CharacterTitle] = field(default_factory=list)
+    talismans: list[CharacterTalisman] = field(default_factory=list)
+    equipped: Equipped = field(default_factory=Equipped)
+    equipment: EquipmentState = field(default_factory=EquipmentState)
+    display_stand: DisplayStandState = field(default_factory=DisplayStandState)
+    elixir: ElixirState = field(default_factory=ElixirState)
+    pill: PillState = field(default_factory=PillState)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "CharacterProfile":
+        """저장 데이터로부터 캐릭터 프로필 복원"""
+
+        return cls(
+            id=str(data["id"]),
+            name=str(data["name"]),
+            level=int(data["level"]),
+            realm=RealmTier(str(data["realm"])),
+            vip=bool(data["vip"]),
+            distribution=StatDistribution.from_dict(_read_dict(data, "distribution")),
+            danjeon=DanjeonDistribution.from_dict(_read_dict(data, "danjeon")),
+            titles=[
+                CharacterTitle.from_dict(item) for item in _read_list(data, "titles")
+            ],
+            talismans=[
+                CharacterTalisman.from_dict(item)
+                for item in _read_list(data, "talismans")
+            ],
+            equipped=Equipped.from_dict(_read_dict(data, "equipped")),
+            equipment=EquipmentState.from_dict(_read_dict(data, "equipment")),
+            display_stand=DisplayStandState.from_dict(
+                _read_dict(data, "display_stand")
+            ),
+            elixir=ElixirState.from_dict(_read_dict(data, "elixir")),
+            pill=PillState.from_dict(_read_dict(data, "pill")),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """캐릭터 프로필 직렬화"""
+
+        return {
+            "id": self.id,
+            "name": self.name,
+            "level": self.level,
+            "realm": self.realm.value,
+            "vip": self.vip,
+            "distribution": self.distribution.to_dict(),
+            "danjeon": self.danjeon.to_dict(),
+            "titles": [title.to_dict() for title in self.titles],
+            "talismans": [talisman.to_dict() for talisman in self.talismans],
+            "equipped": self.equipped.to_dict(),
+            "equipment": self.equipment.to_dict(),
+            "display_stand": self.display_stand.to_dict(),
+            "elixir": self.elixir.to_dict(),
+            "pill": self.pill.to_dict(),
+        }
+
+
+@dataclass(slots=True)
+class CharacterStore:
+    """전역 캐릭터 저장 루트"""
+
+    version: int = CHARACTER_DATA_VERSION
+    characters: list[CharacterProfile] = field(
+        default_factory=lambda: [CharacterProfile(name=DEFAULT_CHARACTER_NAME)]
+    )
+    selected_index: int = 0
+
+    @classmethod
+    def create_default(cls) -> "CharacterStore":
+        """기본 캐릭터 1개를 포함한 저장 루트 생성"""
+
+        return cls(
+            version=CHARACTER_DATA_VERSION,
+            characters=[CharacterProfile(name=DEFAULT_CHARACTER_NAME)],
+            selected_index=0,
+        )
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "CharacterStore":
+        """저장 데이터로부터 캐릭터 저장 루트 복원"""
+
+        return cls(
+            version=int(data["version"]),
+            characters=[
+                CharacterProfile.from_dict(item)
+                for item in _read_list(data, "characters")
+            ],
+            selected_index=int(data["selected_index"]),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """캐릭터 저장 루트 직렬화"""
+
+        return {
+            "version": self.version,
+            "characters": [character.to_dict() for character in self.characters],
+            "selected_index": self.selected_index,
+        }

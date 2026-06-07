@@ -1,0 +1,171 @@
+"""영단 탭"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+
+from PySide6.QtCore import QSignalBlocker
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QVBoxLayout,
+    QWidget,
+)
+
+from app.scripts.calculator_models import STAT_SPECS
+from app.scripts.character_data import ELIXIR_SPECS
+from app.scripts.character_models import MAX_ELIXIR_COUNT, CharacterProfile
+from app.scripts.custom_classes import CustomFont
+from app.scripts.ui.character_ui.change_handler import CharacterChangeHandler
+from app.scripts.ui.character_ui.tabs.base import CharacterTab
+from app.scripts.ui.character_ui.widgets import (
+    CharCard,
+    ColorOrb,
+    FlowLayout,
+    StepperField,
+)
+
+
+class _ElixirCard(QFrame):
+    """영단 1종 카드"""
+
+    def __init__(
+        self,
+        parent: QWidget,
+        elixir: str,
+        on_changed: Callable[[str, int], None],
+    ) -> None:
+        super().__init__(parent)
+
+        self.setObjectName("charPillCard")
+        self.setProperty("on", False)
+        self.setFixedWidth(150)
+
+        self._elixir: str = elixir
+        self._on_changed: Callable[[str, int], None] = on_changed
+
+        spec = ELIXIR_SPECS[elixir]
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(14, 14, 14, 14)
+        layout.setSpacing(10)
+
+        # 영단 이름 표시
+        top = QHBoxLayout()
+        top.setSpacing(10)
+        top.addWidget(ColorOrb(self, spec.color))
+        name_label: QLabel = QLabel(elixir, self)
+        name_label.setObjectName("charPillName")
+        name_label.setFont(CustomFont(11, bold=True))
+        top.addWidget(name_label)
+        top.addStretch(1)
+        layout.addLayout(top)
+
+        # 영단 효과 표시
+        effect_text: str = ", ".join(
+            f"{STAT_SPECS[stat_key]} +{value:g}"
+            for stat_key, value in spec.effects.items()
+        )
+        effect_label: QLabel = QLabel(effect_text, self)
+        effect_label.setObjectName("charPillEff")
+        effect_label.setFont(CustomFont(9))
+        effect_label.setWordWrap(True)
+        effect_label.setMinimumHeight(32)
+        layout.addWidget(effect_label)
+
+        # 보유 수 입력
+        counter = QHBoxLayout()
+        counter.setSpacing(8)
+
+        self._count_field: StepperField = StepperField(
+            self,
+            "0",
+            integer=True,
+        )
+        self._count_field.value_changed.connect(self._on_count)
+
+        max_label: QLabel = QLabel(f"/ {MAX_ELIXIR_COUNT}", self)
+        max_label.setObjectName("charMuted")
+        max_label.setFont(CustomFont(9))
+
+        counter.addWidget(self._count_field, 1)
+        counter.addWidget(max_label)
+        layout.addLayout(counter)
+
+    def set_count(self, count: int) -> None:
+        """보유 수 표시 반영"""
+
+        with QSignalBlocker(self._count_field.input):
+            self._count_field.set_number(float(count))
+        self.setProperty("on", count > 0)
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def _on_count(self) -> None:
+        """입력 보유 수 반영"""
+
+        count: int = max(0, min(MAX_ELIXIR_COUNT, int(self._count_field.number())))
+        self.setProperty("on", count > 0)
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self._on_changed(self._elixir, count)
+
+
+class ElixirTab(CharacterTab):
+    """영단 탭"""
+
+    def __init__(
+        self,
+        parent: QWidget,
+        changes: CharacterChangeHandler,
+        profile: CharacterProfile,
+    ) -> None:
+        super().__init__(parent, changes, profile)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        card: CharCard = CharCard(self, "영단")
+
+        grid_container: QFrame = QFrame(self)
+        flow: FlowLayout = FlowLayout(grid_container, margin=0, spacing=12, center=True)
+
+        self._cards: dict[str, _ElixirCard] = {}
+        for elixir in ELIXIR_SPECS:
+            card_widget: _ElixirCard = _ElixirCard(
+                grid_container,
+                elixir,
+                self._set_count,
+            )
+            self._cards[elixir] = card_widget
+            flow.addWidget(card_widget)
+
+        grid_container.setLayout(flow)
+
+        card.add_widget(grid_container)
+        layout.addWidget(card)
+        layout.addStretch(1)
+
+    def set_profile(self, profile: CharacterProfile) -> None:
+        """선택 캐릭터 모델 반영"""
+
+        self._profile = profile
+
+        for elixir, card in self._cards.items():
+            count: int = profile.elixir.counts.get(elixir, 0)
+            card.set_count(count)
+
+    def _set_count(self, elixir: str, count: int) -> None:
+        """영단 보유 수 모델 반영"""
+
+        if self._profile.elixir.counts.get(elixir, 0) == count:
+            return
+
+        if count == 0:
+            self._profile.elixir.counts.pop(elixir, None)
+
+        else:
+            self._profile.elixir.counts[elixir] = count
+
+        self._changes.stats_changed()

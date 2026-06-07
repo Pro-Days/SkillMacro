@@ -985,7 +985,9 @@ class NoticeController:
                 )
 
             case NoticeKind.SIM_INPUT_ERROR:
-                return NoticeData("시뮬레이션 정보가 올바르게 입력되지 않았습니다.")
+                return NoticeData(
+                    "시뮬레이션 정보가 올바르게 입력되지 않았습니다.\n계산기 입력, 평타 사용 여부, 스킬 정보/레벨 입력을 확인해주세요."
+                )
 
             case NoticeKind.SIM_CHAR_LOAD_ERROR:
                 return NoticeData("캐릭터를 불러올 수 없습니다. 닉네임을 확인해주세요.")
@@ -2901,7 +2903,9 @@ class CustomPowerFormulaManageDialog(QDialog):
 
             app_state.macro.presets[
                 preset_index
-            ].info.calculator.selected_formula_id = PowerMetric.BOSS_DAMAGE.value
+            ].info.calculator.selected_formula_id = (
+                PowerMetric.SKILL_SPEED_BOSS_DAMAGE_CHECK.value
+            )
 
         save_data()
         self._rebuild_formula_rows()
