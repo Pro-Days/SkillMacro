@@ -35,11 +35,12 @@ from app.scripts.ui.character_ui.tabs.base import CharacterTab
 from app.scripts.ui.character_ui.widgets import (
     CharCard,
     ChoiceListPanels,
+    ResponsiveActionCard,
     ResponsiveColumnsBox,
     StepperField,
 )
 
-_OWNED_TALISMAN_WIDTH: int = 360
+_OWNED_TALISMAN_WIDTH: int = 320
 _EQUIPPED_TALISMAN_HEIGHT: int = 132
 _GRADE_ORDER: tuple[TalismanGrade, ...] = (
     TalismanGrade.NORMAL,
@@ -263,10 +264,7 @@ class TalismanTab(CharacterTab):
 
         stat_label: str = STAT_SPECS[template.stat_key]
         max_level_value: float = template.level_stats[MAX_TALISMAN_LEVEL]
-        return (
-            f"{template.name} - {stat_label} "
-            f"({MAX_TALISMAN_LEVEL}렙) {max_level_value:g}"
-        )
+        return f"{template.name} - {stat_label} +{max_level_value:g}"
 
     def _select_grade(self, grade: TalismanGrade, _checked: bool = False) -> None:
         """부적 선택 등급 변경"""
@@ -575,31 +573,17 @@ class TalismanTab(CharacterTab):
         """보유 부적 카드 선택 표시만 갱신"""
 
         for talisman_id, row in self._owned_rows.items():
-            # 행 선택 속성 갱신
             selected: bool = talisman_id == self._selected_talisman_id
             row.setProperty("selected", selected)
             row.style().unpolish(row)
             row.style().polish(row)
 
-            # 선택 버튼 checked 상태 갱신
-            select_button: QPushButton | None = row.findChild(
-                QPushButton,
-                "charTalListSelectBtn",
-            )
-            if select_button is None:
-                raise ValueError("talisman select button is not bound")
-
-            select_button.setChecked(selected)
-
     def _build_owned_row(self, talisman: CharacterTalisman) -> QFrame:
         """보유 부적 1개 카드"""
 
-        row: QFrame = QFrame(self)
-        row.setObjectName("charTalCard")
+        row = ResponsiveActionCard(self, "charTalCard")
         row.setProperty("selected", talisman.id == self._selected_talisman_id)
-        layout = QVBoxLayout(row)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(9)
+        row.clicked.connect(lambda: self._select_talisman(talisman))
 
         spec: TalismanSpec = self._specs_by_name[talisman.talisman_key]
         head = QHBoxLayout()
@@ -612,31 +596,27 @@ class TalismanTab(CharacterTab):
             )
         )
 
-        select_btn: QPushButton = self._choice_panels.make_choice_button(
-            row,
+        name_label: QLabel = QLabel(
             spec.name,
-            "charTalListSelectBtn",
-            point_size=10,
-            checked=talisman.id == self._selected_talisman_id,
+            row,
         )
-        select_btn.clicked.connect(lambda: self._select_talisman(talisman))
-        head.addWidget(select_btn, 1)
-        layout.addLayout(head)
+        name_label.setObjectName("charTalName")
+        name_label.setFont(CustomFont(10, bold=True))
+        name_label.setWordWrap(True)
+        head.addWidget(name_label, 1)
+        row.info_layout.addLayout(head)
 
         stat_label: QLabel = QLabel(self._owned_stat_text(talisman), row)
         stat_label.setObjectName("charTalStat")
         stat_label.setFont(CustomFont(9))
         stat_label.setWordWrap(True)
-        layout.addWidget(stat_label)
-
-        foot = QHBoxLayout()
-        foot.setSpacing(8)
+        row.info_layout.addWidget(stat_label)
 
         level_field: StepperField = StepperField(
             row,
             str(talisman.level),
             unit="Lv",
-            max_width=80,
+            max_width=74,
             integer=True,
         )
         level_field.value_changed.connect(
@@ -653,13 +633,14 @@ class TalismanTab(CharacterTab):
                 label,
             )
         )
-        foot.addWidget(level_field)
+        row.action_layout.addWidget(level_field)
 
         max_label: QLabel = QLabel(f"/ {MAX_TALISMAN_LEVEL}", row)
         max_label.setObjectName("charMuted")
         max_label.setFont(CustomFont(9))
-        foot.addWidget(max_label)
-        foot.addStretch(1)
+        row.action_layout.addWidget(max_label)
+        row.action_layout.addSpacing(14)
+        row.action_layout.addStretch(1)
 
         equipped: bool = talisman.id in self._profile.equipped.talisman_ids
         can_equip: bool = equipped or (
@@ -675,10 +656,10 @@ class TalismanTab(CharacterTab):
             kind="add" if equipped else "normal",
             point_size=9,
         )
-        equip_btn.setFixedWidth(58)
+        equip_btn.setFixedWidth(54)
         equip_btn.setEnabled(can_equip)
         equip_btn.clicked.connect(lambda: self._toggle_equip(talisman))
-        foot.addWidget(equip_btn)
+        row.action_layout.addWidget(equip_btn)
 
         delete_btn: StyledButton = StyledButton(
             row,
@@ -686,10 +667,9 @@ class TalismanTab(CharacterTab):
             kind="danger",
             point_size=9,
         )
-        delete_btn.setFixedWidth(58)
+        delete_btn.setFixedWidth(54)
         delete_btn.clicked.connect(lambda: self._delete_talisman(talisman))
-        foot.addWidget(delete_btn)
-        layout.addLayout(foot)
+        row.action_layout.addWidget(delete_btn)
         return row
 
     def _owned_stat_text(self, talisman: CharacterTalisman) -> str:

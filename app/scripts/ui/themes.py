@@ -1663,8 +1663,10 @@ QFrame#charTalSlot {{
 }}
 QFrame#charTalSlot[filled=true] {{ background-color: #FFFFFF; border: 1px solid #9180F7; }}
 QFrame#charTalCard, QFrame#charScrollCard {{ background-color: #FFFFFF; border: 1px solid #E5E3DF; border-radius: 8px; }}
-QFrame#charTalCard[selected=true] {{ background-color: #EFECFD; border-color: #9180F7; }}
+QFrame#charTalCard:hover, QFrame#charScrollCard:hover {{ background-color: #FAFAF9; border-color: #C8C4BE; }}
+QFrame#charTalCard[selected=true], QFrame#charScrollCard[selected=true] {{ background-color: #FFFFFF; border-color: #9180F7; }}
 QFrame#charChoicePanel {{ background-color: #FAFAF9; border: 1px solid #E5E3DF; border-radius: 8px; }}
+QWidget#charItemInfoArea, QWidget#charItemActionArea {{ background-color: transparent; border: 0px; }}
 QLabel#charTalName, QLabel#charScrollName {{ color: #1A1A1A; background: transparent; }}
 QLabel#charTalStat, QLabel#charScrollEffect {{ color: #5D5B54; background: transparent; }}
 QScrollArea#charChoiceScrollArea {{
@@ -3274,8 +3276,10 @@ QFrame#charTalSlot {{
 }}
 QFrame#charTalSlot[filled=true] {{ background-color: #1E1E2E; border: 1px solid #9180F7; }}
 QFrame#charTalCard, QFrame#charScrollCard {{ background-color: #1E1E2E; border: 1px solid #363650; border-radius: 8px; }}
-QFrame#charTalCard[selected=true] {{ background-color: #2E2A4A; border-color: #9180F7; }}
+QFrame#charTalCard:hover, QFrame#charScrollCard:hover {{ background-color: #242434; border-color: #4A4A68; }}
+QFrame#charTalCard[selected=true], QFrame#charScrollCard[selected=true] {{ background-color: #1E1E2E; border-color: #9180F7; }}
 QFrame#charChoicePanel {{ background-color: #242434; border: 1px solid #363650; border-radius: 8px; }}
+QWidget#charItemInfoArea, QWidget#charItemActionArea {{ background-color: transparent; border: 0px; }}
 QLabel#charTalName, QLabel#charScrollName {{ color: #E8E8F0; background: transparent; }}
 QLabel#charTalStat, QLabel#charScrollEffect {{ color: #A0A0C0; background: transparent; }}
 QScrollArea#charChoiceScrollArea {{

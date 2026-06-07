@@ -7,10 +7,12 @@ from PySide6.QtGui import (
     QDoubleValidator,
     QFocusEvent,
     QIntValidator,
+    QMouseEvent,
     QValidator,
     QWheelEvent,
 )
 from PySide6.QtWidgets import (
+    QBoxLayout,
     QComboBox,
     QFrame,
     QHBoxLayout,
@@ -446,6 +448,66 @@ class ChoiceListPanels:
         scroll_area.setWidget(scroll_content)
 
         return scroll_area, scroll_content, scroll_layout
+
+
+class ResponsiveActionCard(QFrame):
+    """폭에 따라 정보 영역과 조작 영역을 재배치하는 카드"""
+
+    clicked = Signal()
+
+    def __init__(
+        self,
+        parent: QWidget,
+        object_name: str,
+        stack_threshold: int = 460,
+    ) -> None:
+        super().__init__(parent)
+
+        self._stack_threshold: int = stack_threshold
+        self._stacked: bool = False
+        self.setObjectName(object_name)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        self._layout = QBoxLayout(QBoxLayout.Direction.LeftToRight, self)
+        self._layout.setContentsMargins(12, 12, 12, 12)
+        self._layout.setSpacing(10)
+
+        self.info_area: QWidget = QWidget(self)
+        self.info_area.setObjectName("charItemInfoArea")
+        self.info_layout = QVBoxLayout(self.info_area)
+        self.info_layout.setContentsMargins(0, 0, 0, 0)
+        self.info_layout.setSpacing(6)
+
+        self.action_area: QWidget = QWidget(self)
+        self.action_area.setObjectName("charItemActionArea")
+        self.action_layout = QHBoxLayout(self.action_area)
+        self.action_layout.setContentsMargins(0, 0, 0, 0)
+        self.action_layout.setSpacing(6)
+
+        self._layout.addWidget(self.info_area, 1)
+        self._layout.addWidget(self.action_area, 0, Qt.AlignmentFlag.AlignVCenter)
+
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        self._set_stacked(self.width() < self._stack_threshold)
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+
+        super().mousePressEvent(event)
+
+    def _set_stacked(self, stacked: bool) -> None:
+        if self._stacked == stacked:
+            return
+
+        self._stacked = stacked
+        direction: QBoxLayout.Direction = (
+            QBoxLayout.Direction.TopToBottom
+            if stacked
+            else QBoxLayout.Direction.LeftToRight
+        )
+        self._layout.setDirection(direction)
 
 
 class PillTab(QPushButton):

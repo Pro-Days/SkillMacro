@@ -83,6 +83,7 @@ from app.scripts.ui.character_ui.widgets import (
     CharComboBox,
     ChoiceListPanels,
     FlowLayout,
+    ResponsiveActionCard,
     ResponsiveColumnsBox,
     StaticValueField,
     StepperField,
@@ -489,7 +490,7 @@ class _ScrollRow:
 
     line_id: str
     widget: QFrame
-    select_button: QPushButton
+    title_label: QLabel
     effect_label: QLabel
     count_field: StepperField
 
@@ -588,8 +589,11 @@ class _ScrollSection:
 
         for line, effects in entries:
             row = self.rows[line.id]
-            row.select_button.setText(row_title(line))
-            row.select_button.setChecked(line.id == selected_line_id)
+            selected: bool = line.id == selected_line_id
+            row.widget.setProperty("selected", selected)
+            row.widget.style().unpolish(row.widget)
+            row.widget.style().polish(row.widget)
+            row.title_label.setText(row_title(line))
             row.effect_label.setText(effect_text(effects))
             row.count_field.set_number(float(line.count))
 
@@ -2155,47 +2159,34 @@ class EquipmentTab(CharacterTab):
     ) -> _ScrollRow:
         """적용 주문서 행 구성"""
 
-        row: QFrame = QFrame(parent)
-        row.setObjectName("charScrollCard")
-        layout = QVBoxLayout(row)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(9)
+        row = ResponsiveActionCard(parent, "charScrollCard", stack_threshold=340)
+        row.setProperty("selected", line.id == self._selected_scroll_id)
+        row.clicked.connect(lambda: self._select_scroll_line(item, line))
 
         title_row = QHBoxLayout()
         title_row.setSpacing(8)
-        select_btn: QPushButton = QPushButton(
+        title_label: QLabel = QLabel(
             self._scroll_row_title(line),
             row,
         )
-        select_btn.setObjectName("charTalListSelectBtn")
-        select_btn.setCheckable(True)
-        select_btn.setChecked(line.id == self._selected_scroll_id)
-        select_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        select_btn.setFont(CustomFont(10, bold=True))
-        select_btn.clicked.connect(lambda: self._select_scroll_line(item, line))
-        title_row.addWidget(select_btn, 1)
-        remove_btn: StyledButton = StyledButton(
-            row, "삭제", kind="danger", point_size=9
-        )
-        remove_btn.setFixedWidth(58)
-        remove_btn.clicked.connect(lambda: self._remove_scroll_entry(item, line))
-        title_row.addWidget(remove_btn)
-        layout.addLayout(title_row)
+        title_label.setObjectName("charScrollName")
+        title_label.setFont(CustomFont(10, bold=True))
+        title_label.setWordWrap(True)
+        title_row.addWidget(title_label, 1)
+        row.info_layout.addLayout(title_row)
 
         effect_label: QLabel = QLabel(self._scroll_effect_text(effects), row)
         effect_label.setObjectName("charScrollEffect")
         effect_label.setFont(CustomFont(9))
         effect_label.setWordWrap(True)
-        layout.addWidget(effect_label)
+        row.info_layout.addWidget(effect_label)
 
-        count_row = QHBoxLayout()
-        count_row.setSpacing(8)
         scroll_limit: int | None = _equipment_scroll_limit(slot, item)
         count_field: StepperField = StepperField(
             row,
             str(line.count),
             unit="회",
-            max_width=80,
+            max_width=74,
             min_value=1,
             integer=True,
         )
@@ -2214,13 +2205,19 @@ class EquipmentTab(CharacterTab):
                 field,
             )
         )
-        count_row.addWidget(count_field)
-        count_row.addStretch(1)
-        layout.addLayout(count_row)
+        row.action_layout.addWidget(count_field)
+        row.action_layout.addSpacing(14)
+        row.action_layout.addStretch(1)
+        remove_btn: StyledButton = StyledButton(
+            row, "삭제", kind="danger", point_size=9
+        )
+        remove_btn.setFixedWidth(54)
+        remove_btn.clicked.connect(lambda: self._remove_scroll_entry(item, line))
+        row.action_layout.addWidget(remove_btn)
         return _ScrollRow(
             line_id=line.id,
             widget=row,
-            select_button=select_btn,
+            title_label=title_label,
             effect_label=effect_label,
             count_field=count_field,
         )
