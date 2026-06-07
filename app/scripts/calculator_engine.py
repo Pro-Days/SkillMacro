@@ -352,7 +352,7 @@ _POWER_FORMULA_SOURCES: dict[PowerMetric, str] = {
         "dmg *= 1 + skill_damage_percent * 0.01\n"
         "dmg *= 1 + final_attack_percent * 0.01\n"
         "dmg *= 1 + boss_attack_percent * 0.01\n"
-        "dmg *= 0.9\n\n"
+        "dmg *= 0.95\n\n"
         "result = dmg"
     ),
     PowerMetric.OFFICIAL: (
@@ -508,7 +508,7 @@ POWER_FORMULA_EXAMPLES: tuple[PowerFormulaExample, ...] = (
             "dmg *= 1 + skill_damage_percent * 0.01\n"
             "dmg *= 1 + final_attack_percent * 0.01\n"
             "dmg *= 1 + boss_attack_percent * 0.01\n"
-            "dmg *= 0.9\n\n"
+            "dmg *= 0.95\n\n"
             "skill_damage_multiplier = 1  # <- 원하는 데미지 계수로 수정하세요.\n"
             "result = dmg * skill_damage_multiplier"
         ),
