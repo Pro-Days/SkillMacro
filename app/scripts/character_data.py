@@ -924,9 +924,9 @@ NECKLACE_ITEM_SPECS: tuple[EquipmentItemSpec, ...] = (
 
 
 EQUIPMENT_ITEM_SPECS: tuple[EquipmentItemSpec, ...] = (
-        *WEAPON_ITEM_SPECS,
-        *ARMOR_ITEM_SPECS,
-        *NECKLACE_ITEM_SPECS,
+    *WEAPON_ITEM_SPECS,
+    *ARMOR_ITEM_SPECS,
+    *NECKLACE_ITEM_SPECS,
 )
 
 
@@ -1233,6 +1233,10 @@ ELIXIR_SPECS: dict[str, ConsumableSpec] = {
 
 
 PILL_SPECS: dict[str, ConsumableSpec] = {
+    "추천환": ConsumableSpec(
+        _stats((StatKey.EXP_PERCENT, 10.0), (StatKey.DROP_RATE_PERCENT, 5.0)),
+        "#5bc0de",
+    ),
     "활생환": ConsumableSpec(_stats((StatKey.VITALITY, 5.0)), "#7bbf6a"),
     "황토환": ConsumableSpec(
         _stats((StatKey.POTION_HEAL_PERCENT, 5.0)),
