@@ -882,21 +882,30 @@ def _add_display_stand(
                 _add_stat(accumulated, stat_key, value)
 
 
-def _add_consumables(
+def _add_elixirs(
     accumulated: dict[StatKey, float],
     profile: CharacterProfile,
 ) -> None:
-    """영단과 환 기여 누적"""
+    """영단 기여 누적"""
 
     for elixir, count in profile.elixir.counts.items():
         _merge_stats(accumulated, ELIXIR_SPECS[elixir].effects, multiplier=float(count))
+
+
+def _add_pills(
+    accumulated: dict[StatKey, float],
+    profile: CharacterProfile,
+) -> None:
+    """환 기여 누적"""
 
     for pill in profile.pill.active:
         _merge_stats(accumulated, PILL_SPECS[pill].effects)
 
 
-def _accumulate_base_stats(profile: CharacterProfile) -> dict[StatKey, float]:
-    """검증 없이 캐릭터 입력 기여를 원시 스탯 맵으로 합산"""
+def _accumulate_pill_excluded_base_stats(
+    profile: CharacterProfile,
+) -> dict[StatKey, float]:
+    """환을 제외한 캐릭터 입력 기여를 원시 스탯 맵으로 합산"""
 
     accumulated: dict[StatKey, float] = _character_base_stat_map(profile)
     _add_distribution(accumulated, profile.distribution)
@@ -905,7 +914,15 @@ def _accumulate_base_stats(profile: CharacterProfile) -> dict[StatKey, float]:
     _add_equipped_talismans(accumulated, profile)
     _add_equipment(accumulated, profile)
     _add_display_stand(accumulated, profile)
-    _add_consumables(accumulated, profile)
+    _add_elixirs(accumulated, profile)
+    return accumulated
+
+
+def _accumulate_base_stats(profile: CharacterProfile) -> dict[StatKey, float]:
+    """캐릭터 입력 기여를 원시 스탯 맵으로 합산"""
+
+    accumulated: dict[StatKey, float] = _accumulate_pill_excluded_base_stats(profile)
+    _add_pills(accumulated, profile)
     return accumulated
 
 
@@ -921,7 +938,10 @@ def compute_live_view(profile: CharacterProfile) -> LiveStatView:
 
     base_stats: BaseStats = aggregate_base_stats(profile)
     final_stats: FinalStats = base_stats.resolve()
-    official_power: float = evaluate_official_power(final_stats)
+    official_power_base_stats: BaseStats = BaseStats.from_stat_map(
+        _accumulate_pill_excluded_base_stats(profile)
+    )
+    official_power: float = evaluate_official_power(official_power_base_stats.resolve())
     return LiveStatView(
         base=base_stats,
         final=final_stats,
