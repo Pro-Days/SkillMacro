@@ -1720,6 +1720,7 @@ QFrame#charEquipSlot {{
 }}
 QFrame#charEquipSlot:hover {{ border-color: #9180F7; }}
 QFrame#charEquipSlot[active=true] {{ background-color: #EFECFD; border-color: #9180F7; }}
+QFrame#charEquipSlot[active=true][empty=true] {{ background-color: #EFECFD; border: 1px solid #9180F7; }}
 QLabel#charEquipType {{ color: #1A1A1A; background: transparent; }}
 QLabel#charEquipMeta {{ color: #787671; background: transparent; }}
 QLabel#charReforgeBadge {{
@@ -3333,6 +3334,7 @@ QFrame#charEquipSlot {{
 }}
 QFrame#charEquipSlot:hover {{ border-color: #9180F7; }}
 QFrame#charEquipSlot[active=true] {{ background-color: #2E2A4A; border-color: #9180F7; }}
+QFrame#charEquipSlot[active=true][empty=true] {{ background-color: #2E2A4A; border: 1px solid #9180F7; }}
 QLabel#charEquipType {{ color: #E8E8F0; background: transparent; }}
 QLabel#charEquipMeta {{ color: #A0A0C0; background: transparent; }}
 QLabel#charReforgeBadge {{
