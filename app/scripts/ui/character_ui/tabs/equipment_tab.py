@@ -740,6 +740,10 @@ class _EquipSlot(QFrame):
         self.setProperty("empty", empty)
         self.style().unpolish(self)
         self.style().polish(self)
+        self.style().unpolish(self._type_label)
+        self.style().polish(self._type_label)
+        self.style().unpolish(self._meta_label)
+        self.style().polish(self._meta_label)
 
     def set_active(self, active: bool) -> None:
         """선택 강조 갱신"""
