@@ -1518,7 +1518,12 @@ QLabel#guideDialogBody, QLabel#guideOverlayBody {{
     color: #333333;
 }}
 QFrame#guideOverlayCard {{
-    background-color: rgba(255, 255, 255, 238);
+    background-color: rgba(255, 255, 255, 220);
+    border: 1px solid #D6DCE8;
+    border-radius: 8px;
+}}
+QFrame#guideSelectionCard {{
+    background-color: #FFFFFF;
     border: 1px solid #D6DCE8;
     border-radius: 8px;
 }}
@@ -3206,7 +3211,12 @@ QLabel#guideDialogBody, QLabel#guideOverlayBody {{
     color: #C9C9DA;
 }}
 QFrame#guideOverlayCard {{
-    background-color: rgba(31, 31, 48, 235);
+    background-color: rgba(31, 31, 48, 220);
+    border: 1px solid #3A3A52;
+    border-radius: 8px;
+}}
+QFrame#guideSelectionCard {{
+    background-color: #1F1F30;
     border: 1px solid #3A3A52;
     border-radius: 8px;
 }}
