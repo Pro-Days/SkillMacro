@@ -438,6 +438,28 @@ class CharacterPage(QFrame):
     def _save_current_store(self) -> None:
         save_characters()
 
+    def show_character_list_panel(self) -> None:
+        """좌측 캐릭터 목록 패널 표시"""
+
+        if not self._left_collapsed:
+            return
+
+        self._left_collapsed = False
+        self._left_anim = None
+        self._left_panel.setMaximumWidth(_LEFT_WIDTH)
+        self._update_toggle_labels()
+
+    def show_live_stats_panel(self) -> None:
+        """우측 전체 스탯 패널 표시"""
+
+        if not self._right_collapsed:
+            return
+
+        self._right_collapsed = False
+        self._right_anim = None
+        self._right_panel.setMaximumWidth(_RIGHT_WIDTH)
+        self._update_toggle_labels()
+
     def _use_selected_character(self) -> None:
         """선택 캐릭터를 계산기 입력에 반영"""
 
