@@ -1079,13 +1079,20 @@ class SkillContributionCanvas(pg.PlotWidget):
             for i in range(count)
         ]
 
-        # data_normalized = []
-        # for i in range(7):
-        #     data_normalized.append([skillsData[i][j] / totalData[j] for j in range(timeStepCount)])
-        data_normalized: list[list[float]] = [
-            [0.0] + [skillsData[i][j] / totalData[j] * 100 for j in range(1, count + 1)]
-            for i in range(len(skillsData))
-        ]
+        data_normalized: list[list[float]] = []
+        for skill_damage_row in skillsData:
+            # 총 피해가 아직 없는 시점의 기여율 0 처리
+            normalized_row: list[float] = [0.0]
+            for j in range(1, count + 1):
+                total_damage: float = totalData[j]
+                if total_damage == 0.0:
+                    normalized_row.append(0.0)
+                    continue
+
+                # 총 피해 대비 현재 스킬 누적 피해 비율 계산
+                normalized_row.append(skill_damage_row[j] / total_damage * 100)
+
+            data_normalized.append(normalized_row)
 
         data_cumsum: list[list[float]] = [[0.0 for _ in row] for row in data_normalized]
         for i in range(len(data_normalized)):

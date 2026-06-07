@@ -54,7 +54,9 @@ from app.scripts.app_state import app_state
 from app.scripts.calculator_engine import (
     DISPLAY_POWER_METRICS,
     POWER_METRIC_LABELS,
+    build_calculator_timeline,
     build_calculator_context,
+    build_damage_events,
     build_internal_base_stats,
     evaluate_arbitrary_stat_delta,
     evaluate_level_up_delta,
@@ -125,11 +127,13 @@ if TYPE_CHECKING:
     from PIL import Image
 
     from app.scripts.calculator_engine import (
+        DamageEvent,
         EvaluationContext,
         FinalStats,
         GraphAnalysis,
         GraphDamageEvent,
         GraphReport,
+        HitEvent,
         LevelUpEvaluation,
         OptimizationResult,
         RealmAdvanceEvaluation,
@@ -543,8 +547,8 @@ class SimUI:
             if not scroll_id:
                 continue
 
-            scroll_def: ScrollDef = app_state.macro.current_server.skill_registry.get_scroll(
-                scroll_id
+            scroll_def: ScrollDef = (
+                app_state.macro.current_server.skill_registry.get_scroll(scroll_id)
             )
             skill_ids.update(scroll_def.skills)
 
@@ -1979,9 +1983,7 @@ class ResultsPage(QFrame):
             )
 
             # 목표 단전 적용 후 전체 스탯 구성
-            target_danjeon_base_stats = base_stats.with_changes(
-                target_danjeon_changes
-            )
+            target_danjeon_base_stats = base_stats.with_changes(target_danjeon_changes)
 
         # 최적화 결과 계산 단계 반영
         if progress_callback is not None:
@@ -2564,7 +2566,32 @@ class ResultsPage(QFrame):
                 and final_attack_input_valid
                 and boss_attack_input_valid
                 and skill_damage_input_valid
+                and self._has_positive_graph_damage(base_stats)
             )
+
+        def _has_positive_graph_damage(self, base_stats: BaseStats) -> bool:
+            """그래프 출력 가능한 양수 피해 이벤트 존재 여부 반환"""
+
+            # 현재 입력 스탯 기준 최종 스탯과 스킬 타임라인 구성
+            resolved_stats: FinalStats = base_stats.resolve()
+            hit_events: tuple[HitEvent, ...] = build_calculator_timeline(
+                server_spec=app_state.macro.current_server,
+                preset=app_state.macro.current_preset,
+                skills_info=app_state.macro.current_preset.usage_settings,
+                delay_ms=app_state.macro.current_delay,
+                cooltime_reduction=resolved_stats.values[StatKey.SKILL_SPEED_PERCENT],
+            )
+
+            # 보스 기준 결정론 피해 계산
+            damage_events: list[DamageEvent] = build_damage_events(
+                hit_events=hit_events,
+                resolved_stats=resolved_stats,
+                is_boss=True,
+                deterministic=True,
+            )
+
+            # 실제 피해가 있는 공격만 유효 출력으로 인정
+            return any(attack.damage > 0.0 for attack in damage_events)
 
         def load_from_preset_state(self) -> None:
             """저장된 계산기 상태를 현재 입력 위젯에 반영"""
@@ -5422,18 +5449,14 @@ class ResultsPage(QFrame):
 
                 # 상대 효율 표시 모드 적용 가능 여부 판정
                 apply_relative: bool = (
-                    self._relative_mode
-                    and max_abs > 0
-                    and all(is_numeric_flags)
+                    self._relative_mode and max_abs > 0 and all(is_numeric_flags)
                 )
 
                 # 표시용 값 문자열 사전 구성
                 display_values: list[str] = []
                 for i, (_, original_value) in enumerate(self._rows):
                     if apply_relative:
-                        relative_value: float = (
-                            numeric_vals[i] / max_abs
-                        ) * 100.0
+                        relative_value: float = (numeric_vals[i] / max_abs) * 100.0
                         display_values.append(
                             f"{relative_value:.2f}".rstrip("0").rstrip(".")
                         )
@@ -5675,9 +5698,7 @@ class ResultsPage(QFrame):
             self._relative_efficiency_checkbox.stateChanged.connect(
                 self._on_relative_efficiency_toggled
             )
-            self._stat_scroll_card.add_header_widget(
-                self._relative_efficiency_checkbox
-            )
+            self._stat_scroll_card.add_header_widget(self._relative_efficiency_checkbox)
 
             # 최적화 결과 카드
             self._opt_result_list: ResultsPage.Efficiency.ResultList = (
