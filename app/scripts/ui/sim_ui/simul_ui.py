@@ -6164,9 +6164,7 @@ class AnalysisDetails(QFrame):
     DETAIL_KEYS: tuple[str, ...] = (
         "min",
         "max",
-        "std",
         "p25",
-        "p50",
         "p75",
     )
 
@@ -6233,8 +6231,8 @@ class AnalysisDetails(QFrame):
 
             statistics_layout = QGridLayout()
             for i, stat in enumerate(self.statistics):
-                row: int = i // 3
-                column: int = i % 3
+                row: int = i // 2
+                column: int = i % 2
 
                 statistics_layout.addWidget(stat, row, column)
 

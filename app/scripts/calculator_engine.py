@@ -1516,12 +1516,8 @@ class GraphAnalysis:
     min: str
     # 최대값 표기 문자열
     max: str
-    # 표준편차 표기 문자열
-    std: str
     # 25퍼센타일 표기 문자열
     p25: str
-    # 50퍼센타일 표기 문자열
-    p50: str
     # 75퍼센타일 표기 문자열
     p75: str
 
