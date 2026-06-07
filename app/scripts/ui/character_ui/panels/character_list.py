@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
     QLabel,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -103,8 +104,8 @@ class CharacterListPanel(QFrame):
         parent: QWidget,
         on_select: Callable[[int], None],
         on_add: Callable[[], None],
-        on_paste: Callable[[], None],
-        on_clone: Callable[[], None],
+        on_copy: Callable[[], bool],
+        on_paste: Callable[[], bool],
         on_delete: Callable[[], None],
     ) -> None:
         super().__init__(parent)
@@ -135,24 +136,71 @@ class CharacterListPanel(QFrame):
         button_grid.setContentsMargins(0, 16, 0, 0)
         button_grid.setHorizontalSpacing(10)
         button_grid.setVerticalSpacing(10)
+        button_grid.setColumnStretch(0, 1)
+        button_grid.setColumnStretch(1, 1)
 
         add_btn: StyledButton = StyledButton(self, "추가", kind="add")
-        paste_btn: StyledButton = StyledButton(self, "붙여넣기", kind="normal")
-        clone_btn: StyledButton = StyledButton(self, "복제", kind="normal")
         delete_btn: StyledButton = StyledButton(self, "삭제", kind="danger")
+        copy_btn: StyledButton = StyledButton(self, "복사", kind="normal")
+        paste_btn: StyledButton = StyledButton(self, "붙여넣기", kind="normal")
+
+        buttons: tuple[StyledButton, ...] = (
+            add_btn,
+            delete_btn,
+            copy_btn,
+            paste_btn,
+        )
+        button_width: int = max(button.sizeHint().width() for button in buttons)
+        for button in buttons:
+            button.setMinimumWidth(button_width)
+            button.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Fixed,
+            )
 
         add_btn.clicked.connect(on_add)
-        paste_btn.clicked.connect(on_paste)
-        clone_btn.clicked.connect(on_clone)
         delete_btn.clicked.connect(on_delete)
+        copy_btn.clicked.connect(lambda: self._handle_copy(copy_btn, on_copy))
+        paste_btn.clicked.connect(lambda: self._handle_paste(paste_btn, on_paste))
 
         button_grid.addWidget(add_btn, 0, 0)
-        button_grid.addWidget(paste_btn, 0, 1)
-        button_grid.addWidget(clone_btn, 1, 0)
-        button_grid.addWidget(delete_btn, 1, 1)
+        button_grid.addWidget(delete_btn, 0, 1)
+        button_grid.addWidget(copy_btn, 1, 0)
+        button_grid.addWidget(paste_btn, 1, 1)
 
         layout.addLayout(button_grid)
         layout.addStretch(1)
+
+    def _handle_copy(
+        self,
+        button: StyledButton,
+        on_copy: Callable[[], bool],
+    ) -> None:
+        """선택 캐릭터 복사 버튼 피드백 처리"""
+
+        if on_copy():
+            self._show_button_feedback(button, "복사됨", "복사")
+
+    def _handle_paste(
+        self,
+        button: StyledButton,
+        on_paste: Callable[[], bool],
+    ) -> None:
+        """캐릭터 붙여넣기 버튼 피드백 처리"""
+
+        if not on_paste():
+            self._show_button_feedback(button, "실패", "붙여넣기")
+
+    def _show_button_feedback(
+        self,
+        button: StyledButton,
+        feedback_text: str,
+        default_text: str,
+    ) -> None:
+        """버튼 텍스트를 잠시 변경한 뒤 원래 문구로 되돌림"""
+
+        button.setText(feedback_text)
+        QTimer.singleShot(1500, lambda: button.setText(default_text))
 
     def set_characters(
         self,

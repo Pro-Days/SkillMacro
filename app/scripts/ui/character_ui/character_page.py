@@ -9,7 +9,6 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -21,7 +20,6 @@ from app.scripts.app_state import app_state
 from app.scripts.calculator_models import REALM_TIER_SPECS
 from app.scripts.character_engine import (
     clamp_profile_allocations,
-    clone_character_profile,
     compute_live_view,
     deserialize_character_profile,
     serialize_character_profile,
@@ -125,8 +123,8 @@ class CharacterPage(QFrame):
             self,
             self._on_character_selected,
             self._add_character,
+            self.copy_selected_character,
             self._paste_character,
-            self._clone_character,
             self._delete_character,
         )
         self._left_panel.setFixedWidth(_LEFT_WIDTH)
@@ -331,41 +329,19 @@ class CharacterPage(QFrame):
         self._left_panel.append_character(new_character, store.selected_index)
         self._refresh_selected_profile()
 
-    def _clone_character(self) -> None:
-        """선택 캐릭터 복제"""
-
-        profile: CharacterProfile = self._selected_profile()
-        store: CharacterStore = app_state.character_store
-        cloned: CharacterProfile = clone_character_profile(profile)
-        cloned.name = f"{profile.name} 복사"
-
-        store.characters.append(cloned)
-        store.selected_index = len(store.characters) - 1
-
-        save_characters()
-        self._left_panel.append_character(cloned, store.selected_index)
-        self._refresh_selected_profile()
-
-    def _paste_character(self) -> None:
+    def _paste_character(self) -> bool:
         """클립보드 캐릭터 붙여넣기"""
 
         clipboard: QClipboard = QApplication.clipboard()
         text: str = clipboard.text()
         if not text:
-            return
+            return False
 
         try:
-            # 클립보드 캐릭터 데이터 파싱 및 전체 무결성 검증
             pasted: CharacterProfile = deserialize_character_profile(text)
 
         except (KeyError, TypeError, ValueError):
-            QMessageBox.warning(
-                self,
-                "캐릭터 붙여넣기 실패",
-                "올바른 캐릭터 데이터가 아닙니다.",
-            )
-
-            return
+            return False
 
         store: CharacterStore = app_state.character_store
         store.characters.append(pasted)
@@ -374,6 +350,7 @@ class CharacterPage(QFrame):
         save_characters()
         self._left_panel.append_character(pasted, store.selected_index)
         self._refresh_selected_profile()
+        return True
 
     def _delete_character(self) -> None:
         """선택 캐릭터 삭제"""
@@ -396,11 +373,12 @@ class CharacterPage(QFrame):
         self._left_panel.set_characters(store.characters, store.selected_index)
         self._refresh_selected_profile()
 
-    def copy_selected_character(self) -> None:
+    def copy_selected_character(self) -> bool:
         """선택 캐릭터 클립보드 복사"""
 
         profile: CharacterProfile = self._selected_profile()
         QApplication.clipboard().setText(serialize_character_profile(profile))
+        return True
 
     def _refresh_name(self) -> None:
         """캐릭터 이름 표시 갱신"""
