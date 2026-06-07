@@ -16,27 +16,11 @@ from PySide6.QtWidgets import (
 
 from app.scripts.calculator_models import STAT_SPECS
 from app.scripts.character_data import PILL_SPECS
-from app.scripts.character_models import CharacterProfile, Pill
+from app.scripts.character_models import CharacterProfile
 from app.scripts.custom_classes import CustomFont
 from app.scripts.ui.character_ui.change_handler import CharacterChangeHandler
 from app.scripts.ui.character_ui.tabs.base import CharacterTab
 from app.scripts.ui.character_ui.widgets import CharCard, ColorOrb, FlowLayout
-
-_PILL_COLORS: dict[Pill, str] = {
-    Pill.HWALSAENGHWAN: "#7bbf6a",
-    Pill.HWANGTOHWAN: "#c8a04a",
-    Pill.HOESAENGHWAN: "#d75a5a",
-    Pill.MYEONGMOKHWAN: "#9aa86a",
-    Pill.CHEONMOKHWAN: "#7a9a5a",
-    Pill.SINMOKHWAN: "#5a8a4a",
-    Pill.GANGGEUNHWAN: "#c0392b",
-    Pill.CHEONGSIMHWAN: "#4f9bd9",
-    Pill.DAERYEOKHWAN: "#d98b3a",
-    Pill.YONGRYEOKHWAN: "#a86fd0",
-    Pill.CHEONSEHWAN: "#6fcabf",
-    Pill.CHEONSIMHWAN: "#e87fb0",
-    Pill.MANNYEONHWAN: "#e0b94a",
-}
 
 
 class _PillCard(QFrame):
@@ -45,9 +29,8 @@ class _PillCard(QFrame):
     def __init__(
         self,
         parent: QWidget,
-        pill: Pill,
-        color: str,
-        on_changed: Callable[[Pill, bool], None],
+        pill: str,
+        on_changed: Callable[[str, bool], None],
     ) -> None:
         super().__init__(parent)
 
@@ -55,8 +38,8 @@ class _PillCard(QFrame):
         self.setProperty("on", False)
         self.setFixedWidth(150)
 
-        self._pill: Pill = pill
-        self._on_changed: Callable[[Pill, bool], None] = on_changed
+        self._pill: str = pill
+        self._on_changed: Callable[[str, bool], None] = on_changed
 
         spec = PILL_SPECS[pill]
         layout = QVBoxLayout(self)
@@ -66,8 +49,8 @@ class _PillCard(QFrame):
         # 환 이름 표시
         top = QHBoxLayout()
         top.setSpacing(10)
-        top.addWidget(ColorOrb(self, color))
-        name_label: QLabel = QLabel(spec.name, self)
+        top.addWidget(ColorOrb(self, spec.color))
+        name_label: QLabel = QLabel(pill, self)
         name_label.setObjectName("charPillName")
         name_label.setFont(CustomFont(11, bold=True))
         top.addWidget(name_label)
@@ -140,12 +123,11 @@ class PillTab(CharacterTab):
         grid_container: QFrame = QFrame(self)
         flow: FlowLayout = FlowLayout(grid_container, margin=0, spacing=12, center=True)
 
-        self._cards: dict[Pill, _PillCard] = {}
+        self._cards: dict[str, _PillCard] = {}
         for pill in PILL_SPECS:
             card_widget: _PillCard = _PillCard(
                 grid_container,
                 pill,
-                _PILL_COLORS[pill],
                 self._set_active,
             )
             self._cards[pill] = card_widget
@@ -166,7 +148,7 @@ class PillTab(CharacterTab):
             active: bool = pill in profile.pill.active
             card.set_active(active)
 
-    def _set_active(self, pill: Pill, active: bool) -> None:
+    def _set_active(self, pill: str, active: bool) -> None:
         """환 사용 여부 모델 반영"""
 
         if (pill in self._profile.pill.active) == active:

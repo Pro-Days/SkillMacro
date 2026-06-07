@@ -109,38 +109,6 @@ class AdditionalOption(str, Enum):
     POTION_HEAL_PERCENT = "potion_heal_percent"
 
 
-class DisplayStand(str, Enum):
-    """진열대 식별자"""
-
-    GAJUK = "gajuk"
-    JANGIN = "jangin"
-    DONGGUN = "donggun"
-    TUHAE = "tuhae"
-    GWANGJEON = "gwangjeon"
-    BAEKBI = "baekbi"
-    GWANGSEOL = "gwangseol"
-    HOGUN = "hogun"
-    BAEKHYEON = "baekhyeon"
-    CHEONGGUN = "cheonggun"
-    JANGHYEON = "janghyeon"
-    GEUMGUN = "geumgun"
-    JINMU = "jinmu"
-    NOKGWI = "nokgwi"
-    GEUMTU = "geumtu"
-    GEUMCHEONG = "geumcheong"
-    YEOMHWA = "yeomhwa"
-    GOEROK = "goerok"
-    JEOKRYEONG = "jeokryeong"
-    TURYEONG = "turyeong"
-    JINGUN = "jingun"
-    SANRYEONG = "sanryeong"
-    GWANGRYONG = "gwangryong"
-    CHEONGUN = "cheongun"
-    CHEONGGWI = "cheonggwi"
-    GOEHWANG = "goehwang"
-    GEUMSEONG = "geumseong"
-
-
 class DisplayStandColumn(str, Enum):
     """진열대 입력 열"""
 
@@ -149,50 +117,6 @@ class DisplayStandColumn(str, Enum):
     BELT = "belt"
     SHOES = "shoes"
     SET = "set"
-
-
-class Elixir(str, Enum):
-    """영단 식별자"""
-
-    HWANGHWANDAN = "hwanghwandan"
-    NOKHWANDAN = "nokhwandan"
-    JAHWANDAN = "jahwandan"
-    CHEONGHWANDAN = "cheonghwandan"
-    JEOKHWANDAN = "jeokhwandan"
-    BAEKHWANDAN = "baekhwandan"
-    HEUKHWANDAN = "heukhwandan"
-    OKHWANDAN = "okhwandan"
-    EUNHWANDAN = "eunhwandan"
-    GEUMHWANDAN = "geumhwandan"
-    MAEHWADAN = "maehwadan"
-    YONGHYEOLDAN = "yonghyeoldan"
-    MYEONGWOLDAN = "myeongwoldan"
-    TAEGEUKDAN = "taegeukdan"
-    CHEONGYEONGDAN = "cheongyeongdan"
-    SIGONGDAN = "sigongdan"
-    CHEONGRYONGDAN = "cheongryongdan"
-    BAEKHODAN = "baekhodan"
-    JUJAKDAN = "jujakdan"
-    HYEONMUDAN = "hyeonmudan"
-
-
-class Pill(str, Enum):
-    """환 식별자"""
-
-    HWALSAENGHWAN = "hwalsaenghwan"
-    HWANGTOHWAN = "hwangtohwan"
-    HOESAENGHWAN = "hoesaenghwan"
-    MYEONGMOKHWAN = "myeongmokhwan"
-    CHEONMOKHWAN = "cheonmokhwan"
-    SINMOKHWAN = "sinmokhwan"
-    GANGGEUNHWAN = "ganggeunhwan"
-    CHEONGSIMHWAN = "cheongsimhwan"
-    DAERYEOKHWAN = "daeryeokhwan"
-    YONGRYEOKHWAN = "yongryeokhwan"
-    CHEONSEHWAN = "cheonsehwan"
-    CHEONSIMHWAN = "cheonsimhwan"
-    MANNYEONHWAN = "mannyeonhwan"
-
 
 def _new_id() -> str:
     """새 저장 식별자 생성"""
@@ -700,9 +624,7 @@ class EquipmentState:
 class DisplayStandState:
     """진열대 입력 상태"""
 
-    entries: dict[DisplayStand, dict[DisplayStandColumn, float]] = field(
-        default_factory=dict
-    )
+    entries: dict[str, dict[DisplayStandColumn, float]] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "DisplayStandState":
@@ -710,7 +632,7 @@ class DisplayStandState:
 
         return cls(
             entries={
-                DisplayStand(str(key)): {
+                str(key): {
                     DisplayStandColumn(str(column)): float(column_value)
                     for column, column_value in value.items()
                 }
@@ -723,7 +645,7 @@ class DisplayStandState:
 
         return {
             "entries": {
-                stand.value: {
+                stand: {
                     column.value: float(value) for column, value in entry.items()
                 }
                 for stand, entry in self.entries.items()
@@ -735,16 +657,14 @@ class DisplayStandState:
 class ElixirState:
     """영단 사용 상태"""
 
-    counts: dict[Elixir, int] = field(default_factory=dict)
+    counts: dict[str, int] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ElixirState":
         """저장 데이터로부터 영단 상태 복원"""
 
         return cls(
-            counts={
-                Elixir(str(key)): int(value) for key, value in data["counts"].items()
-            }
+            counts={str(key): int(value) for key, value in data["counts"].items()}
         )
 
     def to_dict(self) -> dict[str, dict[str, int]]:
@@ -752,7 +672,7 @@ class ElixirState:
 
         return {
             "counts": {
-                elixir.value: int(count) for elixir, count in self.counts.items()
+                elixir: int(count) for elixir, count in self.counts.items()
             }
         }
 
@@ -761,18 +681,18 @@ class ElixirState:
 class PillState:
     """환 사용 상태"""
 
-    active: set[Pill] = field(default_factory=set)
+    active: set[str] = field(default_factory=set)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "PillState":
         """저장 데이터로부터 환 상태 복원"""
 
-        return cls(active={Pill(str(item)) for item in _read_list(data, "active")})
+        return cls(active={str(item) for item in _read_list(data, "active")})
 
     def to_dict(self) -> dict[str, list[str]]:
         """환 상태 직렬화"""
 
-        return {"active": [pill.value for pill in self.active]}
+        return {"active": sorted(self.active)}
 
 
 @dataclass(slots=True)

@@ -30,6 +30,7 @@ from app.scripts.character_data import (
     ARMOR_EQUIPMENT_SLOTS,
     ARMOR_SLOT_STAT_KEYS,
     DISPLAY_STAND_COLUMN_STAT_KEYS,
+    DISPLAY_STAND_SPECS,
     ELIXIR_SPECS,
     EQUIPMENT_ITEM_SPECS,
     EQUIPMENT_REFORGE_STAT_KEYS,
@@ -532,7 +533,11 @@ def _validate_equipment_state(profile: CharacterProfile) -> None:
 def _validate_display_stand(profile: CharacterProfile) -> None:
     """진열대 입력값 검증"""
 
-    for entry in profile.display_stand.entries.values():
+    display_stand_names: set[str] = {spec.name for spec in DISPLAY_STAND_SPECS}
+    for stand_name, entry in profile.display_stand.entries.items():
+        if stand_name not in display_stand_names:
+            raise ValueError("display stand name is not supported")
+
         for column, value in entry.items():
             if column not in DISPLAY_STAND_COLUMN_STAT_KEYS:
                 raise ValueError("display stand column is not supported")

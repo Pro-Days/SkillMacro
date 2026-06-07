@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
 
 from app.scripts.calculator_models import STAT_SPECS
 from app.scripts.character_data import ELIXIR_SPECS
-from app.scripts.character_models import MAX_ELIXIR_COUNT, CharacterProfile, Elixir
+from app.scripts.character_models import MAX_ELIXIR_COUNT, CharacterProfile
 from app.scripts.custom_classes import CustomFont
 from app.scripts.ui.character_ui.change_handler import CharacterChangeHandler
 from app.scripts.ui.character_ui.tabs.base import CharacterTab
@@ -26,29 +26,6 @@ from app.scripts.ui.character_ui.widgets import (
     StepperField,
 )
 
-_ELIXIR_COLORS: dict[Elixir, str] = {
-    Elixir.HWANGHWANDAN: "#e8c95a",
-    Elixir.NOKHWANDAN: "#7bbf6a",
-    Elixir.JAHWANDAN: "#a86fd0",
-    Elixir.CHEONGHWANDAN: "#4f9bd9",
-    Elixir.JEOKHWANDAN: "#d75a5a",
-    Elixir.BAEKHWANDAN: "#dcdcdc",
-    Elixir.HEUKHWANDAN: "#4a4a4a",
-    Elixir.OKHWANDAN: "#6fcabf",
-    Elixir.EUNHWANDAN: "#b8c0cc",
-    Elixir.GEUMHWANDAN: "#e0b94a",
-    Elixir.MAEHWADAN: "#e87fb0",
-    Elixir.YONGHYEOLDAN: "#c0392b",
-    Elixir.MYEONGWOLDAN: "#cfd6e0",
-    Elixir.TAEGEUKDAN: "#d98b3a",
-    Elixir.CHEONGYEONGDAN: "#8a7fd0",
-    Elixir.SIGONGDAN: "#5ac0c0",
-    Elixir.CHEONGRYONGDAN: "#2f8f6f",
-    Elixir.BAEKHODAN: "#f0f0f0",
-    Elixir.JUJAKDAN: "#d65a3a",
-    Elixir.HYEONMUDAN: "#2f5f8f",
-}
-
 
 class _ElixirCard(QFrame):
     """영단 1종 카드"""
@@ -56,9 +33,8 @@ class _ElixirCard(QFrame):
     def __init__(
         self,
         parent: QWidget,
-        elixir: Elixir,
-        color: str,
-        on_changed: Callable[[Elixir, int], None],
+        elixir: str,
+        on_changed: Callable[[str, int], None],
     ) -> None:
         super().__init__(parent)
 
@@ -66,8 +42,8 @@ class _ElixirCard(QFrame):
         self.setProperty("on", False)
         self.setFixedWidth(150)
 
-        self._elixir: Elixir = elixir
-        self._on_changed: Callable[[Elixir, int], None] = on_changed
+        self._elixir: str = elixir
+        self._on_changed: Callable[[str, int], None] = on_changed
 
         spec = ELIXIR_SPECS[elixir]
         layout = QVBoxLayout(self)
@@ -77,8 +53,8 @@ class _ElixirCard(QFrame):
         # 영단 이름 표시
         top = QHBoxLayout()
         top.setSpacing(10)
-        top.addWidget(ColorOrb(self, color))
-        name_label: QLabel = QLabel(spec.name, self)
+        top.addWidget(ColorOrb(self, spec.color))
+        name_label: QLabel = QLabel(elixir, self)
         name_label.setObjectName("charPillName")
         name_label.setFont(CustomFont(11, bold=True))
         top.addWidget(name_label)
@@ -155,12 +131,11 @@ class ElixirTab(CharacterTab):
         grid_container: QFrame = QFrame(self)
         flow: FlowLayout = FlowLayout(grid_container, margin=0, spacing=12, center=True)
 
-        self._cards: dict[Elixir, _ElixirCard] = {}
+        self._cards: dict[str, _ElixirCard] = {}
         for elixir in ELIXIR_SPECS:
             card_widget: _ElixirCard = _ElixirCard(
                 grid_container,
                 elixir,
-                _ELIXIR_COLORS[elixir],
                 self._set_count,
             )
             self._cards[elixir] = card_widget
@@ -181,7 +156,7 @@ class ElixirTab(CharacterTab):
             count: int = profile.elixir.counts.get(elixir, 0)
             card.set_count(count)
 
-    def _set_count(self, elixir: Elixir, count: int) -> None:
+    def _set_count(self, elixir: str, count: int) -> None:
         """영단 보유 수 모델 반영"""
 
         if self._profile.elixir.counts.get(elixir, 0) == count:

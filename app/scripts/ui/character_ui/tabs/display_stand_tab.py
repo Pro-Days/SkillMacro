@@ -24,7 +24,6 @@ from app.scripts.character_data import (
 )
 from app.scripts.character_models import (
     CharacterProfile,
-    DisplayStand,
     DisplayStandColumn,
 )
 from app.scripts.custom_classes import CustomFont, StyledButton
@@ -131,9 +130,9 @@ class DisplayStandTab(CharacterTab):
                 for col_index, column in enumerate(self._column_keys):
                     item: QTableWidgetItem = self._table.item(row_index, col_index)
                     value: float = 0.0
-                    if spec.stand in profile.display_stand.entries:
+                    if spec.name in profile.display_stand.entries:
                         entry: dict[DisplayStandColumn, float] = (
-                            profile.display_stand.entries[spec.stand]
+                            profile.display_stand.entries[spec.name]
                         )
                         value = entry[column] if column in entry else 0.0
 
@@ -348,10 +347,10 @@ class DisplayStandTab(CharacterTab):
         """진열대 단일 칸 모델 반영 여부 반환"""
 
         # 희소 저장 엔트리 조회 및 현재 값 비교
-        entries: dict[DisplayStand, dict[DisplayStandColumn, float]] = (
+        entries: dict[str, dict[DisplayStandColumn, float]] = (
             self._profile.display_stand.entries
         )
-        entry: dict[DisplayStandColumn, float] | None = entries.get(spec.stand)
+        entry: dict[DisplayStandColumn, float] | None = entries.get(spec.name)
         current_value: float = 0.0 if entry is None else entry.get(column, 0.0)
         if current_value == value:
             return False
@@ -361,11 +360,11 @@ class DisplayStandTab(CharacterTab):
             if entry is not None:
                 entry.pop(column, None)
                 if not entry:
-                    entries.pop(spec.stand, None)
+                    entries.pop(spec.name, None)
         else:
             if entry is None:
                 entry = {}
-                entries[spec.stand] = entry
+                entries[spec.name] = entry
 
             entry[column] = value
 

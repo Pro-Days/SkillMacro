@@ -5,12 +5,9 @@ from dataclasses import dataclass
 from app.scripts.calculator_models import StatKey
 from app.scripts.character_models import (
     AdditionalOption,
-    DisplayStand,
     DisplayStandColumn,
-    Elixir,
     EquipmentGrade,
     EquipmentSlot,
-    Pill,
     PotentialOption,
     ScrollTier,
 )
@@ -48,7 +45,6 @@ class OptionSpec:
 class DisplayStandSpec:
     """진열대 행 스펙"""
 
-    stand: DisplayStand
     name: str
 
 
@@ -56,8 +52,8 @@ class DisplayStandSpec:
 class ConsumableSpec:
     """영단/환 효과 스펙"""
 
-    name: str
     effects: dict[StatKey, float]
+    color: str
 
 
 ARMOR_EQUIPMENT_SLOTS: tuple[EquipmentSlot, ...] = (
@@ -1124,34 +1120,12 @@ EQUIPMENT_SCROLL_LIMITS: dict[EquipmentSlot, dict[int, int] | None] = {
 }
 
 
-DISPLAY_STAND_SPECS: tuple[DisplayStandSpec, ...] = (
-    DisplayStandSpec(DisplayStand.GAJUK, "찬란한 가죽"),
-    DisplayStandSpec(DisplayStand.JANGIN, "찬란한 장인"),
-    DisplayStandSpec(DisplayStand.DONGGUN, "찬란한 동군"),
-    DisplayStandSpec(DisplayStand.TUHAE, "찬란한 투해"),
-    DisplayStandSpec(DisplayStand.GWANGJEON, "찬란한 광전"),
-    DisplayStandSpec(DisplayStand.BAEKBI, "찬란한 백비"),
-    DisplayStandSpec(DisplayStand.GWANGSEOL, "찬란한 광설"),
-    DisplayStandSpec(DisplayStand.HOGUN, "찬란한 호군"),
-    DisplayStandSpec(DisplayStand.BAEKHYEON, "찬란한 백현"),
-    DisplayStandSpec(DisplayStand.CHEONGGUN, "찬란한 청군"),
-    DisplayStandSpec(DisplayStand.JANGHYEON, "찬란한 장현"),
-    DisplayStandSpec(DisplayStand.GEUMGUN, "찬란한 금군"),
-    DisplayStandSpec(DisplayStand.JINMU, "찬란한 진무"),
-    DisplayStandSpec(DisplayStand.NOKGWI, "찬란한 녹귀"),
-    DisplayStandSpec(DisplayStand.GEUMTU, "찬란한 금투"),
-    DisplayStandSpec(DisplayStand.GEUMCHEONG, "찬란한 금청"),
-    DisplayStandSpec(DisplayStand.YEOMHWA, "찬란한 염화"),
-    DisplayStandSpec(DisplayStand.GOEROK, "찬란한 괴록"),
-    DisplayStandSpec(DisplayStand.JEOKRYEONG, "찬란한 적령"),
-    DisplayStandSpec(DisplayStand.TURYEONG, "찬란한 투령"),
-    DisplayStandSpec(DisplayStand.JINGUN, "찬란한 진군"),
-    DisplayStandSpec(DisplayStand.SANRYEONG, "찬란한 산령"),
-    DisplayStandSpec(DisplayStand.GWANGRYONG, "찬란한 광룡"),
-    DisplayStandSpec(DisplayStand.CHEONGUN, "찬란한 천군"),
-    DisplayStandSpec(DisplayStand.CHEONGGWI, "찬란한 청귀"),
-    DisplayStandSpec(DisplayStand.GOEHWANG, "찬란한 괴황"),
-    DisplayStandSpec(DisplayStand.GEUMSEONG, "찬란한 금성"),
+DISPLAY_STAND_SPECS: tuple[DisplayStandSpec, ...] = tuple(
+    DisplayStandSpec(f"찬란한 {item_spec.name}")
+    for item_spec in sorted(
+        ARMOR_ITEM_SPECS,
+        key=lambda spec: (spec.level, -spec.tier),
+    )
 )
 
 
@@ -1169,137 +1143,137 @@ DISPLAY_STAND_COLUMN_STAT_KEYS: dict[DisplayStandColumn, tuple[StatKey, ...]] = 
 }
 
 
-ELIXIR_SPECS: dict[Elixir, ConsumableSpec] = {
-    Elixir.HWANGHWANDAN: ConsumableSpec(
-        "황환단",
+ELIXIR_SPECS: dict[str, ConsumableSpec] = {
+    "황환단": ConsumableSpec(
         _stats(
             (StatKey.STR, 2.0),
             (StatKey.DEXTERITY, 2.0),
             (StatKey.VITALITY, 2.0),
             (StatKey.LUCK, 2.0),
         ),
+        "#e8c95a",
     ),
-    Elixir.NOKHWANDAN: ConsumableSpec(
-        "녹환단",
+    "녹환단": ConsumableSpec(
         _stats((StatKey.VITALITY_PERCENT, 1.0), (StatKey.STR_PERCENT, 1.0)),
+        "#7bbf6a",
     ),
-    Elixir.JAHWANDAN: ConsumableSpec(
-        "자환단",
+    "자환단": ConsumableSpec(
         _stats((StatKey.DEXTERITY_PERCENT, 1.0), (StatKey.LUCK_PERCENT, 1.0)),
+        "#a86fd0",
     ),
-    Elixir.CHEONGHWANDAN: ConsumableSpec(
-        "청환단",
+    "청환단": ConsumableSpec(
         _stats((StatKey.ATTACK, 3.0), (StatKey.BOSS_ATTACK_PERCENT, 1.0)),
+        "#4f9bd9",
     ),
-    Elixir.JEOKHWANDAN: ConsumableSpec(
-        "적환단",
+    "적환단": ConsumableSpec(
         _stats((StatKey.HP_PERCENT, 1.0), (StatKey.HP, 15.0)),
+        "#d75a5a",
     ),
-    Elixir.BAEKHWANDAN: ConsumableSpec(
-        "백환단",
+    "백환단": ConsumableSpec(
         _stats((StatKey.EXP_PERCENT, 1.0), (StatKey.DROP_RATE_PERCENT, 1.0)),
+        "#dcdcdc",
     ),
-    Elixir.HEUKHWANDAN: ConsumableSpec(
-        "흑환단",
+    "흑환단": ConsumableSpec(
         _stats((StatKey.POTION_HEAL_PERCENT, 3.0), (StatKey.RESIST_PERCENT, 3.0)),
+        "#4a4a4a",
     ),
-    Elixir.OKHWANDAN: ConsumableSpec(
-        "옥환단",
+    "옥환단": ConsumableSpec(
         _stats((StatKey.ATTACK_PERCENT, 1.0)),
+        "#6fcabf",
     ),
-    Elixir.EUNHWANDAN: ConsumableSpec(
-        "은환단",
+    "은환단": ConsumableSpec(
         _stats((StatKey.FINAL_ATTACK_PERCENT, 1.0)),
+        "#b8c0cc",
     ),
-    Elixir.GEUMHWANDAN: ConsumableSpec(
-        "금환단",
+    "금환단": ConsumableSpec(
         _stats((StatKey.SKILL_DAMAGE_PERCENT, 1.0)),
+        "#e0b94a",
     ),
-    Elixir.MAEHWADAN: ConsumableSpec(
-        "매화단",
+    "매화단": ConsumableSpec(
         _stats((StatKey.HP, 5.0), (StatKey.CRIT_DAMAGE_PERCENT, 3.0)),
+        "#e87fb0",
     ),
-    Elixir.YONGHYEOLDAN: ConsumableSpec(
-        "용혈단",
+    "용혈단": ConsumableSpec(
         _stats((StatKey.HP_PERCENT, 3.0), (StatKey.VITALITY, 5.0)),
+        "#c0392b",
     ),
-    Elixir.MYEONGWOLDAN: ConsumableSpec(
-        "명월단",
+    "명월단": ConsumableSpec(
         _stats((StatKey.LUCK, 3.0), (StatKey.BOSS_ATTACK_PERCENT, 1.0)),
+        "#cfd6e0",
     ),
-    Elixir.TAEGEUKDAN: ConsumableSpec(
-        "태극단",
+    "태극단": ConsumableSpec(
         _stats((StatKey.STR, 3.0), (StatKey.BOSS_ATTACK_PERCENT, 1.0)),
+        "#d98b3a",
     ),
-    Elixir.CHEONGYEONGDAN: ConsumableSpec(
-        "천경단",
+    "천경단": ConsumableSpec(
         _stats((StatKey.LUCK_PERCENT, 1.0), (StatKey.ATTACK, 3.0)),
+        "#8a7fd0",
     ),
-    Elixir.SIGONGDAN: ConsumableSpec(
-        "시공단",
+    "시공단": ConsumableSpec(
         _stats((StatKey.EXP_PERCENT, 1.0), (StatKey.POTION_HEAL_PERCENT, 3.0)),
+        "#5ac0c0",
     ),
-    Elixir.CHEONGRYONGDAN: ConsumableSpec(
-        "청룡단",
+    "청룡단": ConsumableSpec(
         _stats((StatKey.STR, 4.0), (StatKey.EXP_PERCENT, 1.0)),
+        "#2f8f6f",
     ),
-    Elixir.BAEKHODAN: ConsumableSpec(
-        "백호단",
+    "백호단": ConsumableSpec(
         _stats((StatKey.DEXTERITY, 4.0), (StatKey.EXP_PERCENT, 1.0)),
+        "#f0f0f0",
     ),
-    Elixir.JUJAKDAN: ConsumableSpec(
-        "주작단",
+    "주작단": ConsumableSpec(
         _stats((StatKey.VITALITY, 4.0), (StatKey.EXP_PERCENT, 1.0)),
+        "#d65a3a",
     ),
-    Elixir.HYEONMUDAN: ConsumableSpec(
-        "현무단",
+    "현무단": ConsumableSpec(
         _stats((StatKey.LUCK, 4.0), (StatKey.EXP_PERCENT, 1.0)),
+        "#2f5f8f",
     ),
 }
 
 
-PILL_SPECS: dict[Pill, ConsumableSpec] = {
-    Pill.HWALSAENGHWAN: ConsumableSpec("활생환", _stats((StatKey.VITALITY, 5.0))),
-    Pill.HWANGTOHWAN: ConsumableSpec(
-        "황토환",
+PILL_SPECS: dict[str, ConsumableSpec] = {
+    "활생환": ConsumableSpec(_stats((StatKey.VITALITY, 5.0)), "#7bbf6a"),
+    "황토환": ConsumableSpec(
         _stats((StatKey.POTION_HEAL_PERCENT, 5.0)),
+        "#c8a04a",
     ),
-    Pill.HOESAENGHWAN: ConsumableSpec(
-        "회생환",
+    "회생환": ConsumableSpec(
         _stats((StatKey.STR_PERCENT, 3.0)),
+        "#d75a5a",
     ),
-    Pill.MYEONGMOKHWAN: ConsumableSpec(
-        "명목환",
+    "명목환": ConsumableSpec(
         _stats((StatKey.EXP_PERCENT, 4.0)),
+        "#9aa86a",
     ),
-    Pill.CHEONMOKHWAN: ConsumableSpec(
-        "천목환",
+    "천목환": ConsumableSpec(
         _stats((StatKey.EXP_PERCENT, 6.0)),
+        "#7a9a5a",
     ),
-    Pill.SINMOKHWAN: ConsumableSpec(
-        "신목환",
+    "신목환": ConsumableSpec(
         _stats((StatKey.EXP_PERCENT, 8.0)),
+        "#5a8a4a",
     ),
-    Pill.GANGGEUNHWAN: ConsumableSpec("강근환", _stats((StatKey.ATTACK, 10.0))),
-    Pill.CHEONGSIMHWAN: ConsumableSpec(
-        "청심환",
+    "강근환": ConsumableSpec(_stats((StatKey.ATTACK, 10.0)), "#c0392b"),
+    "청심환": ConsumableSpec(
         _stats((StatKey.DEXTERITY, 5.0)),
+        "#4f9bd9",
     ),
-    Pill.DAERYEOKHWAN: ConsumableSpec("대력환", _stats((StatKey.STR, 5.0))),
-    Pill.YONGRYEOKHWAN: ConsumableSpec(
-        "용력환",
+    "대력환": ConsumableSpec(_stats((StatKey.STR, 5.0)), "#d98b3a"),
+    "용력환": ConsumableSpec(
         _stats((StatKey.SKILL_SPEED_PERCENT, 3.0)),
+        "#a86fd0",
     ),
-    Pill.CHEONSEHWAN: ConsumableSpec(
-        "천세환",
+    "천세환": ConsumableSpec(
         _stats((StatKey.ATTACK_PERCENT, 3.0)),
+        "#6fcabf",
     ),
-    Pill.CHEONSIMHWAN: ConsumableSpec(
-        "천심환",
+    "천심환": ConsumableSpec(
         _stats((StatKey.CRIT_RATE_PERCENT, 2.0)),
+        "#e87fb0",
     ),
-    Pill.MANNYEONHWAN: ConsumableSpec(
-        "만년환",
+    "만년환": ConsumableSpec(
         _stats((StatKey.DROP_RATE_PERCENT, 10.0)),
+        "#e0b94a",
     ),
 }
