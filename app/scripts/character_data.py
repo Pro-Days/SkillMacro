@@ -1235,7 +1235,11 @@ ELIXIR_SPECS: dict[str, ConsumableSpec] = {
 PILL_SPECS: dict[str, ConsumableSpec] = {
     "추천환": ConsumableSpec(
         _stats((StatKey.EXP_PERCENT, 10.0), (StatKey.DROP_RATE_PERCENT, 5.0)),
-        "#5bc0de",
+        "#9e9e9e",
+    ),
+    "풀소유": ConsumableSpec(
+        _stats((StatKey.DROP_RATE_PERCENT, 1.0)),
+        "#87ceeb",
     ),
     "활생환": ConsumableSpec(_stats((StatKey.VITALITY, 5.0)), "#7bbf6a"),
     "황토환": ConsumableSpec(
