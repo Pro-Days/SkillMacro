@@ -2131,16 +2131,7 @@ class EquipmentTab(CharacterTab):
         """적용 주문서 행 표시 데이터 구성"""
 
         entries: list[tuple[EquipmentScrollLine, dict[StatKey, float]]] = []
-        valid_order: dict[tuple[StatKey, ScrollTier], int] = {
-            (stat_key, tier): stat_index * len(scroll_set.tiers) + tier_index
-            for stat_index, stat_key in enumerate(scroll_set.stat_keys)
-            for tier_index, tier in enumerate(scroll_set.tiers)
-        }
-        sorted_scrolls: list[EquipmentScrollLine] = sorted(
-            item.scrolls,
-            key=lambda scroll: valid_order[(scroll.stat_key, scroll.tier)],
-        )
-        for scroll in sorted_scrolls:
+        for scroll in item.scrolls:
             entries.append(
                 (
                     scroll,
