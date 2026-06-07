@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from PySide6.QtCore import QSignalBlocker
+from PySide6.QtCore import QSignalBlocker, Qt
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QVBoxLayout,
     QWidget,
 )
@@ -19,7 +20,7 @@ from app.scripts.character_models import CharacterProfile, Pill
 from app.scripts.custom_classes import CustomFont
 from app.scripts.ui.character_ui.change_handler import CharacterChangeHandler
 from app.scripts.ui.character_ui.tabs.base import CharacterTab
-from app.scripts.ui.character_ui.widgets import CharCard, ColorOrb, FlowLayout, ToggleSwitch
+from app.scripts.ui.character_ui.widgets import CharCard, ColorOrb, FlowLayout
 
 _PILL_COLORS: dict[Pill, str] = {
     Pill.HWALSAENGHWAN: "#7bbf6a",
@@ -85,25 +86,27 @@ class _PillCard(QFrame):
         effect_label.setMinimumHeight(32)
         layout.addWidget(effect_label)
 
-        # 사용 토글 구성
+        # 사용 여부 버튼 구성
         foot = QHBoxLayout()
         foot.setSpacing(8)
-
-        use_label: QLabel = QLabel("사용", self)
-        use_label.setObjectName("charHint")
-        use_label.setFont(CustomFont(9))
-        foot.addWidget(use_label)
         foot.addStretch(1)
 
-        self._toggle: ToggleSwitch = ToggleSwitch(self, False, self._on_toggle)
-        foot.addWidget(self._toggle)
+        self._use_button: QPushButton = QPushButton("사용", self)
+        self._use_button.setObjectName("charUseToggle")
+        self._use_button.setCheckable(True)
+        self._use_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._use_button.setFixedHeight(26)
+        self._use_button.setMinimumWidth(54)
+        self._use_button.setFont(CustomFont(9, bold=True))
+        self._use_button.toggled.connect(self._on_toggle)
+        foot.addWidget(self._use_button)
         layout.addLayout(foot)
 
     def set_active(self, active: bool) -> None:
         """사용 여부 표시 반영"""
 
-        with QSignalBlocker(self._toggle):
-            self._toggle.setChecked(active)
+        with QSignalBlocker(self._use_button):
+            self._use_button.setChecked(active)
         self.setProperty("on", active)
         self.style().unpolish(self)
         self.style().polish(self)

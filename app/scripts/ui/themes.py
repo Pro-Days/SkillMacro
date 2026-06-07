@@ -1649,12 +1649,14 @@ QPushButton#charCounterBtn {{
 }}
 QPushButton#charCounterBtn:hover {{ background-color: #F6F5F4; }}
 QLabel#charCounterValue {{ color: #1A1A1A; background: transparent; qproperty-alignment: AlignCenter; }}
-QPushButton#charSwitch {{
-    background-color: #C8C4BE; border: 0px; border-radius: 12px; color: #FFFFFF;
-    text-align: left; padding-left: 4px;
+QPushButton#charUseToggle {{
+    background-color: #FFFFFF; border: 1px solid #C8C4BE; border-radius: 6px;
+    color: #5D5B54; padding: 3px 12px;
 }}
-QPushButton#charSwitch:checked {{ background-color: #9180F7; text-align: right; padding-right: 4px; }}
-
+QPushButton#charUseToggle:hover {{ background-color: #F6F5F4; border-color: #9180F7; }}
+QPushButton#charUseToggle:checked {{
+    background-color: #6C5CE0; border-color: #6C5CE0; color: #FFFFFF;
+}}
 /* 부적 / 주문서 카드형 선택 UI */
 QFrame#charTalSlot {{
     background-color: #FAFAF9; border: 1px dashed #C8C4BE; border-radius: 12px;
@@ -3258,12 +3260,14 @@ QPushButton#charCounterBtn {{
 }}
 QPushButton#charCounterBtn:hover {{ background-color: #2A2A3E; }}
 QLabel#charCounterValue {{ color: #E8E8F0; background: transparent; qproperty-alignment: AlignCenter; }}
-QPushButton#charSwitch {{
-    background-color: #3A3A52; border: 0px; border-radius: 12px; color: #FFFFFF;
-    text-align: left; padding-left: 4px;
+QPushButton#charUseToggle {{
+    background-color: #242434; border: 1px solid #3A3A52; border-radius: 6px;
+    color: #A0A0C0; padding: 3px 12px;
 }}
-QPushButton#charSwitch:checked {{ background-color: #9180F7; text-align: right; padding-right: 4px; }}
-
+QPushButton#charUseToggle:hover {{ background-color: #2A2A3E; border-color: #9180F7; }}
+QPushButton#charUseToggle:checked {{
+    background-color: #6C5CE0; border-color: #6C5CE0; color: #FFFFFF;
+}}
 /* 부적 / 주문서 카드형 선택 UI */
 QFrame#charTalSlot {{
     background-color: #242434; border: 1px dashed #4A4A60; border-radius: 12px;

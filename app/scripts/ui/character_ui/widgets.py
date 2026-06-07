@@ -486,39 +486,6 @@ class ColorOrb(QLabel):
         )
 
 
-class ToggleSwitch(QPushButton):
-    """on/off 토글 스위치 (환 사용 여부)"""
-
-    def __init__(
-        self,
-        parent: QWidget,
-        active: bool,
-        on_toggle: Callable[[bool], None],
-    ) -> None:
-        super().__init__(parent)
-
-        self.setObjectName("charSwitch")
-        self.setCheckable(True)
-        self.setChecked(active)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setFixedSize(42, 24)
-
-        self._on_toggle: Callable[[bool], None] = on_toggle
-        self._sync_text()
-        self.clicked.connect(self._handle_toggle)
-
-    def _handle_toggle(self) -> None:
-        """토글 시 상태 반영"""
-
-        self._sync_text()
-        self._on_toggle(self.isChecked())
-
-    def _sync_text(self) -> None:
-        """on/off 표시용 텍스트"""
-
-        self.setText("  ●" if self.isChecked() else "●  ")
-
-
 class FlowLayout(QLayout):
     """폭에 따라 자식 위젯을 자동 줄바꿈하는 레이아웃"""
 
