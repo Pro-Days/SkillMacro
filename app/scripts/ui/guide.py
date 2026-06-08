@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.scripts.app_state import app_state
+from app.scripts.calculator_engine import build_internal_base_stats
 from app.scripts.calculator_models import (
     BaseStats,
     CalculatorPresetInput,
@@ -39,13 +40,16 @@ from app.scripts.calculator_models import (
     STAT_SPECS,
     StatKey,
     TargetDistributionState,
+    TargetDanjeonState,
 )
 from app.scripts.custom_classes import CustomFont
 from app.scripts.data_manager import save_data
+from app.scripts.macro_models import SkillUsageSetting
+from app.scripts.ui.main_ui.sidebar import SkillSettingCardWidgets
 from app.scripts.ui.themes import theme_manager
 
 if TYPE_CHECKING:
-    from app.scripts.macro_models import MacroPreset
+    from app.scripts.macro_models import MacroPreset, MacroSkills
     from app.scripts.ui.character_ui.character_page import CharacterPage
     from app.scripts.ui.main_window import MainWindow
 
@@ -77,6 +81,7 @@ def _guide_recommended_icon() -> QIcon:
     painter.setBrush(_guide_highlight_color())
     painter.drawEllipse(2, 2, 6, 6)
     painter.end()
+
     return QIcon(pixmap)
 
 
@@ -101,6 +106,9 @@ class CalculatorGuideSession:
     preset: MacroPreset
     calculator_input: CalculatorPresetInput
     scroll_levels: dict[str, int]
+    skills: MacroSkills
+    usage_settings: dict[str, SkillUsageSetting]
+    use_default_attack: bool
 
 
 class GuideTargetRegistry:
@@ -132,11 +140,11 @@ class GuideTargetRegistry:
         # 메인 화면 대상
         self._resolvers.update(
             {
-                "main.preview": lambda: self._current_tab().preview,
-                "main.scroll_slots": lambda: self._current_tab().available_skills,
-                "main.available_skills": lambda: self._current_tab().available_skills,
-                "main.placed_skills": lambda: self._current_tab().placed_skills,
-                "main.skill_keys": lambda: self._current_tab().placed_skills,
+                "main.preview": lambda: self._current_tab().preview,  # type: ignore
+                "main.scroll_slots": lambda: self._current_tab().available_skills,  # type: ignore
+                "main.available_skills": lambda: self._current_tab().available_skills,  # type: ignore
+                "main.placed_skills": lambda: self._current_tab().placed_skills,  # type: ignore
+                "main.skill_keys": lambda: self._current_tab().placed_skills,  # type: ignore
                 "main.preset_tabs": lambda: self.master.main_ui.tab_widget.get_tab_bar(),
             }
         )
@@ -190,7 +198,7 @@ class GuideTargetRegistry:
                 "sidebar.link.editor.type": lambda: self.master.sidebar.link_skill_editor.type_setting,
                 "sidebar.link.editor.key": lambda: self.master.sidebar.link_skill_editor.key_setting,
                 "sidebar.link.editor.remember": lambda: self.master.sidebar.link_skill_editor.remember_state_setting,
-                "sidebar.link.editor.skills": lambda: self.master.sidebar.link_skill_editor._skills_container,
+                "sidebar.link.editor.add_skill": lambda: self.master.sidebar.link_skill_editor.add_skill_btn,
                 "sidebar.link.editor.save": lambda: self.master.sidebar.link_skill_editor.save_btn,
             }
         )
@@ -205,6 +213,7 @@ class GuideTargetRegistry:
                 "sim.input.metric": lambda: self.master.sim_ui.input_page.editor.metric_input,
                 "sim.input.metric_manage": lambda: self.master.sim_ui.input_page.editor.metric_input,
                 "sim.input.base_stats": lambda: self.master.sim_ui.input_page.editor.stats_inputs,
+                "sim.input.skills": lambda: self.master.sim_ui.input_page.editor.skills,
                 "sim.input.distribution": lambda: self.master.sim_ui.input_page.editor.distribution_inputs,
                 "sim.input.target_distribution": lambda: self.master.sim_ui.input_page.editor.target_distribution_inputs,
                 "sim.input.danjeon": lambda: self.master.sim_ui.input_page.editor.danjeon_inputs,
@@ -213,6 +222,10 @@ class GuideTargetRegistry:
                 "sim.input.custom_delta": lambda: self.master.sim_ui.input_page.editor.custom_delta_inputs,
                 "sim.graph.page": lambda: self.master.sim_ui.graph_page,
                 "sim.results.page": lambda: self.master.sim_ui.results_page,
+                "sim.results.power": lambda: self.master.sim_ui.results_page.view._power_card,
+                "sim.results.efficiency": lambda: self.master.sim_ui.results_page.view._stat_scroll_card,
+                "sim.results.optimization": lambda: self.master.sim_ui.results_page.view._opt_card,
+                "sim.results.growth": lambda: self.master.sim_ui.results_page.view._growth_card,
             }
         )
 
@@ -255,7 +268,9 @@ class GuideTargetRegistry:
         """첫 스킬 카드 사용 여부 버튼 반환"""
 
         # 현재 표시 중인 첫 스킬 카드 옵션 버튼 조회
-        cards = self.master.sidebar.skill_settings._skill_cards
+        cards: list[SkillSettingCardWidgets] = (
+            self.master.sidebar.skill_settings._skill_cards
+        )
         if not cards:
             return self.master.sidebar.skill_settings._cards_container
 
@@ -265,7 +280,9 @@ class GuideTargetRegistry:
         """첫 스킬 카드 단독 사용 버튼 반환"""
 
         # 현재 표시 중인 첫 스킬 카드 옵션 버튼 조회
-        cards = self.master.sidebar.skill_settings._skill_cards
+        cards: list[SkillSettingCardWidgets] = (
+            self.master.sidebar.skill_settings._skill_cards
+        )
         if not cards:
             return self.master.sidebar.skill_settings._cards_container
 
@@ -275,7 +292,9 @@ class GuideTargetRegistry:
         """첫 스킬 카드 우선순위 버튼 반환"""
 
         # 현재 표시 중인 첫 스킬 카드 옵션 버튼 조회
-        cards = self.master.sidebar.skill_settings._skill_cards
+        cards: list[SkillSettingCardWidgets] = (
+            self.master.sidebar.skill_settings._skill_cards
+        )
         if not cards:
             return self.master.sidebar.skill_settings._cards_container
 
@@ -357,7 +376,7 @@ class GuideStartOverlay(QFrame):
         self._place_card()
         return super().resizeEvent(event)
 
-    def paintEvent(self, event: QPaintEvent) -> None:
+    def paintEvent(self, event: QPaintEvent) -> None:  # type: ignore
         """반투명 배경 그리기"""
 
         painter: QPainter = QPainter(self)
@@ -408,7 +427,7 @@ class GuideSelectionOverlay(QFrame):
         title_label.setFont(CustomFont(14, bold=True))
         layout.addWidget(title_label)
 
-        body_label: QLabel = QLabel("확인할 가이드를 선택하세요.", self._card)
+        body_label: QLabel = QLabel("시작할 가이드를 선택하세요.", self._card)
         body_label.setObjectName("guideDialogBody")
         body_label.setFont(CustomFont(11))
         layout.addWidget(body_label)
@@ -461,7 +480,7 @@ class GuideSelectionOverlay(QFrame):
         self._place_card()
         return super().resizeEvent(event)
 
-    def paintEvent(self, event: QPaintEvent) -> None:
+    def paintEvent(self, event: QPaintEvent) -> None:  # type: ignore
         """반투명 배경 그리기"""
 
         painter: QPainter = QPainter(self)
@@ -591,7 +610,7 @@ class GuideOverlay(QFrame):
         self._place_card()
         return super().resizeEvent(event)
 
-    def paintEvent(self, event: QPaintEvent) -> None:
+    def paintEvent(self, event: QPaintEvent) -> None:  # type: ignore
         """반투명 배경과 대상 강조 테두리 그리기"""
 
         painter: QPainter = QPainter(self)
@@ -930,9 +949,7 @@ class GuideManager:
         target: QWidget | None = self._target_registry.resolve(step.target_id)
         error_message: str | None = None
         if target is None:
-            error_message = (
-                "가이드 대상을 찾을 수 없습니다. 화면을 다시 열고 시도하세요."
-            )
+            error_message = "오류가 발생했습니다. 대상 요소를 찾을 수 없습니다."
         else:
             self._ensure_target_visible(target)
 
@@ -966,7 +983,7 @@ class GuideManager:
         """사이드바 페이지 진입"""
 
         self._main_page()
-        self.master.sidebar.change_page(index)
+        self.master.sidebar.change_page(index)  # type: ignore
 
     def _link_editor_page(self) -> None:
         """임시 연계스킬 편집 페이지 진입"""
@@ -1009,6 +1026,16 @@ class GuideManager:
 
         self._sidebar_page(2)
 
+    def _ensure_calculator_layout(self) -> None:
+        """메인 화면을 계산기로 전환
+
+        이미 계산기 화면이면 change_layout 의 on_enter 가 하위 페이지를 입력 화면으로
+        되돌리므로, 그 재진입을 생략해 불필요한 중복 이동을 방지한다.
+        """
+
+        if self.master.page_navigator.currentIndex() != 1:
+            self.master.change_layout(1)
+
     def _sim_input_page(self) -> None:
         """계산기 정보 입력 페이지 진입"""
 
@@ -1019,16 +1046,25 @@ class GuideManager:
         self.master.change_layout(1)
         self.master.sim_ui.change_layout(0)
 
-    def _sim_graph_page(self) -> None:
-        """계산기 시뮬레이터 페이지 진입"""
+    def _enter_sim_graph(self) -> None:
+        """계산기 시뮬레이터 페이지로 전환"""
 
         # 계산기 가이드 예시 입력 보장
         self._ensure_calculator_guide_input()
 
         self.master.popup_manager.close_popup()
-        self.master.change_layout(1)
+        self._ensure_calculator_layout()
+
         if self.master.sim_ui.input_page.editor.has_valid_navigation_inputs():
             self.master.sim_ui.change_layout(1)
+
+    def _sim_graph_page(self) -> None:
+        """계산기 시뮬레이터 페이지 진입 후 최상단 이동"""
+
+        self._enter_sim_graph()
+
+        # 시뮬레이터 결과 안내를 위해 페이지 최상단으로 이동
+        self.master.sim_ui.scroll_area.verticalScrollBar().setValue(0)
 
     def _sim_results_page(self) -> None:
         """계산기 결과 페이지 진입"""
@@ -1044,7 +1080,7 @@ class GuideManager:
             return
 
         # 계산기 화면 진입 후 예시 결과 계산 시작
-        self.master.change_layout(1)
+        self._ensure_calculator_layout()
         self._calculator_results_requested = (
             self.master.sim_ui.start_results_calculation_without_confirmation()
         )
@@ -1058,7 +1094,7 @@ class GuideManager:
         """캐릭터 페이지 진입"""
 
         self.master.popup_manager.close_popup()
-        self.master.change_layout(1)
+        self._ensure_calculator_layout()
         self.master.sim_ui.change_layout(3)
 
         character_page: CharacterPage = self.master.sim_ui.character_page
@@ -1077,9 +1113,7 @@ class GuideManager:
 
         # 현재 프리셋 기준 세션 재사용
         current_preset: MacroPreset = app_state.macro.current_preset
-        current_session: CalculatorGuideSession | None = (
-            self._calculator_guide_session
-        )
+        current_session: CalculatorGuideSession | None = self._calculator_guide_session
         if current_session is not None and current_session.preset is current_preset:
             return
 
@@ -1087,15 +1121,19 @@ class GuideManager:
         if current_session is not None:
             self._restore_calculator_guide_input()
 
-        # 현재 사용자 입력과 무공비급 레벨 메모리 백업
+        # 현재 사용자 입력과 스킬 구성 메모리 백업
         self._calculator_guide_session = CalculatorGuideSession(
             preset=current_preset,
             calculator_input=copy.deepcopy(current_preset.info.calculator),
             scroll_levels=current_preset.info.scroll_levels.copy(),
+            skills=copy.deepcopy(current_preset.skills),
+            usage_settings=copy.deepcopy(current_preset.usage_settings),
+            use_default_attack=current_preset.settings.use_default_attack,
         )
 
-        # 예시 입력 주입 및 저장 차단
+        # 예시 입력과 시뮬레이션용 예시 스킬 주입 및 저장 차단
         current_preset.info.calculator = self._build_calculator_guide_input()
+        self._apply_calculator_guide_skills(current_preset)
         self.master.sim_ui.input_page.editor.set_persist_enabled(False)
         self._calculator_results_requested = False
 
@@ -1109,6 +1147,40 @@ class GuideManager:
 
         self._begin_calculator_guide_input()
 
+    def _apply_calculator_guide_skills(self, preset: MacroPreset) -> None:
+        """계산기 가이드 시뮬레이션을 위한 예시 스킬 임시 장착"""
+
+        # 현재 서버의 첫 무공비급과 제공 스킬 조회
+        server_spec = app_state.macro.current_server
+        scroll_ids: list[str] = server_spec.skill_registry.get_all_scroll_ids()
+        if not scroll_ids or not preset.skills.equipped_scrolls:
+            return
+
+        scroll_id: str = scroll_ids[0]
+        skill_ids: list[str] = server_spec.skill_registry.get_scroll(scroll_id).skills
+        if not skill_ids:
+            return
+
+        # 첫 무공비급 슬롯에 예시 무공비급 장착
+        preset.skills.equipped_scrolls[0] = scroll_id
+        preset.info.scroll_levels.setdefault(scroll_id, 1)
+
+        # 첫 무공비급의 두 스킬을 첫째·둘째 배치 슬롯에 배치하고 사용 설정 보장
+        for line_index, skill_id in enumerate(
+            skill_ids[: server_spec.skill_line_count]
+        ):
+            if line_index >= len(preset.skills.placed_skills):
+                break
+
+            preset.skills.placed_skills[line_index] = skill_id
+            usage: SkillUsageSetting = preset.usage_settings.setdefault(
+                skill_id, SkillUsageSetting()
+            )
+            usage.use_skill = True
+
+        # 평타 사용을 켜 시뮬레이션 피해 발생 보장
+        preset.settings.use_default_attack = True
+
     def _restore_calculator_guide_input(self) -> None:
         """계산기 가이드 예시 입력 세션 복원"""
 
@@ -1117,15 +1189,22 @@ class GuideManager:
         if current_session is None:
             return
 
-        # 진행 중 계산 중단 후 원래 입력 복구
+        # 진행 중 계산 중단 후 원래 입력과 스킬 구성 복구
         self.master.sim_ui.cancel_results_calculation_for_shutdown()
         current_session.preset.info.calculator = current_session.calculator_input
         current_session.preset.info.scroll_levels = current_session.scroll_levels
+        current_session.preset.skills = current_session.skills
+        current_session.preset.usage_settings = current_session.usage_settings
+        current_session.preset.settings.use_default_attack = (
+            current_session.use_default_attack
+        )
         self.master.sim_ui.input_page.editor.set_persist_enabled(True)
 
-        # 현재 화면이 복원 대상 프리셋일 때만 입력 UI 재동기화
+        # 현재 화면이 복원 대상 프리셋일 때만 입력 UI와 스킬 화면 재동기화
         if app_state.macro.current_preset is current_session.preset:
             self.master.sim_ui.input_page.editor.load_from_preset_state()
+            self.master.sidebar.update_from_preset()
+            self.master.main_ui.tab_widget.get_current_tab().update_from_preset()
 
         # 예시 세션 상태 초기화
         self._calculator_guide_session = None
@@ -1136,57 +1215,67 @@ class GuideManager:
 
         # 기본 계산기 입력 구조 생성
         calculator_input: CalculatorPresetInput = CalculatorPresetInput.create_default()
-        base_stats: BaseStats = BaseStats.create_default()
+        final_stats: BaseStats = BaseStats.create_default()
 
-        # 그래프와 결과 계산이 가능한 최소 공격 관련 스탯 구성
-        base_stats.values[StatKey.ATTACK.value] = 820.0
-        base_stats.values[StatKey.ATTACK_PERCENT.value] = 45.0
-        base_stats.values[StatKey.HP.value] = 2400.0
-        base_stats.values[StatKey.HP_PERCENT.value] = 20.0
-        base_stats.values[StatKey.STR.value] = 120.0
-        base_stats.values[StatKey.STR_PERCENT.value] = 15.0
-        base_stats.values[StatKey.DEXTERITY.value] = 110.0
-        base_stats.values[StatKey.DEXTERITY_PERCENT.value] = 12.0
-        base_stats.values[StatKey.VITALITY.value] = 105.0
-        base_stats.values[StatKey.VITALITY_PERCENT.value] = 10.0
-        base_stats.values[StatKey.LUCK.value] = 95.0
-        base_stats.values[StatKey.LUCK_PERCENT.value] = 8.0
-        base_stats.values[StatKey.SKILL_DAMAGE_PERCENT.value] = 32.0
-        base_stats.values[StatKey.FINAL_ATTACK_PERCENT.value] = 18.0
-        base_stats.values[StatKey.CRIT_RATE_PERCENT.value] = 22.0
-        base_stats.values[StatKey.CRIT_DAMAGE_PERCENT.value] = 130.0
-        base_stats.values[StatKey.BOSS_ATTACK_PERCENT.value] = 80.0
-        base_stats.values[StatKey.RESIST_PERCENT.value] = 8.0
-        base_stats.values[StatKey.SKILL_SPEED_PERCENT.value] = 15.0
+        # 입력 화면에 표시되는 최종 스탯 기준으로 예시 값 구성
+        final_stats.values[StatKey.ATTACK.value] = 3405
+        final_stats.values[StatKey.ATTACK_PERCENT.value] = 198
+        final_stats.values[StatKey.HP.value] = 1816
+        final_stats.values[StatKey.HP_PERCENT.value] = 27
+        final_stats.values[StatKey.STR.value] = 781
+        final_stats.values[StatKey.STR_PERCENT.value] = 43.4
+        final_stats.values[StatKey.DEXTERITY.value] = 430
+        final_stats.values[StatKey.DEXTERITY_PERCENT.value] = 48.4
+        final_stats.values[StatKey.VITALITY.value] = 63
+        final_stats.values[StatKey.VITALITY_PERCENT.value] = 26.4
+        final_stats.values[StatKey.LUCK.value] = 88
+        final_stats.values[StatKey.LUCK_PERCENT.value] = 36.4
+        final_stats.values[StatKey.SKILL_DAMAGE_PERCENT.value] = 32.3
+        final_stats.values[StatKey.FINAL_ATTACK_PERCENT.value] = 13.2
+        final_stats.values[StatKey.CRIT_RATE_PERCENT.value] = 23
+        final_stats.values[StatKey.CRIT_DAMAGE_PERCENT.value] = 203
+        final_stats.values[StatKey.EXP_PERCENT.value] = 65
+        final_stats.values[StatKey.BOSS_ATTACK_PERCENT.value] = 52
+        final_stats.values[StatKey.DROP_RATE_PERCENT.value] = 56
+        final_stats.values[StatKey.DODGE_PERCENT.value] = 2
+        final_stats.values[StatKey.POTION_HEAL_PERCENT.value] = 61
+        final_stats.values[StatKey.RESIST_PERCENT.value] = 5
+        final_stats.values[StatKey.SKILL_SPEED_PERCENT.value] = 22
 
-        # 계산기 예시의 기본 기준값 지정
-        calculator_input.base_stats = base_stats
-        calculator_input.level = 35
-        calculator_input.realm_tier = RealmTier.THIRD_RATE
-        calculator_input.selected_formula_id = PowerMetric.BOSS_DAMAGE.value
+        # 표시값(최종 스탯)을 내부 원시 스탯으로 환산해 예시 기준값 지정
+        calculator_input.base_stats = build_internal_base_stats(final_stats)
+        calculator_input.level = 120
+        calculator_input.realm_tier = RealmTier.TRANSCENDENT
+        calculator_input.selected_formula_id = PowerMetric.BOSS_DAMAGE_CHECK.value
 
         # 결과 계산 부담을 줄이는 잠금된 분배/단전 예시 구성
         calculator_input.distribution = DistributionState(
-            strength=10,
-            dexterity=8,
-            vitality=7,
-            luck=6,
-            is_locked=True,
-            use_reset=False,
+            strength=400,
+            dexterity=200,
+            vitality=0,
+            luck=0,
+            is_locked=False,
+            use_reset=True,
         )
         calculator_input.target_distribution = TargetDistributionState(
-            strength=12,
-            dexterity=9,
-            vitality=8,
-            luck=7,
-            is_minimum=False,
+            strength=250,
+            dexterity=250,
+            vitality=0,
+            luck=0,
+            is_minimum=True,
         )
         calculator_input.danjeon = DanjeonState(
-            upper=2,
-            middle=3,
-            lower=1,
-            is_locked=True,
-            use_reset=False,
+            upper=5,
+            middle=12,
+            lower=0,
+            is_locked=False,
+            use_reset=True,
+        )
+        calculator_input.target_danjeon = TargetDanjeonState(
+            upper=0,
+            middle=17,
+            lower=0,
+            is_minimum=True,
         )
 
         # 선택형 장비 데이터 없는 기본 예시 상태 구성
@@ -1196,7 +1285,8 @@ class GuideManager:
         calculator_input.custom_stat_changes = {
             stat_key.value: 0.0 for stat_key in STAT_SPECS.keys()
         }
-        calculator_input.custom_stat_changes[StatKey.ATTACK.value] = 20.0
+        calculator_input.custom_stat_changes[StatKey.STR.value] = 10
+        calculator_input.custom_stat_changes[StatKey.DEXTERITY.value] = -10
         return calculator_input
 
     def cleanup_for_shutdown(self) -> None:
@@ -1258,43 +1348,43 @@ class GuideManager:
                 steps=(
                     GuideStep(
                         "현재 화면 구조 확인",
-                        "현재 화면은 프리셋 단위로 설정을 관리합니다. 프리셋마다 서버, 무공비급, 스킬 배치, 계산기 입력이 따로 저장됩니다.",
+                        "이 프로그램은 프리셋 단위로 설정을 저장하고 사용합니다. 프리셋마다 서버, 무공비급, 스킬 배치, 계산기 입력이 따로 저장됩니다.",
                         "main.preset_tabs",
                         lambda: self._sidebar_page(0),
                     ),
                     GuideStep(
                         "서버와 직업 확인",
-                        "먼저 현재 프리셋에서 사용할 서버와 직업을 확인합니다. 이 값이 바뀌면 선택 가능한 무공비급과 스킬 목록도 바뀝니다.",
+                        "먼저 현재 프리셋에서 사용할 서버와 직업을 확인합니다.",
                         "sidebar.general.server",
                         lambda: self._sidebar_page(0),
                     ),
                     GuideStep(
                         "딜레이 확인",
-                        "딜레이는 입력 간격입니다. 너무 낮으면 스킬이 누락될 수 있고, 너무 높으면 반응이 느려집니다.",
+                        "딜레이는 스킬 사이 입력 간격입니다. 너무 낮으면 스킬이 누락될 수 있고, 너무 높으면 사용이 느려집니다.",
                         "sidebar.general.delay",
                         lambda: self._sidebar_page(0),
                     ),
                     GuideStep(
                         "스킬속도 확인",
-                        "캐릭터의 스킬속도 값을 입력하면 쿨타임 계산에 반영됩니다.",
+                        "캐릭터의 스킬속도(%) 스탯을 입력하면 쿨타임 계산에 반영됩니다.",
                         "sidebar.general.cooltime",
                         lambda: self._sidebar_page(0),
                     ),
                     GuideStep(
                         "시작키 확인",
-                        "시작키는 매크로를 시작하고 중지하는 키입니다. 다른 기능에서 이미 쓰는 키와 겹치지 않는지 확인합니다.",
+                        "시작키는 매크로를 시작하고 중지하는 키입니다.",
                         "sidebar.general.start_key",
                         lambda: self._sidebar_page(0),
                     ),
                     GuideStep(
                         "스왑 키 확인",
-                        "스왑 키는 1줄과 2줄 스킬을 오갈 때 사용됩니다. 실제 게임 키 설정과 맞아야 합니다.",
+                        "스왑 키는 1줄과 2줄을 바꿀 때 사용됩니다. 실제 게임 키 설정과 일치해야 합니다.",
                         "sidebar.general.swap_key",
                         lambda: self._sidebar_page(0),
                     ),
                     GuideStep(
                         "마우스 클릭 설정 확인",
-                        "일반 공격 입력을 함께 사용할지 정합니다. 스킬만 사용할 때는 끄고, 평타를 섞어야 하면 켭니다.",
+                        "평타 입력을 함께 사용할지 정합니다. 스킬만 사용할 때는 끄고, 평타를 섞어야 하면 켭니다.",
                         "sidebar.general.click",
                         lambda: self._sidebar_page(0),
                     ),
@@ -1312,7 +1402,7 @@ class GuideManager:
                     ),
                     GuideStep(
                         "사용 가능 스킬 확인",
-                        "무공비급을 장착하면 아래에 사용 가능한 스킬이 표시됩니다. 이 영역의 스킬은 아직 실제 사용 순서에 들어간 것이 아닙니다.",
+                        "무공비급을 장착하면 아래에 사용 가능한 스킬이 표시됩니다.",
                         "main.available_skills",
                         self._main_page,
                     ),
@@ -1336,19 +1426,19 @@ class GuideManager:
                     ),
                     GuideStep(
                         "입력키 확인",
-                        "하단의 키 버튼은 각 줄에서 실제로 누를 키입니다. 게임 안의 스킬 위치와 맞게 설정해야 합니다.",
+                        "하단의 키 버튼은 각 줄에서 실제로 누를 키입니다. 서버 안의 스킬 위치와 맞게 설정해야 합니다.",
                         "main.skill_keys",
                         self._main_page,
                     ),
                     GuideStep(
                         "실행 순서 미리보기",
-                        "미리보기는 현재 설정 기준으로 다음에 사용할 스킬 순서를 보여줍니다. 설정을 바꾼 뒤 이 영역으로 흐름을 확인합니다.",
+                        "미리보기는 현재 설정 기준으로 다음에 사용할 스킬 순서를 보여줍니다.",
                         "main.preview",
                         self._main_page,
                     ),
                     GuideStep(
                         "마무리",
-                        "기본 설정, 무공비급 장착, 스킬 배치, 입력키가 맞으면 시작키로 매크로를 실행할 준비가 끝납니다.",
+                        "기본 설정, 무공비급 장착, 스킬 배치를 완료하면 매크로를 실행할 준비가 끝납니다.",
                         "main.preview",
                         self._main_page,
                     ),
@@ -1360,25 +1450,25 @@ class GuideManager:
                 steps=(
                     GuideStep(
                         "커스텀 무공비급 진입 위치",
-                        "커스텀 무공비급은 스킬 사용설정의 선택 무공비급 목록에서 추가할 수 있습니다.",
+                        "커스텀 무공비급은 스킬 사용설정의 무공비급 목록에서 추가할 수 있습니다.",
                         "sidebar.skill.selected_scroll",
                         lambda: self._sidebar_page(1),
                     ),
                     GuideStep(
                         "무공비급 선택 팝업 열기",
-                        "선택 무공비급 영역을 누르면 현재 서버에서 사용할 수 있는 무공비급 목록이 열립니다.",
+                        "무공비급 선택 영역을 누르면 현재 서버에서 사용할 수 있는 무공비급 목록이 열립니다.",
                         "sidebar.skill.selected_scroll",
                         lambda: self._sidebar_page(1),
                     ),
                     GuideStep(
                         "새 스킬 추가 위치",
-                        "목록 아래의 + 새 스킬 추가를 누르면 커스텀 무공비급과 스킬을 입력하는 창이 열립니다. 가이드에서는 버튼 위치만 확인합니다.",
+                        "목록 아래의 `+ 새 스킬 추가`를 누르면 무공비급과 스킬 정보를 입력하는 창이 열립니다.",
                         "sidebar.skill.scroll_add",
                         self._custom_scroll_add_button_page,
                     ),
                     GuideStep(
                         "입력 항목 확인",
-                        "추가 창에서는 무공비급 이름, 스킬 이름, 레벨별 데미지, 쿨타임을 입력합니다. 이 버튼을 직접 눌렀을 때만 창이 열립니다.",
+                        "스킬 추가 창에서는 무공비급 이름, 스킬 이름, 레벨별 데미지, 쿨타임을 입력합니다.",
                         "sidebar.skill.scroll_add",
                         self._custom_scroll_add_button_page,
                     ),
@@ -1395,64 +1485,46 @@ class GuideManager:
                 title="연계스킬 만들기",
                 steps=(
                     GuideStep(
-                        "연계설정 위치 확인",
-                        "연계설정은 여러 스킬을 하나의 묶음으로 사용하는 기능입니다.",
+                        "연계스킬 위치 확인",
+                        "연계스킬은 여러 스킬을 하나의 스킬처럼 묶어서 사용하는 기능입니다.",
                         "sidebar.nav.link",
                         lambda: self._sidebar_page(2),
                     ),
                     GuideStep(
-                        "연계스킬 목록 확인",
-                        "만들어둔 연계스킬은 이 목록에 표시됩니다. 각 항목에서 포함된 스킬과 사용 방식이 요약됩니다.",
-                        "sidebar.link.list",
-                        lambda: self._sidebar_page(2),
-                    ),
-                    GuideStep(
                         "새 연계스킬 만들기",
-                        "새 연계스킬을 만들려면 이 버튼을 누릅니다. 버튼을 누르면 편집 화면으로 이동합니다.",
+                        "이 버튼을 눌러 새 연계스킬을 만들 수 있습니다.",
                         "sidebar.link.create",
                         lambda: self._sidebar_page(2),
                     ),
                     GuideStep(
-                        "자동 사용과 수동 사용",
-                        "자동 사용은 조건이 맞으면 매크로가 연계스킬을 사용합니다. 수동 사용은 지정한 시작키 입력을 기준으로 동작합니다.",
+                        "자동 사용",
+                        "자동 사용이 켜져있다면 매크로 실행 중 자동으로 연계스킬을 사용합니다.",
                         "sidebar.link.editor.type",
                         self._link_editor_page,
                     ),
                     GuideStep(
                         "시작키 설정",
-                        "수동 연계스킬은 시작키가 중요합니다. 이미 다른 기능에서 쓰는 키와 겹치면 정상적으로 입력하기 어렵습니다.",
+                        "연계스킬을 수동으로 사용하기 위해 누를 시작키를 설정합니다.",
                         "sidebar.link.editor.key",
                         self._link_editor_page,
                     ),
                     GuideStep(
                         "쿨타임 동기화",
-                        "연계스킬을 직접 실행할 때 쿨타임 준비 상태를 이어갈지 정하는 설정입니다.",
+                        "수동 연계스킬에서 연계스킬이 빠르게 다시 실행되었을 때 쿨타임 상태를 유지할지 정하는 설정입니다.",
                         "sidebar.link.editor.remember",
                         self._link_editor_page,
                     ),
                     GuideStep(
-                        "포함할 스킬 선택",
-                        "연계스킬에 들어갈 스킬을 선택합니다. 현재 프리셋에 장착된 스킬만 안정적으로 사용할 수 있습니다.",
-                        "sidebar.link.editor.skills",
+                        "포함할 스킬 추가",
+                        "이 버튼을 눌러 연계스킬에 들어갈 스킬을 추가합니다.",
+                        "sidebar.link.editor.add_skill",
                         self._link_editor_page,
-                    ),
-                    GuideStep(
-                        "저장 위치 확인",
-                        "저장 버튼은 연계스킬을 실제 목록에 반영하는 위치입니다. 1차 가이드에서는 버튼 위치만 안내하고 저장은 누르지 않습니다.",
-                        "sidebar.link.editor.save",
-                        self._link_editor_page,
-                    ),
-                    GuideStep(
-                        "목록으로 돌아가기",
-                        "가이드를 종료하면 임시 편집 화면을 취소하고 기존 연계스킬 목록으로 돌아갑니다.",
-                        "sidebar.link.list",
-                        self._close_link_editor_page,
                     ),
                     GuideStep(
                         "마무리",
-                        "연계스킬은 일반 스킬 배치와 함께 실행 흐름에 영향을 줍니다. 설정 위치를 확인한 뒤 미리보기와 실제 실행 흐름의 관계를 이해합니다.",
-                        "main.preview",
-                        self._main_page,
+                        "연계스킬 편집이 끝나면 저장하거나 취소해서 목록으로 돌아갑니다.",
+                        "sidebar.link.editor.save",
+                        self._link_editor_page,
                     ),
                 ),
             ),
@@ -1463,68 +1535,68 @@ class GuideManager:
                 steps=(
                     GuideStep(
                         "계산기 화면 진입",
-                        "계산기는 캐릭터 정보와 스킬 정보를 기준으로 시뮬레이션과 스탯 효율을 확인하는 화면입니다.",
+                        "계산기는 캐릭터 스펙 정보를 이용해 스탯 효율을 확인하는 곳입니다.",
                         "sim.nav.input",
                         self._sim_input_page,
                     ),
                     GuideStep(
-                        "예시 입력 적용",
-                        "가이드 중에는 예시 입력을 임시로 보여줍니다. 가이드를 종료하면 기존 계산기 입력으로 돌아갑니다.",
-                        "sim.input.base_stats",
-                        self._sim_input_page,
-                    ),
-                    GuideStep(
                         "전투력 공식 선택",
-                        "현재 전투력을 계산할 기준 공식을 선택합니다. 기본 공식과 사용자 정의 공식이 함께 표시됩니다.",
+                        "현재 전투력을 계산할 기준 공식을 선택합니다.",
                         "sim.input.metric",
                         self._sim_input_page,
                     ),
                     GuideStep(
                         "전투력 공식 관리",
-                        "새 전투력 공식을 추가하거나 기존 공식을 관리할 수 있습니다. 공식이 여러 서버나 세팅 기준을 다룰 때 유용합니다.",
+                        "새 전투력 공식을 추가하거나 기존 공식을 관리할 수 있습니다.",
                         "sim.input.metric_manage",
                         self._sim_input_page,
                     ),
                     GuideStep(
-                        "기본 스탯 입력",
-                        "캐릭터의 전체 스탯을 입력합니다. 예시 입력에서는 결과를 볼 수 있도록 공격 관련 값이 채워져 있습니다.",
+                        "전체 스탯 입력",
+                        "캐릭터의 전체 스탯을 입력합니다.",
                         "sim.input.base_stats",
                         self._sim_input_page,
                     ),
                     GuideStep(
-                        "현재 스탯 분배",
-                        "현재 분배된 스탯을 입력합니다. 잠금과 초기화 옵션은 계산에서 조정 가능한 범위를 정합니다.",
-                        "sim.input.distribution",
-                        self._sim_input_page,
-                    ),
-                    GuideStep(
-                        "목표 분배 미리보기",
-                        "목표 분배는 현재 분배와 비교해 전투력 변화량을 확인하는 데 사용됩니다.",
-                        "sim.input.target_distribution",
-                        self._sim_input_page,
-                    ),
-                    GuideStep(
-                        "단전 입력",
-                        "상단전, 중단전, 하단전 값을 입력합니다. 단전도 잠금과 초기화 조건에 따라 최적화 대상이 달라집니다.",
-                        "sim.input.danjeon",
-                        self._sim_input_page,
-                    ),
-                    GuideStep(
-                        "칭호 입력",
-                        "보유 칭호를 추가하고 장착할 칭호를 선택합니다. 칭호별 스탯은 계산 결과에 반영됩니다.",
-                        "sim.input.title",
-                        self._sim_input_page,
-                    ),
-                    GuideStep(
-                        "부적 입력",
-                        "보유 부적과 장착 슬롯을 설정합니다. 부적 등급과 레벨에 따라 적용 스탯이 달라집니다.",
-                        "sim.input.talisman",
+                        "무공비급 레벨 입력",
+                        "장착한 무공비급의 레벨을 입력합니다.",
+                        "sim.input.skills",
                         self._sim_input_page,
                     ),
                     GuideStep(
                         "사용자 지정 변화량",
                         "특정 스탯이 바뀌었을 때 전투력이 얼마나 변하는지 따로 확인할 수 있습니다.",
                         "sim.input.custom_delta",
+                        self._sim_input_page,
+                    ),
+                    GuideStep(
+                        "현재 스탯 분배",
+                        "현재 분배된 스탯을 입력합니다. 잠금 설정이 켜져있으면 최적화 과정에서 스탯 분배를 진행하지 않으며 지금 상태로 고정됩니다. 초기화 옵션이 켜져있으면 스탯 분배를 초기화한 후 최적화를 진행합니다.",
+                        "sim.input.distribution",
+                        self._sim_input_page,
+                    ),
+                    GuideStep(
+                        "목표 분배 미리보기",
+                        "목표 분배는 현재 분배와 비교해 전투력 변화량을 확인하는 데 사용됩니다. `최적화에 최소분배로 반영` 옵션이 켜져있으면 최적화 과정에서 적어도 목표 분배 값들 만큼은 분배하도록 합니다.",
+                        "sim.input.target_distribution",
+                        self._sim_input_page,
+                    ),
+                    GuideStep(
+                        "단전 입력",
+                        "상단전, 중단전, 하단전 값을 입력합니다.",
+                        "sim.input.danjeon",
+                        self._sim_input_page,
+                    ),
+                    GuideStep(
+                        "칭호 입력",
+                        "보유 칭호를 추가하고 장착할 칭호를 선택합니다.",
+                        "sim.input.title",
+                        self._sim_input_page,
+                    ),
+                    GuideStep(
+                        "부적 입력",
+                        "보유 부적과 장착 슬롯을 설정합니다.",
+                        "sim.input.talisman",
                         self._sim_input_page,
                     ),
                     GuideStep(
@@ -1535,43 +1607,49 @@ class GuideManager:
                     ),
                     GuideStep(
                         "시뮬레이터 결과",
-                        "결과에는 DPM 분포, 스킬 비율, DPS 흐름, 총 피해량, 스킬 기여도 그래프가 포함됩니다.",
+                        "결과 페이지에서는 60초 동안의 다양한 스킬 사용 정보를 그래프로 확인할 수 있습니다.",
                         "sim.graph.page",
                         self._sim_graph_page,
                     ),
                     GuideStep(
                         "스탯 계산기 실행",
-                        "예시 입력으로 스탯 계산기 결과를 불러옵니다. 계산이 진행 중이면 잠시 기다린 뒤 결과가 표시됩니다.",
+                        "이 탭을 누르면 입력된 정보들로 현재 전투력을 계산하고 스탯 효율과 최적화 결과를 확인합니다.",
                         "sim.nav.results",
-                        self._sim_results_page,
+                        self._enter_sim_graph,
                     ),
                     GuideStep(
                         "결과 화면 확인",
-                        "결과 화면에서는 현재 전투력, 스탯 효율, 성장 효율, 최적화 결과를 함께 확인합니다.",
+                        "결과 화면에서는 현재 전투력, 최적화 결과, 스탯 효율, 성장 효율을 함께 확인합니다.",
                         "sim.results.page",
                         self._sim_results_page,
                     ),
                     GuideStep(
                         "현재 전투력",
-                        "선택한 전투력 공식 기준으로 현재 입력값을 계산한 결과입니다. 어떤 공식으로 나온 값인지 함께 확인합니다.",
-                        "sim.results.page",
+                        "선택한 전투력 공식 기준으로 현재 입력값을 계산한 결과입니다.",
+                        "sim.results.power",
                         self._sim_results_page,
                     ),
                     GuideStep(
                         "스탯 효율",
-                        "힘, 민첩, 생명력, 행운 같은 기본 스탯을 1 올렸을 때 전투력이 얼마나 변하는지 비교합니다.",
-                        "sim.results.page",
+                        "각 스탯과 무공비급 레벨을 +1 만큼 증가시켰을 때 전투력이 얼마나 변하는지 확인합니다.",
+                        "sim.results.efficiency",
                         self._sim_results_page,
                     ),
                     GuideStep(
                         "최적화 결과",
-                        "현재 입력값, 잠금 조건, 보유 칭호, 보유 부적, 스탯 분배, 단전 조건을 기준으로 가장 좋은 조합을 계산합니다.",
-                        "sim.results.page",
+                        "현재 입력값, 스탯/단전 분배, 보유 칭호, 보유 부적 등의 조건을 기준으로 가장 좋은 조합을 계산합니다.",
+                        "sim.results.optimization",
+                        self._sim_results_page,
+                    ),
+                    GuideStep(
+                        "성장 효율",
+                        "레벨 1업과 다음 경지 달성 시 전투력이 얼마나 오르는지 확인합니다.",
+                        "sim.results.growth",
                         self._sim_results_page,
                     ),
                     GuideStep(
                         "마무리",
-                        "가이드를 종료하면 예시 입력은 사라지고 기존 계산기 입력으로 돌아갑니다.",
+                        "스탯 효율 정보를 확인하고 스펙업 계획을 세워보세요.",
                         "sim.results.page",
                         self._sim_results_page,
                     ),
@@ -1608,7 +1686,7 @@ class GuideManager:
                     ),
                     GuideStep(
                         "스탯·단전 분배 탭",
-                        "스탯·단전 분배에서는 현재 레벨과 경지 기준으로 분배값을 입력합니다. 자동 최적화로 현재 기준의 추천 분배도 확인할 수 있습니다.",
+                        "스탯·단전 분배에서는 현재 레벨과 경지 기준으로 분배값을 입력합니다.",
                         "character.tab.distribution",
                         lambda: self._sim_character_page(2, True, False),
                     ),
@@ -1668,13 +1746,13 @@ class GuideManager:
                     ),
                     GuideStep(
                         "설정할 무공비급 선택",
-                        "현재 선택한 무공비급의 스킬만 아래 카드에 표시됩니다. 다른 무공비급을 설정하려면 이 영역에서 선택합니다.",
+                        "현재 선택한 무공비급의 스킬이 아래 카드에 표시됩니다. 다른 무공비급을 설정하려면 이 영역에서 선택합니다.",
                         "sidebar.skill.selected_scroll",
                         lambda: self._sidebar_page(1),
                     ),
                     GuideStep(
                         "스킬 카드 목록",
-                        "각 카드 하나가 스킬 하나의 설정입니다. 스킬 이름과 아이콘, 사용 옵션이 함께 표시됩니다.",
+                        "선택된 무공비급의 스킬의 설정을 변경할 수 있습니다.",
                         "sidebar.skill.cards",
                         lambda: self._sidebar_page(1),
                     ),
@@ -1686,7 +1764,7 @@ class GuideManager:
                     ),
                     GuideStep(
                         "단독 사용",
-                        "단독 사용은 자동 연계스킬에 포함된 스킬이 다른 스킬을 기다리지 않고 이 스킬을 우선적으로 사용할지 정하는 설정입니다.",
+                        "단독 사용은 자동 연계스킬에 포함된 스킬이 다른 스킬들을 기다리지 않고 이 스킬을 우선적으로 사용할지 정하는 설정입니다.",
                         "sidebar.skill.sole",
                         lambda: self._sidebar_page(1),
                     ),

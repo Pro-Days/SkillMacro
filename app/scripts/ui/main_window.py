@@ -434,8 +434,7 @@ class MainWindow(QWidget):
         """윈도우 크기 변경 시 실행"""
 
         self.popup_manager.update_notice_positions()
-        if hasattr(self, "guide_manager"):
-            self.guide_manager.refresh_visible_overlays()
+        self.guide_manager.refresh_visible_overlays()
         QTimer.singleShot(0, self.sim_ui.on_window_resized)
         return super().resizeEvent(event)
 
@@ -443,8 +442,7 @@ class MainWindow(QWidget):
         """프로그램 종료 시 백그라운드 계산 정리"""
 
         # 창 종료 전 가이드 임시 상태 복원
-        if hasattr(self, "guide_manager"):
-            self.guide_manager.cleanup_for_shutdown()
+        self.guide_manager.cleanup_for_shutdown()
 
         # 창 종료 전에 계산기 백그라운드 작업 중단 요청
         self.sim_ui.cancel_results_calculation_for_shutdown()

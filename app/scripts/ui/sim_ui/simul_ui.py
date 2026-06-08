@@ -5032,10 +5032,8 @@ class ResultsPage(QFrame):
             """현재 계산기 입력 저장이 허용된 경우 파일 저장"""
 
             # 가이드 임시 입력은 현재 세션 메모리에만 유지
-            if not self._is_persist_enabled:
-                return
-
-            save_data()
+            if self._is_persist_enabled:
+                save_data()
 
         def on_optimization_input_changed(self) -> None:
             """최적화 입력 변경 시 기준 상태 분리 갱신"""
