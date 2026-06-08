@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QFontMetrics, QResizeEvent
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -15,6 +16,53 @@ from PySide6.QtWidgets import (
 from app.scripts.calculator_models import REALM_TIER_SPECS
 from app.scripts.character_models import CharacterProfile
 from app.scripts.custom_classes import CustomFont, StyledButton
+
+
+class _MiddleElidedLabel(QLabel):
+    """가로 폭 기준 가운데 생략 라벨"""
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+
+        self._full_text: str = ""
+        self.setMinimumWidth(0)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Ignored,
+            QSizePolicy.Policy.Fixed,
+        )
+
+    def setText(self, text: str) -> None:  # type: ignore[override]
+        """전체 문구 보관 및 현재 폭 기준 표시 갱신"""
+
+        # 원문 보관 및 툴팁 제공
+        self._full_text = text
+        self.setToolTip(text)
+
+        # 현재 배치 폭 기준 표시 문구 갱신
+        self._refresh_elided_text()
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        """라벨 폭 변경 시 표시 문구 갱신"""
+
+        # 변경된 폭 기준 가운데 생략 재계산
+        self._refresh_elided_text()
+
+        super().resizeEvent(event)
+
+    def _refresh_elided_text(self) -> None:
+        """현재 라벨 폭에 맞춘 가운데 생략 문구 적용"""
+
+        # 폰트 기준 실제 표시 가능 폭 계산
+        metrics: QFontMetrics = QFontMetrics(self.font())
+        available_width: int = max(0, self.width())
+
+        # 원문이 폭을 넘을 때만 가운데 생략 처리
+        display_text: str = metrics.elidedText(
+            self._full_text,
+            Qt.TextElideMode.ElideMiddle,
+            available_width,
+        )
+        super().setText(display_text)
 
 
 class _CharacterRow(QFrame):
@@ -39,9 +87,10 @@ class _CharacterRow(QFrame):
 
         # 캐릭터 이름 표시
         name_text: str = character.name if character.name.strip() else "이름 없음"
-        self.name_label: QLabel = QLabel(name_text, self)
+        self.name_label: _MiddleElidedLabel = _MiddleElidedLabel(self)
         self.name_label.setObjectName("charRowName")
         self.name_label.setFont(CustomFont(11, bold=True))
+        self.name_label.setText(name_text)
 
         # 레벨과 경지 요약 표시
         realm_label: str = REALM_TIER_SPECS[character.realm].label

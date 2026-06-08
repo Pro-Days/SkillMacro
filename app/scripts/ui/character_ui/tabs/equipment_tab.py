@@ -1663,8 +1663,19 @@ class EquipmentTab(CharacterTab):
                 field.number(),
             )
         )
+        remove_btn: StyledButton = StyledButton(
+            self, "삭제", kind="danger", point_size=9
+        )
+        remove_btn.setFixedWidth(54)
+        remove_btn.clicked.connect(
+            lambda _checked=False, target=item, line_index=index: self._remove_free_stat(
+                target,
+                line_index,
+            )
+        )
         row.addWidget(combo, 1)
         row.addWidget(field)
+        row.addWidget(remove_btn)
         return row
 
     def _add_free_stat(self, item: OwnedEquipment) -> None:
@@ -1673,21 +1684,21 @@ class EquipmentTab(CharacterTab):
         item.base_stat_lines.append(
             EquipmentFreeStatLine(stat_key=StatKey.ATTACK, value=0.0)
         )
-        index: int = len(item.base_stat_lines) - 1
-        view: _EquipmentDetailView | None = self._equipped_view
-        if (
-            view is None
-            or view.item is not item
-            or view.base_section is None
-            or view.base_section.free_rows is None
-        ):
-            raise ValueError("free stat detail is not bound")
+        self._rebuild_current_detail(item)
+        self._changes.stats_changed()
 
-        free_rows: QVBoxLayout = view.base_section.free_rows
-        free_rows.addLayout(
-            self._build_free_stat_row(item, index, STAT_SPECS[StatKey.ATTACK], "0")
-        )
-        self._changes.saved_value_changed()
+    def _remove_free_stat(self, item: OwnedEquipment, index: int) -> None:
+        """자유 스탯 라인 삭제"""
+
+        del item.base_stat_lines[index]
+        self._rebuild_current_detail(item)
+        self._changes.stats_changed()
+
+    def _rebuild_current_detail(self, item: OwnedEquipment) -> None:
+        """현재 장비 상세 페이지 재구성"""
+
+        self._discard_equipment_views(item)
+        self._show_detail()
 
     def _set_free_stat_line(
         self,

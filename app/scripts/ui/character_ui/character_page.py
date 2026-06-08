@@ -127,9 +127,7 @@ class CharacterPage(QFrame):
             self._paste_character,
             self._delete_character,
         )
-        self._left_panel.setFixedWidth(_LEFT_WIDTH)
-        self._left_panel.setMinimumWidth(0)
-        self._left_panel.setMaximumWidth(0)
+        self._left_panel.setFixedWidth(0)
         self._left_collapsed: bool = True
         layout.addWidget(self._left_panel)
 
@@ -138,7 +136,6 @@ class CharacterPage(QFrame):
         # 우측 전체 스탯 패널
         self._right_panel: LiveStatsPanel = LiveStatsPanel(self)
         self._right_panel.setFixedWidth(_RIGHT_WIDTH)
-        self._right_panel.setMinimumWidth(0)
         self._right_collapsed: bool = False
         layout.addWidget(self._right_panel)
 
@@ -446,7 +443,7 @@ class CharacterPage(QFrame):
 
         self._left_collapsed = False
         self._left_anim = None
-        self._left_panel.setMaximumWidth(_LEFT_WIDTH)
+        self._left_panel.setFixedWidth(_LEFT_WIDTH)
         self._update_toggle_labels()
 
     def show_live_stats_panel(self) -> None:
@@ -457,7 +454,7 @@ class CharacterPage(QFrame):
 
         self._right_collapsed = False
         self._right_anim = None
-        self._right_panel.setMaximumWidth(_RIGHT_WIDTH)
+        self._right_panel.setFixedWidth(_RIGHT_WIDTH)
         self._update_toggle_labels()
 
     def _use_selected_character(self) -> None:
@@ -492,11 +489,18 @@ class CharacterPage(QFrame):
     def _animate_width(self, panel: QWidget, target: int) -> QPropertyAnimation:
         """패널 최대 폭 애니메이션"""
 
+        # 애니메이션 중 임시 축소 허용
+        start_width: int = panel.width()
+        panel.setMinimumWidth(0)
+        panel.setMaximumWidth(start_width)
+
+        # 최대 폭 변경 기반 펼침·접힘 애니메이션
         animation: QPropertyAnimation = QPropertyAnimation(panel, b"maximumWidth", self)
         animation.setDuration(280)
-        animation.setStartValue(panel.maximumWidth())
+        animation.setStartValue(start_width)
         animation.setEndValue(target)
         animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        animation.finished.connect(lambda: panel.setFixedWidth(target))
         animation.start()
         return animation
 
