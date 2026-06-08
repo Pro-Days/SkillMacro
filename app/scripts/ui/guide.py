@@ -221,7 +221,7 @@ class GuideTargetRegistry:
                 "sim.input.talisman": lambda: self.master.sim_ui.input_page.editor.talisman_inputs,
                 "sim.input.custom_delta": lambda: self.master.sim_ui.input_page.editor.custom_delta_inputs,
                 "sim.graph.page": lambda: self.master.sim_ui.graph_page,
-                "sim.results.page": lambda: self.master.sim_ui.results_page,
+                "sim.results.page": lambda: self.master.sim_ui.scroll_area,
                 "sim.results.power": lambda: self.master.sim_ui.results_page.view._power_card,
                 "sim.results.efficiency": lambda: self.master.sim_ui.results_page.view._stat_scroll_card,
                 "sim.results.optimization": lambda: self.master.sim_ui.results_page.view._opt_card,
@@ -953,12 +953,16 @@ class GuideManager:
         else:
             self._ensure_target_visible(target)
 
-        overlay.show_step(
-            definition,
-            step,
-            self._current_step_index,
-            target,
-            error_message,
+        step_index: int = self._current_step_index
+        QTimer.singleShot(
+            0,
+            lambda: overlay.show_step(
+                definition,
+                step,
+                step_index,
+                target,
+                error_message,
+            ),
         )
 
     def _ensure_target_visible(self, target: QWidget) -> None:
