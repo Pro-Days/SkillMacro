@@ -319,7 +319,7 @@ class GuideStartOverlay(QFrame):
 
         # 선택 카드 구성
         self._card: QFrame = QFrame(self)
-        self._card.setObjectName("guideOverlayCard")
+        self._card.setObjectName("guideSelectionCard")
 
         layout: QVBoxLayout = QVBoxLayout(self._card)
         layout.setContentsMargins(22, 20, 22, 18)
