@@ -418,6 +418,18 @@ class SimUI:
 
         return True
 
+    def show_results_page(self) -> None:
+        """이미 시작된 결과 계산의 결과 페이지로 전환
+
+        결과 페이지는 계산 시작 시점에 로딩/결과 상태를 보유하므로,
+        다른 하위 페이지에서 돌아왔을 때 재계산 없이 전환만 수행한다.
+        """
+
+        self.update_nav(2)
+        self.stacked_layout.setCurrentIndex(2)
+        self.adjust_main_frame_height()
+        QTimer.singleShot(0, self.adjust_main_frame_height)
+
     def update_nav(self, index: int) -> None:
         """
         내비게이션 버튼 색 업데이트

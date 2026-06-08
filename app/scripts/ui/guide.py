@@ -1073,14 +1073,16 @@ class GuideManager:
         self._ensure_calculator_guide_input()
 
         self.master.popup_manager.close_popup()
+        self._ensure_calculator_layout()
 
-        # 결과 계산 중복 요청 방지
+        # 이미 결과 계산을 시작했으면 결과 페이지로만 전환
+        # (그래프 등 다른 하위 페이지에서 돌아온 경우에도 결과 페이지를 다시 표시)
         if self._calculator_results_requested:
-            self.master.page_navigator.setCurrentIndex(1)
+            self.master.sim_ui.show_results_page()
             return
 
-        # 계산기 화면 진입 후 예시 결과 계산 시작
-        self._ensure_calculator_layout()
+        # 결과 계산이 입력 위젯을 읽기 직전 프리셋 기준으로 입력 위젯 동기화
+        self.master.sim_ui.input_page.editor.load_from_preset_state()
         self._calculator_results_requested = (
             self.master.sim_ui.start_results_calculation_without_confirmation()
         )
@@ -1094,7 +1096,7 @@ class GuideManager:
         """캐릭터 페이지 진입"""
 
         self.master.popup_manager.close_popup()
-        self._ensure_calculator_layout()
+        self.master.change_layout(1)
         self.master.sim_ui.change_layout(3)
 
         character_page: CharacterPage = self.master.sim_ui.character_page
