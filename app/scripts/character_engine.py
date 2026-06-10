@@ -1090,9 +1090,10 @@ def _damage_score(final_stats: FinalStats) -> float:
     """스탯 분배 비교용 데미지 점수"""
 
     values: dict[StatKey, float] = final_stats.values
+    crit_rate: float = min(values[StatKey.CRIT_RATE_PERCENT], 100.0)
     return values[StatKey.ATTACK] * (
         1.0
-        + values[StatKey.CRIT_RATE_PERCENT]
+        + crit_rate
         * (values[StatKey.CRIT_DAMAGE_PERCENT] - 100.0)
         / 10000.0
     )
