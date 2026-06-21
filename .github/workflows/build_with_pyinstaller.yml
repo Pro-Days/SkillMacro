@@ -1,18 +1,67 @@
-name: Package exe with PyInstaller
+name: Build exe and installer
 
 on:
   workflow_dispatch:
 
 jobs:
-  pyinstaller-build:
+  build:
     runs-on: windows-latest
     steps:
-      - name: Create Executable
-        uses: sayyid5416/pyinstaller@v1
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          python_ver: '3.12'
-          pyinstaller_ver: '==6.16.0'
-          spec: 'SkillMacro.py'
-          requirements: 'requirements.txt'
-          upload_exe_with_name: 'ProDaysSkillMacro'
-          options: -F, -w, -i ".\app\resources\image\icon.ico", --add-data "app;app"
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller==6.16.0
+
+      - name: Build onefile exe
+        run: >
+          pyinstaller --noconfirm --clean -F -w
+          -i "app/resources/image/icon.ico"
+          --add-data "app;app"
+          --name SkillMacro
+          --distpath dist/onefile --workpath build/onefile
+          SkillMacro.py
+
+      - name: Build onedir
+        run: >
+          pyinstaller --noconfirm --clean -D -w
+          -i "app/resources/image/icon.ico"
+          --add-data "app;app"
+          --name SkillMacro
+          --distpath dist/onedir --workpath build/onedir
+          SkillMacro.py
+
+      - name: Read app version
+        shell: pwsh
+        run: |
+          $match = Select-String -Path app/scripts/config.py -Pattern 'version:\s*ClassVar\[str\]\s*=\s*"v?([0-9.]+)"'
+          $version = $match.Matches[0].Groups[1].Value
+          echo "APP_VERSION=$version" >> $env:GITHUB_ENV
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /DMyAppVersion=$env:APP_VERSION SkillMacro.iss
+
+      - name: Upload onefile exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: SkillMacro-exe
+          path: dist/onefile/SkillMacro.exe
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: SkillMacro-installer
+          path: dist/installer/SkillMacro-Setup.exe

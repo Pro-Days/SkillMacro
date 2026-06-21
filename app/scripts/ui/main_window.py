@@ -3,10 +3,9 @@ from __future__ import annotations
 import sys
 from multiprocessing import freeze_support
 from threading import Thread
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from webbrowser import open_new
 
-import requests
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QCloseEvent, QIcon, QKeyEvent, QPixmap
 from PySide6.QtWidgets import (
@@ -39,8 +38,23 @@ from app.scripts.ui.guide import GuideManager
 from app.scripts.ui.main_ui.main_ui import MainUI
 from app.scripts.ui.main_ui.sidebar import Sidebar
 from app.scripts.ui.popup import NoticeKind, PopupManager
-from app.scripts.ui.sim_ui.simul_ui import SimUI
 from app.scripts.ui.themes import DARK_THEME, LIGHT_THEME, theme_manager
+
+if TYPE_CHECKING:
+    from app.scripts.ui.sim_ui.simul_ui import SimUI
+
+
+def warmup_qt_type_bindings() -> None:
+    """위젯 대량 생성 전 PySide6 타입 바인딩을 일괄 초기화"""
+
+    # 위젯 생성 중 발생하는 shiboken 지연 타입 해석 비용을 시작 시점에 한 번에 처리
+    import PySide6.QtCore
+    import PySide6.QtGui
+    import PySide6.QtWidgets
+
+    for module in (PySide6.QtCore, PySide6.QtGui, PySide6.QtWidgets):
+        for attribute_name in dir(module):
+            getattr(module, attribute_name)
 
 
 class MainWindow(QWidget):
@@ -221,6 +235,18 @@ class MainWindow(QWidget):
         # UI 프리징 방지를 위한 네트워크 작업 분리
         Thread(target=self.version_check_thread, daemon=True).start()
 
+    @property
+    def sim_ui(self) -> SimUI:
+        """계산기 UI를 최초 접근 시 생성하고 이후 재사용"""
+
+        # 시작 시점이 아닌 계산기 최초 사용 시점에 시뮬레이션 모듈 로드 및 생성
+        if self._sim_ui is None:
+            from app.scripts.ui.sim_ui.simul_ui import SimUI
+
+            self._sim_ui = SimUI(self, self.page2)
+
+        return self._sim_ui
+
     def change_layout(self, num: int) -> None:
         """
         레이아웃 변경
@@ -262,6 +288,9 @@ class MainWindow(QWidget):
         """
         최신버전 확인 쓰레드
         """
+
+        # 버전 확인 시점에만 사용하는 네트워크 모듈 지연 로드
+        import requests
 
         try:
             # GitHub 최신 릴리스 태그 조회
@@ -374,8 +403,8 @@ class MainWindow(QWidget):
             self.main_ui.tab_widget.get_current_tab().update_from_preset
         )
 
-        # 시뮬레이션 UI
-        self.sim_ui: SimUI = SimUI(self, self.page2)
+        # 시뮬레이션 UI는 계산기 최초 진입 시 생성
+        self._sim_ui: SimUI | None = None
 
         # 가이드 매니저 구성
         self.guide_manager: GuideManager = GuideManager(self)
@@ -435,7 +464,8 @@ class MainWindow(QWidget):
 
         self.popup_manager.update_notice_positions()
         self.guide_manager.refresh_visible_overlays()
-        QTimer.singleShot(0, self.sim_ui.on_window_resized)
+        if self._sim_ui is not None:
+            QTimer.singleShot(0, self._sim_ui.on_window_resized)
         return super().resizeEvent(event)
 
     def closeEvent(self, event: QCloseEvent) -> None:
@@ -444,8 +474,9 @@ class MainWindow(QWidget):
         # 창 종료 전 가이드 임시 상태 복원
         self.guide_manager.cleanup_for_shutdown()
 
-        # 창 종료 전에 계산기 백그라운드 작업 중단 요청
-        self.sim_ui.cancel_results_calculation_for_shutdown()
+        # 창 종료 전에 계산기 백그라운드 작업 중단 요청 (계산기 미사용 시 생략)
+        if self._sim_ui is not None:
+            self._sim_ui.cancel_results_calculation_for_shutdown()
         super().closeEvent(event)
 
     def _on_theme_changed(self, dark: bool) -> None:
