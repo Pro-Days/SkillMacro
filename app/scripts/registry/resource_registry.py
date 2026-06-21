@@ -23,6 +23,9 @@ _LIGHT_THEME_IMAGE_DIR: str = "resources\\image\\light"
 # 다크 테마 이미지 출력 디렉터리 경로
 _DARK_THEME_IMAGE_DIR: str = "resources\\image\\dark"
 
+# 텍스트 아이콘 캔버스 크기
+_LABELED_ICON_SIZE: int = 128
+
 
 def convert_resource_path(relative_path: str) -> str:
     """리소스 경로 변경"""
@@ -166,7 +169,7 @@ class ResourceRegistry:
         """이름 텍스트가 포함된 아이콘 생성"""
 
         # 배경 이미지 없는 투명 캔버스 생성
-        result: QPixmap = QPixmap(640, 640)
+        result: QPixmap = QPixmap(_LABELED_ICON_SIZE, _LABELED_ICON_SIZE)
         result.fill(Qt.GlobalColor.transparent)
 
         # 여러 글자 이름의 가독성 확보
@@ -187,7 +190,7 @@ class ResourceRegistry:
         painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
 
         # 아이콘 외곽 회색 테두리 렌더링
-        border_width: int = max(6, int(result.width() * 0.012))
+        border_width: int = max(2, int(result.width() * 0.012))
         border_pen: QPen = QPen(QColor(150, 150, 150, 220))
         border_pen.setWidth(border_width)
         painter.setPen(border_pen)
@@ -199,8 +202,8 @@ class ResourceRegistry:
                 -border_width,
                 -border_width,
             ),
-            48,
-            48,
+            10,
+            10,
         )
 
         # 텍스트 외곽선과 본문 렌더링
@@ -230,11 +233,11 @@ class ResourceRegistry:
 
         # 아이콘 외곽선과 겹치지 않는 내부 여백 계산
         horizontal_padding: int = max(
-            18,
+            4,
             int(pixmap.width() * 0.04),
         )
         vertical_padding: int = max(
-            20,
+            5,
             int(pixmap.height() * 0.05),
         )
 
@@ -249,8 +252,8 @@ class ResourceRegistry:
         """아이콘 영역에 맞는 폰트 계산"""
 
         # 가능한 가장 큰 폰트 크기부터 순차 탐색
-        point_size: int = 260
-        while point_size >= 72:
+        point_size: int = 52
+        while point_size >= 14:
             font: QFont = QFont()
             font.setBold(True)
             font.setPointSize(point_size)
@@ -266,12 +269,12 @@ class ResourceRegistry:
             ):
                 return font
 
-            point_size -= 6
+            point_size -= 2
 
         # 최소 크기 폰트 반환
         minimum_font: QFont = QFont()
         minimum_font.setBold(True)
-        minimum_font.setPointSize(72)
+        minimum_font.setPointSize(14)
         if self._font_family:
             minimum_font.setFamily(self._font_family)
 

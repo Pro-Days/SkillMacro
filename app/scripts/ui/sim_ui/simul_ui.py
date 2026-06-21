@@ -114,19 +114,12 @@ from app.scripts.ui.popup import (
     NoticeKind,
     PopupManager,
 )
-from app.scripts.ui.sim_ui.graph import (
-    DamageGraphMode,
-    DMGCanvas,
-    DpmDistributionCanvas,
-    SkillContributionCanvas,
-    SkillDpsRatioCanvas,
-)
-from app.scripts.ui.character_ui import CharacterPage
 from app.scripts.ui.themes import theme_manager
 
 if TYPE_CHECKING:
     from PIL import Image
 
+    from app.scripts.ui.character_ui import CharacterPage
     from app.scripts.calculator_engine import (
         DamageEvent,
         EvaluationContext,
@@ -245,18 +238,19 @@ class SimUI:
         # 페이지 레이아웃 설정
         self.stacked_layout = QStackedLayout(self.main_frame)
 
-        self.input_page = InputPage(self.main_frame, self.popup_manager)
-        self.graph_page = GraphPage(self.main_frame)
-        self.results_page = ResultsPage(self.main_frame)
-        self.character_page = CharacterPage(
-            self.main_frame,
-            self._use_character_for_calculator,
-        )
+        # 계산기 첫 진입 필수 페이지 구성
+        self._input_page: InputPage = InputPage(self.main_frame, self.popup_manager)
+        self._graph_page: GraphPage | None = None
+        self._results_page: ResultsPage | None = None
+        self._character_page: CharacterPage | None = None
+        self.stacked_layout.addWidget(self._input_page)
 
-        self.stacked_layout.addWidget(self.input_page)
-        self.stacked_layout.addWidget(self.graph_page)
-        self.stacked_layout.addWidget(self.results_page)
-        self.stacked_layout.addWidget(self.character_page)
+        # 네비게이션 인덱스 보존용 지연 페이지 자리 구성
+        self._page_placeholders: dict[int, QWidget] = {}
+        for page_index in (1, 2, 3):
+            placeholder: QWidget = QWidget(self.main_frame)
+            self._page_placeholders[page_index] = placeholder
+            self.stacked_layout.addWidget(placeholder)
 
         # 결과 계산 오버레이와 백그라운드 스레드 구성
         self._results_overlay: _CalculationOverlay = _CalculationOverlay(
@@ -293,6 +287,62 @@ class SimUI:
         self.main_frame.setLayout(self.stacked_layout)
 
         self.adjust_main_frame_height()
+
+    @property
+    def input_page(self) -> InputPage:
+        """계산기 입력 페이지 반환"""
+
+        # 첫 진입 시 즉시 생성된 입력 페이지 재사용
+        return self._input_page
+
+    @property
+    def graph_page(self) -> GraphPage:
+        """그래프 페이지를 최초 접근 시 생성하고 이후 재사용"""
+
+        # 시뮬레이터 탭 최초 진입 시 그래프 페이지 생성
+        if self._graph_page is None:
+            self._graph_page = GraphPage(self.main_frame)
+            self._replace_lazy_page(1, self._graph_page)
+
+        return self._graph_page
+
+    @property
+    def results_page(self) -> ResultsPage:
+        """결과 페이지를 최초 접근 시 생성하고 이후 재사용"""
+
+        # 결과 계산 최초 요청 시 결과 페이지 생성
+        if self._results_page is None:
+            self._results_page = ResultsPage(self.main_frame)
+            self._replace_lazy_page(2, self._results_page)
+
+        return self._results_page
+
+    @property
+    def character_page(self) -> "CharacterPage":
+        """캐릭터 페이지를 최초 접근 시 생성하고 이후 재사용"""
+
+        # 캐릭터 탭 최초 진입 시 캐릭터 모듈 로드 및 페이지 생성
+        if self._character_page is None:
+            from app.scripts.ui.character_ui import CharacterPage
+
+            self._character_page = CharacterPage(
+                self.main_frame,
+                self._use_character_for_calculator,
+            )
+            self._replace_lazy_page(3, self._character_page)
+
+        return self._character_page
+
+    def _replace_lazy_page(self, page_index: int, page: QWidget) -> None:
+        """지연 페이지 자리 위젯을 실제 페이지로 교체"""
+
+        # 네비게이션 인덱스 유지 상태로 자리 위젯 제거
+        placeholder: QWidget = self._page_placeholders.pop(page_index)
+        self.stacked_layout.removeWidget(placeholder)
+        placeholder.deleteLater()
+
+        # 기존 자리 위치에 실제 페이지 삽입
+        self.stacked_layout.insertWidget(page_index, page)
 
     def _use_character_for_calculator(self, profile: CharacterProfile) -> None:
         """캐릭터 상태를 계산기 입력에 반영하기 전 확인 오버레이 표시"""
@@ -353,8 +403,10 @@ class SimUI:
         if index == 3:
             if index == self.stacked_layout.currentIndex():
                 return
+
+            character_page: CharacterPage = self.character_page
             self.update_nav(3)
-            self.stacked_layout.setCurrentIndex(3)
+            self.stacked_layout.setCurrentWidget(character_page)
             self.adjust_main_frame_height()
             return
 
@@ -385,15 +437,20 @@ class SimUI:
         if index == self.stacked_layout.currentIndex():
             return
 
+        # 전환 대상 페이지 위젯 확인
+        target_widget: QWidget = self.stacked_layout.widget(index)
+
         # 그래프 페이지 진입 직전 현재 계산기 입력 기준 결과 재생성
         if index == 1:
-            self.graph_page.refresh()
+            graph_page: GraphPage = self.graph_page
+            graph_page.refresh()
+            target_widget = graph_page
 
         # 네비게이션 버튼 색 변경
         self.update_nav(index)
 
         # 레이아웃 변경
-        self.stacked_layout.setCurrentIndex(index)
+        self.stacked_layout.setCurrentWidget(target_widget)
 
         self.adjust_main_frame_height()
 
@@ -411,8 +468,9 @@ class SimUI:
 
         # 진행 중 결과 페이지를 즉시 표시해 가이드 대상 영역 확보
         if self._calc_thread is not None and self._calc_thread.isRunning():
+            results_page: ResultsPage = self.results_page
             self.update_nav(2)
-            self.stacked_layout.setCurrentIndex(2)
+            self.stacked_layout.setCurrentWidget(results_page)
             self.adjust_main_frame_height()
             QTimer.singleShot(0, self.adjust_main_frame_height)
 
@@ -425,8 +483,9 @@ class SimUI:
         다른 하위 페이지에서 돌아왔을 때 재계산 없이 전환만 수행한다.
         """
 
+        results_page: ResultsPage = self.results_page
         self.update_nav(2)
-        self.stacked_layout.setCurrentIndex(2)
+        self.stacked_layout.setCurrentWidget(results_page)
         self.adjust_main_frame_height()
         QTimer.singleShot(0, self.adjust_main_frame_height)
 
@@ -450,7 +509,7 @@ class SimUI:
 
         # 캐릭터 페이지는 3분할 셸이 화면을 꽉 채우도록 viewport 높이에 맞춘다
         # (외곽 세로 무공비급은 숨기고, 내부 패널 스크롤만 사용)
-        if current_widget is self.character_page:
+        if self._character_page is not None and current_widget is self._character_page:
             self.scroll_area.setVerticalScrollBarPolicy(
                 Qt.ScrollBarPolicy.ScrollBarAlwaysOff
             )
@@ -490,7 +549,10 @@ class SimUI:
         창 크기 변경만으로는 이 값이 갱신되지 않아 위아래 크기가 어긋난다.
         """
 
-        if self.stacked_layout.currentWidget() is self.character_page:
+        if (
+            self._character_page is not None
+            and self.stacked_layout.currentWidget() is self._character_page
+        ):
             self.adjust_main_frame_height()
 
     def _start_results_calculation(self) -> None:
@@ -508,9 +570,10 @@ class SimUI:
 
         # 동일 입력 캐시가 있으면 백그라운드 계산 없이 결과 페이지 표시
         if self._results_cache_key == cache_key and cached_output_rows is not None:
-            self.results_page.set_output_rows(cached_output_rows)
+            results_page: ResultsPage = self.results_page
+            results_page.set_output_rows(cached_output_rows)
             self.update_nav(2)
-            self.stacked_layout.setCurrentIndex(2)
+            self.stacked_layout.setCurrentWidget(results_page)
             self.adjust_main_frame_height()
             QTimer.singleShot(0, self.adjust_main_frame_height)
             return
@@ -696,9 +759,10 @@ class SimUI:
         # 계산 실패 시 오류 결과 표시 후 결과 페이지 진입
         if output_rows is None:
             self._pending_results_cache_key = None
-            self.results_page.set_error_state()
+            results_page: ResultsPage = self.results_page
+            results_page.set_error_state()
             self.update_nav(2)
-            self.stacked_layout.setCurrentIndex(2)
+            self.stacked_layout.setCurrentWidget(results_page)
             self.adjust_main_frame_height()
             QTimer.singleShot(0, self.adjust_main_frame_height)
             return
@@ -709,9 +773,10 @@ class SimUI:
         self._pending_results_cache_key = None
 
         # 계산 성공 결과 반영 후 결과 페이지 진입
-        self.results_page.set_output_rows(output_rows)
+        results_page: ResultsPage = self.results_page
+        results_page.set_output_rows(output_rows)
         self.update_nav(2)
-        self.stacked_layout.setCurrentIndex(2)
+        self.stacked_layout.setCurrentWidget(results_page)
         self.adjust_main_frame_height()
         QTimer.singleShot(0, self.adjust_main_frame_height)
 
@@ -1503,6 +1568,9 @@ class GraphPage(QFrame):
 
             self.setObjectName("graphCard")
 
+            # 그래프 탭 최초 구성 시 pyqtgraph 기반 캔버스 로드
+            from app.scripts.ui.sim_ui.graph import DpmDistributionCanvas
+
             self.graph = DpmDistributionCanvas(self, results)
             self.graph.setFixedHeight(300)
 
@@ -1520,6 +1588,9 @@ class GraphPage(QFrame):
             super().__init__(parent)
 
             self.setObjectName("graphCard")
+
+            # 그래프 탭 최초 구성 시 pyqtgraph 기반 캔버스 로드
+            from app.scripts.ui.sim_ui.graph import SkillDpsRatioCanvas
 
             self.graph = SkillDpsRatioCanvas(
                 self,
@@ -1545,6 +1616,8 @@ class GraphPage(QFrame):
             self.setObjectName("graphCard")
 
             # 초 단위 피해량 그래프 구성
+            from app.scripts.ui.sim_ui.graph import DamageGraphMode, DMGCanvas
+
             self.graph = DMGCanvas(
                 self,
                 results,
@@ -1569,6 +1642,8 @@ class GraphPage(QFrame):
             self.setObjectName("graphCard")
 
             # 누적 피해량 그래프 구성
+            from app.scripts.ui.sim_ui.graph import DamageGraphMode, DMGCanvas
+
             self.graph = DMGCanvas(
                 self,
                 results,
@@ -1591,6 +1666,9 @@ class GraphPage(QFrame):
             super().__init__(parent)
 
             self.setObjectName("graphCard")
+
+            # 그래프 탭 최초 구성 시 pyqtgraph 기반 캔버스 로드
+            from app.scripts.ui.sim_ui.graph import SkillContributionCanvas
 
             self.graph = SkillContributionCanvas(
                 self,
