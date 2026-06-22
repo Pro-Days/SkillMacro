@@ -6,7 +6,7 @@ from threading import Thread
 from typing import TYPE_CHECKING, Any
 from webbrowser import open_new
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QByteArray, QSettings, Qt, QTimer, Signal
 from PySide6.QtGui import QCloseEvent, QIcon, QKeyEvent, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -43,6 +43,9 @@ from app.scripts.ui.themes import DARK_THEME, LIGHT_THEME, theme_manager
 
 if TYPE_CHECKING:
     from app.scripts.ui.sim_ui.simul_ui import SimUI
+
+
+_WINDOW_GEOMETRY_KEY = "mainWindow/geometry"
 
 
 def warmup_qt_type_bindings() -> None:
@@ -358,6 +361,7 @@ class MainWindow(QWidget):
             config.ui.DEFAULT_WINDOW_WIDTH,
             config.ui.DEFAULT_WINDOW_HEIGHT,
         )
+        self._restore_window_geometry()
         # self.setGeometry(0, 0, 960, 540)
 
         # 글로벌 테마 적용
@@ -485,6 +489,10 @@ class MainWindow(QWidget):
     def closeEvent(self, event: QCloseEvent) -> None:
         """프로그램 종료 시 백그라운드 계산 정리"""
 
+        # 현재 창 위치와 크기 저장
+        settings = QSettings(config.organization_name, config.app_name)
+        settings.setValue(_WINDOW_GEOMETRY_KEY, self.saveGeometry())
+
         # 창 종료 전 가이드 임시 상태 복원
         self.guide_manager.cleanup_for_shutdown()
 
@@ -508,6 +516,22 @@ class MainWindow(QWidget):
 
         # 사이드바 재갱신
         self.sidebar.update_from_preset()
+
+    def _restore_window_geometry(self) -> None:
+        """저장된 메인 창 위치와 크기 복원"""
+
+        # 저장된 창 위치와 크기 조회
+        settings = QSettings(config.organization_name, config.app_name)
+        geometry_value: Any = settings.value(_WINDOW_GEOMETRY_KEY)
+        if geometry_value is None:
+            return
+
+        # Qt 창 위치 데이터 형식 검증
+        if not isinstance(geometry_value, QByteArray):
+            return
+
+        # 저장된 창 위치와 크기 복원
+        self.restoreGeometry(geometry_value)
 
     def get_main_ui(self) -> MainUI:
         """메인 UI 객체 반환"""
@@ -634,6 +658,10 @@ if __name__ == "__main__":
 
     # Qt 애플리케이션 실행
     app: QApplication = QApplication(sys.argv)
+
+    # 로컬 UI 설정 저장 위치 구성
+    app.setOrganizationName(config.organization_name)
+    app.setApplicationName(config.app_name)
 
     window: MainWindow = MainWindow()
     sys.exit(app.exec())
