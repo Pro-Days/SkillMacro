@@ -35,6 +35,7 @@ from app.scripts.macro_models import ThemeMode
 from app.scripts.registry.resource_registry import convert_resource_path
 from app.scripts.run_macro import checking_kb_thread
 from app.scripts.ui.guide import GuideManager
+from app.scripts.ui.skill_migration_ui import SkillMigrationManager
 from app.scripts.ui.main_ui.main_ui import MainUI
 from app.scripts.ui.main_ui.sidebar import Sidebar
 from app.scripts.ui.popup import NoticeKind, PopupManager
@@ -410,6 +411,11 @@ class MainWindow(QWidget):
         self.guide_manager: GuideManager = GuideManager(self)
         self.sidebar.guideRequested.connect(self.guide_manager.open_selection)
 
+        # 스킬 마이그레이션 매니저 구성
+        self.skill_migration_manager: SkillMigrationManager = SkillMigrationManager(
+            self
+        )
+
         # 하단 푸터 바 (제작자 라벨 + 테마 전환)
         self.footer_bar: FooterBar = FooterBar(self)
 
@@ -445,10 +451,17 @@ class MainWindow(QWidget):
         # 데이터 로딩 중 생성된 백업 알림 표시
         self._show_pending_backup_notices()
 
-        # 첫 가이드 안내 표시
-        QTimer.singleShot(0, self.guide_manager.show_start_prompt_if_needed)
+        # 스킬 마이그레이션 안내 후 첫 가이드 안내 순차 표시
+        QTimer.singleShot(0, self._run_startup_prompts)
 
         # self.change_layout(1)
+
+    def _run_startup_prompts(self) -> None:
+        """시작 안내를 마이그레이션 → 가이드 순서로 표시"""
+
+        self.skill_migration_manager.show_if_needed(
+            self.guide_manager.show_start_prompt_if_needed
+        )
 
     ## 마우스 클릭하면 실행
     def mousePressEvent(self, event) -> None:
@@ -464,6 +477,7 @@ class MainWindow(QWidget):
 
         self.popup_manager.update_notice_positions()
         self.guide_manager.refresh_visible_overlays()
+        self.skill_migration_manager.refresh_visible_overlay()
         if self._sim_ui is not None:
             QTimer.singleShot(0, self._sim_ui.on_window_resized)
         return super().resizeEvent(event)

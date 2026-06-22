@@ -14,6 +14,8 @@ from PySide6.QtGui import (
     QPixmap,
 )
 
+from app.scripts.registry.skill_registry import is_custom_skill_id
+
 # 현재 다크 모드 여부 (테마 전환 시 갱신)
 _dark_mode: bool = False
 
@@ -25,6 +27,21 @@ _DARK_THEME_IMAGE_DIR: str = "resources\\image\\dark"
 
 # 텍스트 아이콘 캔버스 크기
 _LABELED_ICON_SIZE: int = 128
+
+# 기본 아이콘 테두리 색상
+_DEFAULT_ICON_BORDER_COLOR: QColor = QColor(150, 150, 150, 220)
+
+# 커스텀 무공비급/스킬 아이콘 테두리 색상
+_CUSTOM_ICON_BORDER_COLOR: QColor = QColor(224, 138, 43, 235)
+
+
+def _icon_border_color(resource_id: str) -> QColor:
+    """리소스 ID 기준 아이콘 테두리 색상"""
+
+    if is_custom_skill_id(resource_id):
+        return _CUSTOM_ICON_BORDER_COLOR
+
+    return _DEFAULT_ICON_BORDER_COLOR
 
 
 def convert_resource_path(relative_path: str) -> str:
@@ -135,7 +152,10 @@ class ResourceRegistry:
 
         # 스킬 이름 기반 텍스트 아이콘 생성
         skill_name: str = self._extract_icon_label(skill_id)
-        colored: QPixmap = self._build_labeled_pixmap(label=skill_name)
+        colored: QPixmap = self._build_labeled_pixmap(
+            label=skill_name,
+            border_color=_icon_border_color(skill_id),
+        )
 
         # 생성된 아이콘 캐시 반영
         self._SKILL_PIXMAP_CACHE[skill_id] = colored
@@ -155,7 +175,10 @@ class ResourceRegistry:
 
         # 무공비급 이름 기반 텍스트 아이콘 생성
         scroll_name: str = self._extract_icon_label(scroll_id)
-        colored: QPixmap = self._build_labeled_pixmap(label=scroll_name)
+        colored: QPixmap = self._build_labeled_pixmap(
+            label=scroll_name,
+            border_color=_icon_border_color(scroll_id),
+        )
 
         # 생성된 아이콘 캐시 반영
         self._SCROLL_PIXMAP_CACHE[scroll_id] = colored
@@ -165,6 +188,7 @@ class ResourceRegistry:
     def _build_labeled_pixmap(
         self,
         label: str,
+        border_color: QColor = _DEFAULT_ICON_BORDER_COLOR,
     ) -> QPixmap:
         """이름 텍스트가 포함된 아이콘 생성"""
 
@@ -189,9 +213,9 @@ class ResourceRegistry:
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
 
-        # 아이콘 외곽 회색 테두리 렌더링
+        # 아이콘 외곽 테두리 렌더링 (커스텀은 구분 색상)
         border_width: int = max(2, int(result.width() * 0.012))
-        border_pen: QPen = QPen(QColor(150, 150, 150, 220))
+        border_pen: QPen = QPen(border_color)
         border_pen.setWidth(border_width)
         painter.setPen(border_pen)
         painter.setBrush(Qt.BrushStyle.NoBrush)

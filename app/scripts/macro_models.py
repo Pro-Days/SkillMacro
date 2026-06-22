@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from app.scripts.registry.skill_registry import ScrollDef
 
 
-DATA_VERSION: int = 6
+DATA_VERSION: int = 7
 
 
 class ThemeMode(str, Enum):
@@ -531,6 +531,7 @@ class MacroPresetFile:
     version: int = DATA_VERSION
     theme_mode: ThemeMode = ThemeMode.SYSTEM
     guide_prompt_handled: bool = False
+    last_app_version: str = ""
     recent_preset: int = 0
     custom_power_formulas: list[CustomPowerFormula] = field(default_factory=list)
     preset: list[MacroPreset] = field(default_factory=list)
@@ -543,6 +544,7 @@ class MacroPresetFile:
             version=data["version"],
             theme_mode=ThemeMode(data["theme_mode"]),
             guide_prompt_handled=data["guide_prompt_handled"],
+            last_app_version=data["last_app_version"],
             recent_preset=data["recent_preset"],
             custom_power_formulas=[
                 CustomPowerFormula.from_dict(raw_formula)
@@ -558,6 +560,7 @@ class MacroPresetFile:
             "version": self.version,
             "theme_mode": self.theme_mode.value,
             "guide_prompt_handled": self.guide_prompt_handled,
+            "last_app_version": self.last_app_version,
             "recent_preset": self.recent_preset,
             "custom_power_formulas": [
                 custom_formula.to_dict()

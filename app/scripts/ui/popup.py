@@ -33,6 +33,7 @@ from PySide6.QtGui import (
     QIcon,
     QPixmap,
     QTextCursor,
+    QWheelEvent,
 )
 from PySide6.QtWidgets import (
     QApplication,
@@ -794,11 +795,19 @@ class PopupHost(QWidget):
         # 팝업 위치 반영
         self.move(x, y)
 
-    def eventFilter(self, obj, event: QEvent) -> bool:  # type: ignore
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:  # type: ignore
         """부모 위젯의 무공비급 이벤트를 감지"""
 
-        # 무공비급 이벤트 감지 및 팝업 닫기
+        # 팝업 바깥 휠 입력 기준 닫기 처리
         if self.isVisible() and event.type() == QEvent.Type.Wheel:
+            if isinstance(event, QWheelEvent):
+                popup_rect: QRect = QRect(self.mapToGlobal(QPoint(0, 0)), self.size())
+                if popup_rect.contains(event.globalPosition().toPoint()):
+                    return super().eventFilter(obj, event)
+
+            if isinstance(obj, QWidget) and (obj is self or self.isAncestorOf(obj)):
+                return super().eventFilter(obj, event)
+
             self.close()
             return False
 
@@ -2003,12 +2012,20 @@ class SkillGridSelectContent(QFrame):
         root.addWidget(scroll)
         self.setLayout(root)
 
-        # 보여줄 최대 행 수만큼 높이 제한(무공비급로 나머지 보기)
+        # 보여줄 최대 행 수만큼 높이 제한
+        row_count: int = (len(skill_ids) + columns - 1) // columns
         visible_rows: int = min(
             max_visible_rows,
-            (len(skill_ids) + columns - 1) // columns,
+            row_count,
         )
         estimated_h: int = margin * 2 + visible_rows * (button_size + spacing) - spacing
+        estimated_width: int = columns * button_size + (columns - 1) * spacing
+
+        # 세로 스크롤바 노출 시 아이콘 영역 보존
+        if row_count > max_visible_rows:
+            estimated_width += scroll.verticalScrollBar().sizeHint().width()
+
+        scroll.setFixedWidth(estimated_width)
         scroll.setFixedHeight(estimated_h)
 
     def _build_skill_hover_card(self, skill_id: str) -> HoverCardData | None:
@@ -2121,13 +2138,21 @@ class ScrollGridSelectContent(QFrame):
 
         self.setLayout(root)
 
+        row_count: int = (len(scroll_defs) + columns - 1) // columns
         visible_rows: int = min(
             max_visible_rows,
-            (len(scroll_defs) + columns - 1) // columns,
+            row_count,
         )
         estimated_height: int = (
             margin * 2 + visible_rows * (button_size + spacing) - spacing
         )
+        estimated_width: int = columns * button_size + (columns - 1) * spacing
+
+        # 세로 스크롤바 노출 시 아이콘 영역 보존
+        if row_count > max_visible_rows:
+            estimated_width += scroll_area.verticalScrollBar().sizeHint().width()
+
+        scroll_area.setFixedWidth(estimated_width)
         scroll_area.setFixedHeight(estimated_height)
 
     def _emit_scroll_selected(self, scroll_id: str, is_occupied: bool) -> None:

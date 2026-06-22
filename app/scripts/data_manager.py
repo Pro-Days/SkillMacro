@@ -255,6 +255,13 @@ def migrate_macro_data_file(file_path: str) -> None:
                     "is_minimum": False,
                 }
 
+            raw["version"] = 6
+            stored_version_obj = 6
+            migrated = True
+
+        # v6 -> v7: 마지막 실행 앱 버전 저장 필드 주입
+        if stored_version_obj == 6:
+            raw["last_app_version"] = ""
             raw["version"] = DATA_VERSION
             stored_version_obj = DATA_VERSION
             migrated = True
@@ -1016,6 +1023,7 @@ def load_data(num: int = -1) -> None:
     app_state.macro.current_preset_index = target_index
     app_state.ui.theme_mode = preset_file.theme_mode
     app_state.ui.guide_prompt_handled = preset_file.guide_prompt_handled
+    app_state.ui.last_app_version = preset_file.last_app_version
 
     # 정리 결과와 현재 선택 인덱스 저장 반영
     if preset_was_sanitized or preset_file.recent_preset != target_index:
@@ -1048,6 +1056,7 @@ def create_default_data() -> None:
         version=DATA_VERSION,
         theme_mode=app_state.ui.theme_mode,
         guide_prompt_handled=app_state.ui.guide_prompt_handled,
+        last_app_version=app_state.ui.last_app_version,
         recent_preset=0,
         custom_power_formulas=[],
         preset=[get_default_preset()],
@@ -1070,12 +1079,25 @@ def save_data() -> None:
         version=DATA_VERSION,
         theme_mode=app_state.ui.theme_mode,
         guide_prompt_handled=app_state.ui.guide_prompt_handled,
+        last_app_version=app_state.ui.last_app_version,
         recent_preset=app_state.macro.current_preset_index,
         custom_power_formulas=app_state.macro.custom_power_formulas.copy(),
         preset=app_state.macro.presets.copy(),
     )
 
     repo.save(preset_file)
+
+
+def mark_current_app_version_seen() -> None:
+    """현재 앱 버전 확인 상태 저장"""
+
+    # 이미 현재 버전으로 저장된 경우 파일 쓰기 생략
+    if app_state.ui.last_app_version == config.version:
+        return
+
+    # 시작 안내 완료 상태를 전역 UI 상태와 저장 파일에 반영
+    app_state.ui.last_app_version = config.version
+    save_data()
 
 
 def update_recent_preset(recent_preset: int) -> None:

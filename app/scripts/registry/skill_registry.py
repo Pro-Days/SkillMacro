@@ -13,6 +13,20 @@ def get_builtin_skill_id(server_id: str, skill_name: str) -> str:
     return f"{BUILTIN_SKILL_PREFIX}:{server_id}:{skill_name}"
 
 
+def is_builtin_skill_id(skill_id: str) -> bool:
+    """기본 스킬/무공비급 ID 여부"""
+
+    # 기본 스킬 네임스페이스 접두사 확인
+    return skill_id.startswith(f"{BUILTIN_SKILL_PREFIX}:")
+
+
+def is_custom_skill_id(skill_id: str) -> bool:
+    """커스텀 스킬/무공비급 ID 여부"""
+
+    # 커스텀 스킬 네임스페이스 접두사 확인
+    return skill_id.startswith(f"{CUSTOM_SKILL_PREFIX}:")
+
+
 def parse_skill_id(skill_id: str) -> tuple[str, str]:
     """스킬 ID를 (server_id, skill_name) 튜플로 파싱"""
 

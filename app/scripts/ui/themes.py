@@ -1556,6 +1556,10 @@ QPushButton#guideListButton {{
     text-align: left;
 }}
 QPushButton#guideListButton:hover {{ background-color: #EEF4FC; }}
+QPushButton#guideListButton:checked {{
+    background-color: rgba(74, 144, 217, 30);
+    border: 2px solid #4A90D9;
+}}
 QPushButton#guideRecommendedListButton {{
     background-color: #F8F9FC;
     color: #222222;
@@ -1565,6 +1569,32 @@ QPushButton#guideRecommendedListButton {{
     text-align: left;
 }}
 QPushButton#guideRecommendedListButton:hover {{ background-color: #EEF4FC; }}
+QScrollArea#migrationScroll {{
+    background-color: #FFFFFF;
+    border: 1px solid #D6DCE8;
+    border-radius: 6px;
+}}
+QScrollArea#migrationScroll QWidget#qt_scrollarea_viewport {{
+    background-color: #FFFFFF;
+}}
+QWidget#migrationScrollContent {{
+    background-color: #FFFFFF;
+}}
+QFrame#migrationDetailCard {{
+    background-color: #FFFFFF;
+    border: 1px solid #D6DCE8;
+    border-radius: 6px;
+}}
+QFrame#migrationPairItem {{
+    background-color: #F8F9FC;
+    border: 1px solid #D8DCE6;
+    border-radius: 6px;
+}}
+QLabel#migrationPairText {{
+    background-color: transparent;
+    border: 0px;
+    color: #222222;
+}}
 
 /* ════════════════ 캐릭터 창 (라이트) ════════════════ */
 QFrame#charRoot {{ background-color: transparent; }}
@@ -3249,6 +3279,10 @@ QPushButton#guideListButton {{
     text-align: left;
 }}
 QPushButton#guideListButton:hover {{ background-color: #2E2E45; }}
+QPushButton#guideListButton:checked {{
+    background-color: #34416A;
+    border: 2px solid #6E8FD6;
+}}
 QPushButton#guideRecommendedListButton {{
     background-color: #252538;
     color: #E8E8F0;
@@ -3258,6 +3292,32 @@ QPushButton#guideRecommendedListButton {{
     text-align: left;
 }}
 QPushButton#guideRecommendedListButton:hover {{ background-color: #2E2E45; }}
+QScrollArea#migrationScroll {{
+    background-color: #1F1F30;
+    border: 1px solid #3C3C55;
+    border-radius: 6px;
+}}
+QScrollArea#migrationScroll QWidget#qt_scrollarea_viewport {{
+    background-color: #1F1F30;
+}}
+QWidget#migrationScrollContent {{
+    background-color: #1F1F30;
+}}
+QFrame#migrationDetailCard {{
+    background-color: #1F1F30;
+    border: 1px solid #3C3C55;
+    border-radius: 6px;
+}}
+QFrame#migrationPairItem {{
+    background-color: #252538;
+    border: 1px solid #3A3A52;
+    border-radius: 6px;
+}}
+QLabel#migrationPairText {{
+    background-color: transparent;
+    border: 0px;
+    color: #E8E8F0;
+}}
 
 /* ════════════════ 캐릭터 창 (다크) ════════════════ */
 QFrame#charRoot {{ background-color: transparent; }}
