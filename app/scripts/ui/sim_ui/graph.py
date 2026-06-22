@@ -381,9 +381,19 @@ class DpmDistributionCanvas(pg.PlotWidget):
         히스토그램 생성
         """
 
-        # 최대, 최소 값 계산
-        max_val: float = max(data)
-        min_val: float = min(data)
+        # 실제 데이터 최대/최소값 계산
+        data_max: float = max(data)
+        data_min: float = min(data)
+
+        # 동일 피해량 분포의 표시 범위 확보
+        if data_max == data_min:
+            display_padding: float = max(abs(data_max) * 0.05, 1.0)
+            max_val: float = data_max + display_padding
+            min_val: float = data_min - display_padding
+
+        else:
+            max_val = data_max
+            min_val = data_min
 
         # 막대 너비 계산
         bin_width: float = (max_val - min_val) / n_bins
@@ -395,14 +405,16 @@ class DpmDistributionCanvas(pg.PlotWidget):
 
         # 각 데이터를 해당 막대에 할당
         for value in data:
+            value_counted: bool = False
             for i in range(n_bins):
                 # 각 막대의 경계값에 따라 해당 막대의 카운트를 증가시킴
                 if bin_edges[i] <= value < bin_edges[i + 1]:
                     counts[i] += 1
+                    value_counted = True
                     break
 
-            # 마지막 막대의 경우, 오른쪽 경계값이 포함되므로 따로 처리
-            if value == max_val:
+            # 실제 최댓값의 오른쪽 경계 포함 처리
+            if not value_counted and value == data_max:
                 counts[-1] += 1
 
         return counts, bin_edges, bin_width
@@ -541,17 +553,22 @@ class SkillDpsRatioCanvas(pg.PlotWidget):
         self.create_interactive_pie_chart()
 
     def create_interactive_pie_chart(self) -> None:
-        # 각도 계산 (원래 비율대로 꽉 찬 원)
-        total: float = sum(self.data)
-        angles: list[float] = [360 * value / total for value in self.data]
+        # 조각 아이템 초기화
+        self.pie_items: list[pg.PlotCurveItem] = []
 
+        # 시작 각도 기준값 구성
         self.start_angle: float = -90.0
+
+        # 전체 피해량 기준 비율 계산 가능 여부 확인
+        total: float = sum(self.data)
+        if total == 0.0:
+            return
+
+        # 각도 계산
+        angles: list[float] = [360 * value / total for value in self.data]
 
         # 시작 각도를 12시 방향(-90도)으로 설정
         start_angle: float = self.start_angle
-
-        # 조각 아이템 초기화
-        self.pie_items: list[pg.PlotCurveItem] = []
 
         # 1단계: 꽉 찬 파이 차트 그리기
         for i, (angle, label, color) in enumerate(
@@ -843,9 +860,9 @@ class DMGCanvas(pg.PlotWidget):
         # 데이터 최대값 계산
         self.max_value: float = max(self.data["max"])
 
-        # Y축 범위 설정 (최대값에 따라 자동 조정)
-        max_y: float = self.max_value * 1.1  # 최대값에 10% 여유 추가
-        self.setYRange(0, max_y)
+        # Y축 범위 설정
+        self.max_y: float = max(self.max_value * 1.1, 1.0)
+        self.setYRange(0, self.max_y)
 
         self.set_ticks()
 
@@ -968,7 +985,7 @@ class DMGCanvas(pg.PlotWidget):
         time = int(x + 0.5)
 
         # 마우스가 X축 범위 내에 있는지 확인
-        if 0 <= time <= 60 and x >= -0.5 and 0 <= y <= self.max_value * 1.1:
+        if 0 <= time <= 60 and x >= -0.5 and 0 <= y <= self.max_y:
             # 툴팁 선 위치 설정
             self.tooltip_line.setPos(x)
             self.tooltip_line.show()

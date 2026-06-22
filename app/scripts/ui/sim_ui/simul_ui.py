@@ -55,9 +55,7 @@ from app.scripts.calculator_engine import (
     CALCULATOR_SKILL_SPEED_LIMIT_PERCENT,
     DISPLAY_POWER_METRICS,
     POWER_METRIC_LABELS,
-    build_calculator_timeline,
     build_calculator_context,
-    build_damage_events,
     build_internal_base_stats,
     evaluate_arbitrary_stat_delta,
     evaluate_level_up_delta,
@@ -122,13 +120,11 @@ if TYPE_CHECKING:
 
     from app.scripts.ui.character_ui import CharacterPage
     from app.scripts.calculator_engine import (
-        DamageEvent,
         EvaluationContext,
         FinalStats,
         GraphAnalysis,
         GraphDamageEvent,
         GraphReport,
-        HitEvent,
         LevelUpEvaluation,
         OptimizationResult,
         RealmAdvanceEvaluation,
@@ -2578,11 +2574,8 @@ class ResultsPage(QFrame):
             if not (stats_valid and level_valid and scroll_valid):
                 return False
 
-            # 그래프 출력용 입력값 및 양수 피해 이벤트 검증
-            return (
-                self._has_valid_attack_inputs(base_stats)
-                and self._has_positive_graph_damage(base_stats)
-            )
+            # 그래프 계산 가능한 공격 입력 조건 검증
+            return self._has_valid_attack_inputs(base_stats)
 
         def prepare_results_inputs(self) -> bool:
             """결과 계산에 사용할 현재 입력 검증 및 저장"""
@@ -2725,30 +2718,6 @@ class ResultsPage(QFrame):
                 and skill_damage_input_valid
                 and skill_speed_input_valid
             )
-
-        def _has_positive_graph_damage(self, base_stats: BaseStats) -> bool:
-            """그래프 출력 가능한 양수 피해 이벤트 존재 여부 반환"""
-
-            # 현재 입력 스탯 기준 최종 스탯과 스킬 타임라인 구성
-            resolved_stats: FinalStats = base_stats.resolve()
-            hit_events: tuple[HitEvent, ...] = build_calculator_timeline(
-                server_spec=app_state.macro.current_server,
-                preset=app_state.macro.current_preset,
-                skills_info=app_state.macro.current_preset.usage_settings,
-                delay_ms=app_state.macro.current_delay,
-                cooltime_reduction=resolved_stats.values[StatKey.SKILL_SPEED_PERCENT],
-            )
-
-            # 보스 기준 결정론 피해 계산
-            damage_events: list[DamageEvent] = build_damage_events(
-                hit_events=hit_events,
-                resolved_stats=resolved_stats,
-                is_boss=True,
-                deterministic=True,
-            )
-
-            # 실제 피해가 있는 공격만 유효 출력으로 인정
-            return any(attack.damage > 0.0 for attack in damage_events)
 
         def load_from_preset_state(self) -> None:
             """저장된 계산기 상태를 현재 입력 위젯에 반영"""
