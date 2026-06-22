@@ -2645,6 +2645,24 @@ class ResultsPage(QFrame):
             if not custom_valid:
                 return False
 
+            # 사용자 지정 변화량 적용 후 계산 가능한 스킬속도 상한 검증
+            custom_resolved_stats: FinalStats = base_stats.resolve(custom_changes)
+            custom_skill_speed_percent: float = custom_resolved_stats.values[
+                StatKey.SKILL_SPEED_PERCENT
+            ]
+            custom_skill_speed_valid: bool = (
+                custom_skill_speed_percent < CALCULATOR_SKILL_SPEED_LIMIT_PERCENT
+            )
+            self.custom_delta_inputs.inputs[
+                StatKey.SKILL_SPEED_PERCENT
+            ].set_valid(custom_skill_speed_valid)
+            if not custom_skill_speed_valid:
+                self.last_input_error_message = (
+                    f"스킬속도는 {CALCULATOR_SKILL_SPEED_LIMIT_PERCENT:g}% "
+                    "미만이어야 합니다."
+                )
+                return False
+
             # 검증된 현재 입력을 계산 직전 상태로 일괄 저장
             self._save_base_inputs(
                 base_stats=base_stats,
