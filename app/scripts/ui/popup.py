@@ -713,6 +713,9 @@ class PopupHost(QWidget):
         if app is not None:
             app.installEventFilter(self)
 
+        # 콘텐츠 설정 전 빈 팝업 호스트 숨김
+        self.hide()
+
     def set_content(self, content: QWidget) -> None:
         """팝업 내용 설정"""
 
