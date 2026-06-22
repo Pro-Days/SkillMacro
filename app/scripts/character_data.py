@@ -1203,7 +1203,7 @@ ELIXIR_SPECS: dict[str, ConsumableSpec] = {
     ),
     "태극단": ConsumableSpec(
         _stats((StatKey.STR, 3.0), (StatKey.BOSS_ATTACK_PERCENT, 1.0)),
-        "#d98b3a",
+        "#8c8c8c",
     ),
     "천경단": ConsumableSpec(
         _stats((StatKey.LUCK_PERCENT, 1.0), (StatKey.ATTACK, 3.0)),
@@ -1215,11 +1215,7 @@ ELIXIR_SPECS: dict[str, ConsumableSpec] = {
     ),
     "청룡단": ConsumableSpec(
         _stats((StatKey.STR, 4.0), (StatKey.EXP_PERCENT, 1.0)),
-        "#2f8f6f",
-    ),
-    "백호단": ConsumableSpec(
-        _stats((StatKey.DEXTERITY, 4.0), (StatKey.EXP_PERCENT, 1.0)),
-        "#f0f0f0",
+        "#4183ff",
     ),
     "주작단": ConsumableSpec(
         _stats((StatKey.VITALITY, 4.0), (StatKey.EXP_PERCENT, 1.0)),
@@ -1227,7 +1223,27 @@ ELIXIR_SPECS: dict[str, ConsumableSpec] = {
     ),
     "현무단": ConsumableSpec(
         _stats((StatKey.LUCK, 4.0), (StatKey.EXP_PERCENT, 1.0)),
-        "#2f5f8f",
+        "#000f4c",
+    ),
+    "백호단": ConsumableSpec(
+        _stats((StatKey.DEXTERITY, 4.0), (StatKey.EXP_PERCENT, 1.0)),
+        "#f0f0f0",
+    ),
+    "기린단": ConsumableSpec(
+        _stats((StatKey.DEXTERITY_PERCENT, 1.0), (StatKey.HP_PERCENT, 2.0)),
+        "#1a7805",
+    ),
+    "봉황단": ConsumableSpec(
+        _stats((StatKey.VITALITY_PERCENT, 1.0), (StatKey.HP_PERCENT, 2.0)),
+        "#e0664f",
+    ),
+    "해태단": ConsumableSpec(
+        _stats((StatKey.STR_PERCENT, 1.0), (StatKey.HP_PERCENT, 2.0)),
+        "#e34e17",
+    ),
+    "용마단": ConsumableSpec(
+        _stats((StatKey.LUCK_PERCENT, 1.0), (StatKey.HP_PERCENT, 2.0)),
+        "#af630c",
     ),
 }
 
