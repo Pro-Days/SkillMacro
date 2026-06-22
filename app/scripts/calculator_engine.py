@@ -2716,8 +2716,10 @@ def validate_power_formula_input_requirements(
         compiled_formula.referenced_skill_slot_numbers
     )
 
-    # 60초 누적 피해량 공식의 타격 이벤트 요구 조건 확인
-    if compiled_formula.uses_timeline_damage and not artifacts.hit_events:
+    # 60초 누적 피해량 공식의 스킬 데미지 존재 여부 확인
+    if compiled_formula.uses_timeline_damage and not any(
+        hit_event.multiplier > 0.0 for hit_event in artifacts.hit_events
+    ):
         return PowerFormulaInputValidation(
             is_valid=False,
             message="60초 피해량 계산에 필요한 공격 정보가 없습니다.\n평타 사용 설정 또는 스킬 데미지 입력 후 다시 시도해주세요.",
