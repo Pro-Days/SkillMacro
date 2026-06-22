@@ -174,6 +174,9 @@ _STAT_ORDER_VALUES: tuple[str, ...] = tuple(sk.value for sk in OVERALL_STAT_ORDE
 _GRADIENT_TOP_K: int = 15
 _GRADIENT_EXACT_THRESHOLD: int = 500
 
+# 계산기 전투력 공식 스킬속도 상한
+CALCULATOR_SKILL_SPEED_LIMIT_PERCENT: float = 90.0
+
 # 내장 공식 추가 입력 변수 이름
 _POWER_FORMULA_LEVEL_NAME: str = "level"
 _POWER_FORMULA_BOSS_DAMAGE_NAME: str = "boss_damage"
@@ -429,6 +432,16 @@ class CompiledPowerFormula:
 
     statements: tuple[ast.stmt, ...]
     result_expression: ast.expr | None
+    uses_timeline_damage: bool
+    referenced_skill_slot_numbers: frozenset[int]
+
+
+@dataclass(frozen=True, slots=True)
+class PowerFormulaInputValidation:
+    """전투력 공식 입력 요구 조건 검증 결과"""
+
+    is_valid: bool
+    message: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -978,9 +991,34 @@ def _compile_power_formula(
 
             statements = tuple(parsed_formula.body)
 
+        # 공식 입력 요구 조건 판정용 참조 변수 메타데이터 구성
+        referenced_names: frozenset[str] = frozenset(
+            child_node.id
+            for child_node in ast.walk(parsed_formula)
+            if isinstance(child_node, ast.Name)
+            and isinstance(child_node.ctx, ast.Load)
+            and child_node.id in accessible_names
+        )
+        referenced_skill_slot_numbers: set[int] = set()
+        for referenced_name in referenced_names:
+            if not referenced_name.startswith("skill_"):
+                continue
+
+            slot_text: str
+            slot_text, _, _ = referenced_name.removeprefix("skill_").partition("_")
+            if slot_text.isdigit():
+                referenced_skill_slot_numbers.add(int(slot_text))
+
+        uses_timeline_damage: bool = (
+            _POWER_FORMULA_BOSS_DAMAGE_NAME in referenced_names
+            or _POWER_FORMULA_NORMAL_DAMAGE_NAME in referenced_names
+        )
+
         return CompiledPowerFormula(
             statements=statements,
             result_expression=result_expression,
+            uses_timeline_damage=uses_timeline_damage,
+            referenced_skill_slot_numbers=frozenset(referenced_skill_slot_numbers),
         )
 
     except SyntaxError as exc:
@@ -1368,6 +1406,13 @@ def _compute_power_gradient(
         perturbed: dict[StatKey, float] = base_changed_stats.copy()
         perturbed[stat_key] = perturbed.get(stat_key, 0.0) + 1.0
         perturbed_resolved: FinalStats = _fast_resolve(perturbed)
+        perturbed_skill_speed: float = float(
+            perturbed_resolved.values[StatKey.SKILL_SPEED_PERCENT]
+        )
+        if perturbed_skill_speed >= CALCULATOR_SKILL_SPEED_LIMIT_PERCENT:
+            gradient[stat_key] = float("-inf")
+            continue
+
         perturbed_value: float = evaluate_single_metric(
             artifacts=timeline_artifacts,
             resolved_stats=perturbed_resolved,
@@ -1635,6 +1680,7 @@ class BaseState:
 class OptimizationFailureReason(Enum):
     """최적화 불가 이유"""
 
+    FORMULA_INPUT_UNAVAILABLE = "formula_input_unavailable"
     STAT_DISTRIBUTION_EXCEEDS_LEVEL_CAP = "stat_distribution_exceeds_level_cap"
     DANJEON_EXCEEDS_REALM_CAP = "danjeon_exceeds_realm_cap"
     SELECTED_INPUT_EXCEEDS_TOTAL_STATS = "selected_input_exceeds_total_stats"
@@ -2430,6 +2476,15 @@ def evaluate_single_metric(
 ) -> float:
     """선택된 단일 전투력 공식만 평가하여 값 반환"""
 
+    # 계산기 전투력 공식 공통 스킬속도 상한 조건 확인
+    skill_speed_percent: float = float(
+        resolved_stats.values[StatKey.SKILL_SPEED_PERCENT]
+    )
+    if skill_speed_percent >= CALCULATOR_SKILL_SPEED_LIMIT_PERCENT:
+        raise ValueError(
+            f"스킬속도는 {CALCULATOR_SKILL_SPEED_LIMIT_PERCENT:g}% 미만이어야 합니다."
+        )
+
     # 공식 변수 선행 구성 후 대상 공식 하나만 직접 평가
     formula_variables: dict[str, float | int | bool] = _build_power_formula_variables(
         artifacts,
@@ -2484,16 +2539,35 @@ def build_calculator_context(
         )
     )
 
-    # 선택된 사용자 정의 공식만 1회 컴파일하는
+    # 선택 전투력 공식 컴파일 결과 조회
     compiled_custom_formula: CompiledPowerFormula | None = None
-    if target_formula_id not in DISPLAY_POWER_METRIC_IDS:
-        custom_formula: CustomPowerFormula
+    if target_formula_id in DISPLAY_POWER_METRIC_IDS:
+        compiled_formula: CompiledPowerFormula = _POWER_FORMULA_NODES[
+            PowerMetric(target_formula_id)
+        ]
+    else:
         for custom_formula in custom_formulas:
             if custom_formula.id != target_formula_id:
                 continue
 
             compiled_custom_formula = compile_custom_formula(custom_formula.formula)
             break
+
+        if compiled_custom_formula is None:
+            raise KeyError(target_formula_id)
+
+        compiled_formula = compiled_custom_formula
+
+    # 기준 전투력 계산 전 공식 입력 요구 조건 검증
+    formula_input_validation: PowerFormulaInputValidation = (
+        validate_power_formula_input_requirements(
+            compiled_formula=compiled_formula,
+            artifacts=timeline_artifacts,
+            resolved_stats=baseline_final_stats,
+        )
+    )
+    if not formula_input_validation.is_valid:
+        raise ValueError(formula_input_validation.message)
 
     # 선택 공식 기준 현재 전투력 1회 계산
     baseline_power: float = evaluate_single_metric(
@@ -2628,6 +2702,51 @@ def _build_skill_slot_formula_variables(
         variables[f"skill_{skill_index}_target_count"] = int(skill_def.target_count)
 
     return variables
+
+
+def validate_power_formula_input_requirements(
+    compiled_formula: CompiledPowerFormula,
+    artifacts: TimelineEvaluationArtifacts,
+    resolved_stats: FinalStats,
+) -> PowerFormulaInputValidation:
+    """전투력 공식이 요구하는 추가 입력 충족 여부 검증"""
+
+    # 공식 참조 스킬 슬롯 조회
+    referenced_skill_slot_numbers: frozenset[int] = (
+        compiled_formula.referenced_skill_slot_numbers
+    )
+
+    # 60초 누적 피해량 공식의 타격 이벤트 요구 조건 확인
+    if compiled_formula.uses_timeline_damage and not artifacts.hit_events:
+        return PowerFormulaInputValidation(
+            is_valid=False,
+            message="60초 피해량 계산에 필요한 공격 정보가 없습니다.\n평타 사용 설정 또는 스킬 데미지 입력 후 다시 시도해주세요.",
+        )
+
+    # 스킬 슬롯 변수 참조 공식의 현재 레벨 데미지 요구 조건 확인
+    has_referenced_damaging_skill_slot: bool = any(
+        float(artifacts.skill_slot_variables[f"skill_{slot_number}_damage"]) > 0.0
+        for slot_number in referenced_skill_slot_numbers
+    )
+    if referenced_skill_slot_numbers and not has_referenced_damaging_skill_slot:
+        return PowerFormulaInputValidation(
+            is_valid=False,
+            message="스킬 데미지가 입력되지 않았습니다.\n스킬 데미지 입력 후 다시 시도해주세요.",
+        )
+
+    # 계산기 전투력 공식 공통 스킬속도 상한 조건 확인
+    skill_speed_percent: float = float(
+        resolved_stats.values[StatKey.SKILL_SPEED_PERCENT]
+    )
+    if skill_speed_percent >= CALCULATOR_SKILL_SPEED_LIMIT_PERCENT:
+        return PowerFormulaInputValidation(
+            is_valid=False,
+            message=(
+                f"스킬속도는 {CALCULATOR_SKILL_SPEED_LIMIT_PERCENT:g}% 미만이어야 합니다."
+            ),
+        )
+
+    return PowerFormulaInputValidation(is_valid=True, message="정상")
 
 
 def evaluate_level_up_delta(
@@ -3510,28 +3629,28 @@ def _evaluate_distribution_selection(
     dist_resolved: FinalStats = _fast_resolve(dist_base_stats)
     dist_skill_speed: float = float(dist_resolved.values[_FK_SKILL_SPEED_PERCENT])
     dist_speed_key: float = round(dist_skill_speed, 2)
-    dist_timeline: TimelineEvaluationArtifacts | None = timeline_cache.get(
-        dist_speed_key
-    )
-    if dist_timeline is None:
-        dist_timeline = _build_timeline_evaluation_artifacts(
-            build_calculator_timeline(
-                server_spec=server_spec,
-                preset=preset,
-                skills_info=skills_info,
-                delay_ms=delay_ms,
-                cooltime_reduction=dist_skill_speed,
-            ),
-            level=preset.info.calculator.level,
-            skill_slot_variables=context.timeline_artifacts.skill_slot_variables,
-        )
-        timeline_cache[dist_speed_key] = dist_timeline
+    dist_timeline: TimelineEvaluationArtifacts | None = None
+    if dist_skill_speed < CALCULATOR_SKILL_SPEED_LIMIT_PERCENT:
+        dist_timeline = timeline_cache.get(dist_speed_key)
+        if dist_timeline is None:
+            dist_timeline = _build_timeline_evaluation_artifacts(
+                build_calculator_timeline(
+                    server_spec=server_spec,
+                    preset=preset,
+                    skills_info=skills_info,
+                    delay_ms=delay_ms,
+                    cooltime_reduction=dist_skill_speed,
+                ),
+                level=preset.info.calculator.level,
+                skill_slot_variables=context.timeline_artifacts.skill_slot_variables,
+            )
+            timeline_cache[dist_speed_key] = dist_timeline
 
     # 조합 수 기반 기울기 필터링 적용 여부 결정
     total_combos: int = (
         len(danjeon_entries) * len(title_entries) * len(talisman_entries)
     )
-    if total_combos > _GRADIENT_EXACT_THRESHOLD:
+    if total_combos > _GRADIENT_EXACT_THRESHOLD and dist_timeline is not None:
         # 기여에 사용되는 스탯 키 수집
         relevant_stats: set[StatKey] = set()
         for _, _contrib in danjeon_entries:
@@ -3605,6 +3724,9 @@ def _evaluate_distribution_selection(
                 candidate_skill_speed: float = float(
                     optimized_resolved_stats.values[_FK_SKILL_SPEED_PERCENT]
                 )
+                if candidate_skill_speed >= CALCULATOR_SKILL_SPEED_LIMIT_PERCENT:
+                    continue
+
                 speed_cache_key: float = round(candidate_skill_speed, 2)
                 cached_timeline_artifacts: TimelineEvaluationArtifacts | None = (
                     timeline_cache.get(speed_cache_key)
@@ -3875,6 +3997,27 @@ def optimize_current_selection(
         return OptimizationFailure(
             reason=failure_reason,
             message=f"최적화 불가: {validation.message}",
+        )
+
+    # 선택 공식이 요구하는 추가 입력 조건 검증
+    if target_formula_id in DISPLAY_POWER_METRIC_IDS:
+        compiled_formula: CompiledPowerFormula = _POWER_FORMULA_NODES[
+            PowerMetric(target_formula_id)
+        ]
+    else:
+        compiled_formula = cast(CompiledPowerFormula, context.compiled_custom_formula)
+
+    formula_input_validation: PowerFormulaInputValidation = (
+        validate_power_formula_input_requirements(
+            compiled_formula=compiled_formula,
+            artifacts=context.timeline_artifacts,
+            resolved_stats=context.baseline_final_stats,
+        )
+    )
+    if not formula_input_validation.is_valid:
+        return OptimizationFailure(
+            reason=OptimizationFailureReason.FORMULA_INPUT_UNAVAILABLE,
+            message=f"최적화 불가: {formula_input_validation.message}",
         )
 
     base_state: BaseState = build_base_state(

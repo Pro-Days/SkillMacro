@@ -52,6 +52,7 @@ from PySide6.QtWidgets import (
 
 from app.scripts.app_state import app_state
 from app.scripts.calculator_engine import (
+    CALCULATOR_SKILL_SPEED_LIMIT_PERCENT,
     DISPLAY_POWER_METRICS,
     POWER_METRIC_LABELS,
     build_calculator_timeline,
@@ -421,7 +422,10 @@ class SimUI:
         # 결과 계산 전 현재 입력 검증 및 확인 오버레이 표시
         if index == 2:
             if not self.input_page.editor.prepare_results_inputs():
-                self.master.get_popup_manager().show_notice(NoticeKind.SIM_INPUT_ERROR)
+                self.master.get_popup_manager().show_notice(
+                    NoticeKind.SIM_INPUT_ERROR,
+                    self.input_page.editor.last_input_error_message,
+                )
                 return
 
             self._input_confirm_overlay.show_confirmation(
@@ -459,7 +463,10 @@ class SimUI:
 
         # 현재 입력 검증 및 계산 상태 반영
         if not self.input_page.editor.prepare_results_inputs():
-            self.master.get_popup_manager().show_notice(NoticeKind.SIM_INPUT_ERROR)
+            self.master.get_popup_manager().show_notice(
+                NoticeKind.SIM_INPUT_ERROR,
+                self.input_page.editor.last_input_error_message,
+            )
             return False
 
         # 기존 확인 오버레이 숨김 후 결과 계산 실행
@@ -2357,6 +2364,7 @@ class ResultsPage(QFrame):
             # 저장 상태 로드 중 이벤트 억제 플래그 구성
             self._is_loading_state: bool = False
             self._is_persist_enabled: bool = True
+            self.last_input_error_message: str | None = None
             self.popup_manager: PopupManager = popup_manager
 
             # 전투력 선택지와 경지 선택지 순서 구성
@@ -2570,11 +2578,17 @@ class ResultsPage(QFrame):
             if not (stats_valid and level_valid and scroll_valid):
                 return False
 
-            # 시뮬레이터 그래프 분모 0 방지용 피해 계산 가능 여부 검증
-            return self._has_positive_simulation_damage(base_stats)
+            # 그래프 출력용 입력값 및 양수 피해 이벤트 검증
+            return (
+                self._has_valid_attack_inputs(base_stats)
+                and self._has_positive_graph_damage(base_stats)
+            )
 
         def prepare_results_inputs(self) -> bool:
             """결과 계산에 사용할 현재 입력 검증 및 저장"""
+
+            # 이전 결과 계산 입력 오류 메시지 초기화
+            self.last_input_error_message = None
 
             # 기준 스탯과 레벨 입력 검증
             stats_valid: bool
@@ -2589,8 +2603,24 @@ class ResultsPage(QFrame):
             if not (stats_valid and level_valid and scroll_valid):
                 return False
 
-            # 시뮬레이터와 동일한 최소 피해 조건 유지
-            if not self._has_positive_simulation_damage(base_stats):
+            # 선택 전투력 공식의 추가 입력 요구 조건 확인
+            try:
+                build_calculator_context(
+                    server_spec=app_state.macro.current_server,
+                    preset=app_state.macro.current_preset,
+                    skills_info=app_state.macro.current_preset.usage_settings,
+                    delay_ms=app_state.macro.current_delay,
+                    base_stats=base_stats,
+                    target_formula_id=self._get_selected_formula_id(),
+                    custom_formulas=tuple(app_state.macro.custom_power_formulas),
+                )
+
+            except ValueError as exc:
+                self.last_input_error_message = str(exc)
+                return False
+
+            # 결과 계산 공통 공격 입력 조건 확인
+            if not self._has_valid_attack_inputs(base_stats):
                 return False
 
             # 현재 선택 입력 전체 검증
@@ -2646,8 +2676,8 @@ class ResultsPage(QFrame):
             self._save_data_if_enabled()
             return True
 
-        def _has_positive_simulation_damage(self, base_stats: BaseStats) -> bool:
-            """시뮬레이터 진입 가능한 최소 피해 조건 검증"""
+        def _has_valid_attack_inputs(self, base_stats: BaseStats) -> bool:
+            """전투력 계산에 필요한 공격 입력 조건 검증"""
 
             # 최종 공격 관련 스탯과 배율 복원
             resolved_stats: FinalStats = base_stats.resolve()
@@ -2661,12 +2691,18 @@ class ResultsPage(QFrame):
             skill_damage_multiplier: float = 1.0 + (
                 resolved_stats.values[StatKey.SKILL_DAMAGE_PERCENT] * 0.01
             )
+            skill_speed_percent: float = resolved_stats.values[
+                StatKey.SKILL_SPEED_PERCENT
+            ]
 
             # 공격 관련 입력칸 강조 상태 동기화
             attack_input_valid: bool = attack_power > 0.0
             final_attack_input_valid: bool = final_attack_multiplier > 0.0
             boss_attack_input_valid: bool = boss_attack_multiplier > 0.0
             skill_damage_input_valid: bool = skill_damage_multiplier > 0.0
+            skill_speed_input_valid: bool = (
+                skill_speed_percent < CALCULATOR_SKILL_SPEED_LIMIT_PERCENT
+            )
             self.stats_inputs.inputs[StatKey.ATTACK].set_valid(attack_input_valid)
             self.stats_inputs.inputs[StatKey.FINAL_ATTACK_PERCENT].set_valid(
                 final_attack_input_valid
@@ -2677,14 +2713,17 @@ class ResultsPage(QFrame):
             self.stats_inputs.inputs[StatKey.SKILL_DAMAGE_PERCENT].set_valid(
                 skill_damage_input_valid
             )
+            self.stats_inputs.inputs[StatKey.SKILL_SPEED_PERCENT].set_valid(
+                skill_speed_input_valid
+            )
 
-            # 그래프 비율 계산용 총 피해량 0 방지
+            # 전투력 계산 가능한 공격 입력 여부 반환
             return (
                 attack_input_valid
                 and final_attack_input_valid
                 and boss_attack_input_valid
                 and skill_damage_input_valid
-                and self._has_positive_graph_damage(base_stats)
+                and skill_speed_input_valid
             )
 
         def _has_positive_graph_damage(self, base_stats: BaseStats) -> bool:
@@ -2754,7 +2793,7 @@ class ResultsPage(QFrame):
             self._read_level()
             self._read_scroll_levels(save_levels=False)
             if stats_valid:
-                self._has_positive_simulation_damage(base_stats)
+                self._has_valid_attack_inputs(base_stats)
 
             self._load_optimization_inputs()
             self._is_loading_state = False

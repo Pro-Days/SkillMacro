@@ -1051,11 +1051,13 @@ class NoticeController:
 
                 return NoticeData(msg, "warning", action)
 
-    def show(self, kind: NoticeKind) -> None:
+    def show(self, kind: NoticeKind, text: str | None = None) -> None:
         """알림 팝업 표시"""
 
         # 알림 데이터 가져오기
-        data: NoticeData = self._get_notice_data(kind)
+        data: NoticeData = (
+            NoticeData(text) if text is not None else self._get_notice_data(kind)
+        )
 
         # 내용과 호스트 생성
         content = NoticeContent(data)
@@ -1173,9 +1175,9 @@ class PopupManager:
         if mouse_listener is not None:
             mouse_listener.stop()
 
-    def show_notice(self, kind: NoticeKind) -> None:
+    def show_notice(self, kind: NoticeKind, text: str | None = None) -> None:
         """알림 팝업 표시"""
-        self._notice_controller.show(kind)
+        self._notice_controller.show(kind, text)
 
     def close_popup(self) -> None:
         """PopupHost 기반 팝업 닫기"""
