@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
 from app.scripts.app_state import app_state
 from app.scripts.config import config
 from app.scripts.custom_classes import CustomFont
-from app.scripts.data_manager import mark_current_app_version_seen
+from app.scripts.data_manager import mark_current_app_version_seen, save_data
 from app.scripts.registry.resource_registry import (
     get_theme_image_path,
     resource_registry,
@@ -665,11 +665,13 @@ class SkillMigrationManager:
         self.master: MainWindow = master
         self._overlay: SkillMigrationOverlay | None = None
         self._on_finished: Callable[[], None] | None = None
+        self._mark_version_on_finish: bool = True
 
     def show_if_needed(self, on_finished: Callable[[], None]) -> None:
         """업데이트 후 첫 실행이고 커스텀 무공비급이 있으면 마이그레이션 화면 표시"""
 
         self._on_finished = on_finished
+        self._mark_version_on_finish = True
 
         server_spec: ServerSpec = app_state.macro.current_server
         version_changed: bool = app_state.ui.last_app_version != config.version
@@ -681,6 +683,17 @@ class SkillMigrationManager:
         # 표시 조건 미충족 시 현재 버전 기록 후 다음 안내로 진행
         mark_current_app_version_seen()
         self._finish()
+
+    def show_manual(self) -> None:
+        """커스텀 무공비급 이전 화면 수동 표시"""
+
+        server_spec: ServerSpec = app_state.macro.current_server
+        if not has_custom_scrolls(server_spec):
+            return
+
+        self._on_finished = None
+        self._mark_version_on_finish = False
+        self._show_overlay(server_spec)
 
     def refresh_visible_overlay(self) -> None:
         """창 크기 변경 시 표시 중인 오버레이 재배치"""
@@ -706,8 +719,11 @@ class SkillMigrationManager:
         server_id: str = app_state.macro.current_preset.settings.server_id
         apply_skill_migration(app_state.macro.presets, server_id, pairs)
 
-        # 마이그레이션 결과와 현재 버전 기록을 한 번에 저장
-        mark_current_app_version_seen()
+        # 마이그레이션 결과 저장
+        if self._mark_version_on_finish:
+            mark_current_app_version_seen()
+        else:
+            save_data()
 
         # 변경된 참조를 메인 UI와 사이드바에 반영
         self.master.sidebar.update_from_preset()
@@ -721,7 +737,9 @@ class SkillMigrationManager:
     def _handle_close(self) -> None:
         """마이그레이션 없이 화면 닫기"""
 
-        mark_current_app_version_seen()
+        if self._mark_version_on_finish:
+            mark_current_app_version_seen()
+
         self._teardown_overlay()
         self._finish()
 

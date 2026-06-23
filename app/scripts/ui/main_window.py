@@ -419,6 +419,9 @@ class MainWindow(QWidget):
         self.skill_migration_manager: SkillMigrationManager = SkillMigrationManager(
             self
         )
+        self.sidebar.skillMigrationRequested.connect(
+            self.skill_migration_manager.show_manual
+        )
 
         # 하단 푸터 바 (제작자 라벨 + 테마 전환)
         self.footer_bar: FooterBar = FooterBar(self)

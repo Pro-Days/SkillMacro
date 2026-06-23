@@ -175,6 +175,7 @@ class Sidebar(QFrame):
     dataChanged = Signal()
     scrollDeleted = Signal()
     guideRequested = Signal()
+    skillMigrationRequested = Signal()
 
     def __init__(
         self,
@@ -201,6 +202,9 @@ class Sidebar(QFrame):
         self.skill_settings = SkillSettings(
             self.popup_manager,
             on_data_changed=self.dataChanged.emit,
+        )
+        self.skill_settings.migrationRequested.connect(
+            self.skillMigrationRequested.emit
         )
         self.link_skill_settings = LinkSkillSettings(
             self.popup_manager,
@@ -1164,6 +1168,7 @@ class SkillSettings(QFrame):
 
     contentResized = Signal()
     scrollDeleted = Signal()
+    migrationRequested = Signal()
 
     def __init__(
         self,
@@ -1249,6 +1254,14 @@ class SkillSettings(QFrame):
         self._custom_actions_frame.setLayout(custom_actions_row)
         self._custom_actions_frame.hide()
 
+        # 커스텀 무공비급 이전 수동 진입 버튼
+        self._migration_btn: QPushButton = QPushButton("커스텀 무공비급 이전")
+        self._migration_btn.setObjectName("guideSecondaryButton")
+        self._migration_btn.setFont(CustomFont(10))
+        self._migration_btn.setFixedHeight(32)
+        self._migration_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._migration_btn.clicked.connect(self.migrationRequested.emit)
+
         # 스킬 카드 목록 레이아웃 구성
         self._cards_container: QWidget = QWidget()
         self._cards_container.setSizePolicy(
@@ -1264,6 +1277,7 @@ class SkillSettings(QFrame):
         layout.addWidget(self._selected_scroll_button)
         layout.addWidget(self._cards_container)
         layout.addWidget(self._custom_actions_frame)
+        layout.addWidget(self._migration_btn)
         layout.setContentsMargins(10, 20, 10, 10)
         layout.setSpacing(20)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1315,6 +1329,13 @@ class SkillSettings(QFrame):
         # 커스텀 무공비급이면 수정/삭제 버튼 표시
         is_custom: bool = scroll_def.id.startswith(f"{CUSTOM_SKILL_PREFIX}:")
         self._custom_actions_frame.setVisible(is_custom)
+
+        # 커스텀 무공비급이 하나라도 있으면 이전 기능 활성화
+        has_custom_scroll: bool = any(
+            scroll_id.startswith(f"{CUSTOM_SKILL_PREFIX}:")
+            for scroll_id in self._scroll_ids
+        )
+        self._migration_btn.setEnabled(has_custom_scroll)
 
     def _clear_rows(self) -> None:
         """기존 행들 제거"""
