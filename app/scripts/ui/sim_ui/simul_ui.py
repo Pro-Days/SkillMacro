@@ -3547,7 +3547,7 @@ class ResultsPage(QFrame):
             if selection_dialog.exec() != QDialog.DialogCode.Accepted:
                 self._ocr_btn.setText("선택 취소")
                 self._is_ocr_running = False
-                QTimer.singleShot(2000, lambda: self._ocr_btn.setText("화면에서 읽기"))
+                QTimer.singleShot(2000, lambda: self._ocr_btn.setText("화면에서 불러오기"))
                 return
 
             selected_rect: QRect = selection_dialog.selected_rect()  # type: ignore[assignment]
@@ -3594,7 +3594,7 @@ class ResultsPage(QFrame):
 
                 self._ocr_btn.setText("적용 취소")
                 self._is_ocr_running = False
-                QTimer.singleShot(2000, lambda: self._ocr_btn.setText("화면에서 읽기"))
+                QTimer.singleShot(2000, lambda: self._ocr_btn.setText("화면에서 불러오기"))
                 return
 
             stats = review_dialog.confirmed_stats()
@@ -3614,7 +3614,7 @@ class ResultsPage(QFrame):
                 self._ocr_btn.setText("인식된 스탯 없음")
 
             self._is_ocr_running = False
-            QTimer.singleShot(2000, lambda: self._ocr_btn.setText("화면에서 읽기"))
+            QTimer.singleShot(2000, lambda: self._ocr_btn.setText("화면에서 불러오기"))
 
         def _on_ocr_error(self) -> None:
             """OCR 실패 시 에러 피드백"""
@@ -3622,7 +3622,7 @@ class ResultsPage(QFrame):
             self._cleanup_ocr_worker()
             self._ocr_btn.setText("인식 실패")
             self._is_ocr_running = False
-            QTimer.singleShot(2000, lambda: self._ocr_btn.setText("화면에서 읽기"))
+            QTimer.singleShot(2000, lambda: self._ocr_btn.setText("화면에서 불러오기"))
 
         class _OcrWorker(QThread):
             """게임 화면 OCR 을 백그라운드에서 수행하는 워커 스레드"""
