@@ -175,7 +175,7 @@ _GRADIENT_TOP_K: int = 15
 _GRADIENT_EXACT_THRESHOLD: int = 500
 
 # 계산기 전투력 공식 스킬속도 상한
-CALCULATOR_SKILL_SPEED_LIMIT_PERCENT: float = 90.0
+CALCULATOR_SKILL_SPEED_LIMIT_PERCENT: float = 70.0
 
 # 내장 공식 추가 입력 변수 이름
 _POWER_FORMULA_LEVEL_NAME: str = "level"

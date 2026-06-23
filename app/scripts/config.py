@@ -60,7 +60,7 @@ class MacroSpecs:
         label="딜레이", default=300, min=50, max=1000
     )
     COOLTIME_REDUCTION: ClassVar[SettingSpec] = SettingSpec(
-        label="스킬속도(%)", default=0, min=0, max=90
+        label="스킬속도(%)", default=0, min=0, max=70
     )
     KEY_HOLD_SECONDS: ClassVar[KeyHoldSpec] = KeyHoldSpec(
         label="키 입력 유지 시간", default=0.0, min=0.0, max=3.0
