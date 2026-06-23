@@ -2526,6 +2526,16 @@ class ResultsPage(QFrame):
             opt_card.add_widget(self.distribution_inputs)
             opt_card.add_sub_title("목표 분배 미리보기")
             opt_card.add_widget(self.target_distribution_inputs)
+            # 최소분배 공통 안내 문구
+            minimum_tip_label: QLabel = QLabel(
+                "팁: 최소분배에 예상 최솟값을 넣어두면 계산이 훨씬 빨라집니다. "
+                "결과가 그 값과 같다면 조금 낮춰 다시 계산해 주세요.",
+                opt_card,
+            )
+            minimum_tip_label.setObjectName("dialogFieldLabel")
+            minimum_tip_label.setFont(CustomFont(9))
+            minimum_tip_label.setWordWrap(True)
+            opt_card.add_widget(minimum_tip_label)
             opt_card.add_separator()
             opt_card.add_sub_title("단전")
             opt_card.add_widget(self.danjeon_inputs)
