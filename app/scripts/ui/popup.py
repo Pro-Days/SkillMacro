@@ -3266,25 +3266,32 @@ class CustomSkillAddDialog(QDialog):
             levels[str(lvl)] = 0.0
 
         # 레벨별 입력값을 단일 데미지 계수로 저장
-        invalid_level: int | None = None
+        invalid_message: str | None = None
         for lvl, damage_input in level_inputs.items():
             try:
                 damage: float = float(damage_input.text().strip() or "0")
 
             except ValueError:
                 damage_input.set_valid(False)
-                if invalid_level is None:
-                    invalid_level = lvl
+                if invalid_message is None:
+                    invalid_message = f"{skill_label} Lv.{lvl} 데미지는 숫자여야 합니다."
+
+                continue
+
+            if not damage >= 0:
+                damage_input.set_valid(False)
+                if invalid_message is None:
+                    invalid_message = (
+                        f"{skill_label} Lv.{lvl} 데미지는 0 이상이어야 합니다."
+                    )
 
                 continue
 
             damage_input.set_valid(True)
             levels[str(lvl)] = damage
 
-        if invalid_level is not None:
-            raise CustomSkillImportError(
-                f"{skill_label} Lv.{invalid_level} 데미지는 숫자여야 합니다."
-            )
+        if invalid_message is not None:
+            raise CustomSkillImportError(invalid_message)
 
         return levels
 
@@ -3367,6 +3374,13 @@ class CustomSkillAddDialog(QDialog):
                 self._show_error("스킬 1 쿨타임은 숫자여야 합니다.")
             valid = False
 
+        if not skill1_ct >= 1:
+            self._skill1_ct_input.set_valid(False)
+            if valid:
+                self._show_error("스킬 1 쿨타임은 1 이상이어야 합니다.")
+
+            valid = False
+
         try:
             skill1_target_count = int(skill1_target_count_text)
             self._skill1_target_count_input.set_valid(True)
@@ -3392,6 +3406,13 @@ class CustomSkillAddDialog(QDialog):
             self._skill2_ct_input.set_valid(False)
             if valid:
                 self._show_error("스킬 2 쿨타임은 숫자여야 합니다.")
+            valid = False
+
+        if not skill2_ct >= 1:
+            self._skill2_ct_input.set_valid(False)
+            if valid:
+                self._show_error("스킬 2 쿨타임은 1 이상이어야 합니다.")
+
             valid = False
 
         try:
