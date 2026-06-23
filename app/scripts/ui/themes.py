@@ -210,6 +210,20 @@ QTabBar::close-button {{
 QTabBar::close-button:hover   {{ background-color: #FF5555; }}
 QTabBar::close-button:pressed {{ background-color: #CC0000; }}
 
+QTabBar QToolButton {{
+    color: #111111;
+    border: 1px solid #cccccc;
+    background: #eeeeff;
+    border-radius: 4px;
+    margin: 0px 1px;
+}}
+QTabBar QToolButton:hover {{ background: #dddddd; }}
+QTabBar QToolButton:pressed {{ background: #cccccc; }}
+QTabBar QToolButton:disabled {{
+    color: #999999;
+    background: #eeeeee;
+}}
+
 QPushButton#tabAddButton {{
     border: 1px solid #cccccc;
     background: #eeeeff;
@@ -1990,6 +2004,20 @@ QTabBar::close-button {{
 }}
 QTabBar::close-button:hover   {{ background-color: #FF5555; }}
 QTabBar::close-button:pressed {{ background-color: #CC0000; }}
+
+QTabBar QToolButton {{
+    color: #E8E8F0;
+    border: 1px solid #3A3A52;
+    background: #252538;
+    border-radius: 4px;
+    margin: 0px 1px;
+}}
+QTabBar QToolButton:hover {{ background: #2E2E45; }}
+QTabBar QToolButton:pressed {{ background: #363650; }}
+QTabBar QToolButton:disabled {{
+    color: #6D6D85;
+    background: #1C1C28;
+}}
 
 QPushButton#tabAddButton {{
     border: 1px solid #3A3A52;
