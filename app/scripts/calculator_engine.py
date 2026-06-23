@@ -37,7 +37,7 @@ from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wai
 from dataclasses import dataclass, field
 from enum import Enum
 from itertools import combinations, product
-from math import floor
+from math import comb, floor
 from multiprocessing.process import BaseProcess
 from typing import TYPE_CHECKING, NoReturn, TypeVar, cast
 
@@ -175,6 +175,9 @@ _GRADIENT_EXACT_THRESHOLD: int = 500
 
 # 계산기 전투력 공식 스킬속도 상한
 CALCULATOR_SKILL_SPEED_LIMIT_PERCENT: float = 70.0
+
+# 후보 그룹 선택을 자식 프로세스 없이 현재 스레드에서 직접 계산하는 조합 수 상한
+_CANDIDATE_INPROCESS_COMBO_LIMIT: int = 512
 
 # 60초 피해량 계산 입력 부족 안내
 TIMELINE_DAMAGE_INPUT_ERROR_MESSAGE: str = (
@@ -4185,6 +4188,24 @@ def _candidate_selection_worker(
     return best_result
 
 
+def _estimate_candidate_combination_count(
+    calculator_input: CalculatorPresetInput,
+) -> int:
+    """후보 그룹 선택 조합 수 추정 (평가 없이 조합 수만 계산)"""
+
+    # 그룹별 후보 선택 조합 수의 곱으로 전체 조합 수 산출
+    total: int = 1
+    for group in calculator_input.candidate_groups:
+        candidate_count: int = len(group.candidates)
+        if candidate_count == 0:
+            continue
+
+        select_count: int = min(group.selection_count, candidate_count)
+        total *= comb(candidate_count, select_count)
+
+    return total
+
+
 def select_candidate_groups(
     server_spec: "ServerSpec",
     preset: "MacroPreset",
@@ -4207,6 +4228,22 @@ def select_candidate_groups(
 
     if progress_callback is not None:
         progress_callback("후보 선택 결과 계산 중...", 95)
+
+    # 조합 수가 적으면 프로세스 생성 비용을 피해 현재 스레드에서 직접 계산
+    if (
+        _estimate_candidate_combination_count(calculator_input)
+        <= _CANDIDATE_INPROCESS_COMBO_LIMIT
+    ):
+        return _candidate_selection_worker(
+            server_spec,
+            preset,
+            skills_info,
+            delay_ms,
+            context,
+            base_stats,
+            calculator_input,
+            target_formula_id,
+        )
 
     # GUI 스레드 GIL 점유를 피하기 위해 후보 평가를 자식 프로세스에서 실행
     pool: ProcessPoolExecutor = ProcessPoolExecutor(max_workers=1)
