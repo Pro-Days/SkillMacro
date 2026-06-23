@@ -74,7 +74,7 @@ class MacroSpecs:
 
 @dataclass(frozen=True)
 class AppConfig:
-    version: ClassVar[str] = "v1.0.8"
+    version: ClassVar[str] = "v1.1.0"
     organization_name: ClassVar[str] = "ProDays"
     app_name: ClassVar[str] = "PD SkillMacro"
 
