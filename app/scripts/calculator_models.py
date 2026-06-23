@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from enum import Enum
 from uuid import uuid4
-
-from app.scripts.registry.resource_registry import convert_resource_path
 
 
 class StatKey(str, Enum):
@@ -98,21 +95,6 @@ class RealmTier(str, Enum):
     LIFE_AND_DEATH = "life_and_death"
 
 
-class TalismanGrade(str, Enum):
-    """부적 등급 값"""
-
-    # 일반 등급
-    NORMAL = "일반"
-    # 고급 등급
-    ADVANCED = "고급"
-    # 희귀 등급
-    RARE = "희귀"
-    # 영웅 등급
-    HEROIC = "영웅"
-    # 전설 등급
-    LEGENDARY = "전설"
-
-
 @dataclass(frozen=True, slots=True)
 class RealmSpec:
     """경지별 요구 레벨과 단전 포인트"""
@@ -122,19 +104,16 @@ class RealmSpec:
     danjeon_points: int
 
 
-TITLE_STAT_SLOT_COUNT: int = 3
-
-
 @dataclass(slots=True)
-class OwnedTitleStat:
-    """보유 칭호 스탯 슬롯"""
+class OptimizationCandidateStat:
+    """최적화 후보 스탯"""
 
     stat_key: StatKey
     value: float
 
     @classmethod
-    def from_dict(cls, data: dict[str, object]) -> "OwnedTitleStat":
-        """저장 데이터로부터 칭호 스탯 슬롯 복원"""
+    def from_dict(cls, data: dict[str, object]) -> "OptimizationCandidateStat":
+        """저장 데이터로부터 최적화 후보 스탯 복원"""
 
         # 스탯 키와 수치 직접 복원
         stat_key: StatKey = StatKey(str(data["stat_key"]))
@@ -142,7 +121,7 @@ class OwnedTitleStat:
         return cls(stat_key=stat_key, value=value)
 
     def to_dict(self) -> dict[str, object]:
-        """칭호 스탯 슬롯 직렬화"""
+        """최적화 후보 스탯 직렬화"""
 
         # 직렬화 시 enum 값을 문자열로 고정 저장
         data: dict[str, object] = {
@@ -153,36 +132,28 @@ class OwnedTitleStat:
 
 
 @dataclass(slots=True)
-class OwnedTitle:
-    """보유 칭호 정의"""
+class OptimizationCandidateOption:
+    """최적화 후보 정의"""
 
     name: str = ""
-    stats: list[OwnedTitleStat | None] = field(
-        default_factory=lambda: [None] * TITLE_STAT_SLOT_COUNT
-    )
+    stats: list[OptimizationCandidateStat] = field(default_factory=list)
 
     @classmethod
-    def from_dict(cls, data: dict[str, object]) -> "OwnedTitle":
-        """저장 데이터로부터 보유 칭호 복원"""
+    def from_dict(cls, data: dict[str, object]) -> "OptimizationCandidateOption":
+        """저장 데이터로부터 최적화 후보 복원"""
 
-        # 3칸 고정 스탯 슬롯 구조 직접 복원
+        # 후보 스탯 목록 구조 검증
         raw_stats: object = data["stats"]
         if not isinstance(raw_stats, list):
-            raise TypeError("title stats must be a list")
+            raise TypeError("candidate stats must be a list")
 
-        if len(raw_stats) != TITLE_STAT_SLOT_COUNT:
-            raise ValueError("title stats must have exactly 3 slots")
-
-        stats: list[OwnedTitleStat | None] = []
+        # 후보 스탯 목록 복원
+        stats: list[OptimizationCandidateStat] = []
         for raw_stat in raw_stats:
-            if raw_stat is None:
-                stats.append(None)
-                continue
-
             if not isinstance(raw_stat, dict):
-                raise TypeError("title stat slot must be dict or null")
+                raise TypeError("candidate stat item must be dict")
 
-            stats.append(OwnedTitleStat.from_dict(raw_stat))
+            stats.append(OptimizationCandidateStat.from_dict(raw_stat))
 
         return cls(
             name=str(data["name"]),
@@ -190,57 +161,62 @@ class OwnedTitle:
         )
 
     def to_dict(self) -> dict[str, object]:
-        """보유 칭호 직렬화"""
+        """최적화 후보 직렬화"""
 
-        # 3칸 고정 슬롯 기준 null 포함 직렬화
-        stats: list[dict[str, object] | None] = []
-        for stat_slot in self.stats:
-            if stat_slot is None:
-                stats.append(None)
-                continue
-
-            stats.append(stat_slot.to_dict())
-
+        # 후보명과 스탯 목록 직렬화
         data: dict[str, object] = {
             "name": self.name,
-            "stats": stats,
+            "stats": [stat.to_dict() for stat in self.stats],
         }
         return data
 
 
 @dataclass(slots=True)
-class OwnedTalisman:
-    """보유 부적 인스턴스"""
+class OptimizationCandidateGroup:
+    """최적화 후보 그룹"""
 
     name: str = ""
-    level: int = 1
+    selection_count: int = 1
+    candidates: list[OptimizationCandidateOption] = field(default_factory=list)
 
     @classmethod
-    def from_dict(cls, data: dict[str, int | str]) -> "OwnedTalisman":
-        """저장 데이터로부터 보유 부적 복원"""
+    def from_dict(cls, data: dict[str, object]) -> "OptimizationCandidateGroup":
+        """저장 데이터로부터 최적화 후보 그룹 복원"""
 
-        name: str = str(data["name"])
-        level: int = int(data["level"])
-        return cls(name=name, level=level)
+        # 선택 개수 검증
+        selection_count: int = int(data["selection_count"])  # type: ignore
+        if selection_count < 1:
+            raise ValueError("candidate group selection count must be at least 1")
 
-    def to_dict(self) -> dict[str, int | str]:
-        """보유 부적 직렬화"""
+        # 후보 목록 구조 검증
+        raw_candidates: object = data["candidates"]
+        if not isinstance(raw_candidates, list):
+            raise TypeError("candidate group candidates must be a list")
 
-        data: dict[str, int | str] = {
+        # 후보 목록 복원
+        candidates: list[OptimizationCandidateOption] = []
+        for raw_candidate in raw_candidates:
+            if not isinstance(raw_candidate, dict):
+                raise TypeError("candidate group item must be dict")
+
+            candidates.append(OptimizationCandidateOption.from_dict(raw_candidate))
+
+        return cls(
+            name=str(data["name"]),
+            selection_count=selection_count,
+            candidates=candidates,
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        """최적화 후보 그룹 직렬화"""
+
+        # 그룹명, 선택 개수, 후보 목록 직렬화
+        data: dict[str, object] = {
             "name": self.name,
-            "level": self.level,
+            "selection_count": self.selection_count,
+            "candidates": [candidate.to_dict() for candidate in self.candidates],
         }
         return data
-
-
-@dataclass(frozen=True, slots=True)
-class TalismanSpec:
-    """부적 정의"""
-
-    name: str
-    grade: TalismanGrade
-    stat_key: StatKey
-    level_stats: dict[int, float]
 
 
 @dataclass(slots=True)
@@ -423,43 +399,6 @@ class TargetDanjeonState:
             "middle": self.middle,
             "lower": self.lower,
             "is_minimum": self.is_minimum,
-        }
-        return data
-
-
-@dataclass(slots=True)
-class EquippedState:
-    """현재 장착 선택 상태"""
-
-    equipped_title_name: str | None = None
-    equipped_talisman_names: list[str] = field(default_factory=lambda: [])
-
-    @classmethod
-    def from_dict(cls, data: dict[str, object]) -> "EquippedState":
-        """저장 데이터로부터 현재 장착 상태 복원"""
-
-        raw_names: object = data["equipped_talisman_names"]
-        if not isinstance(raw_names, list):
-            raise TypeError("equipped_talisman_names must be a list")
-
-        equipped_talisman_names: list[str] = [str(item) for item in raw_names]
-
-        raw_title_name: object = data["equipped_title_name"]
-        equipped_title_name: str | None = None
-        if raw_title_name is not None:
-            equipped_title_name = str(raw_title_name)
-
-        return cls(
-            equipped_title_name=equipped_title_name,
-            equipped_talisman_names=equipped_talisman_names,
-        )
-
-    def to_dict(self) -> dict[str, object]:
-        """현재 장착 상태 직렬화"""
-
-        data: dict[str, object] = {
-            "equipped_title_name": self.equipped_title_name,
-            "equipped_talisman_names": self.equipped_talisman_names,
         }
         return data
 
@@ -692,10 +631,8 @@ class CalculatorPresetInput:
     danjeon: DanjeonState = field(default_factory=DanjeonState)
     target_danjeon: TargetDanjeonState = field(default_factory=TargetDanjeonState)
 
-    # 보유 선택지 및 현재 장착 상태 저장
-    owned_titles: list[OwnedTitle] = field(default_factory=list)
-    owned_talismans: list[OwnedTalisman] = field(default_factory=list)
-    equipped_state: EquippedState = field(default_factory=EquippedState)
+    # 최적화 후보 그룹 저장
+    candidate_groups: list[OptimizationCandidateGroup] = field(default_factory=list)
     custom_stat_changes: dict[str, float] = field(default_factory=dict)
 
     @classmethod
@@ -764,35 +701,17 @@ class CalculatorPresetInput:
             target_danjeon_data
         )
 
-        # 칭호
-        owned_titles_raw: object = data["owned_titles"]
-        if not isinstance(owned_titles_raw, list):
-            raise TypeError("owned_titles must be a list")
+        # 최적화 후보 그룹
+        candidate_groups_raw: object = data["candidate_groups"]
+        if not isinstance(candidate_groups_raw, list):
+            raise TypeError("candidate_groups must be a list")
 
-        owned_titles: list[OwnedTitle] = []
-        for item in owned_titles_raw:
+        candidate_groups: list[OptimizationCandidateGroup] = []
+        for item in candidate_groups_raw:
             if not isinstance(item, dict):
-                raise TypeError("owned_titles items must be dict")
+                raise TypeError("candidate_groups items must be dict")
 
-            owned_titles.append(OwnedTitle.from_dict(item))
-
-        # 부적
-        owned_talismans_raw: object = data["owned_talismans"]
-        if not isinstance(owned_talismans_raw, list):
-            raise TypeError("owned_talismans must be a list")
-
-        owned_talismans: list[OwnedTalisman] = []
-        for item in owned_talismans_raw:
-            if not isinstance(item, dict):
-                raise TypeError("owned_talismans items must be dict")
-
-            owned_talismans.append(OwnedTalisman.from_dict(item))
-
-        # 장착 상태
-        equipped_data: object = data["equipped_state"]
-        if not isinstance(equipped_data, dict):
-            raise TypeError("equipped_state must be a dict")
-        equipped_state: EquippedState = EquippedState.from_dict(equipped_data)
+            candidate_groups.append(OptimizationCandidateGroup.from_dict(item))
 
         level: int = int(data["level"])  # type: ignore
 
@@ -805,9 +724,7 @@ class CalculatorPresetInput:
             target_distribution=target_distribution,
             danjeon=danjeon,
             target_danjeon=target_danjeon,
-            owned_titles=owned_titles,
-            owned_talismans=owned_talismans,
-            equipped_state=equipped_state,
+            candidate_groups=candidate_groups,
             custom_stat_changes=custom_stat_changes,
         )
 
@@ -823,11 +740,7 @@ class CalculatorPresetInput:
             "target_distribution": self.target_distribution.to_dict(),
             "danjeon": self.danjeon.to_dict(),
             "target_danjeon": self.target_danjeon.to_dict(),
-            "owned_titles": [title.to_dict() for title in self.owned_titles],
-            "owned_talismans": [
-                talisman.to_dict() for talisman in self.owned_talismans
-            ],
-            "equipped_state": self.equipped_state.to_dict(),
+            "candidate_groups": [group.to_dict() for group in self.candidate_groups],
             "custom_stat_changes": {
                 key: float(value) for key, value in self.custom_stat_changes.items()
             },
@@ -946,39 +859,3 @@ REALM_TIER_SPECS: dict[RealmTier, RealmSpec] = {
         danjeon_points=50,
     ),
 }
-
-
-def _load_talismans() -> tuple[TalismanSpec, ...]:
-    """부적 목록 로드"""
-
-    resource_path: str = convert_resource_path("resources\\data\\talisman_data.json")
-    with open(resource_path, "r", encoding="utf-8") as file:
-        payload: dict[str, object] = json.load(file)
-
-    raw_talismans: object = payload["talismans"]
-    if not isinstance(raw_talismans, list):
-        raise TypeError("talismans must be a list")
-
-    specs: list[TalismanSpec] = []
-    for raw_talisman in raw_talismans:
-        if not isinstance(raw_talisman, dict):
-            raise TypeError("talisman item must be a dict")
-
-        # 부적 등급과 스탯 정의 동시 복원
-        specs.append(
-            TalismanSpec(
-                name=str(raw_talisman["name"]),
-                grade=TalismanGrade(str(raw_talisman["grade"])),
-                stat_key=StatKey(str(raw_talisman["stat_key"])),
-                level_stats={
-                    int(level): float(value)
-                    for level, value in raw_talisman["level_stats"].items()
-                },
-            )
-        )
-
-    return tuple(specs)
-
-
-# 부적 정의 전체
-TALISMAN_SPECS: tuple[TalismanSpec, ...] = _load_talismans()

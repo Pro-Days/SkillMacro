@@ -34,7 +34,6 @@ from app.scripts.calculator_models import (
     CalculatorPresetInput,
     DanjeonState,
     DistributionState,
-    EquippedState,
     PowerMetric,
     RealmTier,
     STAT_SPECS,
@@ -217,8 +216,7 @@ class GuideTargetRegistry:
                 "sim.input.distribution": lambda: self.master.sim_ui.input_page.editor.distribution_inputs,
                 "sim.input.target_distribution": lambda: self.master.sim_ui.input_page.editor.target_distribution_inputs,
                 "sim.input.danjeon": lambda: self.master.sim_ui.input_page.editor.danjeon_inputs,
-                "sim.input.title": lambda: self.master.sim_ui.input_page.editor.title_inputs,
-                "sim.input.talisman": lambda: self.master.sim_ui.input_page.editor.talisman_inputs,
+                "sim.input.candidates": lambda: self.master.sim_ui.input_page.editor.candidate_group_inputs,
                 "sim.input.custom_delta": lambda: self.master.sim_ui.input_page.editor.custom_delta_inputs,
                 "sim.graph.page": lambda: self.master.sim_ui.graph_page,
                 "sim.results.page": lambda: self.master.sim_ui.scroll_area,
@@ -1284,10 +1282,8 @@ class GuideManager:
             is_minimum=True,
         )
 
-        # 선택형 장비 데이터 없는 기본 예시 상태 구성
-        calculator_input.owned_titles = []
-        calculator_input.owned_talismans = []
-        calculator_input.equipped_state = EquippedState()
+        # 최적화 후보 그룹 없는 기본 예시 상태 구성
+        calculator_input.candidate_groups = []
         calculator_input.custom_stat_changes = {
             stat_key.value: 0.0 for stat_key in STAT_SPECS.keys()
         }
@@ -1594,15 +1590,9 @@ class GuideManager:
                         self._sim_input_page,
                     ),
                     GuideStep(
-                        "칭호 입력",
-                        "보유 칭호를 추가하고 장착할 칭호를 선택합니다.",
-                        "sim.input.title",
-                        self._sim_input_page,
-                    ),
-                    GuideStep(
-                        "부적 입력",
-                        "보유 부적과 장착 슬롯을 설정합니다.",
-                        "sim.input.talisman",
+                        "후보 그룹 입력",
+                        "후보 그룹을 만들고 각 그룹에서 선택할 후보 개수를 설정합니다. 후보에는 원하는 스탯을 자유롭게 추가할 수 있습니다.",
+                        "sim.input.candidates",
                         self._sim_input_page,
                     ),
                     GuideStep(
@@ -1643,7 +1633,7 @@ class GuideManager:
                     ),
                     GuideStep(
                         "최적화 결과",
-                        "현재 입력값, 스탯/단전 분배, 보유 칭호, 보유 부적 등의 조건을 기준으로 가장 좋은 조합을 계산합니다.",
+                        "현재 입력값과 스탯/단전 분배 조건을 기준으로 가장 좋은 조합을 계산합니다.",
                         "sim.results.optimization",
                         self._sim_results_page,
                     ),

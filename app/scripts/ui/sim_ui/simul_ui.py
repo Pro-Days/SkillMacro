@@ -66,27 +66,23 @@ from app.scripts.calculator_engine import (
     evaluate_next_realm_delta,
     evaluate_scroll_upgrade_deltas,
     evaluate_single_stat_delta,
+    CandidateGroupSelectionResult,
     OptimizationFailure,
     optimize_current_selection,
+    select_candidate_groups,
 )
 from app.scripts.calculator_models import (
     OVERALL_STAT_GRID_ROWS,
     OVERALL_STAT_ORDER,
     REALM_TIER_SPECS,
     STAT_SPECS,
-    TALISMAN_SPECS,
-    TITLE_STAT_SLOT_COUNT,
     BaseStats,
     CalculatorPresetInput,
     CustomPowerFormula,
     DanjeonState,
     DistributionState,
-    EquippedState,
-    OwnedTalisman,
-    OwnedTitle,
-    OwnedTitleStat,
+    OptimizationCandidateGroup,
     StatKey,
-    TalismanGrade,
     TargetDanjeonState,
     TargetDistributionState,
 )
@@ -95,9 +91,7 @@ from app.scripts.character_engine import (
     build_calculator_input_fill,
 )
 from app.scripts.character_models import CharacterProfile
-from app.scripts.config import config
 from app.scripts.custom_classes import (
-    CustomComboBox,
     CustomFont,
     CustomLineEdit,
     KVComboInput,
@@ -112,6 +106,7 @@ from app.scripts.registry.resource_registry import (
     resource_registry,
 )
 from app.scripts.simulate_macro import simulate_random_from_calculator
+from app.scripts.ui.sim_ui.candidate_group_inputs import CandidateGroupInputs
 from app.scripts.ui.popup import (
     CustomPowerFormulaManageDialog,
     NoticeKind,
@@ -137,7 +132,6 @@ if TYPE_CHECKING:
     )
     from app.scripts.calculator_models import (
         RealmTier,
-        TalismanSpec,
     )
     from app.scripts.macro_models import MacroPreset
     from app.scripts.ocr import OcrStatCandidate
@@ -270,10 +264,7 @@ class SimUI:
                 self.parent,
                 self._apply_character_to_calculator,
                 title="계산기에 적용",
-                message=(
-                    "이 캐릭터의 스탯을 계산기 입력에 적용합니다.\n"
-                    "계산기에 입력한 칭호·부적·장착 정보는 초기화됩니다."
-                ),
+                message="이 캐릭터의 스탯을 계산기 입력에 적용합니다.",
                 confirm_text="적용",
                 show_summary=False,
             )
@@ -376,10 +367,8 @@ class SimUI:
         calculator_input.distribution = fill.distribution
         calculator_input.danjeon = fill.danjeon
 
-        # 계산기 칭호·부적 입력은 캐릭터 계산 결과와 중복되지 않도록 초기화
-        calculator_input.owned_titles = fill.owned_titles
-        calculator_input.owned_talismans = fill.owned_talismans
-        calculator_input.equipped_state = fill.equipped_state
+        # 계산기 후보 그룹은 캐릭터 합산 스탯과 중복되지 않도록 초기화
+        calculator_input.candidate_groups = fill.candidate_groups
 
         save_data()
         self.input_page.editor.load_from_preset_state()
@@ -1343,6 +1332,7 @@ class _CalculationInputConfirmOverlay(QFrame):
             self._add_summary_row(1, "경지", "realm", container)
             self._add_summary_row(2, "스탯 분배", "distribution", container)
             self._add_summary_row(3, "단전", "danjeon", container)
+            self._add_summary_row(4, "후보", "candidates", container)
 
         # 확인과 취소 버튼 구성
         cancel_button: QPushButton = QPushButton("취소", container)
@@ -1417,6 +1407,9 @@ class _CalculationInputConfirmOverlay(QFrame):
             )
             self._value_labels["danjeon"].setText(
                 self._format_danjeon_state(calculator_input.danjeon)
+            )
+            self._value_labels["candidates"].setText(
+                self._format_candidate_groups(calculator_input.candidate_groups)
             )
 
             # 줄바꿈 값 라벨은 텍스트 적용 후 최소 높이를 잡아야 카드가 잘리지 않는다
@@ -1507,6 +1500,26 @@ class _CalculationInputConfirmOverlay(QFrame):
         lock_text: str = "잠금 켜짐" if is_locked else "잠금 꺼짐"
         reset_text: str = "초기화 켜짐" if use_reset else "초기화 꺼짐"
         return f"{lock_text} / {reset_text}"
+
+    @staticmethod
+    def _format_candidate_groups(
+        candidate_groups: list[OptimizationCandidateGroup],
+    ) -> str:
+        """후보 그룹 확인 문구 구성"""
+
+        # 후보 그룹 부재 상태 문구 구성
+        if not candidate_groups:
+            return "후보 그룹 없음"
+
+        # 그룹별 선택 개수와 후보 수 요약
+        summary_lines: list[str] = []
+        for candidate_group in candidate_groups:
+            summary_lines.append(
+                f"{candidate_group.name}: 선택 {candidate_group.selection_count}개 / "
+                f"후보 {len(candidate_group.candidates)}개"
+            )
+
+        return "\n".join(summary_lines)
 
 
 class GraphPage(QFrame):
@@ -1831,10 +1844,12 @@ class ResultsPage(QFrame):
         target_danjeon_summary: tuple[str, str] | None
         target_danjeon_delta: tuple[str, str] | None
         optimization_result: list[tuple[str, str]]
+        candidate_selection_result: list[tuple[str, str]] | None
         custom_base_stats: BaseStats | None
         target_base_stats: BaseStats | None
         target_danjeon_base_stats: BaseStats | None
         optimized_base_stats: BaseStats | None
+        candidate_selection_base_stats: BaseStats | None
 
     def __init__(
         self,
@@ -1904,8 +1919,8 @@ class ResultsPage(QFrame):
         current_realm: "RealmTier",
         calculator_input: CalculatorPresetInput,
         context: "EvaluationContext",
+        cancel_checker: Callable[[], None],
         progress_callback: Callable[[str, int], None] | None = None,
-        cancel_checker: Callable[[], None] | None = None,
     ) -> "ResultsPage.OutputRows":
         """공용 계산기 결과 행 구성"""
 
@@ -1913,8 +1928,7 @@ class ResultsPage(QFrame):
         if progress_callback is not None:
             progress_callback("현재 전투력 정리 중...", 0)
 
-        if cancel_checker is not None:
-            cancel_checker()
+        cancel_checker()
 
         # 현재 전투력 출력 행 구성
         formula_labels: dict[str, str] = _build_formula_label_map(
@@ -1938,8 +1952,7 @@ class ResultsPage(QFrame):
         for stat_index, (stat_key, stat_label) in enumerate(
             STAT_SPECS.items(), start=1
         ):
-            if cancel_checker is not None:
-                cancel_checker()
+            cancel_checker()
 
             metric_delta: float = evaluate_single_stat_delta(
                 context=context,
@@ -1964,8 +1977,7 @@ class ResultsPage(QFrame):
         if progress_callback is not None:
             progress_callback("레벨 효율 계산 중...", 0)
 
-        if cancel_checker is not None:
-            cancel_checker()
+        cancel_checker()
 
         # 레벨 1업 효율 출력 행 구성
         level_up: LevelUpEvaluation = evaluate_level_up_delta(
@@ -1990,8 +2002,7 @@ class ResultsPage(QFrame):
         if progress_callback is not None:
             progress_callback("경지 효율 계산 중...", 0)
 
-        if cancel_checker is not None:
-            cancel_checker()
+        cancel_checker()
 
         # 다음 경지 효율 출력 행 구성
         realm_result: RealmAdvanceEvaluation | None = evaluate_next_realm_delta(
@@ -2023,8 +2034,7 @@ class ResultsPage(QFrame):
         if progress_callback is not None:
             progress_callback("무공비급 효율 계산 중...", 0)
 
-        if cancel_checker is not None:
-            cancel_checker()
+        cancel_checker()
 
         # 무공비급 +1 효율 출력 행 구성
         scroll_rows: list[tuple[str, str]] = []
@@ -2039,8 +2049,7 @@ class ResultsPage(QFrame):
         scroll_index: int
         scroll_result: ScrollUpgradeEvaluation
         for scroll_index, scroll_result in enumerate(scroll_results, start=1):
-            if cancel_checker is not None:
-                cancel_checker()
+            cancel_checker()
 
             scroll_rows.append(
                 (
@@ -2062,8 +2071,7 @@ class ResultsPage(QFrame):
         if progress_callback is not None:
             progress_callback("사용자 지정 변화량 계산 중...", 0)
 
-        if cancel_checker is not None:
-            cancel_checker()
+        cancel_checker()
 
         # 사용자 지정 변화량 맵 1회 구성 및 빈 입력 분기
         custom_changes: dict[StatKey, float] = cls._build_custom_stat_change_map(
@@ -2138,8 +2146,7 @@ class ResultsPage(QFrame):
         if progress_callback is not None:
             progress_callback("최적화 결과 계산 중...", 0)
 
-        if cancel_checker is not None:
-            cancel_checker()
+        cancel_checker()
 
         # 최적화 결과 행 구성
         optimization_result: OptimizationResult | OptimizationFailure = (
@@ -2157,41 +2164,14 @@ class ResultsPage(QFrame):
             )
         )
         optimized_base_stats: BaseStats | None = None
+        candidate_selection_rows: list[tuple[str, str]] | None = None
+        candidate_selection_base_stats: BaseStats | None = None
         if isinstance(optimization_result, OptimizationFailure):
             optimization_rows: list[tuple[str, str]] = [
                 ("상태", optimization_result.message)
             ]
         else:
             optimized_base_stats = optimization_result.base_stats
-            title_text: str = "없음"
-            if optimization_result.candidate.equipped_title_name is not None:
-                for owned_title in calculator_input.owned_titles:
-                    if (
-                        owned_title.name
-                        == optimization_result.candidate.equipped_title_name
-                    ):
-                        title_text = owned_title.name
-                        break
-
-            talisman_name_map: dict[str, str] = {}
-            for owned_talisman in calculator_input.owned_talismans:
-                for template in TALISMAN_SPECS:
-                    if template.name != owned_talisman.name:
-                        continue
-
-                    talisman_name_map[owned_talisman.name] = (
-                        f"{template.name} Lv.{owned_talisman.level}"
-                    )
-                    break
-
-            talisman_text: str = ", ".join(
-                talisman_name_map[talisman_name]
-                for talisman_name in optimization_result.candidate.equipped_talisman_names
-                if talisman_name in talisman_name_map
-            )
-            if not talisman_text:
-                talisman_text = "없음"
-
             distribution_text: str = (
                 f"힘 {optimization_result.candidate.distribution.strength}, "
                 f"민첩 {optimization_result.candidate.distribution.dexterity}, "
@@ -2210,16 +2190,51 @@ class ResultsPage(QFrame):
                 ),
                 ("최적 스탯 분배", distribution_text),
                 ("최적 단전", danjeon_text),
-                ("최적 칭호", title_text),
-                ("최적 부적", talisman_text),
             ]
+
+        # 현재 입력 기준 후보 그룹 선택 결과 별도 계산
+        candidate_selection_result: (
+            CandidateGroupSelectionResult | OptimizationFailure | None
+        ) = select_candidate_groups(
+            server_spec=server_spec,
+            preset=preset,
+            skills_info=preset.usage_settings,
+            delay_ms=delay_ms,
+            context=context,
+            base_stats=base_stats,
+            calculator_input=calculator_input,
+            target_formula_id=selected_formula_id,
+            progress_callback=progress_callback,
+            cancel_checker=cancel_checker,
+        )
+        if isinstance(candidate_selection_result, OptimizationFailure):
+            candidate_selection_rows = [
+                ("상태", candidate_selection_result.message)
+            ]
+        elif candidate_selection_result is not None:
+            candidate_selection_base_stats = candidate_selection_result.base_stats
+            candidate_selection_rows = [
+                (
+                    "선택 전투력 증가",
+                    cls._format_delta(candidate_selection_result.delta),
+                )
+            ]
+            for group_selection in candidate_selection_result.group_selections:
+                selected_text: str = ", ".join(
+                    group_selection.selected_candidate_names
+                )
+                if not selected_text:
+                    selected_text = "선택된 후보 없음"
+
+                candidate_selection_rows.append(
+                    (f"선택 후보 - {group_selection.group_name}", selected_text)
+                )
 
         # 결과 반환 직전 완료 단계 반영
         if progress_callback is not None:
             progress_callback("결과 화면 준비 중...", 100)
 
-        if cancel_checker is not None:
-            cancel_checker()
+        cancel_checker()
 
         return cls.OutputRows(
             current_power=current_power_row,
@@ -2233,10 +2248,12 @@ class ResultsPage(QFrame):
             target_danjeon_summary=target_danjeon_summary,
             target_danjeon_delta=target_danjeon_delta_row,
             optimization_result=optimization_rows,
+            candidate_selection_result=candidate_selection_rows,
             custom_base_stats=custom_base_stats,
             target_base_stats=target_base_stats,
             target_danjeon_base_stats=target_danjeon_base_stats,
             optimized_base_stats=optimized_base_stats,
+            candidate_selection_base_stats=candidate_selection_base_stats,
         )
 
     @staticmethod
@@ -2503,11 +2520,7 @@ class ResultsPage(QFrame):
                     ("lower", "하단전"),
                 ),
             )
-            self.title_inputs = self.TitleInputs(
-                self,
-                self.on_optimization_input_changed,
-            )
-            self.talisman_inputs = self.TalismanInputs(
+            self.candidate_group_inputs = CandidateGroupInputs(
                 self,
                 self.on_optimization_input_changed,
             )
@@ -2577,11 +2590,8 @@ class ResultsPage(QFrame):
             opt_card.add_sub_title("목표 단전 미리보기")
             opt_card.add_widget(self.target_danjeon_inputs)
             opt_card.add_separator()
-            opt_card.add_sub_title("칭호 목록")
-            opt_card.add_widget(self.title_inputs)
-            opt_card.add_separator()
-            opt_card.add_sub_title("부적 목록")
-            opt_card.add_widget(self.talisman_inputs)
+            opt_card.add_sub_title("후보 그룹")
+            opt_card.add_widget(self.candidate_group_inputs)
 
             layout = QVBoxLayout(self)
             layout.addWidget(base_card)
@@ -2678,18 +2688,14 @@ class ResultsPage(QFrame):
             target_distribution_state: TargetDistributionState
             danjeon_state: DanjeonState
             target_danjeon_state: TargetDanjeonState
-            owned_titles: list[OwnedTitle]
-            equipped_state: EquippedState
-            owned_talismans: list[OwnedTalisman]
+            candidate_groups: list[OptimizationCandidateGroup]
             (
                 optimization_valid,
                 distribution_state,
                 target_distribution_state,
                 danjeon_state,
                 target_danjeon_state,
-                owned_titles,
-                equipped_state,
-                owned_talismans,
+                candidate_groups,
             ) = self._read_optimization_state()
             if not optimization_valid:
                 return False
@@ -2731,9 +2737,7 @@ class ResultsPage(QFrame):
                 target_distribution_state=target_distribution_state,
                 danjeon_state=danjeon_state,
                 target_danjeon_state=target_danjeon_state,
-                owned_titles=owned_titles,
-                equipped_state=equipped_state,
-                owned_talismans=owned_talismans,
+                candidate_groups=candidate_groups,
                 persist=False,
             )
             self._save_custom_stat_changes(
@@ -3036,1712 +3040,6 @@ class ResultsPage(QFrame):
                 layout.addStretch(1)
                 self.setLayout(layout)
 
-        class TitleInputs(QFrame):
-            class TitleStatRow(QFrame):
-                def __init__(
-                    self,
-                    parent: QWidget,
-                    connected_function: Callable[[], None],
-                    slot_index: int,
-                    data: OwnedTitleStat | None = None,
-                ) -> None:
-                    super().__init__(parent)
-
-                    # 스탯 슬롯 콜백 및 옵션 구성
-                    self._connected_function: Callable[[], None] = connected_function
-                    self._stat_options: list[StatKey | None] = [None] + list(
-                        STAT_SPECS.keys()
-                    )
-
-                    # 슬롯 라벨과 입력 위젯 배치
-                    layout: QHBoxLayout = QHBoxLayout(self)
-                    layout.setContentsMargins(0, 0, 12, 0)
-                    layout.setSpacing(4)
-
-                    self.slot_label: QLabel = QLabel(f"스탯 {slot_index}", self)
-                    self.slot_label.setFont(CustomFont(10, bold=True))
-                    self.slot_label.setMinimumWidth(42)
-
-                    # 수치 라벨 제거 및 콤보박스 높이 정렬
-                    self.value_input: CustomLineEdit = CustomLineEdit(
-                        self,
-                        self._connected_function,
-                        "" if data is None else f"{data.value:g}",
-                        point_size=10,
-                    )
-                    self.value_input.setMaximumWidth(100)
-                    self.value_input.setFixedHeight(32)
-
-                    # 콤보박스 초기 인덱스 설정 후 시그널 연결
-                    self.stat_combobox = CustomComboBox(
-                        self,
-                        ["미설정"] + list(STAT_SPECS.values()),
-                    )
-                    self.stat_combobox.setMinimumHeight(32)
-                    if data is not None:
-                        self.stat_combobox.setCurrentIndex(
-                            self._stat_options.index(data.stat_key)
-                        )
-
-                    self.stat_combobox.currentIndexChanged.connect(
-                        self._on_stat_changed
-                    )
-
-                    layout.addWidget(self.slot_label)
-                    layout.addWidget(self.stat_combobox)
-                    layout.addWidget(self.value_input)
-                    self.setLayout(layout)
-                    self._apply_slot_state()
-
-                def _on_stat_changed(self) -> None:
-                    """스탯 슬롯 선택 변경 처리"""
-
-                    # 슬롯 활성 상태 갱신 후 상위 콜백 전달
-                    self._apply_slot_state()
-                    self._connected_function()
-
-                def _apply_slot_state(self) -> None:
-                    """미설정 슬롯의 입력 상태 반영"""
-
-                    # 미설정 슬롯은 수치 입력 비활성화
-                    is_enabled: bool = (
-                        self._stat_options[self.stat_combobox.currentIndex()]
-                        is not None
-                    )
-                    self.value_input.setEnabled(is_enabled)
-                    if is_enabled:
-                        self.value_input.set_valid(True)
-                        return
-
-                    self.value_input.setText("")
-                    self.value_input.set_valid(True)
-
-                def get_value(self) -> tuple[bool, OwnedTitleStat | None]:
-                    """행 데이터 복원"""
-
-                    # 현재 슬롯이 미설정인 경우 None 반환
-                    stat_key: StatKey | None = self._stat_options[
-                        self.stat_combobox.currentIndex()
-                    ]
-                    if stat_key is None:
-                        self.value_input.set_valid(True)
-                        return True, None
-
-                    # 수치 입력 유효성 검증
-                    text: str = self.value_input.text()
-                    try:
-                        value: float = float(text)
-                        self.value_input.set_valid(True)
-                        return True, OwnedTitleStat(stat_key=stat_key, value=value)
-
-                    except ValueError:
-                        self.value_input.set_valid(False)
-                        return False, None
-
-            class TitleListItem(QFrame):
-                def __init__(
-                    self,
-                    parent: QWidget,
-                    select_function: Callable[
-                        ["ResultsPage.Efficiency.TitleInputs.TitleCard"], None
-                    ],
-                    equip_function: Callable[
-                        ["ResultsPage.Efficiency.TitleInputs.TitleCard"], None
-                    ],
-                    remove_function: Callable[
-                        ["ResultsPage.Efficiency.TitleInputs.TitleCard"], None
-                    ],
-                    target_card: "ResultsPage.Efficiency.TitleInputs.TitleCard",
-                ) -> None:
-                    super().__init__(parent)
-
-                    # 목록 항목 대상 카드 및 콜백 보관
-                    self._select_function: Callable[
-                        [ResultsPage.Efficiency.TitleInputs.TitleCard], None
-                    ] = select_function
-                    self._equip_function: Callable[
-                        [ResultsPage.Efficiency.TitleInputs.TitleCard], None
-                    ] = equip_function
-                    self._remove_function: Callable[
-                        [ResultsPage.Efficiency.TitleInputs.TitleCard], None
-                    ] = remove_function
-                    self._target_card: ResultsPage.Efficiency.TitleInputs.TitleCard = (
-                        target_card
-                    )
-
-                    # 목록 항목 전체 레이아웃 구성
-                    self.setMinimumHeight(48)
-                    layout: QGridLayout = QGridLayout(self)
-                    layout.setContentsMargins(0, 0, 0, 0)
-                    layout.setSpacing(0)
-
-                    # 칭호 선택 버튼 구성
-                    self.select_button: QPushButton = QPushButton("", self)
-                    self.select_button.setObjectName("titleListSelectBtn")
-                    self.select_button.setCheckable(True)
-                    self.select_button.setCursor(Qt.CursorShape.PointingHandCursor)
-                    self.select_button.setMinimumHeight(48)
-                    self.select_button.setFont(CustomFont(10, bold=True))
-                    self.select_button.clicked.connect(self._on_select_clicked)
-
-                    # 목록 상단 액션 버튼 컨테이너 구성
-                    self.actions_widget: QWidget = QWidget(self)
-                    actions_layout: QHBoxLayout = QHBoxLayout(self.actions_widget)
-                    actions_layout.setContentsMargins(0, 0, 8, 0)
-                    actions_layout.setSpacing(6)
-
-                    # 목록 상단 장착 버튼 구성
-                    self.equip_button: QPushButton = QPushButton("장착 설정", self)
-                    self.equip_button.setObjectName("titleEquipBtn")
-                    self.equip_button.setFixedHeight(24)
-                    self.equip_button.setMinimumWidth(74)
-                    self.equip_button.setFont(CustomFont(8, bold=True))
-                    self.equip_button.setCursor(Qt.CursorShape.PointingHandCursor)
-                    self.equip_button.clicked.connect(self._on_equip_clicked)
-
-                    # 목록 상단 삭제 버튼 구성
-                    self.remove_button: StyledButton = StyledButton(
-                        self, "삭제", kind="danger", point_size=8
-                    )
-                    self.remove_button.setFixedHeight(24)
-                    self.remove_button.clicked.connect(self._on_remove_clicked)
-
-                    actions_layout.addWidget(self.equip_button)
-                    actions_layout.addWidget(self.remove_button)
-                    self.actions_widget.setLayout(actions_layout)
-
-                    # 칭호 버튼 위 액션 버튼 겹치기 배치
-                    layout.addWidget(self.select_button, 0, 0)
-                    layout.addWidget(
-                        self.actions_widget,
-                        0,
-                        0,
-                        Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight,
-                    )
-                    self.setLayout(layout)
-
-                    # 장착 버튼 기본 상태 반영
-                    self.set_equipped_state(False)
-
-                def _on_select_clicked(self, _checked: bool) -> None:
-                    """목록 항목 선택 전달"""
-
-                    self._select_function(self._target_card)
-
-                def _on_equip_clicked(self) -> None:
-                    """목록 항목 장착 토글 전달"""
-
-                    self._equip_function(self._target_card)
-
-                def _on_remove_clicked(self) -> None:
-                    """목록 항목 삭제 전달"""
-
-                    self._remove_function(self._target_card)
-
-                def set_title_text(self, text: str) -> None:
-                    """목록 버튼 표시명 반영"""
-
-                    self.select_button.setText(text)
-
-                def set_selected_state(self, is_selected: bool) -> None:
-                    """목록 버튼 선택 상태 반영"""
-
-                    self.select_button.setChecked(is_selected)
-
-                def set_equipped_state(self, is_equipped: bool) -> None:
-                    """장착 상태에 맞는 버튼 스타일 반영"""
-
-                    # 장착 상태별 버튼 문구 및 프로퍼티 반영
-                    if is_equipped:
-                        self.equip_button.setText("장착 해제")
-                    else:
-                        self.equip_button.setText("장착 설정")
-                    self.equip_button.setProperty("equipped", is_equipped)
-                    self.equip_button.style().unpolish(self.equip_button)
-                    self.equip_button.style().polish(self.equip_button)
-
-            class TitleCard(QFrame):
-                def __init__(
-                    self,
-                    parent: QWidget,
-                    connected_function: Callable[[], None],
-                    data: OwnedTitle | None = None,
-                ) -> None:
-                    super().__init__(parent)
-
-                    # 우측 편집 카드 외곽 스타일 구성
-                    self.setObjectName("TitleCard")
-
-                    # 편집 카드 콜백 및 슬롯 행 목록 초기화
-                    self._connected_function: Callable[[], None] = connected_function
-                    self.stat_rows: list[
-                        ResultsPage.Efficiency.TitleInputs.TitleStatRow
-                    ] = []
-
-                    # 카드 본문 레이아웃 구성
-                    root_layout: QVBoxLayout = QVBoxLayout(self)
-                    root_layout.setContentsMargins(12, 12, 12, 12)
-                    root_layout.setSpacing(8)
-
-                    # 칭호 이름 입력 배치
-                    self.name_input_widget: KVInput = KVInput(
-                        self,
-                        "칭호명",
-                        data.name if data is not None else "",
-                        connected_function,
-                        max_width=220,
-                    )
-                    self.name_input: CustomLineEdit = self.name_input_widget.input
-                    root_layout.addWidget(self.name_input_widget)
-
-                    # 스탯 행 컨테이너 배치
-                    self.stats_container: QWidget = QWidget(self)
-                    self.stats_layout: QVBoxLayout = QVBoxLayout(self.stats_container)
-                    self.stats_layout.setContentsMargins(0, 0, 0, 0)
-                    self.stats_layout.setSpacing(6)
-                    root_layout.addWidget(self.stats_container)
-                    self.setLayout(root_layout)
-
-                    # 3칸 고정 스탯 슬롯 행 구성
-                    slot_data_list: list[OwnedTitleStat | None]
-                    if data is not None:
-                        slot_data_list = data.stats
-
-                    else:
-                        slot_data_list = [None] * TITLE_STAT_SLOT_COUNT
-
-                    for slot_index, slot_data in enumerate(slot_data_list, start=1):
-                        row = ResultsPage.Efficiency.TitleInputs.TitleStatRow(
-                            self.stats_container,
-                            self._connected_function,
-                            slot_index=slot_index,
-                            data=slot_data,
-                        )
-                        self.stat_rows.append(row)
-                        self.stats_layout.addWidget(row)
-
-                def get_display_name(self, fallback_index: int) -> str:
-                    """목록/요약용 칭호명 반환"""
-
-                    # 빈 이름 입력 시 임시 표시명 반환
-                    name: str = self.name_input.text().strip()
-                    if name:
-                        return name
-
-                    return f"칭호 {fallback_index}"
-
-                def build_preview_stats(self) -> list[str]:
-                    """요약 표시용 스탯 문자열 목록 반환"""
-
-                    # 현재 슬롯 기준 설정된 스탯 문자열 수집
-                    preview_lines: list[str] = []
-                    for stat_row in self.stat_rows:
-                        row_valid: bool
-                        title_stat: OwnedTitleStat | None
-                        row_valid, title_stat = stat_row.get_value()
-                        if not row_valid or title_stat is None:
-                            continue
-
-                        stat_label: str = STAT_SPECS[title_stat.stat_key]
-                        stat_value_text: str = f"{title_stat.value:+g}"
-                        preview_lines.append(f"{stat_label} {stat_value_text}")
-
-                    return preview_lines
-
-                def to_owned_title(self) -> tuple[bool, OwnedTitle]:
-                    """카드 데이터를 칭호 모델로 변환"""
-
-                    # 3칸 슬롯 유효성 및 직렬화 데이터 구성
-                    is_valid: bool = True
-                    stats: list[OwnedTitleStat | None] = []
-                    for stat_row in self.stat_rows:
-                        row_valid: bool
-                        title_stat: OwnedTitleStat | None
-                        row_valid, title_stat = stat_row.get_value()
-                        is_valid = is_valid and row_valid
-                        stats.append(title_stat)
-
-                    # 칭호명과 3칸 슬롯 기반 모델 구성
-                    name: str = self.name_input.text().strip()
-                    owned_title: OwnedTitle = OwnedTitle(
-                        name=name,
-                        stats=stats,
-                    )
-                    return is_valid, owned_title
-
-            def __init__(
-                self,
-                parent: QWidget,
-                connected_function: Callable[[], None],
-            ) -> None:
-                super().__init__(parent)
-                self.setSizePolicy(
-                    QSizePolicy.Policy.Expanding,
-                    QSizePolicy.Policy.Fixed,
-                )
-
-                # 칭호 입력 전체 상태 참조 초기화
-                self._connected_function: Callable[[], None] = connected_function
-                self._cards: list[ResultsPage.Efficiency.TitleInputs.TitleCard] = []
-                self._card_items: dict[
-                    ResultsPage.Efficiency.TitleInputs.TitleCard,
-                    ResultsPage.Efficiency.TitleInputs.TitleListItem,
-                ] = {}
-                self._selected_card: (
-                    ResultsPage.Efficiency.TitleInputs.TitleCard | None
-                ) = None
-                self._equipped_card: (
-                    ResultsPage.Efficiency.TitleInputs.TitleCard | None
-                ) = None
-
-                # 3단 패널 레이아웃 구성
-                root_layout: QHBoxLayout = QHBoxLayout(self)
-                root_layout.setContentsMargins(0, 0, 0, 0)
-                root_layout.setSpacing(12)
-
-                # 좌측 장착 요약 패널 구성
-                self.equipped_panel: QFrame = QFrame(self)
-                self.equipped_panel.setObjectName("TitleEquippedPanel")
-                self.equipped_panel.setMinimumWidth(230)
-                equipped_layout: QVBoxLayout = QVBoxLayout(self.equipped_panel)
-                equipped_layout.setContentsMargins(14, 14, 14, 14)
-                equipped_layout.setSpacing(10)
-
-                equipped_title: QLabel = QLabel("장착된 칭호", self.equipped_panel)
-                equipped_title.setFont(CustomFont(11, bold=True))
-                equipped_layout.addWidget(equipped_title)
-
-                self.equipped_name_label: QLabel = QLabel(
-                    "장착된 칭호 없음", self.equipped_panel
-                )
-                self.equipped_name_label.setObjectName("equippedNameLabel")
-                self.equipped_name_label.setFont(CustomFont(12, bold=True))
-                equipped_layout.addWidget(self.equipped_name_label)
-
-                self.equipped_stats_container: QWidget = QWidget(self.equipped_panel)
-                self.equipped_stats_layout: QVBoxLayout = QVBoxLayout(
-                    self.equipped_stats_container
-                )
-                self.equipped_stats_layout.setContentsMargins(0, 0, 0, 0)
-                self.equipped_stats_layout.setSpacing(6)
-                equipped_layout.addWidget(self.equipped_stats_container)
-                equipped_layout.addStretch(1)
-
-                self.unequip_button: StyledButton = StyledButton(
-                    self.equipped_panel, "장착 해제", kind="normal"
-                )
-                self.unequip_button.clicked.connect(self._on_unequip_clicked)
-                equipped_layout.addWidget(self.unequip_button)
-
-                # 중앙 목록 패널 구성
-                self.list_panel: QFrame = QFrame(self)
-                self.list_panel.setObjectName("TitleListPanel")
-                self.list_panel.setMinimumWidth(220)
-                list_layout: QVBoxLayout = QVBoxLayout(self.list_panel)
-                list_layout.setContentsMargins(14, 14, 14, 14)
-                list_layout.setSpacing(10)
-
-                list_title: QLabel = QLabel("칭호 목록", self.list_panel)
-                list_title.setFont(CustomFont(11, bold=True))
-                list_layout.addWidget(list_title)
-
-                self.list_scroll_area: QScrollArea = QScrollArea(self.list_panel)
-                self.list_scroll_area.setObjectName("titleListScrollArea")
-                self.list_scroll_area.setWidgetResizable(True)
-                self.list_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
-                self.list_scroll_area.setMinimumHeight(180)
-
-                self.list_scroll_content: QWidget = QWidget(self.list_scroll_area)
-                self.list_scroll_content.setObjectName("titleListScrollContent")
-                self.title_list_layout: QVBoxLayout = QVBoxLayout(
-                    self.list_scroll_content
-                )
-                self.title_list_layout.setContentsMargins(0, 0, 0, 0)
-                self.title_list_layout.setSpacing(8)
-                self.title_list_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-                self.list_scroll_content.setLayout(self.title_list_layout)
-                self.list_scroll_area.setWidget(self.list_scroll_content)
-                list_layout.addWidget(self.list_scroll_area)
-
-                self.add_button: StyledButton = StyledButton(
-                    self.list_panel, "칭호 추가", kind="add"
-                )
-                self.add_button.clicked.connect(lambda _checked=False: self.add_card())
-                list_layout.addWidget(self.add_button)
-
-                # 우측 상세 편집 패널 구성
-                self.detail_panel: QFrame = QFrame(self)
-                self.detail_panel.setObjectName("TitleDetailPanel")
-                self.detail_panel.setMinimumWidth(340)
-                self.detail_panel.setMinimumHeight(300)
-                detail_layout: QVBoxLayout = QVBoxLayout(self.detail_panel)
-                detail_layout.setContentsMargins(14, 14, 14, 14)
-                detail_layout.setSpacing(10)
-
-                detail_title: QLabel = QLabel("선택된 칭호 설정", self.detail_panel)
-                detail_title.setFont(CustomFont(11, bold=True))
-                detail_layout.addWidget(detail_title)
-
-                self.detail_stack_host: QWidget = QWidget(self.detail_panel)
-                self.detail_stack: QStackedLayout = QStackedLayout(
-                    self.detail_stack_host
-                )
-                self.detail_stack_host.setLayout(self.detail_stack)
-
-                self.empty_detail_label: QLabel = QLabel(
-                    "중앙 목록에서 칭호를 선택하세요.", self.detail_stack_host
-                )
-                self.empty_detail_label.setObjectName("panelEmptyLabel")
-                self.empty_detail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.empty_detail_label.setFont(CustomFont(11))
-                self.detail_stack.addWidget(self.empty_detail_label)
-                detail_layout.addWidget(self.detail_stack_host)
-
-                root_layout.addWidget(self.equipped_panel, 3)
-                root_layout.addWidget(self.list_panel, 3)
-                root_layout.addWidget(self.detail_panel, 4)
-                self.setLayout(root_layout)
-
-                # 초기 비어 있는 장착/상세 상태 반영
-                self.refresh_equipped_options()
-
-            def _notify_change(self) -> None:
-                """상위 입력 변경 콜백 전달"""
-
-                self._connected_function()
-
-            def _on_card_content_changed(self) -> None:
-                """칭호 내용 변경 시 요약/목록 동기화"""
-
-                self.refresh_equipped_options()
-                self._notify_change()
-
-            def _on_unequip_clicked(self) -> None:
-                """좌측 패널 장착 해제 처리"""
-
-                if self._equipped_card is None:
-                    return
-
-                self._equipped_card = None
-                self.refresh_equipped_options()
-                self._notify_change()
-
-            def _toggle_equipped_card(
-                self,
-                target_card: "ResultsPage.Efficiency.TitleInputs.TitleCard",
-            ) -> None:
-                """우측 패널 장착 토글 처리"""
-
-                # 동일 카드 재선택 시 장착 해제 처리
-                if self._equipped_card is target_card:
-                    self._equipped_card = None
-
-                else:
-                    self._equipped_card = target_card
-
-                self.refresh_equipped_options()
-                self._notify_change()
-
-            def select_card(
-                self,
-                target_card: "ResultsPage.Efficiency.TitleInputs.TitleCard",
-            ) -> None:
-                """중앙 목록 기준 선택 카드 전환"""
-
-                self._selected_card = target_card
-                self.refresh_equipped_options()
-
-            def add_card(
-                self,
-                data: OwnedTitle | None = None,
-                emit_change: bool = True,
-            ) -> None:
-                """칭호 카드 추가"""
-
-                # 신규 편집 카드와 목록 항목 동시 생성
-                card = ResultsPage.Efficiency.TitleInputs.TitleCard(
-                    self.detail_stack_host,
-                    self._on_card_content_changed,
-                    data=data,
-                )
-                list_item = ResultsPage.Efficiency.TitleInputs.TitleListItem(
-                    self.list_scroll_content,
-                    self.select_card,
-                    self._toggle_equipped_card,
-                    self.remove_card,
-                    card,
-                )
-
-                # 내부 카드/목록 참조 등록
-                self._cards.append(card)
-                self._card_items[card] = list_item
-                self.title_list_layout.addWidget(list_item)
-                self.detail_stack.addWidget(card)
-
-                # 신규 추가 칭호 기본 선택 처리
-                self._selected_card = card
-                self.refresh_equipped_options()
-                if emit_change:
-                    self._notify_change()
-
-            def remove_card(
-                self,
-                target_card: "ResultsPage.Efficiency.TitleInputs.TitleCard",
-                emit_change: bool = True,
-            ) -> None:
-                """칭호 카드 제거"""
-
-                # 제거 전 현재 인덱스 기반 대체 선택 후보 계산
-                target_index: int = self._cards.index(target_card)
-                next_selected_card: (
-                    ResultsPage.Efficiency.TitleInputs.TitleCard | None
-                ) = None
-                if len(self._cards) > 1:
-                    fallback_index: int = min(target_index, len(self._cards) - 2)
-                    next_selected_card = self._cards[fallback_index]
-
-                # 목록 항목과 상세 카드 위젯 제거
-                list_item: ResultsPage.Efficiency.TitleInputs.TitleListItem = (
-                    self._card_items.pop(target_card)
-                )
-                self.title_list_layout.removeWidget(list_item)
-                list_item.deleteLater()
-                self.detail_stack.removeWidget(target_card)
-
-                # 내부 상태 참조에서 대상 카드 제거
-                self._cards.remove(target_card)
-                target_card.deleteLater()
-
-                # 장착/선택 참조 정리
-                if self._equipped_card is target_card:
-                    self._equipped_card = None
-
-                if self._selected_card is target_card:
-                    self._selected_card = next_selected_card
-
-                self.refresh_equipped_options()
-                if emit_change:
-                    self._notify_change()
-
-            def refresh_equipped_options(self) -> None:
-                """목록 선택/장착/요약 패널 동기화"""
-
-                # 현재 참조 유효성 정리
-                if self._selected_card not in self._cards:
-                    self._selected_card = self._cards[0] if self._cards else None
-
-                if self._equipped_card not in self._cards:
-                    self._equipped_card = None
-
-                # 목록 항목 문구 및 선택 상태 갱신
-                for index, card in enumerate(self._cards, start=1):
-                    display_name: str = card.get_display_name(index)
-                    list_item: ResultsPage.Efficiency.TitleInputs.TitleListItem = (
-                        self._card_items[card]
-                    )
-                    list_item.set_title_text(display_name)
-                    list_item.set_selected_state(card is self._selected_card)
-                    list_item.set_equipped_state(card is self._equipped_card)
-
-                # 우측 상세 카드 표시 상태 갱신
-                if self._selected_card is None:
-                    self.detail_stack.setCurrentWidget(self.empty_detail_label)
-
-                else:
-                    self.detail_stack.setCurrentWidget(self._selected_card)
-
-                # 좌측 장착 요약 패널 내용 갱신
-                self._refresh_equipped_summary()
-
-            def _refresh_equipped_summary(self) -> None:
-                """좌측 장착 칭호 요약 패널 갱신"""
-
-                # 기존 장착 스탯 라벨 제거
-                while self.equipped_stats_layout.count() > 0:
-                    item: QLayoutItem = self.equipped_stats_layout.takeAt(0)
-                    widget: QWidget | None = item.widget()
-                    if widget is None:
-                        continue
-
-                    widget.deleteLater()
-
-                # 장착 칭호 부재 상태 표시
-                if self._equipped_card is None:
-                    self.equipped_name_label.setText("장착된 칭호 없음")
-                    empty_label: QLabel = QLabel(
-                        "선택된 장착 칭호가 없습니다.", self.equipped_stats_container
-                    )
-                    empty_label.setObjectName("equippedStatMuted")
-                    empty_label.setFont(CustomFont(10))
-                    self.equipped_stats_layout.addWidget(empty_label)
-                    self.unequip_button.setEnabled(False)
-                    return
-
-                # 장착 칭호명 및 스탯 요약 반영
-                equipped_index: int = self._cards.index(self._equipped_card) + 1
-                equipped_name: str = self._equipped_card.get_display_name(
-                    equipped_index
-                )
-                self.equipped_name_label.setText(equipped_name)
-                preview_lines: list[str] = self._equipped_card.build_preview_stats()
-                if not preview_lines:
-                    empty_stats_label: QLabel = QLabel(
-                        "적용된 스탯이 없습니다.", self.equipped_stats_container
-                    )
-                    empty_stats_label.setObjectName("equippedStatMuted")
-                    empty_stats_label.setFont(CustomFont(10))
-                    self.equipped_stats_layout.addWidget(empty_stats_label)
-
-                else:
-                    for line in preview_lines:
-                        stat_label: QLabel = QLabel(line, self.equipped_stats_container)
-                        stat_label.setObjectName("equippedStatValue")
-                        stat_label.setFont(CustomFont(10, bold=True))
-                        self.equipped_stats_layout.addWidget(stat_label)
-
-                self.unequip_button.setEnabled(True)
-
-            def load(
-                self,
-                owned_titles: list[OwnedTitle],
-                equipped_title_name: str | None,
-            ) -> None:
-                """저장된 칭호 입력 상태 로드"""
-
-                # 기존 카드 전부 제거
-                for card in self._cards.copy():
-                    self.remove_card(card, emit_change=False)
-
-                # 저장된 칭호 카드 순서대로 복원
-                equipped_card: ResultsPage.Efficiency.TitleInputs.TitleCard | None = (
-                    None
-                )
-                for owned_title in owned_titles:
-                    self.add_card(owned_title, emit_change=False)
-                    latest_card: ResultsPage.Efficiency.TitleInputs.TitleCard = (
-                        self._cards[-1]
-                    )
-                    if (
-                        equipped_title_name is not None
-                        and owned_title.name == equipped_title_name
-                        and equipped_card is None
-                    ):
-                        equipped_card = latest_card
-
-                # 선택/장착 초기 상태 반영
-                self._selected_card = self._cards[0] if self._cards else None
-                self._equipped_card = equipped_card
-                self.refresh_equipped_options()
-
-            def build_state(self) -> tuple[bool, list[OwnedTitle], str | None]:
-                """현재 칭호 입력 상태 복원"""
-
-                # 카드 목록 기준 보유 칭호 직렬화
-                is_valid: bool = True
-                owned_titles: list[OwnedTitle] = []
-                equipped_title_name: str | None = None
-                for card in self._cards:
-                    card_valid: bool
-                    owned_title: OwnedTitle
-                    card_valid, owned_title = card.to_owned_title()
-                    is_valid = is_valid and card_valid
-                    owned_titles.append(owned_title)
-                    if card is self._equipped_card:
-                        equipped_title_name = owned_title.name
-
-                return is_valid, owned_titles, equipped_title_name
-
-        class TalismanInputs(QFrame):
-            class EquippedSlotPanel(QFrame):
-                def __init__(
-                    self,
-                    parent: QWidget,
-                    slot_index: int,
-                    equip_function: Callable[[int], None],
-                    unequip_function: Callable[[int], None],
-                ) -> None:
-                    super().__init__(parent)
-
-                    # 슬롯 패널 고정 인덱스 및 콜백 참조 보관
-                    self._slot_index: int = slot_index
-                    self._equip_function: Callable[[int], None] = equip_function
-                    self._unequip_function: Callable[[int], None] = unequip_function
-
-                    # 슬롯 패널 외곽 스타일 구성
-                    self.setObjectName("TalismanEquippedSlotPanel")
-
-                    # 슬롯 패널 본문 레이아웃 구성
-                    root_layout: QVBoxLayout = QVBoxLayout(self)
-                    root_layout.setContentsMargins(12, 12, 12, 12)
-                    root_layout.setSpacing(8)
-
-                    # 슬롯 번호 안내 라벨 구성
-                    self.slot_title_label: QLabel = QLabel(
-                        f"부적 슬롯 {slot_index + 1}", self
-                    )
-                    self.slot_title_label.setObjectName("slotTitleLabel")
-                    self.slot_title_label.setFont(CustomFont(10, bold=True))
-                    root_layout.addWidget(self.slot_title_label)
-
-                    # 장착 부적 이름 표시 라벨 구성
-                    self.name_label: QLabel = QLabel("장착된 부적 없음", self)
-                    self.name_label.setObjectName("equippedNameLabel")
-                    self.name_label.setFont(CustomFont(11, bold=True))
-                    root_layout.addWidget(self.name_label)
-
-                    # 장착 부적 스탯 요약 라벨 구성
-                    self.stat_label: QLabel = QLabel(
-                        "선택된 장착 부적이 없습니다.", self
-                    )
-                    self.stat_label.setObjectName("slotStatLabel")
-                    self.stat_label.setWordWrap(True)
-                    self.stat_label.setFont(CustomFont(10))
-                    root_layout.addWidget(self.stat_label)
-
-                    # 슬롯 장착/해제 버튼 행 구성
-                    action_layout: QHBoxLayout = QHBoxLayout()
-                    action_layout.setContentsMargins(0, 0, 0, 0)
-                    action_layout.setSpacing(6)
-
-                    self.equip_button: QPushButton = QPushButton("선택 부적 장착", self)
-                    self.equip_button.setObjectName("slotEquipBtn")
-                    self.equip_button.setCursor(Qt.CursorShape.PointingHandCursor)
-                    self.equip_button.setMinimumHeight(28)
-                    self.equip_button.setFont(CustomFont(9, bold=True))
-                    self.equip_button.clicked.connect(self._on_equip_clicked)
-
-                    self.unequip_button: StyledButton = StyledButton(
-                        self, "장착 해제", kind="normal", point_size=9
-                    )
-                    self.unequip_button.setMinimumHeight(28)
-                    self.unequip_button.clicked.connect(self._on_unequip_clicked)
-
-                    action_layout.addWidget(self.equip_button)
-                    action_layout.addWidget(self.unequip_button)
-                    root_layout.addLayout(action_layout)
-                    self.setLayout(root_layout)
-
-                def _on_equip_clicked(self) -> None:
-                    """선택 카드 슬롯 장착 요청"""
-
-                    self._equip_function(self._slot_index)
-
-                def _on_unequip_clicked(self) -> None:
-                    """슬롯 장착 해제 요청"""
-
-                    self._unequip_function(self._slot_index)
-
-                def set_slot_state(
-                    self,
-                    display_name: str,
-                    stat_text: str,
-                    has_equipped_card: bool,
-                    can_equip_selected_card: bool,
-                    is_selected_card_equipped: bool,
-                ) -> None:
-                    """슬롯 표시 상태 일괄 반영"""
-
-                    # 슬롯 이름 및 스탯 안내 문구 반영
-                    self.name_label.setText(display_name)
-                    self.stat_label.setText(stat_text)
-
-                    # 장착 유무에 맞는 스탯 문구 색상 반영
-                    self.stat_label.setProperty("equipped", has_equipped_card)
-                    self.stat_label.style().unpolish(self.stat_label)
-                    self.stat_label.style().polish(self.stat_label)
-
-                    # 선택 카드 기준 슬롯 장착 버튼 상태 반영
-                    if is_selected_card_equipped:
-                        self.equip_button.setText("선택 부적 장착중")
-                        self.equip_button.setEnabled(False)
-
-                    elif can_equip_selected_card:
-                        self.equip_button.setText("선택 부적 장착")
-                        self.equip_button.setEnabled(True)
-
-                    else:
-                        self.equip_button.setText("부적 선택 필요")
-                        self.equip_button.setEnabled(False)
-
-                    # 현재 슬롯 장착 해제 버튼 활성화 반영
-                    self.unequip_button.setEnabled(has_equipped_card)
-
-            class TalismanListItem(QFrame):
-                def __init__(
-                    self,
-                    parent: QWidget,
-                    select_function: Callable[
-                        ["ResultsPage.Efficiency.TalismanInputs.TalismanCard"], None
-                    ],
-                    remove_function: Callable[
-                        ["ResultsPage.Efficiency.TalismanInputs.TalismanCard"], None
-                    ],
-                    target_card: "ResultsPage.Efficiency.TalismanInputs.TalismanCard",
-                ) -> None:
-                    super().__init__(parent)
-
-                    # 목록 항목 대상 카드 및 콜백 참조 보관
-                    self._select_function: Callable[
-                        [ResultsPage.Efficiency.TalismanInputs.TalismanCard], None
-                    ] = select_function
-                    self._remove_function: Callable[
-                        [ResultsPage.Efficiency.TalismanInputs.TalismanCard], None
-                    ] = remove_function
-                    self._target_card: (
-                        ResultsPage.Efficiency.TalismanInputs.TalismanCard
-                    ) = target_card
-
-                    # 목록 항목 전체 레이아웃 구성
-                    self.setMinimumHeight(48)
-                    layout: QGridLayout = QGridLayout(self)
-                    layout.setContentsMargins(0, 0, 0, 0)
-                    layout.setSpacing(0)
-
-                    # 목록 선택 버튼 구성
-                    self.select_button: QPushButton = QPushButton("", self)
-                    self.select_button.setObjectName("talismanListSelectBtn")
-                    self.select_button.setCheckable(True)
-                    self.select_button.setCursor(Qt.CursorShape.PointingHandCursor)
-                    self.select_button.setMinimumHeight(48)
-                    self.select_button.setFont(CustomFont(10, bold=True))
-                    self.select_button.clicked.connect(self._on_select_clicked)
-
-                    # 목록 우측 상태/삭제 컨테이너 구성
-                    self.actions_widget: QWidget = QWidget(self)
-                    actions_layout: QHBoxLayout = QHBoxLayout(self.actions_widget)
-                    actions_layout.setContentsMargins(0, 0, 8, 0)
-                    actions_layout.setSpacing(6)
-
-                    # 장착 슬롯 요약 라벨 구성
-                    self.equipped_state_label: QLabel = QLabel("미장착", self)
-                    self.equipped_state_label.setObjectName(
-                        "talismanEquippedStateLabel"
-                    )
-                    self.equipped_state_label.setProperty("state", "unequipped")
-                    self.equipped_state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    self.equipped_state_label.setMinimumWidth(58)
-                    self.equipped_state_label.setFont(CustomFont(8, bold=True))
-                    actions_layout.addWidget(self.equipped_state_label)
-
-                    # 목록 삭제 버튼 구성
-                    self.remove_button: StyledButton = StyledButton(
-                        self, "삭제", kind="danger", point_size=8
-                    )
-                    self.remove_button.setFixedHeight(24)
-                    self.remove_button.clicked.connect(self._on_remove_clicked)
-                    actions_layout.addWidget(self.remove_button)
-                    self.actions_widget.setLayout(actions_layout)
-
-                    # 목록 선택 버튼 위 상태/삭제 컨테이너 겹치기 배치
-                    layout.addWidget(self.select_button, 0, 0)
-                    layout.addWidget(
-                        self.actions_widget,
-                        0,
-                        0,
-                        Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight,
-                    )
-                    self.setLayout(layout)
-
-                def _on_select_clicked(self, _checked: bool) -> None:
-                    """목록 항목 선택 전달"""
-
-                    self._select_function(self._target_card)
-
-                def _on_remove_clicked(self) -> None:
-                    """목록 항목 삭제 전달"""
-
-                    self._remove_function(self._target_card)
-
-                def set_title_text(self, text: str) -> None:
-                    """목록 버튼 표시명 반영"""
-
-                    self.select_button.setText(text)
-
-                def set_selected_state(self, is_selected: bool) -> None:
-                    """목록 버튼 선택 상태 반영"""
-
-                    self.select_button.setChecked(is_selected)
-
-                def set_equipped_slots(self, slot_indexes: list[int]) -> None:
-                    """장착 슬롯 요약 문구 반영"""
-
-                    # 미장착 상태 문구 및 프로퍼티 반영
-                    if not slot_indexes:
-                        self.equipped_state_label.setText("미장착")
-                        self.equipped_state_label.setProperty("state", "unequipped")
-                        self.equipped_state_label.style().unpolish(
-                            self.equipped_state_label
-                        )
-                        self.equipped_state_label.style().polish(
-                            self.equipped_state_label
-                        )
-                        return
-
-                    # 장착 슬롯 번호 기반 상태 문구 반영
-                    slot_text: str = ", ".join(
-                        f"{slot_index + 1}번" for slot_index in slot_indexes
-                    )
-                    self.equipped_state_label.setText(slot_text)
-                    self.equipped_state_label.setProperty("state", "equipped")
-                    self.equipped_state_label.style().unpolish(
-                        self.equipped_state_label
-                    )
-                    self.equipped_state_label.style().polish(self.equipped_state_label)
-
-            class TalismanCard(QFrame):
-                def __init__(
-                    self,
-                    parent: QWidget,
-                    connected_function: Callable[[], None],
-                    data: OwnedTalisman | None = None,
-                ) -> None:
-                    super().__init__(parent)
-
-                    # 우측 편집 카드 외곽 스타일 구성
-                    self.setObjectName("TalismanCard")
-
-                    # 편집 카드 부적 정의와 현재 선택 상태 보관
-                    self._connected_function: Callable[[], None] = connected_function
-                    self._templates: list[TalismanSpec] = list(TALISMAN_SPECS)
-                    self._grade_order: list[TalismanGrade] = []
-                    self._templates_by_grade: dict[
-                        TalismanGrade,
-                        list[TalismanSpec],
-                    ] = {}
-
-                    # 데이터에 존재하는 등급 순서대로 그룹 구성
-                    grade: TalismanGrade
-                    for grade in (
-                        TalismanGrade.NORMAL,
-                        TalismanGrade.ADVANCED,
-                        TalismanGrade.RARE,
-                        TalismanGrade.HEROIC,
-                        TalismanGrade.LEGENDARY,
-                    ):
-                        grade_templates: list[TalismanSpec] = [
-                            template
-                            for template in self._templates
-                            if template.grade is grade
-                        ]
-                        if not grade_templates:
-                            continue
-
-                        self._grade_order.append(grade)
-                        self._templates_by_grade[grade] = grade_templates
-
-                    # 초기 선택 부적과 등급 상태 결정
-                    initial_template: TalismanSpec = self._templates[0]
-                    if data is not None:
-                        template: TalismanSpec
-                        for template in self._templates:
-                            if template.name != data.name:
-                                continue
-
-                            initial_template = template
-                            break
-
-                    self._selected_grade: TalismanGrade = initial_template.grade
-                    self._selected_template: TalismanSpec = initial_template
-                    self._grade_buttons: dict[TalismanGrade, QPushButton] = {}
-                    self._template_buttons: dict[str, QPushButton] = {}
-
-                    # 카드 본문 레이아웃 구성
-                    root_layout: QVBoxLayout = QVBoxLayout(self)
-                    root_layout.setContentsMargins(12, 12, 12, 12)
-                    root_layout.setSpacing(6)
-
-                    # 등급 라벨과 버튼 간격 축소용 섹션 레이아웃 구성
-                    grade_section_layout: QVBoxLayout = QVBoxLayout()
-                    grade_section_layout.setContentsMargins(0, 0, 0, 0)
-                    grade_section_layout.setSpacing(3)
-
-                    # 등급 선택 버튼 영역 구성
-                    grade_title: QLabel = QLabel("등급", self)
-                    grade_title.setFont(CustomFont(11, bold=True))
-                    grade_section_layout.addWidget(grade_title)
-
-                    self.grade_buttons_widget: QWidget = QWidget(self)
-                    grade_layout: QHBoxLayout = QHBoxLayout(self.grade_buttons_widget)
-                    grade_layout.setContentsMargins(0, 0, 0, 0)
-                    grade_layout.setSpacing(6)
-
-                    for grade in self._grade_order:
-                        grade_button: QPushButton = QPushButton(grade.value, self)
-                        grade_button.setObjectName("talismanGradeBtn")
-                        grade_button.setCheckable(True)
-                        grade_button.setCursor(Qt.CursorShape.PointingHandCursor)
-                        grade_button.setMinimumHeight(30)
-                        grade_button.setFont(CustomFont(9, bold=True))
-                        grade_button.clicked.connect(
-                            partial(self._set_selected_grade, grade, True)
-                        )
-                        self._grade_buttons[grade] = grade_button
-                        grade_layout.addWidget(grade_button)
-
-                    grade_layout.addStretch(1)
-                    self.grade_buttons_widget.setLayout(grade_layout)
-                    grade_section_layout.addWidget(self.grade_buttons_widget)
-                    root_layout.addLayout(grade_section_layout)
-
-                    # 부적 선택 라벨과 목록 간격 축소용 섹션 레이아웃 구성
-                    template_section_layout: QVBoxLayout = QVBoxLayout()
-                    template_section_layout.setContentsMargins(0, 0, 0, 0)
-                    template_section_layout.setSpacing(3)
-
-                    # 부적 선택 무공비급 영역 구성
-                    template_title: QLabel = QLabel("부적 선택", self)
-                    template_title.setFont(CustomFont(11, bold=True))
-                    template_section_layout.addWidget(template_title)
-
-                    self.template_scroll_area: QScrollArea = QScrollArea(self)
-                    self.template_scroll_area.setWidgetResizable(True)
-                    self.template_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
-                    self.template_scroll_area.setMinimumHeight(150)
-                    self.template_scroll_area.setSizePolicy(
-                        QSizePolicy.Policy.Expanding,
-                        QSizePolicy.Policy.Expanding,
-                    )
-                    self.template_scroll_area.setObjectName(
-                        "talismanTemplateScrollArea"
-                    )
-
-                    self.template_scroll_content: QWidget = QWidget(
-                        self.template_scroll_area
-                    )
-                    self.template_scroll_content.setObjectName(
-                        "talismanTemplateScrollContent"
-                    )
-                    self.template_list_layout: QVBoxLayout = QVBoxLayout(
-                        self.template_scroll_content
-                    )
-                    self.template_list_layout.setContentsMargins(8, 8, 8, 8)
-                    self.template_list_layout.setSpacing(6)
-                    self.template_list_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-                    self.template_scroll_content.setLayout(self.template_list_layout)
-                    self.template_scroll_area.setWidget(self.template_scroll_content)
-                    template_section_layout.addWidget(self.template_scroll_area, 1)
-                    root_layout.addLayout(template_section_layout, 1)
-
-                    # 부적 레벨 입력과 스탯 미리보기 가로 배치 구성
-                    level_row_layout: QHBoxLayout = QHBoxLayout()
-                    level_row_layout.setContentsMargins(0, 0, 0, 0)
-                    level_row_layout.setSpacing(10)
-
-                    # 부적 레벨 입력 구성
-                    self.level_input_widget: KVInput = KVInput(
-                        self,
-                        "레벨",
-                        f"{data.level if data is not None else 0}",
-                        connected_function,
-                        max_width=100,
-                    )
-                    self.level_input: CustomLineEdit = self.level_input_widget.input
-                    level_row_layout.addWidget(self.level_input_widget)
-
-                    # 스탯 미리보기 안내 라벨 구성
-                    self.preview_label: QLabel = QLabel("", self)
-                    self.preview_label.setObjectName("talismanPreviewLabel")
-                    self.preview_label.setFont(CustomFont(10))
-                    self.preview_label.setWordWrap(True)
-                    self.preview_label.setMinimumHeight(
-                        self.level_input.sizeHint().height()
-                    )
-                    self.preview_label.setAlignment(
-                        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-                    )
-                    level_row_layout.addWidget(
-                        self.preview_label,
-                        1,
-                        Qt.AlignmentFlag.AlignBottom,
-                    )
-                    root_layout.addLayout(level_row_layout)
-                    self.setLayout(root_layout)
-
-                    # 초기 등급/부적 버튼 상태와 미리보기 반영
-                    self._refresh_grade_buttons()
-                    self._rebuild_template_buttons()
-                    self.refresh_preview_text()
-
-                    # 레벨 변경 시 미리보기 재계산 연결
-                    self.level_input.textChanged.connect(self.refresh_preview_text)
-
-                def _set_selected_grade(
-                    self,
-                    target_grade: TalismanGrade,
-                    emit_change: bool = True,
-                    _checked: bool = False,
-                ) -> None:
-                    """등급 버튼 선택 상태 전환"""
-
-                    # 동일 등급 재선택 시 불필요한 갱신 차단
-                    if self._selected_grade is target_grade:
-                        return
-
-                    # 등급 전환 시 첫 부적 자동 선택 적용
-                    self._selected_grade = target_grade
-                    self._selected_template = self._templates_by_grade[target_grade][0]
-                    self._refresh_grade_buttons()
-                    self._rebuild_template_buttons()
-                    self.refresh_preview_text()
-                    if emit_change:
-                        self._connected_function()
-
-                def _set_selected_template(
-                    self,
-                    target_template: TalismanSpec,
-                    emit_change: bool = True,
-                    _checked: bool = False,
-                ) -> None:
-                    """등급 내 부적 선택 상태 전환"""
-
-                    # 동일 부적 재선택 시 불필요한 갱신 차단
-                    if self._selected_template.name == target_template.name:
-                        return
-
-                    # 부적 변경 시 현재 등급과 미리보기 동기화
-                    self._selected_grade = target_template.grade
-                    self._selected_template = target_template
-                    self._refresh_grade_buttons()
-                    self._rebuild_template_buttons()
-                    self.refresh_preview_text()
-                    if emit_change:
-                        self._connected_function()
-
-                def _refresh_grade_buttons(self) -> None:
-                    """등급 버튼 선택 상태 스타일 갱신"""
-
-                    # 각 등급 버튼의 체크 상태 반영
-                    grade: TalismanGrade
-                    for grade, grade_button in self._grade_buttons.items():
-                        grade_button.setChecked(grade is self._selected_grade)
-
-                def _rebuild_template_buttons(self) -> None:
-                    """선택 등급 기준 부적 선택 버튼 목록 재구성"""
-
-                    # 기존 부적 선택 버튼 위젯 전부 제거
-                    while self.template_list_layout.count() > 0:
-                        item: QLayoutItem = self.template_list_layout.takeAt(0)
-                        widget: QWidget | None = item.widget()
-                        if widget is None:
-                            continue
-
-                        widget.deleteLater()
-
-                    self._template_buttons.clear()
-
-                    # 현재 등급 부적만 버튼 목록으로 재구성
-                    template: TalismanSpec
-                    for template in self._templates_by_grade[self._selected_grade]:
-                        option_button: QPushButton = QPushButton(
-                            self._build_template_option_text(template),
-                            self.template_scroll_content,
-                        )
-                        option_button.setObjectName("talismanTemplateBtn")
-                        option_button.setCheckable(True)
-                        option_button.setCursor(Qt.CursorShape.PointingHandCursor)
-                        option_button.setMinimumHeight(38)
-                        option_button.setFont(CustomFont(10, bold=True))
-                        option_button.clicked.connect(
-                            partial(self._set_selected_template, template, True)
-                        )
-                        option_button.setChecked(
-                            template.name == self._selected_template.name
-                        )
-                        self._template_buttons[template.name] = option_button
-                        self.template_list_layout.addWidget(option_button)
-
-                    self.template_list_layout.addStretch(1)
-
-                def _build_template_option_text(self, template: TalismanSpec) -> str:
-                    """부적 선택 버튼 표시 문자열 구성"""
-
-                    # 부적명과 스탯 라벨 결합 문자열 반환
-                    stat_label: str = STAT_SPECS[template.stat_key]
-                    return f"{template.name} - {stat_label}"
-
-                def refresh_preview_text(self, _text: str = "") -> None:
-                    """편집 카드 하단 스탯 미리보기 갱신"""
-
-                    # 현재 부적 설정 기준 스탯 요약 문구 계산
-                    preview_text: str = self.build_preview_stat_text()
-                    self.preview_label.setText(f"적용 스탯: {preview_text}")
-
-                def get_selected_name(self) -> str:
-                    """현재 선택된 부적명 반환"""
-
-                    return self._selected_template.name
-
-                def get_display_name(self, fallback_index: int) -> str:
-                    """목록/요약용 부적명 반환"""
-
-                    # 현재 선택된 부적명 우선 반환
-                    name: str = self.get_selected_name().strip()
-                    if name:
-                        return name
-
-                    return f"부적 {fallback_index}"
-
-                def build_preview_stat_text(self) -> str:
-                    """요약 표시용 부적 스탯 문자열 반환"""
-
-                    # 현재 입력값 유효성 및 직렬화 데이터 복원
-                    is_valid: bool
-                    owned_talisman: OwnedTalisman
-                    is_valid, owned_talisman = self.to_owned_talisman()
-                    if not is_valid:
-                        return "레벨 입력 오류"
-
-                    # 선택 부적 정의 기준 스탯 라벨과 수치 계산
-                    stat_label: str = STAT_SPECS[self._selected_template.stat_key]
-                    stat_value: float = self._selected_template.level_stats[
-                        owned_talisman.level
-                    ]
-                    return f"{stat_label} {stat_value:+g}"
-
-                def to_owned_talisman(self) -> tuple[bool, OwnedTalisman]:
-                    """카드 데이터를 보유 부적 모델로 변환"""
-
-                    # 레벨 입력 유효성 검증 및 기본값 보정
-                    text: str = self.level_input.text()
-                    try:
-                        level: int = int(text)
-                        is_valid: bool = 0 <= level <= 14
-                        self.level_input.set_valid(is_valid)
-
-                    except ValueError:
-                        level = 0
-                        is_valid = False
-                        self.level_input.set_valid(False)
-
-                    # 현재 선택 부적 정의 기반 직렬화 모델 구성
-                    owned_talisman: OwnedTalisman = OwnedTalisman(
-                        name=self._selected_template.name,
-                        level=level,
-                    )
-                    return is_valid, owned_talisman
-
-            def __init__(
-                self,
-                parent: QWidget,
-                connected_function: Callable[[], None],
-            ) -> None:
-                super().__init__(parent)
-                self.setMinimumHeight(300)
-
-                # 부적 입력 전체 상태 참조 초기화
-                self._connected_function: Callable[[], None] = connected_function
-                self._cards: list[
-                    ResultsPage.Efficiency.TalismanInputs.TalismanCard
-                ] = []
-                self._card_items: dict[
-                    ResultsPage.Efficiency.TalismanInputs.TalismanCard,
-                    ResultsPage.Efficiency.TalismanInputs.TalismanListItem,
-                ] = {}
-                self._selected_card: (
-                    ResultsPage.Efficiency.TalismanInputs.TalismanCard | None
-                ) = None
-                self._equipped_cards: list[
-                    ResultsPage.Efficiency.TalismanInputs.TalismanCard | None
-                ] = [None, None, None]
-
-                # 3단 패널 레이아웃 구성
-                root_layout: QHBoxLayout = QHBoxLayout(self)
-                root_layout.setContentsMargins(0, 0, 0, 0)
-                root_layout.setSpacing(12)
-
-                # 좌측 장착 요약 패널 구성
-                self.equipped_panel: QFrame = QFrame(self)
-                self.equipped_panel.setObjectName("TalismanEquippedPanel")
-                self.equipped_panel.setMinimumWidth(250)
-                equipped_layout: QVBoxLayout = QVBoxLayout(self.equipped_panel)
-                equipped_layout.setContentsMargins(14, 14, 14, 14)
-                equipped_layout.setSpacing(10)
-
-                equipped_title: QLabel = QLabel("장착된 부적", self.equipped_panel)
-                equipped_title.setFont(CustomFont(11, bold=True))
-                equipped_layout.addWidget(equipped_title)
-
-                # 3개 장착 슬롯 패널 순차 배치
-                self.equipped_slot_panels: list[
-                    ResultsPage.Efficiency.TalismanInputs.EquippedSlotPanel
-                ] = []
-                for slot_index in range(3):
-                    slot_panel: (
-                        ResultsPage.Efficiency.TalismanInputs.EquippedSlotPanel
-                    ) = ResultsPage.Efficiency.TalismanInputs.EquippedSlotPanel(
-                        self.equipped_panel,
-                        slot_index,
-                        self._equip_selected_card_to_slot,
-                        self._unequip_slot,
-                    )
-                    self.equipped_slot_panels.append(slot_panel)
-                    equipped_layout.addWidget(slot_panel)
-
-                equipped_layout.addStretch(1)
-
-                # 중앙 목록 패널 구성
-                self.list_panel: QFrame = QFrame(self)
-                self.list_panel.setObjectName("TalismanListPanel")
-                self.list_panel.setMinimumWidth(220)
-                list_layout: QVBoxLayout = QVBoxLayout(self.list_panel)
-                list_layout.setContentsMargins(14, 14, 14, 14)
-                list_layout.setSpacing(10)
-
-                list_title: QLabel = QLabel("부적 목록", self.list_panel)
-                list_title.setFont(CustomFont(11, bold=True))
-                list_layout.addWidget(list_title)
-
-                self.list_scroll_area: QScrollArea = QScrollArea(self.list_panel)
-                self.list_scroll_area.setObjectName("talismanListScrollArea")
-                self.list_scroll_area.setWidgetResizable(True)
-                self.list_scroll_area.setFrameShape(QFrame.Shape.NoFrame)
-                self.list_scroll_area.setMinimumHeight(180)
-
-                self.list_scroll_content: QWidget = QWidget(self.list_scroll_area)
-                self.list_scroll_content.setObjectName("talismanListScrollContent")
-                self.talisman_list_layout: QVBoxLayout = QVBoxLayout(
-                    self.list_scroll_content
-                )
-                self.talisman_list_layout.setContentsMargins(0, 0, 0, 0)
-                self.talisman_list_layout.setSpacing(8)
-                self.talisman_list_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
-                self.list_scroll_content.setLayout(self.talisman_list_layout)
-                self.list_scroll_area.setWidget(self.list_scroll_content)
-                list_layout.addWidget(self.list_scroll_area)
-
-                self.add_button: StyledButton = StyledButton(
-                    self.list_panel, "부적 추가", kind="add"
-                )
-                self.add_button.clicked.connect(lambda _checked=False: self.add_card())
-                list_layout.addWidget(self.add_button)
-
-                # 우측 상세 편집 패널 구성
-                self.detail_panel: QFrame = QFrame(self)
-                self.detail_panel.setObjectName("TalismanDetailPanel")
-                self.detail_panel.setMinimumWidth(320)
-                detail_layout: QVBoxLayout = QVBoxLayout(self.detail_panel)
-                detail_layout.setContentsMargins(14, 14, 14, 14)
-                detail_layout.setSpacing(10)
-
-                detail_title: QLabel = QLabel("선택된 부적 설정", self.detail_panel)
-                detail_title.setFont(CustomFont(11, bold=True))
-                detail_layout.addWidget(detail_title)
-
-                self.detail_stack_host: QWidget = QWidget(self.detail_panel)
-                self.detail_stack: QStackedLayout = QStackedLayout(
-                    self.detail_stack_host
-                )
-                self.detail_stack_host.setLayout(self.detail_stack)
-
-                self.empty_detail_label: QLabel = QLabel(
-                    "중앙 목록에서 부적을 선택하세요.", self.detail_stack_host
-                )
-                self.empty_detail_label.setObjectName("panelEmptyLabel")
-                self.empty_detail_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.empty_detail_label.setFont(CustomFont(11))
-                self.detail_stack.addWidget(self.empty_detail_label)
-                detail_layout.addWidget(self.detail_stack_host)
-
-                root_layout.addWidget(self.equipped_panel, 3)
-                root_layout.addWidget(self.list_panel, 3)
-                root_layout.addWidget(self.detail_panel, 4)
-                self.setLayout(root_layout)
-
-                # 좌측 장착 패널 필요 높이 기준 전체 패널 높이 동기화
-                equipped_layout.activate()
-                panel_height: int = max(self.equipped_panel.sizeHint().height(), 360)
-                self.setFixedHeight(panel_height)
-                self.equipped_panel.setFixedHeight(panel_height)
-                self.list_panel.setFixedHeight(panel_height)
-                self.detail_panel.setFixedHeight(panel_height)
-
-                # 초기 비어 있는 장착/상세 상태 반영
-                self.refresh_equipped_options()
-
-            def _notify_change(self) -> None:
-                """상위 입력 변경 콜백 전달"""
-
-                self._connected_function()
-
-            def _on_card_content_changed(self) -> None:
-                """부적 내용 변경 시 요약/목록 동기화"""
-
-                self.refresh_equipped_options()
-                self._notify_change()
-
-            def _equip_selected_card_to_slot(self, slot_index: int) -> None:
-                """선택된 부적 카드를 지정 슬롯에 장착"""
-
-                # 선택 카드 부재 시 장착 처리 중단
-                if self._selected_card is None:
-                    return
-
-                # 기존 슬롯에 있던 동일 카드 참조 우선 제거
-                current_slot_index: int
-                for current_slot_index, equipped_card in enumerate(
-                    self._equipped_cards
-                ):
-                    if equipped_card is not self._selected_card:
-                        continue
-
-                    self._equipped_cards[current_slot_index] = None
-
-                # 대상 슬롯에 선택 카드 장착 후 화면 갱신
-                self._equipped_cards[slot_index] = self._selected_card
-                self.refresh_equipped_options()
-                self._notify_change()
-
-            def _unequip_slot(self, slot_index: int) -> None:
-                """지정 슬롯 장착 카드 해제"""
-
-                # 빈 슬롯 해제 요청 차단
-                if self._equipped_cards[slot_index] is None:
-                    return
-
-                # 슬롯 카드 제거 후 화면 갱신
-                self._equipped_cards[slot_index] = None
-                self.refresh_equipped_options()
-                self._notify_change()
-
-            def select_card(
-                self,
-                target_card: "ResultsPage.Efficiency.TalismanInputs.TalismanCard",
-            ) -> None:
-                """중앙 목록 기준 선택 카드 전환"""
-
-                self._selected_card = target_card
-                self.refresh_equipped_options()
-
-            def add_card(
-                self,
-                data: OwnedTalisman | None = None,
-                emit_change: bool = True,
-            ) -> None:
-                """부적 카드 추가"""
-
-                # 신규 편집 카드와 목록 항목 동시 생성
-                card: ResultsPage.Efficiency.TalismanInputs.TalismanCard = (
-                    ResultsPage.Efficiency.TalismanInputs.TalismanCard(
-                        self.detail_stack_host,
-                        self._on_card_content_changed,
-                        data=data,
-                    )
-                )
-                list_item: ResultsPage.Efficiency.TalismanInputs.TalismanListItem = (
-                    ResultsPage.Efficiency.TalismanInputs.TalismanListItem(
-                        self.list_scroll_content,
-                        self.select_card,
-                        self.remove_card,
-                        card,
-                    )
-                )
-
-                # 내부 카드/목록 참조 등록
-                self._cards.append(card)
-                self._card_items[card] = list_item
-                self.talisman_list_layout.addWidget(list_item)
-                self.detail_stack.addWidget(card)
-
-                # 신규 추가 부적 기본 선택 처리
-                self._selected_card = card
-                self.refresh_equipped_options()
-                if emit_change:
-                    self._notify_change()
-
-            def remove_card(
-                self,
-                target_card: "ResultsPage.Efficiency.TalismanInputs.TalismanCard",
-                emit_change: bool = True,
-            ) -> None:
-                """부적 카드 제거"""
-
-                # 제거 전 현재 인덱스 기반 대체 선택 후보 계산
-                target_index: int = self._cards.index(target_card)
-                next_selected_card: (
-                    ResultsPage.Efficiency.TalismanInputs.TalismanCard | None
-                ) = None
-                if len(self._cards) > 1:
-                    fallback_index: int = min(target_index, len(self._cards) - 2)
-                    next_selected_card = self._cards[fallback_index]
-
-                # 목록 항목과 상세 카드 위젯 제거
-                list_item: ResultsPage.Efficiency.TalismanInputs.TalismanListItem = (
-                    self._card_items.pop(target_card)
-                )
-                self.talisman_list_layout.removeWidget(list_item)
-                list_item.deleteLater()
-                self.detail_stack.removeWidget(target_card)
-
-                # 내부 상태 참조에서 대상 카드 제거
-                self._cards.remove(target_card)
-                target_card.deleteLater()
-
-                # 장착 슬롯 내 대상 카드 참조 정리
-                slot_index: int
-                for slot_index, equipped_card in enumerate(self._equipped_cards):
-                    if equipped_card is target_card:
-                        self._equipped_cards[slot_index] = None
-
-                # 선택 카드 참조 정리
-                if self._selected_card is target_card:
-                    self._selected_card = next_selected_card
-
-                self.refresh_equipped_options()
-                if emit_change:
-                    self._notify_change()
-
-            def refresh_equipped_options(self) -> None:
-                """목록 선택/장착/요약 패널 동기화"""
-
-                # 현재 선택 카드 참조 유효성 정리
-                if self._selected_card not in self._cards:
-                    self._selected_card = self._cards[0] if self._cards else None
-
-                # 현재 장착 슬롯 카드 참조 유효성 정리
-                slot_index: int
-                for slot_index, equipped_card in enumerate(self._equipped_cards):
-                    if equipped_card in self._cards:
-                        continue
-
-                    self._equipped_cards[slot_index] = None
-
-                # 중앙 목록 표시명 및 장착 슬롯 상태 갱신
-                for index, card in enumerate(self._cards, start=1):
-                    display_name: str = card.get_display_name(index)
-                    list_item: (
-                        ResultsPage.Efficiency.TalismanInputs.TalismanListItem
-                    ) = self._card_items[card]
-                    equipped_slots: list[int] = [
-                        slot_position
-                        for slot_position, equipped_card in enumerate(
-                            self._equipped_cards
-                        )
-                        if equipped_card is card
-                    ]
-                    list_item.set_title_text(display_name)
-                    list_item.set_selected_state(card is self._selected_card)
-                    list_item.set_equipped_slots(equipped_slots)
-
-                # 우측 상세 카드 표시 상태 갱신
-                if self._selected_card is None:
-                    self.detail_stack.setCurrentWidget(self.empty_detail_label)
-
-                else:
-                    self.detail_stack.setCurrentWidget(self._selected_card)
-
-                # 좌측 장착 슬롯 패널 내용 갱신
-                self._refresh_equipped_summary()
-
-            def _refresh_equipped_summary(self) -> None:
-                """좌측 장착 부적 슬롯 요약 패널 갱신"""
-
-                # 각 슬롯별 장착 부적명과 스탯 요약 반영
-                slot_index: int
-                for slot_index, slot_panel in enumerate(self.equipped_slot_panels):
-                    equipped_card: (
-                        ResultsPage.Efficiency.TalismanInputs.TalismanCard | None
-                    ) = self._equipped_cards[slot_index]
-
-                    # 빈 슬롯 상태 문구 및 버튼 상태 반영
-                    if equipped_card is None:
-                        slot_panel.set_slot_state(
-                            "장착된 부적 없음",
-                            "선택된 장착 부적이 없습니다.",
-                            has_equipped_card=False,
-                            can_equip_selected_card=(self._selected_card is not None),
-                            is_selected_card_equipped=False,
-                        )
-                        continue
-
-                    # 장착된 카드 이름과 단일 스탯 요약 계산
-                    equipped_index: int = self._cards.index(equipped_card) + 1
-                    display_name: str = equipped_card.get_display_name(equipped_index)
-                    stat_text: str = equipped_card.build_preview_stat_text()
-                    slot_panel.set_slot_state(
-                        display_name,
-                        stat_text,
-                        has_equipped_card=True,
-                        can_equip_selected_card=(
-                            self._selected_card is not None
-                            and equipped_card is not self._selected_card
-                        ),
-                        is_selected_card_equipped=(
-                            equipped_card is self._selected_card
-                        ),
-                    )
-
-            def load(
-                self,
-                owned_talismans: list[OwnedTalisman],
-                equipped_names: list[str],
-            ) -> None:
-                """저장된 부적 입력 상태 로드"""
-
-                # 기존 카드 전부 제거
-                for card in self._cards.copy():
-                    self.remove_card(card, emit_change=False)
-
-                # 저장된 부적 카드 순서대로 복원
-                for owned_talisman in owned_talismans:
-                    self.add_card(owned_talisman, emit_change=False)
-
-                # 저장된 장착 슬롯 이름 기준 카드 참조 복원
-                self._equipped_cards = [None, None, None]
-                used_cards: list[ResultsPage.Efficiency.TalismanInputs.TalismanCard] = (
-                    []
-                )
-                slot_index: int
-                for slot_index in range(min(len(equipped_names), 3)):
-                    equipped_name: str = equipped_names[slot_index]
-                    if not equipped_name:
-                        continue
-
-                    card: ResultsPage.Efficiency.TalismanInputs.TalismanCard
-                    for card in self._cards:
-                        # 이미 다른 슬롯에 복원된 카드 재사용 방지
-                        if any(used_card is card for used_card in used_cards):
-                            continue
-
-                        if card.get_selected_name() != equipped_name:
-                            continue
-
-                        self._equipped_cards[slot_index] = card
-                        used_cards.append(card)
-                        break
-
-                # 초기 선택 상태 및 화면 반영
-                self._selected_card = self._cards[0] if self._cards else None
-                self.refresh_equipped_options()
-
-            def build_state(self) -> tuple[bool, list[OwnedTalisman], list[str]]:
-                """현재 부적 입력 상태 복원"""
-
-                # 카드 목록 기준 보유 부적 직렬화
-                is_valid: bool = True
-                owned_talismans: list[OwnedTalisman] = []
-                for card in self._cards:
-                    card_valid: bool
-                    owned_talisman: OwnedTalisman
-                    card_valid, owned_talisman = card.to_owned_talisman()
-                    is_valid = is_valid and card_valid
-                    owned_talismans.append(owned_talisman)
-
-                # 3칸 슬롯 순서를 유지한 장착 부적 이름 배열 구성
-                equipped_names: list[str] = []
-                equipped_card: ResultsPage.Efficiency.TalismanInputs.TalismanCard | None
-                for equipped_card in self._equipped_cards:
-                    if equipped_card is None:
-                        equipped_names.append("")
-                        continue
-
-                    card_valid: bool
-                    owned_talisman: OwnedTalisman
-                    card_valid, owned_talisman = equipped_card.to_owned_talisman()
-                    is_valid = is_valid and card_valid
-                    equipped_names.append(owned_talisman.name)
-
-                return is_valid, owned_talismans, equipped_names
-
         def _get_preset(self) -> "MacroPreset":
             """현재 선택 프리셋 반환"""
 
@@ -4904,14 +3202,7 @@ class ResultsPage(QFrame):
             self.target_danjeon_inputs.minimum_checkbox.setChecked(
                 calculator_input.target_danjeon.is_minimum
             )
-            self.title_inputs.load(
-                calculator_input.owned_titles,
-                calculator_input.equipped_state.equipped_title_name,
-            )
-            self.talisman_inputs.load(
-                calculator_input.owned_talismans,
-                calculator_input.equipped_state.equipped_talisman_names,
-            )
+            self.candidate_group_inputs.load(calculator_input.candidate_groups)
 
         @staticmethod
         def _read_integer_inputs(
@@ -5025,9 +3316,7 @@ class ResultsPage(QFrame):
             TargetDistributionState,
             DanjeonState,
             TargetDanjeonState,
-            list[OwnedTitle],
-            EquippedState,
-            list[OwnedTalisman],
+            list[OptimizationCandidateGroup],
         ]:
             """현재 최적화 입력 상태 전체 복원"""
 
@@ -5051,31 +3340,15 @@ class ResultsPage(QFrame):
                 self._read_target_danjeon_state()
             )
 
-            title_valid: bool
-            owned_titles: list[OwnedTitle]
-            equipped_title_name: str | None
-            title_valid, owned_titles, equipped_title_name = (
-                self.title_inputs.build_state()
-            )
-
-            talisman_valid: bool
-            owned_talismans: list[OwnedTalisman]
-            equipped_talisman_names: list[str]
-            talisman_valid, owned_talismans, equipped_talisman_names = (
-                self.talisman_inputs.build_state()
-            )
-
-            equipped_state: EquippedState = EquippedState(
-                equipped_title_name=equipped_title_name,
-                equipped_talisman_names=equipped_talisman_names,
+            # 후보 그룹 입력은 항상 유효하게 보정되므로 검증 대상에서 제외
+            candidate_groups: list[OptimizationCandidateGroup] = (
+                self.candidate_group_inputs.build_state()
             )
             is_valid: bool = (
                 distribution_valid
                 and target_distribution_valid
                 and danjeon_valid
                 and target_danjeon_valid
-                and title_valid
-                and talisman_valid
             )
             return (
                 is_valid,
@@ -5083,9 +3356,7 @@ class ResultsPage(QFrame):
                 target_distribution_state,
                 danjeon_state,
                 target_danjeon_state,
-                owned_titles,
-                equipped_state,
-                owned_talismans,
+                candidate_groups,
             )
 
         def _read_base_stats(self) -> tuple[bool, BaseStats]:
@@ -5206,9 +3477,7 @@ class ResultsPage(QFrame):
             target_distribution_state: TargetDistributionState,
             danjeon_state: DanjeonState,
             target_danjeon_state: TargetDanjeonState,
-            owned_titles: list[OwnedTitle],
-            equipped_state: EquippedState,
-            owned_talismans: list[OwnedTalisman],
+            candidate_groups: list[OptimizationCandidateGroup],
             persist: bool = True,
         ) -> None:
             """최적화 입력 상태 저장"""
@@ -5218,9 +3487,7 @@ class ResultsPage(QFrame):
             calculator_input.target_distribution = target_distribution_state
             calculator_input.danjeon = danjeon_state
             calculator_input.target_danjeon = target_danjeon_state
-            calculator_input.owned_titles = owned_titles
-            calculator_input.equipped_state = equipped_state
-            calculator_input.owned_talismans = owned_talismans
+            calculator_input.candidate_groups = candidate_groups
             if persist:
                 self._save_data_if_enabled()
 
@@ -5237,25 +3504,19 @@ class ResultsPage(QFrame):
             if self._is_loading_state:
                 return
 
-            self.title_inputs.refresh_equipped_options()
-            self.talisman_inputs.refresh_equipped_options()
             optimization_valid: bool
             distribution_state: DistributionState
             target_distribution_state: TargetDistributionState
             danjeon_state: DanjeonState
             target_danjeon_state: TargetDanjeonState
-            owned_titles: list[OwnedTitle]
-            equipped_state: EquippedState
-            owned_talismans: list[OwnedTalisman]
+            candidate_groups: list[OptimizationCandidateGroup]
             (
                 optimization_valid,
                 distribution_state,
                 target_distribution_state,
                 danjeon_state,
                 target_danjeon_state,
-                owned_titles,
-                equipped_state,
-                owned_talismans,
+                candidate_groups,
             ) = self._read_optimization_state()
             if not optimization_valid:
                 return
@@ -5265,9 +3526,7 @@ class ResultsPage(QFrame):
                 target_distribution_state=target_distribution_state,
                 danjeon_state=danjeon_state,
                 target_danjeon_state=target_danjeon_state,
-                owned_titles=owned_titles,
-                equipped_state=equipped_state,
-                owned_talismans=owned_talismans,
+                candidate_groups=candidate_groups,
                 persist=True,
             )
 
@@ -5944,6 +4203,26 @@ class ResultsPage(QFrame):
             self._opt_card.add_sub_title("최적화 후 전체 스탯")
             self._opt_card.add_widget(self._opt_stats_grid)
 
+            # 후보 선택 결과 카드
+            self._candidate_selection_result_list: ResultsPage.Efficiency.ResultList = (
+                ResultsPage.Efficiency.ResultList(self)
+            )
+            self._candidate_selection_stats_grid: (
+                ResultsPage.ResultsView.OverallStatsGrid
+            ) = ResultsPage.ResultsView.OverallStatsGrid(self)
+            self._candidate_selection_card: SectionCard = SectionCard(
+                self, "후보 선택 결과"
+            )
+            self._candidate_selection_card.add_widget(
+                self._candidate_selection_result_list
+            )
+            self._candidate_selection_card.add_separator()
+            self._candidate_selection_card.add_sub_title("후보 선택 후 전체 스탯")
+            self._candidate_selection_card.add_widget(
+                self._candidate_selection_stats_grid
+            )
+            self._candidate_selection_card.setVisible(False)
+
             # 성장 효율 카드 (레벨업 + 경지)
             self._level_up_list: ResultsPage.Efficiency.ResultList = (
                 ResultsPage.Efficiency.ResultList(self)
@@ -6056,6 +4335,7 @@ class ResultsPage(QFrame):
             layout.addWidget(self._power_card)
             layout.addWidget(self._stat_scroll_card)
             layout.addWidget(self._opt_card)
+            layout.addWidget(self._candidate_selection_card)
             layout.addWidget(self._growth_card)
             layout.addWidget(self._custom_card)
             layout.addWidget(self._target_card)
@@ -6120,6 +4400,8 @@ class ResultsPage(QFrame):
             )
             self._opt_result_list.set_rows(error_rows)
             self._opt_stats_grid.set_stats(None)
+            self._candidate_selection_card.setVisible(False)
+            self._candidate_selection_stats_grid.set_stats(None)
 
         def set_loading_outputs(self) -> None:
             """계산 시작 시 로딩 상태 출력"""
@@ -6153,6 +4435,8 @@ class ResultsPage(QFrame):
             )
             self._opt_result_list.set_rows(loading_rows)
             self._opt_stats_grid.set_stats(None)
+            self._candidate_selection_card.setVisible(False)
+            self._candidate_selection_stats_grid.set_stats(None)
 
         def _on_relative_efficiency_toggled(self) -> None:
             """스탯/스킬 효율 상대 표시 체크박스 토글 반영"""
@@ -6198,6 +4482,18 @@ class ResultsPage(QFrame):
             )
             self._opt_result_list.set_rows(output_rows.optimization_result)
             self._opt_stats_grid.set_stats(output_rows.optimized_base_stats)
+            self._candidate_selection_card.setVisible(
+                output_rows.candidate_selection_result is not None
+            )
+            if output_rows.candidate_selection_result is not None:
+                self._candidate_selection_result_list.set_rows(
+                    output_rows.candidate_selection_result
+                )
+                self._candidate_selection_stats_grid.set_stats(
+                    output_rows.candidate_selection_base_stats
+                )
+            else:
+                self._candidate_selection_stats_grid.set_stats(None)
 
 
 class SkillInputs(QFrame):

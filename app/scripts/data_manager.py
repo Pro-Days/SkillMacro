@@ -259,9 +259,19 @@ def migrate_macro_data_file(file_path: str) -> None:
             stored_version_obj = 6
             migrated = True
 
-        # v6 -> v7: 마지막 실행 앱 버전 저장 필드 주입
+        # v6 -> v7: 마지막 실행 앱 버전 저장 필드 주입 및 계산기 후보 그룹 구조 전환
         if stored_version_obj == 6:
             raw["last_app_version"] = ""
+
+            raw_preset: dict[str, Any]
+            for raw_preset in raw["preset"]:
+                raw_info: dict[str, Any] = raw_preset["info"]
+                raw_calculator: dict[str, Any] = raw_info["calculator"]
+                raw_calculator.pop("owned_titles", None)
+                raw_calculator.pop("owned_talismans", None)
+                raw_calculator.pop("equipped_state", None)
+                raw_calculator["candidate_groups"] = []
+
             raw["version"] = DATA_VERSION
             stored_version_obj = DATA_VERSION
             migrated = True

@@ -1065,32 +1065,34 @@ QFrame#simEfficiency {{
 }}
 
 
-/* ── 칭호 목록 패널 ── */
-QFrame#TitleEquippedPanel,
-QFrame#TitleListPanel,
-QFrame#TitleDetailPanel {{
+/* 후보 그룹 패널·카드·목록 */
+QFrame#candidateGroupPanel,
+QFrame#candidateListPanel,
+QFrame#candidateDetailPanel {{
     background-color: #FBFCFE;
     border: 1px solid #DDE5EF;
     border-radius: 8px;
 }}
-QScrollArea#titleListScrollArea {{
-    background-color: transparent;
-    border: 0px;
-}}
-QScrollArea#titleListScrollArea QWidget#qt_scrollarea_viewport {{
-    background-color: transparent;
-}}
-QWidget#titleListScrollContent {{ background-color: transparent; }}
-
-/* 칭호 편집 카드 */
-QFrame#TitleCard {{
+QFrame#candidateDetailCard {{
     background-color: #F8FAFC;
     border: 1px solid #DDE5EF;
     border-radius: 8px;
 }}
-
-/* 칭호 목록 선택 버튼 */
-QPushButton#titleListSelectBtn {{
+QScrollArea#candidateGroupScrollArea,
+QScrollArea#candidateListScrollArea,
+QScrollArea#candidateStatScrollArea {{
+    background-color: transparent;
+    border: 0px;
+}}
+QScrollArea#candidateGroupScrollArea QWidget#qt_scrollarea_viewport,
+QScrollArea#candidateListScrollArea QWidget#qt_scrollarea_viewport,
+QScrollArea#candidateStatScrollArea QWidget#qt_scrollarea_viewport {{
+    background-color: transparent;
+}}
+QWidget#candidateGroupScrollContent,
+QWidget#candidateListScrollContent,
+QWidget#candidateStatScrollContent {{ background-color: transparent; }}
+QPushButton#candidateListSelectBtn {{
     background-color: #FFFFFF;
     color: #2C3E50;
     border: 1px solid #D9E0EA;
@@ -1098,189 +1100,38 @@ QPushButton#titleListSelectBtn {{
     padding: 0px 124px 0px 12px;
     text-align: left;
 }}
-QPushButton#titleListSelectBtn:hover {{
+QPushButton#candidateListSelectBtn:hover {{
     background-color: #F6FAFF;
     border: 1px solid #BFD4EC;
 }}
-QPushButton#titleListSelectBtn:checked {{
+QPushButton#candidateListSelectBtn:checked {{
     background-color: #E8F2FF;
     border: 1px solid #4A90E2;
     color: #1F4E79;
 }}
 
-/* 칭호 장착/해제 버튼 */
-QPushButton#titleEquipBtn[equipped=false] {{
-    background-color: #4A90E2;
-    color: white;
-    border: 0px;
-    border-radius: 4px;
-    padding: 4px 12px;
-}}
-QPushButton#titleEquipBtn[equipped=false]:hover,
-QPushButton#titleEquipBtn[equipped=false]:pressed {{
-    background-color: #357ABD;
-}}
-QPushButton#titleEquipBtn[equipped=true] {{
-    background-color: #C97A2B;
-    color: white;
-    border: 0px;
-    border-radius: 4px;
-    padding: 4px 12px;
-}}
-QPushButton#titleEquipBtn[equipped=true]:hover,
-QPushButton#titleEquipBtn[equipped=true]:pressed {{
-    background-color: #AD6420;
-}}
-
-/* 장착 패널 이름 라벨 */
-QLabel#equippedNameLabel {{ color: #2C3E50; border: 0px; }}
-
-/* 장착 패널 스탯 라벨 */
-QLabel#equippedStatMuted {{ color: #7A8795; border: 0px; }}
-QLabel#equippedStatValue {{ color: #2C3E50; border: 0px; }}
 
 /* 패널 빈 상태 라벨 */
 QLabel#panelEmptyLabel {{ color: #7A8795; border: 0px; }}
 
 
-/* ── 부적 패널 ── */
-QFrame#TalismanEquippedPanel,
-QFrame#TalismanListPanel,
-QFrame#TalismanDetailPanel {{
-    background-color: #FBFCFE;
-    border: 1px solid #DDE5EF;
-    border-radius: 8px;
-}}
-QScrollArea#talismanListScrollArea {{
-    background-color: transparent;
-    border: 0px;
-}}
-QScrollArea#talismanListScrollArea QWidget#qt_scrollarea_viewport {{
-    background-color: transparent;
-}}
-QWidget#talismanListScrollContent {{ background-color: transparent; }}
-
-/* 부적 슬롯 패널 */
-QFrame#TalismanEquippedSlotPanel {{
+QFrame#candidateGroupItem {{
     background-color: #FFFFFF;
     border: 1px solid #D9E0EA;
     border-radius: 6px;
 }}
 
-/* 부적 슬롯 라벨 */
-QLabel#slotTitleLabel {{ color: #5C6B7A; border: 0px; }}
-QLabel#slotStatLabel[equipped=false] {{ color: #7A8795; border: 0px; }}
-QLabel#slotStatLabel[equipped=true]  {{ color: #2C3E50; border: 0px; }}
-
-/* 부적 슬롯 장착 버튼 */
-QPushButton#slotEquipBtn {{
-    background-color: #4A90E2;
-    color: white;
-    border: 0px;
-    border-radius: 4px;
-    padding: 4px 12px;
-}}
-QPushButton#slotEquipBtn:hover,
-QPushButton#slotEquipBtn:pressed {{
-    background-color: #357ABD;
-}}
-QPushButton#slotEquipBtn:disabled {{
-    background-color: #C9D7E6;
-    color: #F7FAFC;
-}}
-
-/* 부적 목록 선택 버튼 */
-QPushButton#talismanListSelectBtn {{
-    background-color: #FFFFFF;
-    color: #2C3E50;
-    border: 1px solid #D9E0EA;
-    border-radius: 6px;
-    padding: 0px 118px 0px 12px;
-    text-align: left;
-}}
-QPushButton#talismanListSelectBtn:hover {{
+QFrame#candidateGroupItem:hover {{
     background-color: #F6FAFF;
     border: 1px solid #BFD4EC;
 }}
-QPushButton#talismanListSelectBtn:checked {{
+
+QFrame#candidateGroupItem[selected=true] {{
     background-color: #E8F2FF;
     border: 1px solid #4A90E2;
-    color: #1F4E79;
 }}
 
-/* 부적 장착 상태 라벨 */
-QLabel#talismanEquippedStateLabel[state=unequipped] {{
-    background-color: #EEF2F7;
-    color: #5C6B7A;
-    border: 0px;
-    border-radius: 4px;
-    padding: 4px 8px;
-}}
-QLabel#talismanEquippedStateLabel[state=equipped] {{
-    background-color: #EAF5EA;
-    color: #2F855A;
-    border: 0px;
-    border-radius: 4px;
-    padding: 4px 8px;
-}}
-
-/* 부적 편집 카드 */
-QFrame#TalismanCard {{
-    background-color: #F8FAFC;
-    border: 1px solid #DDE5EF;
-    border-radius: 8px;
-}}
-
-/* 부적 등급 선택 버튼 */
-QPushButton#talismanGradeBtn {{
-    background-color: #FFFFFF;
-    color: #2C3E50;
-    border: 1px solid #D9E0EA;
-    border-radius: 6px;
-    padding: 6px 12px;
-}}
-QPushButton#talismanGradeBtn:hover {{
-    background-color: #F6FAFF;
-    border: 1px solid #BFD4EC;
-}}
-QPushButton#talismanGradeBtn:checked {{
-    background-color: #E8F2FF;
-    border: 1px solid #4A90E2;
-    color: #1F4E79;
-}}
-
-/* 부적 선택 목록 무공비급 영역 */
-QScrollArea#talismanTemplateScrollArea {{
-    background-color: #FFFFFF;
-    border: 1px solid #D9E0EA;
-    border-radius: 6px;
-}}
-QScrollArea#talismanTemplateScrollArea QWidget#qt_scrollarea_viewport {{
-    background-color: #FFFFFF;
-}}
-QWidget#talismanTemplateScrollContent {{ background-color: #FFFFFF; }}
-
-/* 부적 템플릿 선택 버튼 */
-QPushButton#talismanTemplateBtn {{
-    background-color: #FFFFFF;
-    color: #2C3E50;
-    border: 1px solid #D9E0EA;
-    border-radius: 6px;
-    padding: 0px 12px;
-    text-align: left;
-}}
-QPushButton#talismanTemplateBtn:hover {{
-    background-color: #F6FAFF;
-    border: 1px solid #BFD4EC;
-}}
-QPushButton#talismanTemplateBtn:checked {{
-    background-color: #E8F2FF;
-    border: 1px solid #4A90E2;
-    color: #1F4E79;
-}}
-
-/* 부적 스탯 미리보기 라벨 */
-QLabel#talismanPreviewLabel {{ color: #5C6B7A; border: 0px; }}
+QLabel#candidateCountLabel {{ color: #8A97A5; border: 0px; }}
 
 
 /* ── 결과 목록 ── */
@@ -2826,30 +2677,34 @@ QFrame#simEfficiency {{
 }}
 
 
-/* ── 칭호 목록 패널 ── */
-QFrame#TitleEquippedPanel,
-QFrame#TitleListPanel,
-QFrame#TitleDetailPanel {{
+/* 후보 그룹 패널·카드·목록 */
+QFrame#candidateGroupPanel,
+QFrame#candidateListPanel,
+QFrame#candidateDetailPanel {{
     background-color: #1E1E2C;
     border: 1px solid #363650;
     border-radius: 8px;
 }}
-QScrollArea#titleListScrollArea {{
-    background-color: transparent;
-    border: 0px;
-}}
-QScrollArea#titleListScrollArea QWidget#qt_scrollarea_viewport {{
-    background-color: transparent;
-}}
-QWidget#titleListScrollContent {{ background-color: transparent; }}
-
-QFrame#TitleCard {{
+QFrame#candidateDetailCard {{
     background-color: #1A1A28;
     border: 1px solid #363650;
     border-radius: 8px;
 }}
-
-QPushButton#titleListSelectBtn {{
+QScrollArea#candidateGroupScrollArea,
+QScrollArea#candidateListScrollArea,
+QScrollArea#candidateStatScrollArea {{
+    background-color: transparent;
+    border: 0px;
+}}
+QScrollArea#candidateGroupScrollArea QWidget#qt_scrollarea_viewport,
+QScrollArea#candidateListScrollArea QWidget#qt_scrollarea_viewport,
+QScrollArea#candidateStatScrollArea QWidget#qt_scrollarea_viewport {{
+    background-color: transparent;
+}}
+QWidget#candidateGroupScrollContent,
+QWidget#candidateListScrollContent,
+QWidget#candidateStatScrollContent {{ background-color: transparent; }}
+QPushButton#candidateListSelectBtn {{
     background-color: #1C1C28;
     color: #C8C8E0;
     border: 1px solid #363650;
@@ -2857,173 +2712,37 @@ QPushButton#titleListSelectBtn {{
     padding: 0px 124px 0px 12px;
     text-align: left;
 }}
-QPushButton#titleListSelectBtn:hover {{
+QPushButton#candidateListSelectBtn:hover {{
     background-color: #242438;
     border: 1px solid #4A4A6A;
 }}
-QPushButton#titleListSelectBtn:checked {{
+QPushButton#candidateListSelectBtn:checked {{
     background-color: #252545;
     border: 1px solid #5B78D9;
     color: #A0B8FF;
 }}
 
-QPushButton#titleEquipBtn[equipped=false] {{
-    background-color: #3A5AAA;
-    color: white;
-    border: 0px;
-    border-radius: 4px;
-    padding: 4px 12px;
-}}
-QPushButton#titleEquipBtn[equipped=false]:hover,
-QPushButton#titleEquipBtn[equipped=false]:pressed {{
-    background-color: #4A6ABB;
-}}
-QPushButton#titleEquipBtn[equipped=true] {{
-    background-color: #8A5020;
-    color: white;
-    border: 0px;
-    border-radius: 4px;
-    padding: 4px 12px;
-}}
-QPushButton#titleEquipBtn[equipped=true]:hover,
-QPushButton#titleEquipBtn[equipped=true]:pressed {{
-    background-color: #9A6030;
-}}
 
-QLabel#equippedNameLabel {{ color: #C8C8E0; border: 0px; }}
-QLabel#equippedStatMuted {{ color: #555575; border: 0px; }}
-QLabel#equippedStatValue {{ color: #C8C8E0; border: 0px; }}
 QLabel#panelEmptyLabel {{ color: #555575; border: 0px; }}
 
 
-/* ── 부적 패널 ── */
-QFrame#TalismanEquippedPanel,
-QFrame#TalismanListPanel,
-QFrame#TalismanDetailPanel {{
-    background-color: #1E1E2C;
-    border: 1px solid #363650;
-    border-radius: 8px;
-}}
-QScrollArea#talismanListScrollArea {{
-    background-color: transparent;
-    border: 0px;
-}}
-QScrollArea#talismanListScrollArea QWidget#qt_scrollarea_viewport {{
-    background-color: transparent;
-}}
-QWidget#talismanListScrollContent {{ background-color: transparent; }}
-
-QFrame#TalismanEquippedSlotPanel {{
+QFrame#candidateGroupItem {{
     background-color: #1C1C28;
     border: 1px solid #363650;
     border-radius: 6px;
 }}
 
-QLabel#slotTitleLabel {{ color: #6868A0; border: 0px; }}
-QLabel#slotStatLabel[equipped=false] {{ color: #555575; border: 0px; }}
-QLabel#slotStatLabel[equipped=true]  {{ color: #C8C8E0; border: 0px; }}
-
-QPushButton#slotEquipBtn {{
-    background-color: #3A5AAA;
-    color: white;
-    border: 0px;
-    border-radius: 4px;
-    padding: 4px 12px;
-}}
-QPushButton#slotEquipBtn:hover,
-QPushButton#slotEquipBtn:pressed {{
-    background-color: #4A6ABB;
-}}
-QPushButton#slotEquipBtn:disabled {{
-    background-color: #2A3055;
-    color: #4A4A70;
-}}
-
-QPushButton#talismanListSelectBtn {{
-    background-color: #1C1C28;
-    color: #C8C8E0;
-    border: 1px solid #363650;
-    border-radius: 6px;
-    padding: 0px 118px 0px 12px;
-    text-align: left;
-}}
-QPushButton#talismanListSelectBtn:hover {{
+QFrame#candidateGroupItem:hover {{
     background-color: #242438;
     border: 1px solid #4A4A6A;
 }}
-QPushButton#talismanListSelectBtn:checked {{
+
+QFrame#candidateGroupItem[selected=true] {{
     background-color: #252545;
     border: 1px solid #5B78D9;
-    color: #A0B8FF;
 }}
 
-QLabel#talismanEquippedStateLabel[state=unequipped] {{
-    background-color: #22223A;
-    color: #6868A0;
-    border: 0px;
-    border-radius: 4px;
-    padding: 4px 8px;
-}}
-QLabel#talismanEquippedStateLabel[state=equipped] {{
-    background-color: #1A3028;
-    color: #4EBB70;
-    border: 0px;
-    border-radius: 4px;
-    padding: 4px 8px;
-}}
-
-QFrame#TalismanCard {{
-    background-color: #1A1A28;
-    border: 1px solid #363650;
-    border-radius: 8px;
-}}
-
-QPushButton#talismanGradeBtn {{
-    background-color: #1C1C28;
-    color: #C8C8E0;
-    border: 1px solid #363650;
-    border-radius: 6px;
-    padding: 6px 12px;
-}}
-QPushButton#talismanGradeBtn:hover {{
-    background-color: #242438;
-    border: 1px solid #4A4A6A;
-}}
-QPushButton#talismanGradeBtn:checked {{
-    background-color: #252545;
-    border: 1px solid #5B78D9;
-    color: #A0B8FF;
-}}
-
-QScrollArea#talismanTemplateScrollArea {{
-    background-color: #1C1C28;
-    border: 1px solid #363650;
-    border-radius: 6px;
-}}
-QScrollArea#talismanTemplateScrollArea QWidget#qt_scrollarea_viewport {{
-    background-color: #1C1C28;
-}}
-QWidget#talismanTemplateScrollContent {{ background-color: #1C1C28; }}
-
-QPushButton#talismanTemplateBtn {{
-    background-color: #1C1C28;
-    color: #C8C8E0;
-    border: 1px solid #363650;
-    border-radius: 6px;
-    padding: 0px 12px;
-    text-align: left;
-}}
-QPushButton#talismanTemplateBtn:hover {{
-    background-color: #242438;
-    border: 1px solid #4A4A6A;
-}}
-QPushButton#talismanTemplateBtn:checked {{
-    background-color: #252545;
-    border: 1px solid #5B78D9;
-    color: #A0B8FF;
-}}
-
-QLabel#talismanPreviewLabel {{ color: #6868A0; border: 0px; }}
+QLabel#candidateCountLabel {{ color: #7A7AA8; border: 0px; }}
 
 
 /* ── 결과 목록 ── */

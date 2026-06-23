@@ -17,8 +17,7 @@
 |---|---|---|
 | 분배 | `build_distribution_contribution()` | STR, DEX, VIT, LUCK |
 | 단전 | `build_danjeon_contribution()` | HP%, 저항%, 공격력%, 드랍률%, 경험치% |
-| 칭호 | `build_title_contribution()` | 칭호별 임의 스탯 |
-| 부적 | `build_talisman_contribution()` | 부적별 임의 스탯 |
+| 후보 그룹 | `build_candidate_option_contribution()` | 후보별 임의 스탯 |
 | 변화량 | `with_changes()` 직접 호출 | 사용자 지정 임의 스탯 |
 
 공통 경로: `with_changes()` (원시 스탯에 가산) → `resolve()` (% 보정 + 파생 효과 적용) → `FinalStats`
@@ -37,6 +36,7 @@ from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wait
 from dataclasses import dataclass, field
 from enum import Enum
+from itertools import combinations
 from math import floor
 from multiprocessing.process import BaseProcess
 from typing import TYPE_CHECKING, NoReturn, TypeVar, cast
@@ -45,15 +45,14 @@ from app.scripts.calculator_models import (
     OVERALL_STAT_ORDER,
     REALM_TIER_SPECS,
     STAT_SPECS,
-    TALISMAN_SPECS,
     BaseStats,
     CalculatorPresetInput,
     CustomPowerFormula,
     DanjeonState,
     DistributionState,
     FinalStats,
-    OwnedTalisman,
-    OwnedTitle,
+    OptimizationCandidateGroup,
+    OptimizationCandidateOption,
     PowerMetric,
     RealmSpec,
     RealmTier,
@@ -1705,13 +1704,19 @@ class BaseValidation:
 
 
 @dataclass(frozen=True, slots=True)
+class OptimizationCandidateGroupSelection:
+    """후보 그룹 선택 결과"""
+
+    group_name: str
+    selected_candidate_names: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class OptimizationCandidate:
     """최적화 후보 선택 상태"""
 
     distribution: DistributionState
     danjeon: DanjeonState
-    equipped_title_name: str | None
-    equipped_talisman_names: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -1719,6 +1724,15 @@ class OptimizationResult:
     """최적화 최종 결과"""
 
     candidate: OptimizationCandidate
+    delta: float
+    base_stats: BaseStats
+
+
+@dataclass(frozen=True, slots=True)
+class CandidateGroupSelectionResult:
+    """후보 그룹 선택 결과"""
+
+    group_selections: tuple[OptimizationCandidateGroupSelection, ...]
     delta: float
     base_stats: BaseStats
 
@@ -1791,118 +1805,33 @@ def build_danjeon_contribution(danjeon: DanjeonState) -> Contribution:
     )
 
 
-def build_title_contribution(
-    equipped_title_name: str | None,
-    owned_title_map: dict[str, OwnedTitle],
+def build_candidate_option_contribution(
+    candidate: OptimizationCandidateOption,
 ) -> Contribution:
-    """현재 장착 칭호 기여 계산"""
+    """최적화 후보 기여 계산"""
 
-    if equipped_title_name is None:
-        return Contribution()
-
-    equipped_title: OwnedTitle = owned_title_map[equipped_title_name]
-
+    # 후보 스탯 행을 원시 스탯 기여로 누적
     contribution: Contribution = Contribution()
-    for title_stat in equipped_title.stats:
-        if title_stat is None:
-            continue
-
-        contribution = contribution.add(title_stat.stat_key, title_stat.value)
+    for candidate_stat in candidate.stats:
+        contribution = contribution.add(candidate_stat.stat_key, candidate_stat.value)
 
     return contribution
-
-
-def build_talisman_contribution(
-    equipped_talisman_names: list[str],
-    talisman_stat_map: dict[str, tuple[StatKey, float]],
-) -> Contribution:
-    """현재 장착 부적 기여 계산"""
-
-    contribution: Contribution = Contribution()
-    for equipped_name in equipped_talisman_names:
-        # 빈 슬롯 문자열 및 비어 있는 장착명 제외
-        if not equipped_name:
-            continue
-
-        stat_key: StatKey
-        stat_value: float
-        stat_key, stat_value = talisman_stat_map[equipped_name]
-        contribution = contribution.add(stat_key, stat_value)
-
-    return contribution
-
-
-def _build_owned_title_map(owned_titles: list[OwnedTitle]) -> dict[str, OwnedTitle]:
-    """보유 칭호 ID 기준 조회 맵 구성"""
-
-    owned_title_map: dict[str, OwnedTitle] = {
-        owned_title.name: owned_title for owned_title in owned_titles
-    }
-    return owned_title_map
-
-
-def _build_owned_talisman_stat_map(
-    owned_talismans: list[OwnedTalisman],
-) -> dict[str, tuple[StatKey, float]]:
-    """보유 부적 ID 기준 최종 스탯값 조회 맵 구성"""
-
-    talisman_stat_map: dict[str, tuple[StatKey, float]] = {}
-
-    for owned_talisman in owned_talismans:
-        # 부적 정의 조회
-        talisman_spec: tuple[StatKey, dict[int, float]] | None = None
-
-        for spec in TALISMAN_SPECS:
-            if spec.name == owned_talisman.name:
-                talisman_spec = spec.stat_key, spec.level_stats
-                break
-
-        if talisman_spec is None:
-            continue
-
-        # 동일 이름 최고 레벨 유지
-        stat_key, level_stats = talisman_spec
-        stat_value: float = level_stats[owned_talisman.level]
-        current_entry: tuple[StatKey, float] | None = talisman_stat_map.get(
-            owned_talisman.name
-        )
-        if current_entry is not None and current_entry[1] >= stat_value:
-            continue
-
-        talisman_stat_map[owned_talisman.name] = (
-            stat_key,
-            stat_value,
-        )
-
-    return talisman_stat_map
 
 
 def build_current_selected_contribution(
     calculator_input: CalculatorPresetInput,
-    owned_title_map: dict[str, OwnedTitle],
-    talisman_stat_map: dict[str, tuple[StatKey, float]],
 ) -> Contribution:
     """현재 선택 상태 전체 기여 계산"""
 
-    # 현재 스탯 분배/단전/칭호/부적 기여를 하나의 모델로 병합
+    # 현재 스탯 분배와 단전 기여만 기준 스탯 분리 대상에 포함
     distribution_contribution: Contribution = build_distribution_contribution(
         calculator_input.distribution
     )
     danjeon_contribution: Contribution = build_danjeon_contribution(
         calculator_input.danjeon
     )
-    title_contribution: Contribution = build_title_contribution(
-        calculator_input.equipped_state.equipped_title_name,
-        owned_title_map,
-    )
-    talisman_contribution: Contribution = build_talisman_contribution(
-        calculator_input.equipped_state.equipped_talisman_names,
-        talisman_stat_map,
-    )
     return distribution_contribution.merge(
         danjeon_contribution,
-        title_contribution,
-        talisman_contribution,
     )
 
 
@@ -2978,18 +2907,8 @@ def build_base_state(
 ) -> BaseState:
     """현재 선택 기여를 제거한 기준 베이스 스탯 계산"""
 
-    owned_title_map: dict[str, OwnedTitle] = _build_owned_title_map(
-        calculator_input.owned_titles
-    )
-    talisman_stat_map: dict[str, tuple[StatKey, float]] = (
-        _build_owned_talisman_stat_map(calculator_input.owned_talismans)
-    )
-
-    contribution: Contribution = build_current_selected_contribution(
-        calculator_input,
-        owned_title_map,
-        talisman_stat_map,
-    )
+    # 분배와 단전만 현재 선택 기여로 분리
+    contribution: Contribution = build_current_selected_contribution(calculator_input)
     base_without_selection_raw: BaseStats = contribution.apply_to(
         base_stats,
         is_add=False,
@@ -3433,66 +3352,104 @@ def _build_danjeon_candidates(
     return candidates
 
 
-def _build_title_candidates(
+def _build_single_group_candidate_entries(
+    group: OptimizationCandidateGroup,
+) -> list[tuple[OptimizationCandidateGroupSelection, Contribution]]:
+    """단일 후보 그룹의 선택 조합 생성"""
+
+    # 후보가 없는 그룹은 무기여 빈 선택으로 구성
+    if not group.candidates:
+        return [
+            (
+                OptimizationCandidateGroupSelection(
+                    group_name=group.name,
+                    selected_candidate_names=(),
+                ),
+                Contribution(),
+            )
+        ]
+
+    # 실제 후보 수를 넘지 않는 선택 개수 결정
+    target_count: int = min(group.selection_count, len(group.candidates))
+    group_entries: list[tuple[OptimizationCandidateGroupSelection, Contribution]] = []
+
+    # 후보 인덱스 조합별 기여 누적
+    for selected_indexes in combinations(range(len(group.candidates)), target_count):
+        selected_names: list[str] = []
+        contribution: Contribution = Contribution()
+        for selected_index in selected_indexes:
+            candidate: OptimizationCandidateOption = group.candidates[selected_index]
+            selected_names.append(candidate.name)
+            contribution = contribution.merge(
+                build_candidate_option_contribution(candidate)
+            )
+
+        group_entries.append(
+            (
+                OptimizationCandidateGroupSelection(
+                    group_name=group.name,
+                    selected_candidate_names=tuple(selected_names),
+                ),
+                contribution,
+            )
+        )
+
+    return group_entries
+
+
+def _build_candidate_group_entries(
     calculator_input: CalculatorPresetInput,
-) -> list[str | None]:
-    """칭호 후보 목록 생성"""
+) -> list[tuple[tuple[OptimizationCandidateGroupSelection, ...], Contribution]]:
+    """전체 후보 그룹 선택 조합 생성"""
 
-    if not calculator_input.owned_titles:
-        return [None]
+    # 그룹별 선택 조합을 순차 병합하며 중복 기여 정리
+    combined_entries: list[
+        tuple[tuple[OptimizationCandidateGroupSelection, ...], Contribution]
+    ] = [((), Contribution())]
+    for group in calculator_input.candidate_groups:
+        group_entries: list[tuple[OptimizationCandidateGroupSelection, Contribution]] = (
+            _deduplicate_contribution_entries(
+                _build_single_group_candidate_entries(group)
+            )
+        )
+        merged_entries: list[
+            tuple[tuple[OptimizationCandidateGroupSelection, ...], Contribution]
+        ] = []
+        for selected_groups, selected_contribution in combined_entries:
+            for group_selection, group_contribution in group_entries:
+                merged_entries.append(
+                    (
+                        selected_groups + (group_selection,),
+                        selected_contribution.merge(group_contribution),
+                    )
+                )
 
-    title_names: list[str | None] = []
-    for owned_title in calculator_input.owned_titles:
-        title_names.append(owned_title.name)
+        combined_entries = _deduplicate_contribution_entries(merged_entries)
 
-    return title_names
+    return combined_entries
 
 
-def _build_talisman_candidates(
-    calculator_input: CalculatorPresetInput,
-) -> list[list[str]]:
-    """부적 조합 후보 목록 생성"""
+def _deduplicate_contribution_entries(
+    entries: list[tuple[EntryPayload, Contribution]],
+) -> list[tuple[EntryPayload, Contribution]]:
+    """동일 기여 후보 제거"""
 
-    owned_talismans: list[OwnedTalisman] = calculator_input.owned_talismans
-    if not owned_talismans:
-        return [[]]
-
-    # 동일 이름 제거 기반 후보 이름 구성
-    seen_names: set[str] = set()
-    owned_names: list[str] = []
-    owned_talisman: OwnedTalisman
-    for owned_talisman in owned_talismans:
-        if owned_talisman.name in seen_names:
+    # 완전 동일 기여 제거
+    signature_to_entry: dict[
+        tuple[tuple[str, float], ...], tuple[EntryPayload, Contribution]
+    ] = {}
+    payload: EntryPayload
+    contribution: Contribution
+    for payload, contribution in entries:
+        signature: tuple[tuple[str, float], ...] = _build_contribution_signature(
+            contribution
+        )
+        if signature in signature_to_entry:
             continue
 
-        seen_names.add(owned_talisman.name)
-        owned_names.append(owned_talisman.name)
+        signature_to_entry[signature] = (payload, contribution)
 
-    target_size: int = 3
-
-    candidates: list[list[str]] = []
-
-    def build_combinations(start_index: int, selected_names: list[str]) -> None:
-        """현재 보유 부적 조합 구성"""
-
-        if len(selected_names) == target_size:
-            candidates.append(selected_names.copy())
-            return
-
-        for current_index in range(start_index, len(owned_names)):
-            owned_name: str = owned_names[current_index]
-            if owned_name in selected_names:
-                continue
-
-            selected_names.append(owned_name)
-            build_combinations(current_index + 1, selected_names)
-            selected_names.pop()
-
-    build_combinations(0, [])
-    if not candidates:
-        return [[]]
-
-    return candidates
+    return list(signature_to_entry.values())
 
 
 def _build_contribution_signature(
@@ -3541,24 +3498,9 @@ def _prune_contribution_entries(
 ) -> list[tuple[EntryPayload, Contribution]]:
     """중복 및 지배 후보 제거"""
 
-    # 완전 동일 기여 제거
-    signature_to_entry: dict[
-        tuple[tuple[str, float], ...], tuple[EntryPayload, Contribution]
-    ] = {}
-    payload: EntryPayload
-    contribution: Contribution
-    for payload, contribution in entries:
-        signature: tuple[tuple[str, float], ...] = _build_contribution_signature(
-            contribution
-        )
-        if signature in signature_to_entry:
-            continue
-
-        signature_to_entry[signature] = (payload, contribution)
-
     # 지배 후보 제거
     unique_entries: list[tuple[EntryPayload, Contribution]] = list(
-        signature_to_entry.values()
+        _deduplicate_contribution_entries(entries)
     )
     pruned_entries: list[tuple[EntryPayload, Contribution]] = []
     target_index: int
@@ -3610,8 +3552,6 @@ def _evaluate_distribution_selection(
     base_state: BaseState,
     distribution_state: DistributionState,
     danjeon_entries: list[tuple[DanjeonState, Contribution]],
-    title_entries: list[tuple[str | None, Contribution]],
-    talisman_entries: list[tuple[tuple[str, ...], Contribution]],
     timeline_cache: dict[float, TimelineEvaluationArtifacts],
     target_formula_id: str,
 ) -> OptimizationResult | None:
@@ -3655,17 +3595,11 @@ def _evaluate_distribution_selection(
             timeline_cache[dist_speed_key] = dist_timeline
 
     # 조합 수 기반 기울기 필터링 적용 여부 결정
-    total_combos: int = (
-        len(danjeon_entries) * len(title_entries) * len(talisman_entries)
-    )
+    total_combos: int = len(danjeon_entries)
     if total_combos > _GRADIENT_EXACT_THRESHOLD and dist_timeline is not None:
         # 기여에 사용되는 스탯 키 수집
         relevant_stats: set[StatKey] = set()
         for _, _contrib in danjeon_entries:
-            relevant_stats.update(k for k, v in _contrib.values.items() if v != 0.0)
-        for _, _contrib in title_entries:
-            relevant_stats.update(k for k, v in _contrib.values.items() if v != 0.0)
-        for _, _contrib in talisman_entries:
             relevant_stats.update(k for k, v in _contrib.values.items() if v != 0.0)
 
         # 기준점 기울기 계산
@@ -3683,20 +3617,8 @@ def _evaluate_distribution_selection(
             key=lambda e: _score_contribution_by_gradient(gradient, e[1]),
             reverse=True,
         )[:_GRADIENT_TOP_K]
-        effective_title: list[tuple[str | None, Contribution]] = sorted(
-            title_entries,
-            key=lambda e: _score_contribution_by_gradient(gradient, e[1]),
-            reverse=True,
-        )[:_GRADIENT_TOP_K]
-        effective_talisman: list[tuple[tuple[str, ...], Contribution]] = sorted(
-            talisman_entries,
-            key=lambda e: _score_contribution_by_gradient(gradient, e[1]),
-            reverse=True,
-        )[:_GRADIENT_TOP_K]
     else:
         effective_danjeon = danjeon_entries
-        effective_title = title_entries
-        effective_talisman = talisman_entries
 
     # 필터링된 후보에 대한 정확 평가 루프
     best_result: OptimizationResult | None = None
@@ -3704,81 +3626,67 @@ def _evaluate_distribution_selection(
     danjeon_state: DanjeonState
     danjeon_contribution: Contribution
     for danjeon_state, danjeon_contribution in effective_danjeon:
-        equipped_title_name: str | None
-        title_contribution: Contribution
-        for equipped_title_name, title_contribution in effective_title:
-            equipped_talisman_names: tuple[str, ...]
-            talisman_contribution: Contribution
-            for equipped_talisman_names, talisman_contribution in effective_talisman:
-                # 선택지 기여 병합 (인라인)
-                merged_values: dict[StatKey, float] = (
-                    distribution_contribution.values.copy()
-                )
-                for _contrib in (
-                    danjeon_contribution,
-                    title_contribution,
-                    talisman_contribution,
-                ):
-                    for _sk, _v in _contrib.values.items():
-                        merged_values[_sk] = merged_values.get(_sk, 0.0) + _v
+        # 선택지 기여 병합
+        merged_values: dict[StatKey, float] = distribution_contribution.values.copy()
+        for _sk, _v in danjeon_contribution.values.items():
+            merged_values[_sk] = merged_values.get(_sk, 0.0) + _v
 
-                # 기여 적용 + resolve 통합
-                changed_stats: dict[StatKey, float] = {}
-                for _idx, _sk in enumerate(_STAT_ORDER_KEYS):
-                    _base_val = base_raw_values.get(_STAT_ORDER_VALUES[_idx], 0.0)
-                    changed_stats[_sk] = _base_val + merged_values.get(_sk, 0.0)
+        # 기여 적용과 최종 스탯 해석
+        changed_stats: dict[StatKey, float] = {}
+        for _idx, _sk in enumerate(_STAT_ORDER_KEYS):
+            _base_val = base_raw_values.get(_STAT_ORDER_VALUES[_idx], 0.0)
+            changed_stats[_sk] = _base_val + merged_values.get(_sk, 0.0)
 
-                optimized_resolved_stats: FinalStats = _fast_resolve(changed_stats)
-                candidate_skill_speed: float = float(
-                    optimized_resolved_stats.values[_FK_SKILL_SPEED_PERCENT]
-                )
-                if candidate_skill_speed > CALCULATOR_SKILL_SPEED_LIMIT_PERCENT:
-                    continue
+        optimized_resolved_stats: FinalStats = _fast_resolve(changed_stats)
+        candidate_skill_speed: float = float(
+            optimized_resolved_stats.values[_FK_SKILL_SPEED_PERCENT]
+        )
+        if candidate_skill_speed > CALCULATOR_SKILL_SPEED_LIMIT_PERCENT:
+            continue
 
-                speed_cache_key: float = round(candidate_skill_speed, 2)
-                cached_timeline_artifacts: TimelineEvaluationArtifacts | None = (
-                    timeline_cache.get(speed_cache_key)
-                )
-                if cached_timeline_artifacts is None:
-                    cached_hit_events: tuple[HitEvent, ...] = build_calculator_timeline(
-                        server_spec=server_spec,
-                        preset=preset,
-                        skills_info=skills_info,
-                        delay_ms=delay_ms,
-                        cooltime_reduction=candidate_skill_speed,
-                    )
-                    cached_timeline_artifacts = _build_timeline_evaluation_artifacts(
-                        cached_hit_events,
-                        level=preset.info.calculator.level,
-                        skill_slot_variables=(
-                            context.timeline_artifacts.skill_slot_variables
-                        ),
-                    )
-                    timeline_cache[speed_cache_key] = cached_timeline_artifacts
+        # 스킬속도별 타임라인 캐시 조회
+        speed_cache_key: float = round(candidate_skill_speed, 2)
+        cached_timeline_artifacts: TimelineEvaluationArtifacts | None = (
+            timeline_cache.get(speed_cache_key)
+        )
+        if cached_timeline_artifacts is None:
+            cached_hit_events: tuple[HitEvent, ...] = build_calculator_timeline(
+                server_spec=server_spec,
+                preset=preset,
+                skills_info=skills_info,
+                delay_ms=delay_ms,
+                cooltime_reduction=candidate_skill_speed,
+            )
+            cached_timeline_artifacts = _build_timeline_evaluation_artifacts(
+                cached_hit_events,
+                level=preset.info.calculator.level,
+                skill_slot_variables=context.timeline_artifacts.skill_slot_variables,
+            )
+            timeline_cache[speed_cache_key] = cached_timeline_artifacts
 
-                target_value: float = evaluate_single_metric(
-                    artifacts=cached_timeline_artifacts,
-                    resolved_stats=optimized_resolved_stats,
-                    target_formula_id=target_formula_id,
-                    compiled_custom_formula=context.compiled_custom_formula,
-                )
-                metric_delta: float = target_value - context.baseline_power
+        # 대상 공식 기준 후보 가치 계산
+        target_value: float = evaluate_single_metric(
+            artifacts=cached_timeline_artifacts,
+            resolved_stats=optimized_resolved_stats,
+            target_formula_id=target_formula_id,
+            compiled_custom_formula=context.compiled_custom_formula,
+        )
+        metric_delta: float = target_value - context.baseline_power
 
-                if best_metric_delta is not None and metric_delta <= best_metric_delta:
-                    continue
+        if best_metric_delta is not None and metric_delta <= best_metric_delta:
+            continue
 
-                best_metric_delta = metric_delta
-                optimized_base_stats: BaseStats = BaseStats.from_stat_map(changed_stats)
-                best_result = OptimizationResult(
-                    candidate=OptimizationCandidate(
-                        distribution=distribution_state,
-                        danjeon=danjeon_state,
-                        equipped_title_name=equipped_title_name,
-                        equipped_talisman_names=equipped_talisman_names,
-                    ),
-                    delta=metric_delta,
-                    base_stats=optimized_base_stats,
-                )
+        # 현재까지 최고 후보 갱신
+        best_metric_delta = metric_delta
+        optimized_base_stats: BaseStats = BaseStats.from_stat_map(changed_stats)
+        best_result = OptimizationResult(
+            candidate=OptimizationCandidate(
+                distribution=distribution_state,
+                danjeon=danjeon_state,
+            ),
+            delta=metric_delta,
+            base_stats=optimized_base_stats,
+            )
 
     return best_result
 
@@ -3791,8 +3699,6 @@ def _search_subtree(
     context: EvaluationContext,
     base_state: BaseState,
     danjeon_entries: list[tuple[DanjeonState, Contribution]],
-    title_entries: list[tuple[str | None, Contribution]],
-    talisman_entries: list[tuple[tuple[str, ...], Contribution]],
     target_formula_id: str,
     sub_range: DistributionSearchRange,
     baseline_timeline_entry: tuple[float, TimelineEvaluationArtifacts],
@@ -3820,8 +3726,6 @@ def _search_subtree(
         base_state=base_state,
         distribution_state=root_distribution_state,
         danjeon_entries=danjeon_entries,
-        title_entries=title_entries,
-        talisman_entries=talisman_entries,
         timeline_cache=timeline_cache,
         target_formula_id=target_formula_id,
     )
@@ -3868,8 +3772,6 @@ def _search_subtree(
                     base_state=base_state,
                     distribution_state=leaf_distribution_state,
                     danjeon_entries=danjeon_entries,
-                    title_entries=title_entries,
-                    talisman_entries=talisman_entries,
                     timeline_cache=timeline_cache,
                     target_formula_id=target_formula_id,
                 )
@@ -3912,8 +3814,6 @@ def _search_subtree(
                     base_state=base_state,
                     distribution_state=optimistic_distribution_state,
                     danjeon_entries=danjeon_entries,
-                    title_entries=title_entries,
-                    talisman_entries=talisman_entries,
                     timeline_cache=timeline_cache,
                     target_formula_id=target_formula_id,
                 )
@@ -3979,14 +3879,13 @@ def optimize_current_selection(
     base_stats: BaseStats,
     calculator_input: CalculatorPresetInput,
     target_formula_id: str,
+    cancel_checker: Callable[[], None],
     progress_callback: Callable[[str, int], None] | None = None,
-    cancel_checker: Callable[[], None] | None = None,
 ) -> OptimizationResult | OptimizationFailure:
     """현재 선택 조합 최적화"""
 
     # 최적화 진입 직전 취소와 진행 상태 확인
-    if cancel_checker is not None:
-        cancel_checker()
+    cancel_checker()
 
     if progress_callback is not None:
         progress_callback("최적화 후보 준비 중...", 0)
@@ -4051,48 +3950,15 @@ def optimize_current_selection(
             message="최적화 불가: 최소 단전 포인트가 현재 경지 최대치를 초과합니다.",
         )
 
-    # 각 내부 선택지 후보 목록 구성
+    # 단전 후보 목록 구성
     danjeon_candidates: list[DanjeonState] = _build_danjeon_candidates(danjeon_root)
-    title_candidates: list[str | None] = _build_title_candidates(calculator_input)
-    talisman_candidates: list[list[str]] = _build_talisman_candidates(calculator_input)
 
-    # 보유 칭호/부적 사전 계산
-    owned_title_map: dict[str, OwnedTitle] = _build_owned_title_map(
-        calculator_input.owned_titles
-    )
-    talisman_stat_map: dict[str, tuple[StatKey, float]] = (
-        _build_owned_talisman_stat_map(calculator_input.owned_talismans)
-    )
-
-    # 내부 선택지 기여 사전 계산 및 정리
+    # 단전 기여 사전 계산 및 정리
     danjeon_entries: list[tuple[DanjeonState, Contribution]] = (
         _prune_contribution_entries(
             [
                 (danjeon_state, build_danjeon_contribution(danjeon_state))
                 for danjeon_state in danjeon_candidates
-            ]
-        )
-    )
-    title_entries: list[tuple[str | None, Contribution]] = _prune_contribution_entries(
-        [
-            (
-                equipped_title_name,
-                build_title_contribution(equipped_title_name, owned_title_map),
-            )
-            for equipped_title_name in title_candidates
-        ]
-    )
-    talisman_entries: list[tuple[tuple[str, ...], Contribution]] = (
-        _prune_contribution_entries(
-            [
-                (
-                    tuple(equipped_talisman_names),
-                    build_talisman_contribution(
-                        equipped_talisman_names,
-                        talisman_stat_map,
-                    ),
-                )
-                for equipped_talisman_names in talisman_candidates
             ]
         )
     )
@@ -4120,8 +3986,6 @@ def optimize_current_selection(
         context,
         base_state,
         danjeon_entries,
-        title_entries,
-        talisman_entries,
         target_formula_id,
     )
 
@@ -4138,8 +4002,7 @@ def optimize_current_selection(
     if len(sub_ranges) <= 2:
         # 탐색 공간이 작으면 직렬 실행
         for sub_range in sub_ranges:
-            if cancel_checker is not None:
-                cancel_checker()
+            cancel_checker()
 
             result: OptimizationResult | None = _search_subtree(
                 *shared_args,
@@ -4178,8 +4041,7 @@ def optimize_current_selection(
                 for sub_range in sub_ranges
             }
             while pending_futures:
-                if cancel_checker is not None:
-                    cancel_checker()
+                cancel_checker()
 
                 done_futures: set[Future[OptimizationResult | None]]
                 done_futures, pending_futures = wait(
@@ -4223,6 +4085,101 @@ def optimize_current_selection(
         return OptimizationFailure(
             reason=OptimizationFailureReason.NO_CALCULABLE_COMBINATION,
             message="최적화 불가: 계산 가능한 조합이 없습니다.",
+        )
+
+    return best_result
+
+
+def select_candidate_groups(
+    server_spec: "ServerSpec",
+    preset: "MacroPreset",
+    skills_info: dict[str, "SkillUsageSetting"],
+    delay_ms: int,
+    context: EvaluationContext,
+    base_stats: BaseStats,
+    calculator_input: CalculatorPresetInput,
+    target_formula_id: str,
+    cancel_checker: Callable[[], None],
+    progress_callback: Callable[[str, int], None] | None = None,
+) -> CandidateGroupSelectionResult | OptimizationFailure | None:
+    """현재 입력 기준 후보 그룹 선택 결과 계산"""
+
+    # 후보 그룹 부재 시 별도 섹션 계산 생략
+    if not calculator_input.candidate_groups:
+        return None
+
+    cancel_checker()
+
+    if progress_callback is not None:
+        progress_callback("후보 선택 결과 계산 중...", 95)
+
+    # 후보 그룹 조합 기여 사전 계산 및 동일 기여 정리
+    candidate_group_entries: list[
+        tuple[tuple[OptimizationCandidateGroupSelection, ...], Contribution]
+    ] = _build_candidate_group_entries(calculator_input)
+
+    # 현재 입력 타임라인 캐시 시드 구성
+    timeline_cache: dict[float, TimelineEvaluationArtifacts] = {
+        round(
+            context.baseline_final_stats.values[StatKey.SKILL_SPEED_PERCENT],
+            2,
+        ): context.timeline_artifacts
+    }
+
+    # 후보 그룹 조합별 전투력 변화 비교
+    best_result: CandidateGroupSelectionResult | None = None
+    best_metric_delta: float | None = None
+    for group_selections, contribution in candidate_group_entries:
+        cancel_checker()
+
+        candidate_base_stats: BaseStats = contribution.apply_to(base_stats)
+        candidate_final_stats: FinalStats = candidate_base_stats.resolve()
+        candidate_skill_speed: float = float(
+            candidate_final_stats.values[StatKey.SKILL_SPEED_PERCENT]
+        )
+        if candidate_skill_speed > CALCULATOR_SKILL_SPEED_LIMIT_PERCENT:
+            continue
+
+        candidate_speed_key: float = round(candidate_skill_speed, 2)
+        candidate_timeline: TimelineEvaluationArtifacts | None = timeline_cache.get(
+            candidate_speed_key
+        )
+        if candidate_timeline is None:
+            candidate_timeline = _build_timeline_evaluation_artifacts(
+                build_calculator_timeline(
+                    server_spec=server_spec,
+                    preset=preset,
+                    skills_info=skills_info,
+                    delay_ms=delay_ms,
+                    cooltime_reduction=candidate_skill_speed,
+                ),
+                level=preset.info.calculator.level,
+                skill_slot_variables=context.timeline_artifacts.skill_slot_variables,
+            )
+            timeline_cache[candidate_speed_key] = candidate_timeline
+
+        target_value: float = evaluate_single_metric(
+            artifacts=candidate_timeline,
+            resolved_stats=candidate_final_stats,
+            target_formula_id=target_formula_id,
+            compiled_custom_formula=context.compiled_custom_formula,
+        )
+        metric_delta: float = target_value - context.baseline_power
+
+        if best_metric_delta is not None and metric_delta <= best_metric_delta:
+            continue
+
+        best_metric_delta = metric_delta
+        best_result = CandidateGroupSelectionResult(
+            group_selections=group_selections,
+            delta=metric_delta,
+            base_stats=candidate_base_stats,
+        )
+
+    if best_result is None:
+        return OptimizationFailure(
+            reason=OptimizationFailureReason.NO_CALCULABLE_COMBINATION,
+            message="후보 선택 불가: 계산 가능한 조합이 없습니다.",
         )
 
     return best_result

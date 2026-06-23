@@ -12,18 +12,14 @@ from app.scripts.calculator_engine import (
 )
 from app.scripts.calculator_models import (
     REALM_TIER_SPECS,
-    TALISMAN_SPECS,
     BaseStats,
     DanjeonState,
     DistributionState,
-    EquippedState,
     FinalStats,
-    OwnedTalisman,
-    OwnedTitle,
+    OptimizationCandidateGroup,
     PowerMetric,
     RealmTier,
     StatKey,
-    TalismanSpec,
 )
 from app.scripts.character_data import (
     ADDITIONAL_OPTION_SPECS,
@@ -51,6 +47,7 @@ from app.scripts.character_models import (
     MAX_EQUIPPED_TALISMAN_COUNT,
     MAX_REFORGE_STEP,
     MAX_TALISMAN_LEVEL,
+    TALISMAN_SPECS,
     AdditionalLine,
     CharacterProfile,
     CharacterStore,
@@ -64,6 +61,7 @@ from app.scripts.character_models import (
     PotentialLine,
     ScrollTier,
     StatDistribution,
+    TalismanSpec,
 )
 
 CHARACTER_BASE_HP: float = 50.0
@@ -90,9 +88,7 @@ class CalculatorInputFill:
     realm_tier: RealmTier
     distribution: DistributionState
     danjeon: DanjeonState
-    owned_titles: list[OwnedTitle]
-    owned_talismans: list[OwnedTalisman]
-    equipped_state: EquippedState
+    candidate_groups: list[OptimizationCandidateGroup]
 
 
 def _character_base_stat_map(profile: CharacterProfile) -> dict[StatKey, float]:
@@ -1016,19 +1012,15 @@ def build_calculator_input_fill(
         use_reset=False,
     )
 
-    # 계산기 칭호·부적 입력 초기값 구성
-    owned_titles: list[OwnedTitle] = []
-    owned_talismans: list[OwnedTalisman] = []
-    equipped_state: EquippedState = EquippedState()
+    # 계산기 최적화 후보 그룹 초기값 구성
+    candidate_groups: list[OptimizationCandidateGroup] = []
     return CalculatorInputFill(
         overall_stats=overall_stats,
         level=profile.level,
         realm_tier=profile.realm,
         distribution=distribution,
         danjeon=danjeon,
-        owned_titles=owned_titles,
-        owned_talismans=owned_talismans,
-        equipped_state=equipped_state,
+        candidate_groups=candidate_groups,
     )
 
 

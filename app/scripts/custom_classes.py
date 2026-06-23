@@ -61,6 +61,7 @@ class KVInput(QFrame):
         value: str,
         connected_function: Callable[[], None],
         max_width: int = 120,
+        point_size: int = 14,
     ):
         super().__init__(parent)
 
@@ -74,7 +75,7 @@ class KVInput(QFrame):
         self.label.setAlignment(Qt.AlignmentFlag.AlignLeft)
 
         # lineEdit 생성
-        self.input = CustomLineEdit(self, connected_function, value)
+        self.input = CustomLineEdit(self, connected_function, value, point_size=point_size)
         self.input.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.input.setMaximumWidth(max_width)
 

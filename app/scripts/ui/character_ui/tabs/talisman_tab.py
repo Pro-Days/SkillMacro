@@ -18,15 +18,15 @@ from PySide6.QtWidgets import (
 
 from app.scripts.calculator_models import (
     STAT_SPECS,
-    TALISMAN_SPECS,
-    TalismanGrade,
-    TalismanSpec,
 )
 from app.scripts.character_models import (
     MAX_EQUIPPED_TALISMAN_COUNT,
     MAX_TALISMAN_LEVEL,
+    TALISMAN_SPECS,
     CharacterProfile,
     CharacterTalisman,
+    TalismanGrade,
+    TalismanSpec,
 )
 from app.scripts.custom_classes import CustomFont, StyledButton
 from app.scripts.ui.character_ui.change_handler import CharacterChangeHandler
