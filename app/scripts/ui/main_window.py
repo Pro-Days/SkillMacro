@@ -517,6 +517,10 @@ class MainWindow(QWidget):
         # 사이드바 재갱신
         self.sidebar.update_from_preset()
 
+        # 계산기 진입 후 생성된 무공비급 아이콘 재갱신
+        if self._sim_ui is not None:
+            self._sim_ui.input_page.editor.skills.refresh_icons()
+
     def _restore_window_geometry(self) -> None:
         """저장된 메인 창 위치와 크기 복원"""
 

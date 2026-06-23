@@ -1409,7 +1409,7 @@ def _compute_power_gradient(
         perturbed_skill_speed: float = float(
             perturbed_resolved.values[StatKey.SKILL_SPEED_PERCENT]
         )
-        if perturbed_skill_speed >= CALCULATOR_SKILL_SPEED_LIMIT_PERCENT:
+        if perturbed_skill_speed > CALCULATOR_SKILL_SPEED_LIMIT_PERCENT:
             gradient[stat_key] = float("-inf")
             continue
 
@@ -2480,9 +2480,9 @@ def evaluate_single_metric(
     skill_speed_percent: float = float(
         resolved_stats.values[StatKey.SKILL_SPEED_PERCENT]
     )
-    if skill_speed_percent >= CALCULATOR_SKILL_SPEED_LIMIT_PERCENT:
+    if skill_speed_percent > CALCULATOR_SKILL_SPEED_LIMIT_PERCENT:
         raise ValueError(
-            f"스킬속도는 {CALCULATOR_SKILL_SPEED_LIMIT_PERCENT:g}% 미만이어야 합니다."
+            f"스킬속도는 {CALCULATOR_SKILL_SPEED_LIMIT_PERCENT:g}% 이하여야 합니다."
         )
 
     # 공식 변수 선행 구성 후 대상 공식 하나만 직접 평가
@@ -2740,11 +2740,11 @@ def validate_power_formula_input_requirements(
     skill_speed_percent: float = float(
         resolved_stats.values[StatKey.SKILL_SPEED_PERCENT]
     )
-    if skill_speed_percent >= CALCULATOR_SKILL_SPEED_LIMIT_PERCENT:
+    if skill_speed_percent > CALCULATOR_SKILL_SPEED_LIMIT_PERCENT:
         return PowerFormulaInputValidation(
             is_valid=False,
             message=(
-                f"스킬속도는 {CALCULATOR_SKILL_SPEED_LIMIT_PERCENT:g}% 미만이어야 합니다."
+                f"스킬속도는 {CALCULATOR_SKILL_SPEED_LIMIT_PERCENT:g}% 이하여야 합니다."
             ),
         )
 
@@ -3632,7 +3632,7 @@ def _evaluate_distribution_selection(
     dist_skill_speed: float = float(dist_resolved.values[_FK_SKILL_SPEED_PERCENT])
     dist_speed_key: float = round(dist_skill_speed, 2)
     dist_timeline: TimelineEvaluationArtifacts | None = None
-    if dist_skill_speed < CALCULATOR_SKILL_SPEED_LIMIT_PERCENT:
+    if dist_skill_speed <= CALCULATOR_SKILL_SPEED_LIMIT_PERCENT:
         dist_timeline = timeline_cache.get(dist_speed_key)
         if dist_timeline is None:
             dist_timeline = _build_timeline_evaluation_artifacts(
@@ -3726,7 +3726,7 @@ def _evaluate_distribution_selection(
                 candidate_skill_speed: float = float(
                     optimized_resolved_stats.values[_FK_SKILL_SPEED_PERCENT]
                 )
-                if candidate_skill_speed >= CALCULATOR_SKILL_SPEED_LIMIT_PERCENT:
+                if candidate_skill_speed > CALCULATOR_SKILL_SPEED_LIMIT_PERCENT:
                     continue
 
                 speed_cache_key: float = round(candidate_skill_speed, 2)

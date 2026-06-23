@@ -2651,7 +2651,7 @@ class ResultsPage(QFrame):
                 StatKey.SKILL_SPEED_PERCENT
             ]
             custom_skill_speed_valid: bool = (
-                custom_skill_speed_percent < CALCULATOR_SKILL_SPEED_LIMIT_PERCENT
+                custom_skill_speed_percent <= CALCULATOR_SKILL_SPEED_LIMIT_PERCENT
             )
             self.custom_delta_inputs.inputs[
                 StatKey.SKILL_SPEED_PERCENT
@@ -2659,7 +2659,7 @@ class ResultsPage(QFrame):
             if not custom_skill_speed_valid:
                 self.last_input_error_message = (
                     f"스킬속도는 {CALCULATOR_SKILL_SPEED_LIMIT_PERCENT:g}% "
-                    "미만이어야 합니다."
+                    "이하여야 합니다."
                 )
                 return False
 
@@ -2712,7 +2712,7 @@ class ResultsPage(QFrame):
             boss_attack_input_valid: bool = boss_attack_multiplier > 0.0
             skill_damage_input_valid: bool = skill_damage_multiplier > 0.0
             skill_speed_input_valid: bool = (
-                skill_speed_percent < CALCULATOR_SKILL_SPEED_LIMIT_PERCENT
+                skill_speed_percent <= CALCULATOR_SKILL_SPEED_LIMIT_PERCENT
             )
             self.stats_inputs.inputs[StatKey.ATTACK].set_valid(attack_input_valid)
             self.stats_inputs.inputs[StatKey.FINAL_ATTACK_PERCENT].set_valid(
@@ -6172,6 +6172,7 @@ class SkillInputs(QFrame):
         # 아이템을 저장할 리스트
         self.entries: list[SkillInputs.Entry] = entries
         self.inputs: list[CustomLineEdit] = []
+        self._images: list[SkillImage] = []
         self.popup_manager: PopupManager = popup_manager
 
         # 초기 입력 목록 기준 그리드 구성
@@ -6209,6 +6210,7 @@ class SkillInputs(QFrame):
         # 새 장착 무공비급 입력 목록 반영
         self.entries = entries
         self.inputs = []
+        self._images = []
         self._rebuild_grid_items(connected_function)
 
     def _rebuild_grid_items(self, connected_function: Callable[[], None]) -> None:
@@ -6233,6 +6235,17 @@ class SkillInputs(QFrame):
 
             # 아이템 위젯을 리스트에 저장
             self.inputs.append(item_widget.input)
+            self._images.append(item_widget.image)
+
+    def refresh_icons(self) -> None:
+        """현재 테마 기준 무공비급 아이콘 갱신"""
+
+        # 캐시 갱신 이후 계산기 입력 아이콘 재요청
+        for entry, image in zip(self.entries, self._images, strict=True):
+            icon_pixmap: QPixmap = resource_registry.get_scroll_pixmap(
+                entry.scroll_id
+            )
+            image.setPixmap(icon_pixmap)
 
     class SkillInput(QFrame):
         def __init__(
@@ -6269,7 +6282,7 @@ class SkillInputs(QFrame):
             # 무공비급 아이콘 우선, 없으면 개별 스킬 아이콘 사용
             icon_size: int = level_input.sizeHint().height()
             icon_pixmap: QPixmap = resource_registry.get_scroll_pixmap(entry.scroll_id)
-            image: SkillImage = SkillImage(
+            self.image: SkillImage = SkillImage(
                 self,
                 icon_pixmap,
                 icon_size,
@@ -6277,7 +6290,7 @@ class SkillInputs(QFrame):
 
             # 계산기 무공비급 레벨 아이콘에 공용 호버 카드 연결
             self.popup_manager.bind_hover_card(
-                image,
+                self.image,
                 self._build_scroll_hover_card,
             )
 
@@ -6286,7 +6299,7 @@ class SkillInputs(QFrame):
 
             # layout에 추가
             grid.addWidget(label, 0, 0, 1, 2)
-            grid.addWidget(image, 1, 0)
+            grid.addWidget(self.image, 1, 0)
             grid.addWidget(level_input, 1, 1)
 
             # 위젯 사이 간격 설정
