@@ -1301,6 +1301,7 @@ class _CalculationInputConfirmOverlay(QFrame):
         # 입력 확인 카드 구성
         card_width: int = 400
         card_horizontal_margin: int = 24
+        content_width: int = card_width - card_horizontal_margin * 2
         container: QFrame = QFrame(self)
         container.setObjectName("calcOverlayCard")
         container.setFixedWidth(card_width)
@@ -1315,11 +1316,9 @@ class _CalculationInputConfirmOverlay(QFrame):
         message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         message_label.setWordWrap(True)
         message_label.setFont(CustomFont(12))
-
-        # 줄바꿈 라벨은 최소 높이를 따로 잡지 않으면 카드가 짧아져 내용이 잘린다
-        message_label.setMinimumHeight(
-            message_label.heightForWidth(card_width - card_horizontal_margin * 2)
-        )
+        message_label.setFixedWidth(content_width)
+        # 카드 내부 폭 기준 메시지 줄바꿈 높이 확보
+        message_label.setMinimumHeight(message_label.heightForWidth(content_width))
 
         # 주요 계산 입력 요약 그리드 구성 (요약 표시 시에만 구성)
         self._summary_grid: QGridLayout = QGridLayout()
