@@ -34,6 +34,9 @@ from app.scripts.calculator_models import (
     CalculatorPresetInput,
     DanjeonState,
     DistributionState,
+    OptimizationCandidateGroup,
+    OptimizationCandidateOption,
+    OptimizationCandidateStat,
     PowerMetric,
     RealmTier,
     STAT_SPECS,
@@ -1282,8 +1285,54 @@ class GuideManager:
             is_minimum=True,
         )
 
-        # 최적화 후보 그룹 없는 기본 예시 상태 구성
-        calculator_input.candidate_groups = []
+        # 후보 그룹 예시 구성 (목록 첫 그룹이 기본 선택됨)
+        calculator_input.candidate_groups = [
+            OptimizationCandidateGroup(
+                name="칭호",
+                selection_count=1,
+                candidates=[
+                    OptimizationCandidateOption(
+                        name="천외지재",
+                        stats=[
+                            OptimizationCandidateStat(StatKey.HP, 150),
+                            OptimizationCandidateStat(StatKey.STR, 4),
+                            OptimizationCandidateStat(StatKey.DEXTERITY, 4),
+                        ],
+                    ),
+                    OptimizationCandidateOption(
+                        name="원양어선",
+                        stats=[
+                            OptimizationCandidateStat(StatKey.DEXTERITY_PERCENT, 2),
+                            OptimizationCandidateStat(StatKey.STR_PERCENT, 2),
+                        ],
+                    ),
+                ],
+            ),
+            OptimizationCandidateGroup(
+                name="부적",
+                selection_count=3,
+                candidates=[
+                    OptimizationCandidateOption(
+                        name="혈화잔월",
+                        stats=[
+                            OptimizationCandidateStat(StatKey.SKILL_DAMAGE_PERCENT, 7),
+                        ],
+                    ),
+                    OptimizationCandidateOption(
+                        name="백야멸심화",
+                        stats=[
+                            OptimizationCandidateStat(StatKey.SKILL_DAMAGE_PERCENT, 11),
+                        ],
+                    ),
+                    OptimizationCandidateOption(
+                        name="수월중화",
+                        stats=[
+                            OptimizationCandidateStat(StatKey.HP, 175),
+                        ],
+                    ),
+                ],
+            ),
+        ]
         calculator_input.custom_stat_changes = {
             stat_key.value: 0.0 for stat_key in STAT_SPECS.keys()
         }
@@ -1591,7 +1640,7 @@ class GuideManager:
                     ),
                     GuideStep(
                         "후보 그룹 입력",
-                        "후보 그룹을 만들고 각 그룹에서 선택할 후보 개수를 설정합니다. 후보에는 원하는 스탯을 자유롭게 추가할 수 있습니다.",
+                        "후보 그룹을 만들고 각 그룹에서 선택할 후보 개수를 설정합니다. 각 후보 그룹별 최적 후보 선택 결과를 확인할 수 있습니다.",
                         "sim.input.candidates",
                         self._sim_input_page,
                     ),

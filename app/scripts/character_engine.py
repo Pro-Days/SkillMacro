@@ -16,7 +16,6 @@ from app.scripts.calculator_models import (
     DanjeonState,
     DistributionState,
     FinalStats,
-    OptimizationCandidateGroup,
     PowerMetric,
     RealmTier,
     StatKey,
@@ -88,7 +87,6 @@ class CalculatorInputFill:
     realm_tier: RealmTier
     distribution: DistributionState
     danjeon: DanjeonState
-    candidate_groups: list[OptimizationCandidateGroup]
 
 
 def _character_base_stat_map(profile: CharacterProfile) -> dict[StatKey, float]:
@@ -1012,15 +1010,12 @@ def build_calculator_input_fill(
         use_reset=False,
     )
 
-    # 계산기 최적화 후보 그룹 초기값 구성
-    candidate_groups: list[OptimizationCandidateGroup] = []
     return CalculatorInputFill(
         overall_stats=overall_stats,
         level=profile.level,
         realm_tier=profile.realm,
         distribution=distribution,
         danjeon=danjeon,
-        candidate_groups=candidate_groups,
     )
 
 

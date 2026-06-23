@@ -367,11 +367,8 @@ class SimUI:
         calculator_input.distribution = fill.distribution
         calculator_input.danjeon = fill.danjeon
 
-        # 계산기 후보 그룹은 캐릭터 합산 스탯과 중복되지 않도록 초기화
-        calculator_input.candidate_groups = fill.candidate_groups
-
         save_data()
-        self.input_page.editor.load_from_preset_state()
+        self.input_page.editor.apply_character_fill_inputs()
         self.update_nav(0)
         self.stacked_layout.setCurrentIndex(0)
         self.adjust_main_frame_height()
@@ -387,7 +384,7 @@ class SimUI:
             self.update_nav(0)
             self.adjust_main_frame_height()
 
-        self.input_page.editor.load_from_preset_state()
+        self.input_page.editor.on_calculator_enter()
 
     def change_layout(self, index: int) -> None:
         # 캐릭터 탭은 검증/계산 없이 즉시 전환
@@ -2207,9 +2204,7 @@ class ResultsPage(QFrame):
             cancel_checker=cancel_checker,
         )
         if isinstance(candidate_selection_result, OptimizationFailure):
-            candidate_selection_rows = [
-                ("상태", candidate_selection_result.message)
-            ]
+            candidate_selection_rows = [("상태", candidate_selection_result.message)]
         elif candidate_selection_result is not None:
             candidate_selection_base_stats = candidate_selection_result.base_stats
             candidate_selection_rows = [
@@ -2219,9 +2214,7 @@ class ResultsPage(QFrame):
                 )
             ]
             for group_selection in candidate_selection_result.group_selections:
-                selected_text: str = ", ".join(
-                    group_selection.selected_candidate_names
-                )
+                selected_text: str = ", ".join(group_selection.selected_candidate_names)
                 if not selected_text:
                     selected_text = "선택된 후보 없음"
 
@@ -2413,6 +2406,12 @@ class ResultsPage(QFrame):
             self._is_persist_enabled: bool = True
             self.last_input_error_message: str | None = None
             self.popup_manager: PopupManager = popup_manager
+
+            # 마지막으로 전체 로드한 계산기 입력 객체와 그때의 장착 무공비급 목록
+            # 재진입 시 입력 객체 교체(프리셋 변경/가이드) 여부와
+            # 장착 목록 변경 여부 판별에 사용
+            self._loaded_calculator_input: "CalculatorPresetInput | None" = None
+            self._loaded_equipped_scrolls: tuple[str, ...] = ()
 
             # 전투력 선택지와 경지 선택지 순서 구성
             calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
@@ -2821,29 +2820,104 @@ class ResultsPage(QFrame):
             return any(attack.damage > 0.0 for attack in damage_events)
 
         def load_from_preset_state(self) -> None:
-            """저장된 계산기 상태를 현재 입력 위젯에 반영"""
+            """저장된 계산기 상태 전체를 현재 입력 위젯에 반영"""
 
             # 프리셋 반영 중 입력 이벤트 기반 저장/재계산 억제
             self._is_loading_state = True
             calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
+
+            self._load_metric_input(calculator_input)
+            self._load_level_realm_inputs(calculator_input)
+            self._load_overall_stat_inputs()
+            self._load_custom_delta_inputs(calculator_input)
+            self._load_scroll_inputs()
+            self._sync_loaded_input_validation()
+            self._load_distribution_danjeon_inputs()
+            self.candidate_group_inputs.load(calculator_input.candidate_groups)
+
+            # 이번 전체 로드 기준 계산기 입력 객체와 장착 무공비급 목록 기록
+            self._loaded_calculator_input = calculator_input
+            self._is_loading_state = False
+
+        def on_calculator_enter(self) -> None:
+            """계산기 재진입 시 변경된 부분만 입력 위젯에 반영
+
+            계산기 입력 객체가 교체된 경우(프리셋 변경/가이드 예시·복원)에만
+            전체 로드하고, 같은 입력 객체면 메인 화면에서 바뀔 수 있는
+            장착 무공비급 목록 변경만 갱신한다.
+            """
+
+            # 계산기 입력 객체가 교체됐으면(프리셋 변경/가이드) 후보 그룹 포함 전체 로드
+            if self._loaded_calculator_input is not self._get_preset().info.calculator:
+                self.load_from_preset_state()
+                return
+
+            # 같은 입력 객체면 장착 무공비급 목록 변경 여부만 확인
+            current_scrolls: tuple[str, ...] = tuple(
+                self._get_preset().skills.equipped_scrolls
+            )
+            if current_scrolls == self._loaded_equipped_scrolls:
+                return
+
+            # 장착 목록이 달라졌으면 무공비급 입력 위젯만 재구성
+            self._is_loading_state = True
+            self._load_scroll_inputs()
+            self._read_scroll_levels(save_levels=False)
+            self._is_loading_state = False
+
+        def apply_character_fill_inputs(self) -> None:
+            """캐릭터 적용 결과를 스탯/레벨/경지/분배/단전 입력에만 반영
+
+            무공비급 입력과 후보 그룹은 건드리지 않는다.
+            """
+
+            self._is_loading_state = True
+            calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
+
+            self._load_level_realm_inputs(calculator_input)
+            self._load_overall_stat_inputs()
+            self._load_distribution_danjeon_inputs()
+            self._sync_loaded_input_validation()
+            self._is_loading_state = False
+
+        def _load_metric_input(self, calculator_input: CalculatorPresetInput) -> None:
+            """기준 전투력 공식 입력 복원"""
+
             self._refresh_formula_options()
             self.metric_combobox.setCurrentIndex(
                 self.metric_options.index(calculator_input.selected_formula_id)
             )
+
+        def _load_level_realm_inputs(
+            self, calculator_input: CalculatorPresetInput
+        ) -> None:
+            """레벨/경지 입력 복원"""
+
             self.level_input.setText(str(calculator_input.level))
             self.realm_combobox.setCurrentIndex(
                 self.realm_options.index(calculator_input.realm_tier)
             )
 
-            # 저장된 원시 베이스 스탯의 최종 표시값 복원
+        def _load_overall_stat_inputs(self) -> None:
+            """저장된 원시 베이스 스탯의 최종 표시값 복원"""
+
             display_base_stats: dict[StatKey, str] = self._get_initial_base_stats()
             for stat_key in STAT_SPECS.keys():
                 self.stats_inputs.inputs[stat_key].setText(display_base_stats[stat_key])
+
+        def _load_custom_delta_inputs(
+            self, calculator_input: CalculatorPresetInput
+        ) -> None:
+            """추가 스탯 변화 입력 복원"""
+
+            for stat_key in STAT_SPECS.keys():
                 self.custom_delta_inputs.inputs[stat_key].setText(
                     f"{calculator_input.custom_stat_changes[stat_key.value]:g}"
                 )
 
-            # 현재 장착 무공비급 기준 입력칸 재구성
+        def _load_scroll_inputs(self) -> None:
+            """현재 장착 무공비급 기준 입력칸 재구성 및 저장 레벨 반영"""
+
             self.skills.rebuild_entries(
                 SkillInputs.build_entries(),
                 self.on_base_input_changed,
@@ -2855,7 +2929,14 @@ class ResultsPage(QFrame):
                     str(self._get_preset().info.get_scroll_level(entry.scroll_id))
                 )
 
-            # 로드된 입력값 기준 검증 스타일 동기화
+            # 이번에 반영한 장착 무공비급 목록 기록
+            self._loaded_equipped_scrolls = tuple(
+                self._get_preset().skills.equipped_scrolls
+            )
+
+        def _sync_loaded_input_validation(self) -> None:
+            """로드된 입력값 기준 검증 스타일 동기화"""
+
             stats_valid: bool
             base_stats: BaseStats
             stats_valid, base_stats = self._read_base_stats()
@@ -2864,9 +2945,6 @@ class ResultsPage(QFrame):
             self._read_scroll_levels(save_levels=False)
             if stats_valid:
                 self._has_valid_attack_inputs(base_stats)
-
-            self._load_optimization_inputs()
-            self._is_loading_state = False
 
         class OverallStatInputs(QFrame):
             COLUMN_COUNT: int = 4
@@ -3135,8 +3213,8 @@ class ResultsPage(QFrame):
             ]
             return selected_formula_id
 
-        def _load_optimization_inputs(self) -> None:
-            """저장된 최적화 입력 상태 로드"""
+        def _load_distribution_danjeon_inputs(self) -> None:
+            """저장된 분배/단전 입력 상태 로드"""
 
             calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
             self.distribution_inputs.inputs["strength"].setText(
@@ -3201,7 +3279,6 @@ class ResultsPage(QFrame):
             self.target_danjeon_inputs.minimum_checkbox.setChecked(
                 calculator_input.target_danjeon.is_minimum
             )
-            self.candidate_group_inputs.load(calculator_input.candidate_groups)
 
         @staticmethod
         def _read_integer_inputs(
@@ -3546,7 +3623,9 @@ class ResultsPage(QFrame):
             if selection_dialog.exec() != QDialog.DialogCode.Accepted:
                 self._ocr_btn.setText("선택 취소")
                 self._is_ocr_running = False
-                QTimer.singleShot(2000, lambda: self._ocr_btn.setText("화면에서 불러오기"))
+                QTimer.singleShot(
+                    2000, lambda: self._ocr_btn.setText("화면에서 불러오기")
+                )
                 return
 
             selected_rect: QRect = selection_dialog.selected_rect()  # type: ignore[assignment]
@@ -3593,7 +3672,9 @@ class ResultsPage(QFrame):
 
                 self._ocr_btn.setText("적용 취소")
                 self._is_ocr_running = False
-                QTimer.singleShot(2000, lambda: self._ocr_btn.setText("화면에서 불러오기"))
+                QTimer.singleShot(
+                    2000, lambda: self._ocr_btn.setText("화면에서 불러오기")
+                )
                 return
 
             stats = review_dialog.confirmed_stats()

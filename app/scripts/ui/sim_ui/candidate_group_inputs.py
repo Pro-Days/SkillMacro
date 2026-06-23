@@ -873,7 +873,7 @@ class CandidateGroupInputs(QFrame):
             item: QLayoutItem = self.candidate_list_layout.takeAt(0)
             widget: QWidget | None = item.widget()
             if widget is not None:
-                widget.setParent(None)
+                widget.hide()
         if self._selected_group is not None:
             if (
                 self._selected_group.selected_candidate
@@ -891,6 +891,7 @@ class CandidateGroupInputs(QFrame):
                     candidate_card is self._selected_group.selected_candidate
                 )
                 self.candidate_list_layout.addWidget(list_item)
+                list_item.show()
         self.add_candidate_button.setEnabled(self._selected_group is not None)
 
         # 상세 패널 표시 전환
