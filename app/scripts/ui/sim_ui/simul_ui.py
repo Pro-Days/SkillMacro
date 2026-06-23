@@ -1274,6 +1274,8 @@ class _CalculationOverlay(QFrame):
 
 class _CalculationInputConfirmOverlay(QFrame):
     _SUMMARY_VALUE_WIDTH: int = 250
+    _CANDIDATE_GROUP_VISIBLE_LIMIT: int = 4
+    _CANDIDATE_GROUP_TRUNCATED_LIMIT: int = 3
 
     def __init__(
         self,
@@ -1302,6 +1304,7 @@ class _CalculationInputConfirmOverlay(QFrame):
         container: QFrame = QFrame(self)
         container.setObjectName("calcOverlayCard")
         container.setFixedWidth(card_width)
+        self._container: QFrame = container
 
         title_label: QLabel = QLabel(title, container)
         title_label.setObjectName("calcOverlayTitle")
@@ -1410,9 +1413,24 @@ class _CalculationInputConfirmOverlay(QFrame):
 
             # 줄바꿈 값 라벨은 텍스트 적용 후 최소 높이를 잡아야 카드가 잘리지 않는다
             for value_label in self._value_labels.values():
+                value_label.setMinimumHeight(0)
                 value_label.setMinimumHeight(
                     value_label.heightForWidth(self._SUMMARY_VALUE_WIDTH)
                 )
+
+            # 이전 표시 높이 제거 및 현재 요약 기준 카드 크기 재계산
+            self._container.setMinimumHeight(0)
+            container_layout: QLayout | None = self._container.layout()
+            if container_layout is not None:
+                container_layout.invalidate()
+                container_layout.activate()
+
+            overlay_layout: QLayout | None = self.layout()
+            if overlay_layout is not None:
+                overlay_layout.invalidate()
+                overlay_layout.activate()
+
+            self._container.adjustSize()
 
         # 최상단 확인 오버레이 표시
         self.show()
@@ -1509,11 +1527,26 @@ class _CalculationInputConfirmOverlay(QFrame):
 
         # 그룹별 선택 개수와 후보 수 요약
         summary_lines: list[str] = []
-        for candidate_group in candidate_groups:
+        visible_candidate_groups: list[OptimizationCandidateGroup] = candidate_groups
+        if (
+            len(candidate_groups)
+            > _CalculationInputConfirmOverlay._CANDIDATE_GROUP_VISIBLE_LIMIT
+        ):
+            visible_candidate_groups = candidate_groups[
+                : _CalculationInputConfirmOverlay._CANDIDATE_GROUP_TRUNCATED_LIMIT
+            ]
+
+        for candidate_group in visible_candidate_groups:
             summary_lines.append(
                 f"{candidate_group.name}: 선택 {candidate_group.selection_count}개 / "
                 f"후보 {len(candidate_group.candidates)}개"
             )
+
+        if (
+            len(candidate_groups)
+            > _CalculationInputConfirmOverlay._CANDIDATE_GROUP_VISIBLE_LIMIT
+        ):
+            summary_lines.append("...")
 
         return "\n".join(summary_lines)
 
