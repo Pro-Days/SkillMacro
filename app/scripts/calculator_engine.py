@@ -177,6 +177,12 @@ _GRADIENT_EXACT_THRESHOLD: int = 500
 # 계산기 전투력 공식 스킬속도 상한
 CALCULATOR_SKILL_SPEED_LIMIT_PERCENT: float = 70.0
 
+# 60초 피해량 계산 입력 부족 안내
+TIMELINE_DAMAGE_INPUT_ERROR_MESSAGE: str = (
+    "60초 피해량 계산에 필요한 공격 정보가 없습니다.\n"
+    "평타 사용 설정 또는 스킬 데미지 입력 후 다시 시도해주세요."
+)
+
 # 내장 공식 추가 입력 변수 이름
 _POWER_FORMULA_LEVEL_NAME: str = "level"
 _POWER_FORMULA_BOSS_DAMAGE_NAME: str = "boss_damage"
@@ -2722,7 +2728,7 @@ def validate_power_formula_input_requirements(
     ):
         return PowerFormulaInputValidation(
             is_valid=False,
-            message="60초 피해량 계산에 필요한 공격 정보가 없습니다.\n평타 사용 설정 또는 스킬 데미지 입력 후 다시 시도해주세요.",
+            message=TIMELINE_DAMAGE_INPUT_ERROR_MESSAGE,
         )
 
     # 스킬 슬롯 변수 참조 공식의 현재 레벨 데미지 요구 조건 확인
