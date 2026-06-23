@@ -60,6 +60,7 @@ from app.scripts.calculator_engine import (
     build_calculator_timeline,
     build_damage_events,
     build_internal_base_stats,
+    evaluate_official_power,
     evaluate_arbitrary_stat_delta,
     evaluate_level_up_delta,
     evaluate_next_realm_delta,
@@ -976,11 +977,6 @@ class OcrReviewDialog(QDialog):
         root_layout.setContentsMargins(20, 20, 20, 16)
         root_layout.setSpacing(12)
 
-        self._status_label: QLabel = QLabel("", self)
-        self._status_label.setFont(CustomFont(9))
-        self._status_label.setWordWrap(True)
-        self._status_label.hide()
-
         result_card: QFrame = QFrame(self)
         result_card.setObjectName("dialogCard")
         result_layout: QVBoxLayout = QVBoxLayout(result_card)
@@ -1012,7 +1008,11 @@ class OcrReviewDialog(QDialog):
                 label_widget: QLabel = QLabel(STAT_SPECS[stat_key], cell_widget)
                 label_widget.setFont(CustomFont(10))
 
-                value_text: str = "0" if candidate is None else f"{candidate.value:,}"
+                # OCR 후보값의 음수 오인식 0 정규화
+                candidate_value: float = (
+                    0.0 if candidate is None else max(candidate.value, 0.0)
+                )
+                value_text: str = f"{candidate_value:,g}"
                 value_input: CustomLineEdit = CustomLineEdit(
                     cell_widget,
                     text=value_text,
@@ -1033,8 +1033,33 @@ class OcrReviewDialog(QDialog):
                 grid.addWidget(cell_widget, row_index, col)
 
         result_layout.addLayout(grid)
+
+        # 검토 중인 스탯값 기준 공식 전투력 미리보기 구성
+        power_row: QHBoxLayout = QHBoxLayout()
+        power_row.setContentsMargins(0, 10, 0, 0)
+        power_row.setSpacing(8)
+
+        power_label: QLabel = QLabel("공식 전투력", result_card)
+        power_label.setFont(CustomFont(10, bold=True))
+
+        self._power_value_label = QLabel("0", result_card)
+        self._power_value_label.setFont(CustomFont(12, bold=True))
+        self._power_value_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+
+        power_row.addWidget(power_label)
+        power_row.addStretch(1)
+        power_row.addWidget(self._power_value_label)
+        result_layout.addLayout(power_row)
+
+        power_hint_label: QLabel = QLabel(
+            "게임에 표시된 공식 전투력과 비교해 인식값이 맞는지 확인하세요.",
+            result_card,
+        )
+        power_hint_label.setFont(CustomFont(9))
+        power_hint_label.setWordWrap(True)
+        result_layout.addWidget(power_hint_label)
+
         root_layout.addWidget(result_card)
-        root_layout.addWidget(self._status_label)
 
         btn_row: QHBoxLayout = QHBoxLayout()
         btn_row.setContentsMargins(0, 0, 0, 0)
@@ -1059,13 +1084,14 @@ class OcrReviewDialog(QDialog):
         confirm_btn.setFont(CustomFont(11))
         confirm_btn.setFixedHeight(36)
         confirm_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        confirm_btn.clicked.connect(self._accept_with_validation)
+        confirm_btn.clicked.connect(self.accept)
 
         btn_row.addWidget(cancel_btn)
         btn_row.addWidget(retry_btn)
         btn_row.addWidget(confirm_btn)
         root_layout.addLayout(btn_row)
 
+        self._update_power_preview()
         self.adjustSize()
         self.setFixedSize(self.size())
 
@@ -1074,8 +1100,9 @@ class OcrReviewDialog(QDialog):
 
         confirmed: dict[StatKey, float] = {}
         for stat_key in OVERALL_STAT_ORDER:
-            value_text: str = self._value_inputs[stat_key].text().strip()
-            confirmed[stat_key] = self._parse_value_text(value_text)  # type: ignore[assignment]
+            confirmed[stat_key] = self._normalize_ocr_value_text(
+                self._value_inputs[stat_key].text()
+            )
 
         return confirmed
 
@@ -1090,59 +1117,60 @@ class OcrReviewDialog(QDialog):
         self._retry_requested = True
         self.reject()
 
-    def _accept_with_validation(self) -> None:
-        """선택된 행의 수치를 검증한 뒤 다이얼로그를 닫음"""
-
-        invalid_keys: list[StatKey] = []
-
-        for stat_key in OVERALL_STAT_ORDER:
-            value_input = self._value_inputs[stat_key]
-            value_input.set_valid(True)
-
-            if self._parse_value_text(value_input.text()) is not None:
-                continue
-
-            value_input.set_valid(False)
-            invalid_keys.append(stat_key)
-
-        if invalid_keys:
-            first_invalid: StatKey = invalid_keys[0]
-            self._value_inputs[first_invalid].setFocus()
-            self._show_status(f"{STAT_SPECS[first_invalid]} 값을 숫자로 입력하세요.")
-            return
-
-        self._status_label.hide()
-        self.accept()
-
     def _on_value_changed(self, stat_key: StatKey) -> None:
-        """수동 수정 시 체크 상태와 입력 유효성 표시를 정리"""
+        """수동 수정 시 OCR 입력값과 전투력 미리보기 갱신"""
 
+        # 수정된 OCR 입력칸의 적용 가능한 숫자 정규화
+        self._normalize_value_input(stat_key)
+        self._update_power_preview()
+
+    def _update_power_preview(self) -> None:
+        """검토 중인 스탯값 기준 공식 전투력 표시 갱신"""
+
+        # 계산기와 같은 내부 원시 스탯 환산 경로로 공식 전투력 계산
+        preview_base_stats: BaseStats = BaseStats.from_stat_map(self.confirmed_stats())
+        internal_base_stats: BaseStats = build_internal_base_stats(preview_base_stats)
+
+        official_power: float = evaluate_official_power(internal_base_stats.resolve())
+
+        self._power_value_label.setText(f"{official_power:,.0f}")
+
+    def _normalize_value_input(self, stat_key: StatKey) -> None:
+        """OCR 스탯 입력칸의 적용값 기준 텍스트 정규화"""
+
+        # 입력 텍스트의 0 보정 필요 여부 확인
         value_input = self._value_inputs[stat_key]
-        value_input.set_valid(True)
+        sanitized_text: str = value_input.text().strip().replace(",", "")
+        if not sanitized_text:
+            value_input.setText("0")
 
-        if self._status_label.isHidden():
             return
 
-        self._status_label.hide()
+        try:
+            parsed_value: float = float(sanitized_text)
+        except ValueError:
+            value_input.setText("0")
 
-    def _show_status(self, message: str) -> None:
-        """검토 다이얼로그 하단에 검증 메시지 표시"""
+            return
 
-        self._status_label.setText(message)
-        self._status_label.show()
+        # OCR 스탯값의 게임 표시 불가능 음수 입력 보정
+        if not parsed_value >= 0.0:
+            value_input.setText("0")
 
     @staticmethod
-    def _parse_value_text(text: str) -> float | None:
-        """사용자 입력 수치를 float 으로 정규화"""
+    def _normalize_ocr_value_text(text: str) -> float:
+        """OCR 입력 텍스트의 적용값 정규화"""
 
         sanitized_text: str = text.strip().replace(",", "")
         if not sanitized_text:
             return 0.0
 
         try:
-            return float(sanitized_text)
+            parsed_value: float = float(sanitized_text)
         except ValueError:
-            return None
+            return 0.0
+
+        return max(parsed_value, 0.0)
 
 
 class _CalculationOverlay(QFrame):
@@ -2681,9 +2709,9 @@ class ResultsPage(QFrame):
             custom_skill_speed_valid: bool = (
                 custom_skill_speed_percent <= CALCULATOR_SKILL_SPEED_LIMIT_PERCENT
             )
-            self.custom_delta_inputs.inputs[
-                StatKey.SKILL_SPEED_PERCENT
-            ].set_valid(custom_skill_speed_valid)
+            self.custom_delta_inputs.inputs[StatKey.SKILL_SPEED_PERCENT].set_valid(
+                custom_skill_speed_valid
+            )
             if not custom_skill_speed_valid:
                 self.last_input_error_message = (
                     f"스킬속도는 {CALCULATOR_SKILL_SPEED_LIMIT_PERCENT:g}% "
@@ -6294,9 +6322,7 @@ class SkillInputs(QFrame):
 
         # 캐시 갱신 이후 계산기 입력 아이콘 재요청
         for entry, image in zip(self.entries, self._images, strict=True):
-            icon_pixmap: QPixmap = resource_registry.get_scroll_pixmap(
-                entry.scroll_id
-            )
+            icon_pixmap: QPixmap = resource_registry.get_scroll_pixmap(entry.scroll_id)
             image.setPixmap(icon_pixmap)
 
     class SkillInput(QFrame):
