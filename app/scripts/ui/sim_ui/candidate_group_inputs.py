@@ -631,6 +631,28 @@ class CandidateGroupInputs(QFrame):
         self.setLayout(root_layout)
         self.refresh_options()
 
+    @staticmethod
+    def _next_available_numbered_name(prefix: str, existing_names: set[str]) -> str:
+        """번호형 기본명 중 사용 가능한 가장 낮은 이름 생성"""
+
+        # 현재 기본명 규칙과 일치하는 양수 번호 수집
+        used_numbers: set[int] = set()
+        marker: str = f"{prefix} "
+        for existing_name in existing_names:
+            if not existing_name.startswith(marker):
+                continue
+
+            suffix: str = existing_name.removeprefix(marker)
+            if suffix.isdecimal() and int(suffix) >= 1:
+                used_numbers.add(int(suffix))
+
+        # 1부터 시작해 비어 있는 첫 번호 선택
+        number: int = 1
+        while number in used_numbers:
+            number += 1
+
+        return f"{prefix} {number}"
+
     def _on_value_changed(self) -> None:
         """값 입력 변경 처리"""
 
@@ -685,7 +707,12 @@ class CandidateGroupInputs(QFrame):
         """후보 그룹 추가"""
 
         # 그룹 항목과 상태 등록 (신규 그룹은 빈 그룹명 방지를 위해 기본명 부여)
-        default_name: str = f"후보 그룹 {len(self._groups) + 1}"
+        existing_names: set[str] = {
+            group_state.item.build_group_header()[0] for group_state in self._groups
+        }
+        default_name: str = self._next_available_numbered_name(
+            "후보 그룹", existing_names
+        )
         item = CandidateGroupInputs.GroupListItem(
             self.group_scroll_content,
             self.select_group,
@@ -769,7 +796,13 @@ class CandidateGroupInputs(QFrame):
         )
         if target_group is None:
             return
-        default_name: str = f"후보 {len(target_group.candidates) + 1}"
+
+        # 선택 그룹 내 기존 후보명과 겹치지 않는 기본명 부여
+        existing_names: set[str] = {
+            candidate_card.get_display_name()
+            for candidate_card in target_group.candidates
+        }
+        default_name: str = self._next_available_numbered_name("후보", existing_names)
         card = CandidateGroupInputs.CandidateCard(
             self.detail_stack_host,
             self._on_value_changed,
