@@ -32,11 +32,11 @@ import ast
 import heapq
 import os
 import random
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wait
 from dataclasses import dataclass, field
 from enum import Enum
-from itertools import combinations
+from itertools import combinations, product
 from math import floor
 from multiprocessing.process import BaseProcess
 from typing import TYPE_CHECKING, NoReturn, TypeVar, cast
@@ -3397,36 +3397,37 @@ def _build_single_group_candidate_entries(
     return group_entries
 
 
-def _build_candidate_group_entries(
+def _build_candidate_group_entry_lists(
     calculator_input: CalculatorPresetInput,
-) -> list[tuple[tuple[OptimizationCandidateGroupSelection, ...], Contribution]]:
-    """전체 후보 그룹 선택 조합 생성"""
+) -> list[list[tuple[OptimizationCandidateGroupSelection, Contribution]]]:
+    """그룹별 후보 선택 조합 목록 생성"""
 
-    # 그룹별 선택 조합을 순차 병합하며 중복 기여 정리
-    combined_entries: list[
-        tuple[tuple[OptimizationCandidateGroupSelection, ...], Contribution]
-    ] = [((), Contribution())]
-    for group in calculator_input.candidate_groups:
-        group_entries: list[tuple[OptimizationCandidateGroupSelection, Contribution]] = (
-            _deduplicate_contribution_entries(
-                _build_single_group_candidate_entries(group)
-            )
+    # 그룹 단위로만 동일 기여를 정리해 전체 조합 사전 생성을 회피
+    return [
+        _deduplicate_contribution_entries(
+            _build_single_group_candidate_entries(group)
         )
-        merged_entries: list[
-            tuple[tuple[OptimizationCandidateGroupSelection, ...], Contribution]
-        ] = []
-        for selected_groups, selected_contribution in combined_entries:
-            for group_selection, group_contribution in group_entries:
-                merged_entries.append(
-                    (
-                        selected_groups + (group_selection,),
-                        selected_contribution.merge(group_contribution),
-                    )
-                )
+        for group in calculator_input.candidate_groups
+    ]
 
-        combined_entries = _deduplicate_contribution_entries(merged_entries)
 
-    return combined_entries
+def _iterate_candidate_group_entries(
+    group_entry_lists: list[
+        list[tuple[OptimizationCandidateGroupSelection, Contribution]]
+    ],
+) -> Iterator[tuple[tuple[OptimizationCandidateGroupSelection, ...], Contribution]]:
+    """그룹별 후보 조합을 하나씩 지연 생성"""
+
+    # 그룹별 선택 조합의 데카르트 곱을 지연 생성하며 기여를 병합
+    for combination in product(*group_entry_lists):
+        group_selections: tuple[OptimizationCandidateGroupSelection, ...] = tuple(
+            group_selection for group_selection, _ in combination
+        )
+        contribution: Contribution = Contribution()
+        for _, group_contribution in combination:
+            contribution = contribution.merge(group_contribution)
+
+        yield group_selections, contribution
 
 
 def _deduplicate_contribution_entries(
@@ -4018,7 +4019,7 @@ def optimize_current_selection(
                     best_metric_delta = delta
                     best_result = result
 
-            # 직렬 탐색 진행률 반영
+            # 직렬 탐색 진행률 반영 (0% -> 95% 구간)
             if progress_callback is not None:
                 progress_value: int = 5 + int(
                     (completed_sub_ranges / total_sub_ranges) * 90
@@ -4062,7 +4063,7 @@ def optimize_current_selection(
                             best_metric_delta = delta
                             best_result = result
 
-                    # 병렬 탐색 진행률 반영
+                    # 병렬 탐색 진행률 반영 (0% -> 95% 구간)
                     if progress_callback is not None:
                         progress_value: int = 5 + int(
                             (completed_sub_ranges / total_sub_ranges) * 90
@@ -4090,7 +4091,7 @@ def optimize_current_selection(
     return best_result
 
 
-def select_candidate_groups(
+def _candidate_selection_worker(
     server_spec: "ServerSpec",
     preset: "MacroPreset",
     skills_info: dict[str, "SkillUsageSetting"],
@@ -4099,24 +4100,13 @@ def select_candidate_groups(
     base_stats: BaseStats,
     calculator_input: CalculatorPresetInput,
     target_formula_id: str,
-    cancel_checker: Callable[[], None],
-    progress_callback: Callable[[str, int], None] | None = None,
-) -> CandidateGroupSelectionResult | OptimizationFailure | None:
-    """현재 입력 기준 후보 그룹 선택 결과 계산"""
+) -> CandidateGroupSelectionResult | OptimizationFailure:
+    """후보 그룹 선택 결과 계산 본문 (자식 프로세스 실행)"""
 
-    # 후보 그룹 부재 시 별도 섹션 계산 생략
-    if not calculator_input.candidate_groups:
-        return None
-
-    cancel_checker()
-
-    if progress_callback is not None:
-        progress_callback("후보 선택 결과 계산 중...", 95)
-
-    # 후보 그룹 조합 기여 사전 계산 및 동일 기여 정리
-    candidate_group_entries: list[
-        tuple[tuple[OptimizationCandidateGroupSelection, ...], Contribution]
-    ] = _build_candidate_group_entries(calculator_input)
+    # 그룹별 후보 조합만 미리 생성 (전체 조합 리스트 미보유)
+    group_entry_lists: list[
+        list[tuple[OptimizationCandidateGroupSelection, Contribution]]
+    ] = _build_candidate_group_entry_lists(calculator_input)
 
     # 현재 입력 타임라인 캐시 시드 구성
     timeline_cache: dict[float, TimelineEvaluationArtifacts] = {
@@ -4126,11 +4116,21 @@ def select_candidate_groups(
         ): context.timeline_artifacts
     }
 
-    # 후보 그룹 조합별 전투력 변화 비교
+    # 후보 그룹 조합을 하나씩 순회하며 전투력 변화 비교
     best_result: CandidateGroupSelectionResult | None = None
     best_metric_delta: float | None = None
-    for group_selections, contribution in candidate_group_entries:
-        cancel_checker()
+    seen_signatures: set[tuple[tuple[str, float], ...]] = set()
+    for group_selections, contribution in _iterate_candidate_group_entries(
+        group_entry_lists
+    ):
+        # 동일 기여 조합은 평가 생략
+        signature: tuple[tuple[str, float], ...] = _build_contribution_signature(
+            contribution
+        )
+        if signature in seen_signatures:
+            continue
+
+        seen_signatures.add(signature)
 
         candidate_base_stats: BaseStats = contribution.apply_to(base_stats)
         candidate_final_stats: FinalStats = candidate_base_stats.resolve()
@@ -4183,3 +4183,64 @@ def select_candidate_groups(
         )
 
     return best_result
+
+
+def select_candidate_groups(
+    server_spec: "ServerSpec",
+    preset: "MacroPreset",
+    skills_info: dict[str, "SkillUsageSetting"],
+    delay_ms: int,
+    context: EvaluationContext,
+    base_stats: BaseStats,
+    calculator_input: CalculatorPresetInput,
+    target_formula_id: str,
+    cancel_checker: Callable[[], None],
+    progress_callback: Callable[[str, int], None] | None = None,
+) -> CandidateGroupSelectionResult | OptimizationFailure | None:
+    """현재 입력 기준 후보 그룹 선택 결과 계산"""
+
+    # 후보 그룹 부재 시 별도 섹션 계산 생략
+    if not calculator_input.candidate_groups:
+        return None
+
+    cancel_checker()
+
+    if progress_callback is not None:
+        progress_callback("후보 선택 결과 계산 중...", 95)
+
+    # GUI 스레드 GIL 점유를 피하기 위해 후보 평가를 자식 프로세스에서 실행
+    pool: ProcessPoolExecutor = ProcessPoolExecutor(max_workers=1)
+    should_wait_for_pool: bool = True
+    try:
+        future: Future[CandidateGroupSelectionResult | OptimizationFailure] = (
+            pool.submit(
+                _candidate_selection_worker,
+                server_spec,
+                preset,
+                skills_info,
+                delay_ms,
+                context,
+                base_stats,
+                calculator_input,
+                target_formula_id,
+            )
+        )
+
+        # 취소 응답성을 0.1초 주기로 확보
+        while not future.done():
+            cancel_checker()
+            wait([future], timeout=0.1)
+
+        return future.result()
+    except BaseException:
+        # 취소 또는 예외 발생 시 실행 중인 워커 계산 즉시 종료
+        should_wait_for_pool = False
+        raise
+    finally:
+        if not should_wait_for_pool:
+            _terminate_process_pool_workers(pool)
+
+        pool.shutdown(
+            wait=should_wait_for_pool,
+            cancel_futures=not should_wait_for_pool,
+        )
