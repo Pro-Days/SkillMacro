@@ -1,0 +1,14 @@
+{
+  "cases": [
+    {
+      "name": "예시 풀장착 60초 타임라인",
+      "basis": "코드 스냅샷 (v1.1.0 기준)",
+      "delay_ms": 300,
+      "expected": {
+        "hit_event_count": 144,
+        "boss_damage_power": 42298723.81,
+        "normal_damage_power": 30213374.15
+      }
+    }
+  ]
+}
