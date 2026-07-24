@@ -1,0 +1,778 @@
+{
+  "cases": [
+    {
+      "name": "칭호+부적+단전 기본 조합",
+      "basis": "코드 스냅샷 (v1.1.0 기준)",
+      "profile": {
+        "id": "profile1",
+        "name": "캐릭터1",
+        "level": 10,
+        "realm": "second_rate",
+        "vip": true,
+        "distribution": {
+          "strength": 10,
+          "dexterity": 5,
+          "vitality": 3,
+          "luck": 2
+        },
+        "danjeon": {
+          "upper": 1,
+          "middle": 1,
+          "lower": 0
+        },
+        "titles": [
+          {
+            "id": "title1",
+            "name": "칭호1",
+            "slots": [
+              {
+                "stat_key": "attack",
+                "value": 100.0
+              },
+              {
+                "stat_key": "boss_attack_percent",
+                "value": 5.0
+              },
+              null
+            ]
+          }
+        ],
+        "talismans": [
+          {
+            "id": "talisman1",
+            "talisman_key": "극왕",
+            "level": 3
+          }
+        ],
+        "equipped": {
+          "title_id": "title1",
+          "talisman_ids": ["talisman1"]
+        },
+        "equipment": {
+          "owned": [],
+          "equipped": {
+            "helmet": null,
+            "armor": null,
+            "belt": null,
+            "shoes": null,
+            "weapon": null,
+            "ring1": null,
+            "ring2": null,
+            "necklace": null,
+            "earring": null
+          }
+        },
+        "display_stand": {
+          "entries": {}
+        },
+        "elixir": {
+          "counts": {}
+        },
+        "pill": {
+          "active": []
+        }
+      },
+      "expected": {
+        "final_stats": {
+          "attack": 112.75,
+          "attack_percent": 2.5,
+          "hp": 122.57,
+          "hp_percent": 3.0,
+          "str": 10.0,
+          "str_percent": 0.0,
+          "dexterity": 5.0,
+          "dexterity_percent": 0.0,
+          "vitality": 3.0,
+          "vitality_percent": 0.0,
+          "luck": 2.0,
+          "luck_percent": 0.0,
+          "skill_damage_percent": 0.0,
+          "final_attack_percent": 0.0,
+          "crit_rate_percent": 0.25,
+          "crit_damage_percent": 111.0,
+          "exp_percent": 0.4,
+          "boss_attack_percent": 5.0,
+          "drop_rate_percent": 3.4,
+          "dodge_percent": 0.09,
+          "potion_heal_percent": 1.5,
+          "resist_percent": 1.0,
+          "skill_speed_percent": 0.0
+        },
+        "official_power": 2522.0
+      }
+    },
+    {
+      "name": "메인 캐릭터 딜세팅",
+      "basis": "인게임 스탯창 대조 완료 (2026-07-10, v1.1.0)",
+      "profile": {
+        "id": "cfaea5af-de19-4a4b-ba0c-1d4649da6b4c",
+        "name": "메인 캐릭터 딜세팅",
+        "level": 162,
+        "realm": "hwagyeong",
+        "vip": true,
+        "distribution": {
+          "strength": 0,
+          "dexterity": 0,
+          "vitality": 0,
+          "luck": 810
+        },
+        "danjeon": {
+          "upper": 0,
+          "middle": 0,
+          "lower": 26
+        },
+        "titles": [
+          {
+            "id": "a8ac4bbe-48b8-4b95-be4d-c367d558cfae",
+            "name": "원양어선",
+            "slots": [
+              {
+                "stat_key": "dexterity_percent",
+                "value": 2.0
+              },
+              {
+                "stat_key": "str_percent",
+                "value": 2.0
+              },
+              null
+            ]
+          }
+        ],
+        "talismans": [
+          {
+            "id": "87342a00-218f-4ee6-bd11-549531e2cf76",
+            "talisman_key": "백야멸심화",
+            "level": 14
+          },
+          {
+            "id": "0fdee188-84bb-4c84-82e8-8213fe5d49b5",
+            "talisman_key": "혈화잔월",
+            "level": 14
+          },
+          {
+            "id": "e0e8c32d-3932-4f0a-94a1-5cd758435d17",
+            "talisman_key": "혈운천마성",
+            "level": 14
+          },
+          {
+            "id": "297a5dd8-12b1-4857-9c70-847faa3997db",
+            "talisman_key": "해일포말격",
+            "level": 14
+          }
+        ],
+        "equipped": {
+          "title_id": "a8ac4bbe-48b8-4b95-be4d-c367d558cfae",
+          "talisman_ids": [
+            "87342a00-218f-4ee6-bd11-549531e2cf76",
+            "0fdee188-84bb-4c84-82e8-8213fe5d49b5",
+            "297a5dd8-12b1-4857-9c70-847faa3997db"
+          ]
+        },
+        "equipment": {
+          "owned": [
+            {
+              "name": "무기",
+              "kind": "weapon",
+              "item_name": null,
+              "level": 150,
+              "tier": 3,
+              "grade": "radiant",
+              "base_stat_lines": [],
+              "reforge_step": 15,
+              "reforge_stats": {
+                "attack": 45.0,
+                "attack_percent": 2.0,
+                "skill_damage_percent": 5.0
+              },
+              "scrolls": [
+                {
+                  "id": "948efc70-4815-48c0-9dd2-d488a3d6a6e3",
+                  "stat_key": "str",
+                  "tier": "50",
+                  "count": 3
+                },
+                {
+                  "id": "e206fd48-5bae-49eb-9eca-1fd7b18cfdbb",
+                  "stat_key": "dexterity",
+                  "tier": "50",
+                  "count": 2
+                }
+              ],
+              "potentials": [null, null, null],
+              "additionals": [null, null, null]
+            },
+            {
+              "name": "반지1",
+              "kind": "ring",
+              "item_name": null,
+              "level": 0,
+              "tier": 1,
+              "grade": null,
+              "base_stat_lines": [
+                {
+                  "stat_key": "attack",
+                  "value": 10.0
+                },
+                {
+                  "stat_key": "attack_percent",
+                  "value": 3.0
+                },
+                {
+                  "stat_key": "boss_attack_percent",
+                  "value": 7.0
+                },
+                {
+                  "stat_key": "skill_speed_percent",
+                  "value": 1.0
+                }
+              ],
+              "reforge_step": 0,
+              "reforge_stats": {},
+              "scrolls": [
+                {
+                  "id": "b1ff6761-968c-4533-ae3a-22e2ddcceb62",
+                  "stat_key": "str",
+                  "tier": "50",
+                  "count": 2
+                }
+              ],
+              "potentials": [null, null, null],
+              "additionals": [null, null, null]
+            },
+            {
+              "name": "투구",
+              "kind": "helmet",
+              "item_name": null,
+              "level": 150,
+              "tier": 4,
+              "grade": "basic",
+              "base_stat_lines": [],
+              "reforge_step": 9,
+              "reforge_stats": {
+                "luck": 18.0,
+                "luck_percent": 3.0
+              },
+              "scrolls": [
+                {
+                  "id": "c3460bc7-e7bc-4b69-b8bd-8f0c0b2e605c",
+                  "stat_key": "str",
+                  "tier": "50",
+                  "count": 3
+                },
+                {
+                  "id": "ed1d8156-a0d7-453d-be30-d825c55710b1",
+                  "stat_key": "dexterity",
+                  "tier": "20",
+                  "count": 1
+                }
+              ],
+              "potentials": [
+                {
+                  "option": "skill_speed_percent",
+                  "value": 3.7
+                },
+                {
+                  "option": "crit_damage_percent",
+                  "value": 1.99
+                },
+                {
+                  "option": "skill_speed_percent",
+                  "value": 2.7
+                }
+              ],
+              "additionals": [
+                {
+                  "option": "str",
+                  "value": 6.52
+                },
+                {
+                  "option": "dexterity",
+                  "value": 5.6
+                },
+                {
+                  "option": "str",
+                  "value": 2.58
+                }
+              ]
+            },
+            {
+              "name": "갑옷",
+              "kind": "armor",
+              "item_name": null,
+              "level": 110,
+              "tier": 2,
+              "grade": "basic",
+              "base_stat_lines": [],
+              "reforge_step": 10,
+              "reforge_stats": {
+                "str": 22.0,
+                "str_percent": 3.0,
+                "exp_percent": 1.0
+              },
+              "scrolls": [
+                {
+                  "id": "68c18106-1b42-491d-96b7-d45846bed16e",
+                  "stat_key": "str_percent",
+                  "tier": "20",
+                  "count": 1
+                },
+                {
+                  "id": "a8477742-7856-4bfa-aca5-503cb3327816",
+                  "stat_key": "str_percent",
+                  "tier": "100",
+                  "count": 4
+                }
+              ],
+              "potentials": [
+                {
+                  "option": "str_percent",
+                  "value": 3.23
+                },
+                {
+                  "option": "dexterity_percent",
+                  "value": 3.07
+                },
+                null
+              ],
+              "additionals": [
+                {
+                  "option": "drop_rate_percent",
+                  "value": 2.12
+                },
+                {
+                  "option": "dexterity",
+                  "value": 3.33
+                },
+                {
+                  "option": "dexterity",
+                  "value": 9.18
+                }
+              ]
+            },
+            {
+              "name": "허리띠",
+              "kind": "belt",
+              "item_name": null,
+              "level": 150,
+              "tier": 4,
+              "grade": "basic",
+              "base_stat_lines": [],
+              "reforge_step": 12,
+              "reforge_stats": {
+                "vitality": 30.0,
+                "vitality_percent": 4.0,
+                "exp_percent": 1.0
+              },
+              "scrolls": [
+                {
+                  "id": "fc528c58-cb1c-45ce-be9d-d0ed3a90eb2f",
+                  "stat_key": "vitality_percent",
+                  "tier": "20",
+                  "count": 1
+                },
+                {
+                  "id": "c6a5ecac-f444-40b1-83fa-6b5861fa7986",
+                  "stat_key": "vitality_percent",
+                  "tier": "50",
+                  "count": 4
+                }
+              ],
+              "potentials": [
+                {
+                  "option": "skill_speed_percent",
+                  "value": 3.48
+                },
+                {
+                  "option": "skill_speed_percent",
+                  "value": 3.04
+                },
+                null
+              ],
+              "additionals": [
+                {
+                  "option": "str",
+                  "value": 6.52
+                },
+                {
+                  "option": "hp",
+                  "value": 14.0
+                },
+                {
+                  "option": "dexterity",
+                  "value": 6.24
+                }
+              ]
+            },
+            {
+              "name": "신발",
+              "kind": "shoes",
+              "item_name": null,
+              "level": 150,
+              "tier": 4,
+              "grade": "basic",
+              "base_stat_lines": [],
+              "reforge_step": 12,
+              "reforge_stats": {
+                "dexterity": 30.0,
+                "dexterity_percent": 4.0,
+                "exp_percent": 1.0
+              },
+              "scrolls": [
+                {
+                  "id": "531e9c6d-e733-49f0-8db8-960609eff8a7",
+                  "stat_key": "dexterity_percent",
+                  "tier": "10",
+                  "count": 1
+                },
+                {
+                  "id": "2e56cc86-351b-4468-9f7a-e746648bec47",
+                  "stat_key": "dexterity_percent",
+                  "tier": "20",
+                  "count": 1
+                },
+                {
+                  "id": "303884c4-2147-4493-9ede-2c22b2715631",
+                  "stat_key": "dexterity_percent",
+                  "tier": "50",
+                  "count": 2
+                }
+              ],
+              "potentials": [
+                {
+                  "option": "skill_speed_percent",
+                  "value": 3.11
+                },
+                {
+                  "option": "boss_attack_percent",
+                  "value": 3.68
+                },
+                {
+                  "option": "hp_percent",
+                  "value": 1.31
+                }
+              ],
+              "additionals": [
+                {
+                  "option": "dexterity",
+                  "value": 7.04
+                },
+                {
+                  "option": "str",
+                  "value": 4.71
+                },
+                {
+                  "option": "crit_rate_percent",
+                  "value": 1.55
+                }
+              ]
+            },
+            {
+              "name": "반지2",
+              "kind": "ring",
+              "item_name": null,
+              "level": 0,
+              "tier": 1,
+              "grade": null,
+              "base_stat_lines": [
+                {
+                  "stat_key": "attack",
+                  "value": 10.0
+                },
+                {
+                  "stat_key": "attack_percent",
+                  "value": 3.0
+                },
+                {
+                  "stat_key": "boss_attack_percent",
+                  "value": 7.0
+                },
+                {
+                  "stat_key": "skill_speed_percent",
+                  "value": 1.0
+                }
+              ],
+              "reforge_step": 0,
+              "reforge_stats": {},
+              "scrolls": [
+                {
+                  "id": "24db49e5-be68-403f-ba5a-5a376f7fadd1",
+                  "stat_key": "dexterity",
+                  "tier": "50",
+                  "count": 2
+                }
+              ],
+              "potentials": [null, null, null],
+              "additionals": [null, null, null]
+            },
+            {
+              "name": "청옥목걸이",
+              "kind": "necklace",
+              "item_name": "청옥목걸이",
+              "level": 100,
+              "tier": 1,
+              "grade": null,
+              "base_stat_lines": [],
+              "reforge_step": 5,
+              "reforge_stats": {
+                "str": 12.0,
+                "str_percent": 3.0,
+                "skill_damage_percent": 1.0
+              },
+              "scrolls": [],
+              "potentials": [null, null, null],
+              "additionals": [null, null, null]
+            },
+            {
+              "name": "금귀걸이",
+              "kind": "earring",
+              "item_name": null,
+              "level": 0,
+              "tier": 1,
+              "grade": null,
+              "base_stat_lines": [
+                {
+                  "stat_key": "str_percent",
+                  "value": 3.0
+                },
+                {
+                  "stat_key": "boss_attack_percent",
+                  "value": 11.0
+                },
+                {
+                  "stat_key": "hp",
+                  "value": 9.0
+                },
+                {
+                  "stat_key": "hp_percent",
+                  "value": 2.0
+                },
+                {
+                  "stat_key": "resist_percent",
+                  "value": 5.0
+                },
+                {
+                  "stat_key": "crit_rate_percent",
+                  "value": 1.0
+                },
+                {
+                  "stat_key": "skill_speed_percent",
+                  "value": 2.0
+                }
+              ],
+              "reforge_step": 0,
+              "reforge_stats": {},
+              "scrolls": [],
+              "potentials": [null, null, null],
+              "additionals": [null, null, null]
+            },
+            {
+              "name": "새 갑옷 1",
+              "kind": "armor",
+              "item_name": null,
+              "level": 150,
+              "tier": 4,
+              "grade": "basic",
+              "base_stat_lines": [],
+              "reforge_step": 12,
+              "reforge_stats": {
+                "str": 30.0,
+                "str_percent": 4.0,
+                "exp_percent": 1.0
+              },
+              "scrolls": [
+                {
+                  "id": "eb1f30f0-6251-4fe2-8f48-5a38bb68d0ef",
+                  "stat_key": "str_percent",
+                  "tier": "20",
+                  "count": 1
+                },
+                {
+                  "id": "d4787881-a5af-4dc0-8772-5b9e41824ecc",
+                  "stat_key": "str_percent",
+                  "tier": "50",
+                  "count": 4
+                }
+              ],
+              "potentials": [null, null, null],
+              "additionals": [null, null, null]
+            }
+          ],
+          "equipped": {
+            "helmet": "투구",
+            "armor": "갑옷",
+            "belt": "허리띠",
+            "shoes": "신발",
+            "weapon": "무기",
+            "ring1": "반지1",
+            "ring2": "반지2",
+            "necklace": "청옥목걸이",
+            "earring": "금귀걸이"
+          }
+        },
+        "display_stand": {
+          "entries": {
+            "찬란한 가죽": {
+              "helmet": 2.2,
+              "armor": 11.0,
+              "belt": 2.2,
+              "shoes": 3.3,
+              "set": 2.0
+            },
+            "찬란한 장인": {
+              "helmet": 1.8,
+              "armor": 9.0,
+              "belt": 1.8,
+              "shoes": 2.7,
+              "set": 1.6
+            },
+            "찬란한 동군": {
+              "helmet": 2.0,
+              "armor": 10.0,
+              "belt": 2.0,
+              "shoes": 3.0,
+              "set": 1.8
+            },
+            "찬란한 투해": {
+              "helmet": 2.2,
+              "armor": 11.0,
+              "belt": 2.2,
+              "shoes": 3.3,
+              "set": 2.0
+            },
+            "찬란한 광전": {
+              "helmet": 2.2,
+              "armor": 11.0,
+              "belt": 2.2,
+              "shoes": 3.3,
+              "set": 2.0
+            },
+            "찬란한 백비": {
+              "armor": 11.0,
+              "helmet": 3.2,
+              "belt": 3.2,
+              "shoes": 4.8,
+              "set": 2.0
+            },
+            "찬란한 호군": {
+              "helmet": 2.0,
+              "armor": 10.0,
+              "belt": 2.0,
+              "shoes": 3.0,
+              "set": 1.8
+            },
+            "찬란한 백현": {
+              "helmet": 1.8,
+              "armor": 9.0,
+              "belt": 1.8,
+              "shoes": 2.7,
+              "set": 1.6
+            },
+            "찬란한 청군": {
+              "helmet": 2.6,
+              "shoes": 3.0,
+              "armor": 10.0,
+              "belt": 2.0,
+              "set": 1.8
+            },
+            "찬란한 진무": {
+              "helmet": 2.6,
+              "armor": 10.0,
+              "belt": 2.0,
+              "shoes": 3.9,
+              "set": 1.8
+            },
+            "찬란한 녹귀": {
+              "armor": 13.0,
+              "belt": 2.6,
+              "helmet": 2.6,
+              "shoes": 3.9,
+              "set": 2.8
+            },
+            "찬란한 금투": {
+              "belt": 2.6,
+              "helmet": 2.6,
+              "armor": 13.0,
+              "shoes": 3.9,
+              "set": 2.8
+            },
+            "찬란한 광설": {
+              "helmet": 3.2,
+              "armor": 16.0,
+              "shoes": 4.8
+            },
+            "찬란한 장현": {
+              "helmet": 2.6,
+              "armor": 13.0,
+              "belt": 2.6,
+              "shoes": 3.9,
+              "set": 2.8
+            },
+            "찬란한 금군": {
+              "helmet": 3.2
+            },
+            "찬란한 금청": {
+              "armor": 16.0
+            },
+            "찬란한 괴록": {
+              "helmet": 2.6,
+              "armor": 13.0,
+              "belt": 2.6,
+              "shoes": 3.9,
+              "set": 2.8
+            }
+          }
+        },
+        "elixir": {
+          "counts": {
+            "황환단": 4,
+            "자환단": 10,
+            "적환단": 10,
+            "백환단": 10,
+            "옥환단": 7,
+            "금환단": 8,
+            "매화단": 5,
+            "명월단": 10,
+            "천경단": 7,
+            "시공단": 10,
+            "은환단": 8,
+            "태극단": 3,
+            "주작단": 1,
+            "기린단": 10,
+            "해태단": 10
+          }
+        },
+        "pill": {
+          "active": ["추천환"]
+        }
+      },
+      "expected": {
+        "final_stats": {
+          "attack": 1704.12,
+          "attack_percent": 136.86,
+          "hp": 3220.29,
+          "hp_percent": 59.31,
+          "str": 225.48,
+          "str_percent": 61.83,
+          "dexterity": 228.19,
+          "dexterity_percent": 73.67,
+          "vitality": 119.68,
+          "vitality_percent": 49.6,
+          "luck": 1412.22,
+          "luck_percent": 49.6,
+          "skill_damage_percent": 34.9,
+          "final_attack_percent": 12.4,
+          "crit_rate_percent": 14.96,
+          "crit_damage_percent": 149.54,
+          "exp_percent": 368.84,
+          "boss_attack_percent": 41.68,
+          "drop_rate_percent": 373.36,
+          "dodge_percent": 3.59,
+          "potion_heal_percent": 89.84,
+          "resist_percent": 5.0,
+          "skill_speed_percent": 20.03
+        },
+        "official_power": 25848.0
+      }
+    }
+  ]
+}
