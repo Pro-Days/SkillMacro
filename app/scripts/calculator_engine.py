@@ -60,9 +60,14 @@ from app.scripts.calculator_models import (
     TargetDanjeonState,
     TargetDistributionState,
 )
-from app.scripts.macro_models import EquippedSkillRef, LinkUseType
+from app.scripts.macro_models import EquippedSkillRef
+from app.scripts.macro_scheduler import (
+    build_auto_link_skill_groups,
+    build_priority_skill_sequence,
+    build_skill_cooltimes_ms,
+    take_next_task,
+)
 from app.scripts.registry.skill_registry import get_builtin_skill_id
-from app.scripts.run_macro import get_prepared_link_skill_indices
 
 if TYPE_CHECKING:
     from app.scripts.macro_models import MacroPreset, SkillUsageSetting
@@ -1924,39 +1929,6 @@ def _normalize_inverse_stat_map(
     return normalized_values
 
 
-def _build_skill_sequence(
-    server_spec: "ServerSpec",
-    preset: "MacroPreset",
-    skills_info: dict[str, "SkillUsageSetting"],
-) -> tuple[EquippedSkillRef, ...]:
-    """우선순위 기준 스킬 순서 구성"""
-
-    # 현재 배치된 스킬만 우선순위 후보로 제한
-    placed_refs: list[EquippedSkillRef] = preset.skills.get_placed_skill_refs(
-        server_spec
-    )
-    skill_sequence: list[EquippedSkillRef] = []
-
-    # 우선순위 숫자 기준 1차 정렬 구성
-    for target_priority in range(1, len(placed_refs) + 1):
-        for skill_ref in placed_refs:
-            skill_id: str = preset.skills.get_placed_skill_id(skill_ref)
-            setting: "SkillUsageSetting" = skills_info[skill_id]
-            if setting.priority != target_priority:
-                continue
-
-            skill_sequence.append(skill_ref)
-
-    # 우선순위 미지정 스킬은 기존 배치 순서 유지
-    for skill_ref in placed_refs:
-        if skill_ref in skill_sequence:
-            continue
-
-        skill_sequence.append(skill_ref)
-
-    return tuple(skill_sequence)
-
-
 def _update_prepared_skills(
     placed_refs: list[EquippedSkillRef],
     skill_cooltime_timers_ms: dict[EquippedSkillRef, int],
@@ -1980,59 +1952,6 @@ def _update_prepared_skills(
         prepared_skills.add(skill_ref)
 
 
-def _build_next_task_list(
-    preset: "MacroPreset",
-    skills_info: dict[str, "SkillUsageSetting"],
-    prepared_skills: set[EquippedSkillRef],
-    link_skill_requirements: list[list[EquippedSkillRef]],
-    auto_link_skills: list[list[EquippedSkillRef]],
-    skill_sequence: tuple[EquippedSkillRef, ...],
-) -> list[EquippedSkillRef]:
-    """현재 시점 기준 실행 가능한 다음 작업 목록 구성"""
-
-    # 자동 연계 완성 여부를 먼저 확인
-    prepared_link_indices: list[int] = get_prepared_link_skill_indices(
-        prepared_skills=prepared_skills,
-        link_skills_requirements=link_skill_requirements,
-    )
-    if prepared_link_indices:
-        target_link_skills: list[EquippedSkillRef] = auto_link_skills[
-            prepared_link_indices[0]
-        ]
-        task_list: list[EquippedSkillRef] = []
-        for skill_ref in target_link_skills:
-            prepared_skills.discard(skill_ref)
-            task_list.append(skill_ref)
-
-        return task_list
-
-    # 자동 연계에 속한 스킬 참조 집합 구성
-    linked_skill_refs: set[EquippedSkillRef] = {
-        skill_ref
-        for requirement_group in link_skill_requirements
-        for skill_ref in requirement_group
-    }
-
-    # 우선순위 순서대로 사용 가능한 첫 스킬 선택
-    for skill_ref in skill_sequence:
-        if skill_ref not in prepared_skills:
-            continue
-
-        skill_id: str = preset.skills.get_placed_skill_id(skill_ref)
-        setting: "SkillUsageSetting" = skills_info[skill_id]
-        in_link: bool = skill_ref in linked_skill_refs
-        can_use: bool = (in_link and setting.use_alone) or (
-            not in_link and setting.use_skill
-        )
-        if not can_use:
-            continue
-
-        prepared_skills.discard(skill_ref)
-        return [skill_ref]
-
-    return []
-
-
 def build_skill_use_sequence(
     server_spec: "ServerSpec",
     preset: "MacroPreset",
@@ -2049,22 +1968,12 @@ def build_skill_use_sequence(
     if not placed_refs:
         return ()
 
-    # 자동 연계 계산에 필요한 배치/설정 맵 구성
+    # 60초 계산은 모든 장착 스킬이 준비된 상태에서 시작
     prepared_skills: set[EquippedSkillRef] = set(placed_refs)
-    skill_ref_map: dict[str, EquippedSkillRef] = preset.skills.get_placed_skill_ref_map(
-        server_spec
+    auto_link_skill_groups: tuple[tuple[EquippedSkillRef, ...], ...] = (
+        build_auto_link_skill_groups(server_spec=server_spec, preset=preset)
     )
-    auto_link_skills: list[list[EquippedSkillRef]] = [
-        [skill_ref_map[skill_id] for skill_id in link_skill.skills]
-        for link_skill in preset.link_skills
-        if link_skill.use_type == LinkUseType.AUTO
-        and all(skill_id in skill_ref_map for skill_id in link_skill.skills)
-    ]
-    link_skill_requirements: list[list[EquippedSkillRef]] = [
-        [skill_ref for skill_ref in link_skill_group]
-        for link_skill_group in auto_link_skills
-    ]
-    skill_sequence: tuple[EquippedSkillRef, ...] = _build_skill_sequence(
+    skill_sequence: tuple[EquippedSkillRef, ...] = build_priority_skill_sequence(
         server_spec=server_spec,
         preset=preset,
         skills_info=skills_info,
@@ -2074,16 +1983,11 @@ def build_skill_use_sequence(
     skill_cooltime_timers_ms: dict[EquippedSkillRef, int] = {
         skill_ref: 0 for skill_ref in placed_refs
     }
-    skill_cooltimes_ms: dict[EquippedSkillRef, int] = {
-        skill_ref: int(
-            server_spec.skill_registry.get(
-                preset.skills.get_placed_skill_id(skill_ref)
-            ).cooltime
-            * (100 - cooltime_reduction)
-            * 10
-        )
-        for skill_ref in placed_refs
-    }
+    skill_cooltimes_ms: dict[EquippedSkillRef, int] = build_skill_cooltimes_ms(
+        server_spec=server_spec,
+        preset=preset,
+        cooltime_reduction=cooltime_reduction,
+    )
 
     # 60초 범위 내 실제 스킬 사용 시점 기록
     task_list: list[EquippedSkillRef] = []
@@ -2098,13 +2002,14 @@ def build_skill_use_sequence(
                 elapsed_time_ms=elapsed_time_ms,
                 prepared_skills=prepared_skills,
             )
-            task_list = _build_next_task_list(
-                preset=preset,
-                skills_info=skills_info,
-                prepared_skills=prepared_skills,
-                link_skill_requirements=link_skill_requirements,
-                auto_link_skills=auto_link_skills,
-                skill_sequence=skill_sequence,
+            task_list = list(
+                take_next_task(
+                    preset=preset,
+                    skills_info=skills_info,
+                    prepared_skills=prepared_skills,
+                    auto_link_skill_groups=auto_link_skill_groups,
+                    skill_sequence=skill_sequence,
+                )
             )
 
         if task_list:
@@ -2113,7 +2018,7 @@ def build_skill_use_sequence(
             used_skills.append(
                 SkillUseEvent(
                     skill_id=skill_id,
-                    time=round(elapsed_time_ms * 0.001, 2),
+                    time=round(elapsed_time_ms * 0.001, 3),
                 )
             )
             skill_cooltime_timers_ms[skill_ref] = elapsed_time_ms

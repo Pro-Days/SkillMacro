@@ -97,9 +97,6 @@ class MacroState:
     task_list: list[EquippedSkillRef] = field(default_factory=list)
     prepared_skills: set[EquippedSkillRef] = field(default_factory=set)
 
-    # 연계스킬 수행에 필요한 스킬 정보 리스트
-    link_skills_requirements: list[list[EquippedSkillRef]] = field(default_factory=list)
-
     # 매크로 작동 중 사용하는 연계스킬 리스트
     using_link_skills: list[list[EquippedSkillRef]] = field(default_factory=list)
 

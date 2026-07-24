@@ -7,6 +7,7 @@ from pynput.keyboard import KeyCode
 
 import app.scripts.run_macro as run_macro
 from app.scripts.app_state import app_state
+from app.scripts.calculator_engine import SkillUseEvent, build_skill_use_sequence
 from app.scripts.macro_models import (
     EquippedSkillRef,
     LinkKeyType,
@@ -15,10 +16,10 @@ from app.scripts.macro_models import (
     MacroPreset,
     SkillUsageSetting,
 )
+from app.scripts.macro_scheduler import build_priority_skill_sequence
 from app.scripts.registry.key_registry import KeyRegistry, KeySpec
 from app.scripts.registry.server_registry import ServerSpec, server_registry
 from app.scripts.run_macro import (
-    _collect_priority_skill_sequence,
     _restore_or_reset_cooltime_state,
     _settle_cooltime_state_after_stop,
     build_preview_task_list,
@@ -125,9 +126,14 @@ def test_build_task_list_selects_priority_skill(
     placed_refs: list[EquippedSkillRef] = (
         macro_state_with_preset.skills.get_placed_skill_refs(synthetic_server)
     )
-    app_state.macro.skill_sequence = _collect_priority_skill_sequence()
+    app_state.macro.skill_sequence = list(
+        build_priority_skill_sequence(
+            server_spec=synthetic_server,
+            preset=macro_state_with_preset,
+            skills_info=macro_state_with_preset.usage_settings,
+        )
+    )
     app_state.macro.prepared_skills = set(placed_refs)
-    app_state.macro.link_skills_requirements = []
     app_state.macro.using_link_skills = []
     app_state.macro.task_list = []
 
@@ -155,9 +161,14 @@ def test_build_task_list_runs_prepared_auto_link_first(
     link_refs: list[EquippedSkillRef] = [placed_refs[3], placed_refs[7]]
 
     # 연계 요구/실행 목록을 런타임 상태에 직접 구성
-    app_state.macro.skill_sequence = _collect_priority_skill_sequence()
+    app_state.macro.skill_sequence = list(
+        build_priority_skill_sequence(
+            server_spec=synthetic_server,
+            preset=macro_state_with_preset,
+            skills_info=macro_state_with_preset.usage_settings,
+        )
+    )
     app_state.macro.prepared_skills = set(placed_refs)
-    app_state.macro.link_skills_requirements = [list(link_refs)]
     app_state.macro.using_link_skills = [list(link_refs)]
     app_state.macro.task_list = []
 
@@ -165,6 +176,104 @@ def test_build_task_list_runs_prepared_auto_link_first(
 
     assert wait_seconds == 0.0
     assert app_state.macro.task_list == link_refs
+
+
+def test_build_task_list_returns_exact_cooldown_wait_without_fixed_margin(
+    synthetic_server: ServerSpec,
+    macro_state_with_preset: MacroPreset,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """쿨타임 대기의 임의 고정 지연 없는 밀리초 기준 계산 검증"""
+
+    placed_refs: list[EquippedSkillRef] = (
+        macro_state_with_preset.skills.get_placed_skill_refs(synthetic_server)
+    )
+    app_state.macro.skill_sequence = list(
+        build_priority_skill_sequence(
+            server_spec=synthetic_server,
+            preset=macro_state_with_preset,
+            skills_info=macro_state_with_preset.usage_settings,
+        )
+    )
+    app_state.macro.prepared_skills = set()
+    app_state.macro.using_link_skills = []
+    app_state.macro.task_list = []
+    app_state.macro.skill_cooltime_timers = {
+        skill_ref: 100.0 for skill_ref in placed_refs
+    }
+    monkeypatch.setattr(run_macro.time, "perf_counter", lambda: 101.0)
+
+    wait_seconds: float = build_task_list()
+
+    shortest_cooltime: float = min(
+        synthetic_server.skill_registry.get(
+            macro_state_with_preset.skills.get_placed_skill_id(skill_ref)
+        ).cooltime
+        for skill_ref in placed_refs
+    )
+    assert wait_seconds == shortest_cooltime - 1.0
+
+
+def test_runtime_scheduler_matches_60_second_simulation_sequence(
+    synthetic_server: ServerSpec,
+    macro_state_with_preset: MacroPreset,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """가상 시계에서 런타임과 시뮬레이터의 전체 상태 일치 검증"""
+
+    first_link_skill_id: str = macro_state_with_preset.skills.placed_skills[1]
+    second_link_skill_id: str = macro_state_with_preset.skills.placed_skills[6]
+    macro_state_with_preset.link_skills.append(
+        LinkSkill(
+            use_type=LinkUseType.AUTO,
+            skills=[first_link_skill_id, second_link_skill_id],
+        )
+    )
+    delay_ms: int = 300
+    expected_events: tuple[SkillUseEvent, ...] = build_skill_use_sequence(
+        server_spec=synthetic_server,
+        preset=macro_state_with_preset,
+        skills_info=macro_state_with_preset.usage_settings,
+        delay_ms=delay_ms,
+        cooltime_reduction=0.0,
+    )
+
+    started_at: float = 100.0
+    current_time_seconds: float = 0.0
+    monkeypatch.setattr(
+        run_macro.time,
+        "perf_counter",
+        lambda: started_at + current_time_seconds,
+    )
+    init_macro()
+
+    actual_events: list[SkillUseEvent] = []
+    while current_time_seconds < 60.0:
+        wait_seconds: float = 0.0
+        if not app_state.macro.task_list:
+            wait_seconds = build_task_list()
+
+        if app_state.macro.task_list:
+            skill_ref: EquippedSkillRef = app_state.macro.task_list.pop(0)
+            skill_id: str = macro_state_with_preset.skills.get_placed_skill_id(
+                skill_ref
+            )
+            app_state.macro.skill_cooltime_timers[skill_ref] = (
+                run_macro.time.perf_counter()
+            )
+            actual_events.append(
+                SkillUseEvent(
+                    skill_id=skill_id,
+                    time=round(current_time_seconds, 3),
+                )
+            )
+            current_time_seconds += delay_ms * 0.001
+            continue
+
+        assert wait_seconds > 0.0
+        current_time_seconds += wait_seconds
+
+    assert tuple(actual_events) == expected_events
 
 
 def test_cooltime_state_resets_when_remembering_is_disabled(
@@ -310,7 +419,6 @@ def test_init_macro_uses_only_fully_placed_auto_links(
         skill_ref_map[skill_id] for skill_id in valid_skill_ids
     ]
     assert app_state.macro.using_link_skills == [expected_link]
-    assert app_state.macro.link_skills_requirements == [expected_link]
     assert app_state.macro.prepared_skills == set(placed_refs)
 
 
