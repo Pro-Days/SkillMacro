@@ -528,6 +528,21 @@ QPushButton#generalSettingBtn[active=false] {{ color: #999999; }}
 
 QLabel#generalSettingTitle {{ border: 0px solid black; border-radius: 10px; }}
 
+QPushButton#detailSettingsBtn {{
+    background-color: transparent;
+    color: #666666;
+    border: none;
+    border-radius: 6px;
+    padding: 0px 8px;
+}}
+QPushButton#detailSettingsBtn:hover {{
+    background-color: #F1F1F4;
+    color: #222222;
+}}
+QPushButton#detailSettingsBtn:pressed {{
+    background-color: #E6E6EB;
+}}
+
 QPushButton#infoBtn {{
     background-color: #E5E7EB;
     color: #4B5563;
@@ -2164,6 +2179,21 @@ QPushButton#generalSettingBtn[active=true]  {{ color: #E8E8F0; }}
 QPushButton#generalSettingBtn[active=false] {{ color: #555570; }}
 
 QLabel#generalSettingTitle {{ border: 0px solid black; border-radius: 10px; }}
+
+QPushButton#detailSettingsBtn {{
+    background-color: transparent;
+    color: #A9A6C0;
+    border: none;
+    border-radius: 6px;
+    padding: 0px 8px;
+}}
+QPushButton#detailSettingsBtn:hover {{
+    background-color: #2E2E45;
+    color: #F0EFF8;
+}}
+QPushButton#detailSettingsBtn:pressed {{
+    background-color: #363650;
+}}
 
 QPushButton#infoBtn {{
     background-color: #2A2A3F;

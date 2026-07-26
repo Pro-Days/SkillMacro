@@ -7,7 +7,7 @@ from functools import partial
 from typing import TYPE_CHECKING, Literal
 
 from PySide6.QtCore import QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QIcon, QPixmap
+from PySide6.QtGui import QColor, QIcon, QPixmap, QTransform
 from PySide6.QtWidgets import (
     QFrame,
     QGraphicsDropShadowEffect,
@@ -231,6 +231,9 @@ class Sidebar(QFrame):
         # 스킬 사용설정 무공비급 변경 시 사이드바 높이 동기화
         self.skill_settings.contentResized.connect(self.adjust_stack_height)
 
+        # 일반 설정 세부 영역 접기/펼치기 시 사이드바 높이 동기화
+        self.general_settings.contentResized.connect(self.adjust_stack_height)
+
         # 커스텀 무공비급 삭제 시 메인 UI 갱신 시그널 전파
         self.skill_settings.scrollDeleted.connect(self.scrollDeleted.emit)
 
@@ -370,6 +373,8 @@ class Sidebar(QFrame):
 
 class GeneralSettings(QFrame):
     """사이드바 타입 1 - 일반 설정"""
+
+    contentResized = Signal()
 
     def __init__(
         self,
@@ -524,6 +529,40 @@ class GeneralSettings(QFrame):
             func1=self.on_always_return_first_line_on_clicked,
         )
 
+        self.detail_settings_button: QPushButton = QPushButton("세부 설정")
+        self.detail_settings_button.setObjectName("detailSettingsBtn")
+        self.detail_settings_button.setFont(CustomFont(11))
+        self.detail_settings_button.setIconSize(QSize(10, 10))
+        self.detail_settings_button.setCheckable(True)
+        self.detail_settings_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.detail_settings_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.detail_settings_button.setFixedSize(140, 34)
+        self.detail_settings_button.toggled.connect(
+            self._on_detail_settings_toggled
+        )
+
+        self._update_detail_settings_arrow(
+            expanded=False,
+            dark=theme_manager.is_dark,
+        )
+        theme_manager.theme_changed.connect(
+            lambda dark: self._update_detail_settings_arrow(
+                expanded=self.detail_settings_button.isChecked(),
+                dark=dark,
+            )
+        )
+
+        self.detail_settings_container: QFrame = QFrame()
+        detail_settings_layout = QVBoxLayout()
+        detail_settings_layout.addWidget(self.click_setting)
+        detail_settings_layout.addWidget(self.key_hold_setting)
+        detail_settings_layout.addWidget(self.remember_state_setting)
+        detail_settings_layout.addWidget(self.always_return_first_line_setting)
+        detail_settings_layout.setContentsMargins(0, 0, 0, 0)
+        detail_settings_layout.setSpacing(30)
+        self.detail_settings_container.setLayout(detail_settings_layout)
+        self.detail_settings_container.setVisible(False)
+
         layout = QVBoxLayout()
 
         layout.addWidget(self.title)
@@ -532,10 +571,11 @@ class GeneralSettings(QFrame):
         layout.addWidget(self.cooltime_setting)
         layout.addWidget(self.start_key_setting)
         layout.addWidget(self.swap_key_setting)
-        layout.addWidget(self.click_setting)
-        layout.addWidget(self.key_hold_setting)
-        layout.addWidget(self.remember_state_setting)
-        layout.addWidget(self.always_return_first_line_setting)
+        layout.addWidget(
+            self.detail_settings_button,
+            alignment=Qt.AlignmentFlag.AlignHCenter,
+        )
+        layout.addWidget(self.detail_settings_container)
 
         layout.setContentsMargins(10, 20, 10, 10)
         layout.setSpacing(30)
@@ -544,6 +584,30 @@ class GeneralSettings(QFrame):
         self.setLayout(layout)
 
         self.update_from_preset(app_state.macro.current_preset)
+
+    def _on_detail_settings_toggled(self, expanded: bool) -> None:
+        """세부 설정 표시 상태와 사이드바 높이 동기화"""
+
+        self.detail_settings_container.setVisible(expanded)
+        self._update_detail_settings_arrow(expanded, theme_manager.is_dark)
+        QTimer.singleShot(0, self.contentResized.emit)
+
+    def _update_detail_settings_arrow(self, expanded: bool, dark: bool) -> None:
+        """테마와 펼침 상태에 맞는 세부 설정 화살표 표시"""
+
+        arrow_pixmap = QPixmap(get_theme_image_path("down_arrow.png", dark))
+        if not expanded:
+            arrow_pixmap = arrow_pixmap.transformed(
+                QTransform().rotate(-90),
+                Qt.TransformationMode.SmoothTransformation,
+            )
+
+        self.detail_settings_button.setIcon(QIcon(arrow_pixmap))
+
+    def show_detail_settings(self) -> None:
+        """가이드 대상 표시를 위한 세부 설정 펼침"""
+
+        self.detail_settings_button.setChecked(True)
 
     def update_from_preset(self, preset: MacroPreset) -> None:
         """프리셋으로부터 위젯 상태를 업데이트"""
