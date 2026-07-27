@@ -144,6 +144,11 @@ def test_migration_preserves_user_content(
     assert full_preset.settings.custom_swap_key == "g"
     assert full_preset.settings.use_default_attack is True
 
+    # v8 신규 쿨타임 추가 대기 설정 보존/주입 확인
+    expected_extra_wait: int = 350 if version >= 8 else 200
+    assert full_preset.settings.custom_cooltime_extra_wait == expected_extra_wait
+    assert full_preset.settings.use_custom_cooltime_extra_wait is (version >= 8)
+
     # v5 신규 설정 보존/주입 확인
     if version >= 5:
         assert full_preset.settings.custom_key_hold_seconds == 0.5

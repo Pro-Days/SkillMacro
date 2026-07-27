@@ -15,8 +15,12 @@ from app.scripts.macro_models import (
     EquippedSkillRef,
     LinkKeyType,
     LinkSkill,
-    LinkUseType,
-    SkillUsageSetting,
+)
+from app.scripts.macro_scheduler import (
+    build_auto_link_skill_groups,
+    build_priority_skill_sequence,
+    build_skill_cooltimes_ms,
+    take_next_task,
 )
 from app.scripts.registry.key_registry import KeyRegistry, KeySpec
 
@@ -49,7 +53,6 @@ class PreviewTaskState:
     task_list: list[EquippedSkillRef]
     skill_sequence: list[EquippedSkillRef]
     using_link_skills: list[list[EquippedSkillRef]]
-    link_skills_requirements: list[list[EquippedSkillRef]]
 
 
 def _register_injected_key_event(key_spec: KeySpec) -> None:
@@ -350,10 +353,7 @@ def checking_kb_thread() -> NoReturn:
 
 
 def running_macro_thread(run_id: int) -> None:
-    """
-    매크로 메인 쓰레드
-    시뮬레이션과 약간의 오차가 있지만 무시할만 함 (나중에 개선 예정)
-    """
+    """매크로 메인 쓰레드"""
 
     global is_input_sequence_running
 
@@ -384,8 +384,9 @@ def running_macro_thread(run_id: int) -> None:
                 attack_hold_seconds: float = _get_attack_hold_seconds()
 
                 if wait_seconds > attack_hold_seconds:
-                    _sleep_while_macro_running(
-                        (wait_seconds - attack_hold_seconds)
+                    _wait_until_while_macro_running(
+                        time.perf_counter()
+                        + (wait_seconds - attack_hold_seconds)
                         * config.macro.SLEEP_COEFFICIENT_UNIT
                     )
                     continue
@@ -413,8 +414,9 @@ def running_macro_thread(run_id: int) -> None:
                 app_state.macro.is_running = False
 
             if not is_used_skill:
-                _sleep_while_macro_running(
-                    wait_seconds * config.macro.SLEEP_COEFFICIENT_UNIT
+                _wait_until_while_macro_running(
+                    time.perf_counter()
+                    + wait_seconds * config.macro.SLEEP_COEFFICIENT_UNIT
                 )
     finally:
         if app_state.macro.run_id == run_id:
@@ -475,10 +477,9 @@ def _pause_attack_for(duration_seconds: float) -> None:
     )
 
 
-def _sleep_while_macro_running(duration_seconds: float) -> None:
-    """매크로 중지 상태를 확인하며 대기"""
+def _wait_until_while_macro_running(end_at: float) -> None:
+    """매크로 중지 상태를 확인하며 목표 시각까지 대기"""
 
-    end_at: float = time.perf_counter() + max(0.0, duration_seconds)
     while app_state.macro.is_running:
         remaining_seconds: float = end_at - time.perf_counter()
         if remaining_seconds <= 0.0:
@@ -529,40 +530,8 @@ def _press_skill_keys(
 
     # 프로그램 주입 스킬 입력 등록
     _press_key_spec(kbd_controller, mouse_controller, skill_key)
+
     return current_line_index
-
-
-def _collect_priority_skill_sequence() -> list[EquippedSkillRef]:
-    """우선순위 기준 스킬 순서 반환"""
-
-    placed_refs: list[EquippedSkillRef] = (
-        app_state.macro.current_preset.skills.get_placed_skill_refs(
-            app_state.macro.current_server
-        )
-    )
-    skill_sequence: list[EquippedSkillRef] = []
-
-    # 현재 하단 슬롯에 실제 배치된 스킬만 우선순위 후보로 제한
-    for target_priority in range(1, len(placed_refs) + 1):
-        for skill_ref in placed_refs:
-            skill_id: str = app_state.macro.current_preset.skills.get_placed_skill_id(
-                skill_ref
-            )
-            setting: SkillUsageSetting = app_state.macro.current_preset.usage_settings[
-                skill_id
-            ]
-
-            if setting.priority != target_priority:
-                continue
-
-            # 배치되지 않은 숨은 설정값은 무시하고 실제 슬롯 순서만 반영
-            skill_sequence.append(skill_ref)
-
-    for skill_ref in placed_refs:
-        if skill_ref not in skill_sequence:
-            skill_sequence.append(skill_ref)
-
-    return skill_sequence
 
 
 def _reset_cooltime_state(placed_refs: list[EquippedSkillRef]) -> None:
@@ -587,6 +556,21 @@ def _has_cooltime_state(placed_refs: list[EquippedSkillRef]) -> bool:
     return bool(placed_ref_set) and placed_ref_set.issubset(timer_ref_set)
 
 
+def _build_runtime_skill_ready_delays_ms() -> dict[EquippedSkillRef, int]:
+    """쿨타임과 추가 대기가 반영된 스킬별 재사용 가능 시간 구성"""
+
+    cooltimes_ms: dict[EquippedSkillRef, int] = build_skill_cooltimes_ms(
+        server_spec=app_state.macro.current_server,
+        preset=app_state.macro.current_preset,
+        cooltime_reduction=app_state.macro.current_cooltime_reduction,
+    )
+    extra_wait_ms: int = app_state.macro.current_cooltime_extra_wait
+    return {
+        skill_ref: cooltime_ms + extra_wait_ms
+        for skill_ref, cooltime_ms in cooltimes_ms.items()
+    }
+
+
 def _collect_ready_cooltime_skills(
     placed_refs: list[EquippedSkillRef],
 ) -> set[EquippedSkillRef]:
@@ -598,22 +582,18 @@ def _collect_ready_cooltime_skills(
         app_state.macro.prepared_skills & placed_ref_set
     )
     now: float = time.perf_counter()
-    cooltimes: dict[EquippedSkillRef, float] = {
-        skill_ref: app_state.macro.current_server.skill_registry.get(
-            app_state.macro.current_preset.skills.get_placed_skill_id(skill_ref)
-        ).cooltime
-        * (100 - app_state.macro.current_cooltime_reduction)
-        / 100.0
-        for skill_ref in placed_refs
-    }
+    ready_delays_ms: dict[EquippedSkillRef, int] = (
+        _build_runtime_skill_ready_delays_ms()
+    )
 
-    # 쿨타임이 지난 스킬을 준비 완료 상태로 반영
+    # 쿨타임과 추가 대기가 모두 지난 스킬을 준비 완료 상태로 반영
     for skill_ref in placed_refs:
         if skill_ref in prepared_skills:
             continue
 
         started_at: float = app_state.macro.skill_cooltime_timers[skill_ref]
-        if (now - started_at) >= cooltimes[skill_ref]:
+        elapsed_ms: int = round((now - started_at) * 1000)
+        if elapsed_ms >= ready_delays_ms[skill_ref]:
             prepared_skills.add(skill_ref)
 
     return prepared_skills
@@ -670,32 +650,22 @@ def init_macro() -> None:
     _clear_injected_key_events()
     app_state.macro.afk_started_time = time.time()
     app_state.macro.has_pending_afk_notice = False
-    app_state.macro.skill_sequence = _collect_priority_skill_sequence()
-    app_state.macro.using_link_skills.clear()
-    app_state.macro.attack_pause_until = 0.0
-
-    skill_ref_map: dict[str, EquippedSkillRef] = (
-        app_state.macro.current_preset.skills.get_placed_skill_ref_map(
-            app_state.macro.current_server
+    app_state.macro.skill_sequence = list(
+        build_priority_skill_sequence(
+            server_spec=app_state.macro.current_server,
+            preset=app_state.macro.current_preset,
+            skills_info=app_state.macro.current_preset.usage_settings,
         )
     )
-
-    # 자동 연계의 장착 참조 변환
-    for link_skill in app_state.macro.current_preset.link_skills:
-        if link_skill.use_type != LinkUseType.AUTO:
-            continue
-
-        if not all(skill_id in skill_ref_map for skill_id in link_skill.skills):
-            continue
-
-        app_state.macro.using_link_skills.append(
-            [skill_ref_map[skill_id] for skill_id in link_skill.skills]
+    app_state.macro.using_link_skills = [
+        list(link_skill_group)
+        for link_skill_group in build_auto_link_skill_groups(
+            server_spec=app_state.macro.current_server,
+            preset=app_state.macro.current_preset,
         )
-
-    app_state.macro.link_skills_requirements = [
-        [skill_ref for skill_ref in link_skill]
-        for link_skill in app_state.macro.using_link_skills
     ]
+    app_state.macro.attack_pause_until = 0.0
+
     app_state.macro.task_list.clear()
     _restore_or_reset_cooltime_state(placed_refs)
 
@@ -712,7 +682,6 @@ def use_skill(current_line_index: int) -> tuple[bool, int]:
     kbd_controller: keyboard.Controller = keyboard.Controller()
     mouse_controller: mouse.Controller = mouse.Controller()
     skill_ref: EquippedSkillRef = app_state.macro.task_list.pop(0)
-    app_state.macro.skill_cooltime_timers[skill_ref] = time.perf_counter()
 
     current_line_index = _press_skill_keys(
         kbd_controller,
@@ -720,15 +689,18 @@ def use_skill(current_line_index: int) -> tuple[bool, int]:
         skill_ref,
         current_line_index=current_line_index,
     )
+    skill_used_at: float = time.perf_counter()
+    app_state.macro.skill_cooltime_timers[skill_ref] = skill_used_at
 
     delay_seconds: float = (
         app_state.macro.current_delay * 0.001 * config.macro.SLEEP_COEFFICIENT_NORMAL
     )
+    delay_end_at: float = skill_used_at + delay_seconds
 
     # 옵션 활성화 시 스킬 사용 후 1번 줄로 복귀
     if app_state.macro.current_always_return_to_first_line and current_line_index != 0:
         half_delay_seconds: float = delay_seconds * 0.5
-        _sleep_while_macro_running(half_delay_seconds)
+        _wait_until_while_macro_running(skill_used_at + half_delay_seconds)
         current_line_index = _restore_first_line_state(
             kbd_controller,
             mouse_controller,
@@ -736,11 +708,11 @@ def use_skill(current_line_index: int) -> tuple[bool, int]:
         )
 
         if app_state.macro.is_running:
-            _sleep_while_macro_running(half_delay_seconds)
+            _wait_until_while_macro_running(delay_end_at)
 
         return True, current_line_index
 
-    time.sleep(delay_seconds)
+    _wait_until_while_macro_running(delay_end_at)
     return True, current_line_index
 
 
@@ -750,17 +722,23 @@ def _collect_ready_link_skill_ids(link_skill: LinkSkill) -> list[str]:
     # 연계스킬 자체 발동 이력 추적
     now: float = time.perf_counter()
     cooltime_reduction: float = app_state.macro.current_cooltime_reduction
+    extra_wait_ms: int = app_state.macro.current_cooltime_extra_wait
     skill_registry = app_state.macro.current_server.skill_registry
 
     ready_skill_ids: list[str] = []
     for skill_id in link_skill.skills:
-        cooltime: float = (
-            skill_registry.get(skill_id).cooltime * (100 - cooltime_reduction) / 100.0
+        ready_delay_ms: int = (
+            round(
+                skill_registry.get(skill_id).cooltime
+                * (100 - cooltime_reduction)
+                * 10
+            )
+            + extra_wait_ms
         )
         started_at: float | None = link_skill.skill_timers.get(skill_id)
 
-        # 미사용이거나 쿨타임 경과 시 사용 가능 후보로 포함
-        if started_at is None or (now - started_at) >= cooltime:
+        # 미사용이거나 쿨타임과 추가 대기 경과 시 사용 가능 후보로 포함
+        if started_at is None or round((now - started_at) * 1000) >= ready_delay_ms:
             ready_skill_ids.append(skill_id)
 
     return ready_skill_ids
@@ -836,44 +814,6 @@ def use_link_skill(link_skill: LinkSkill) -> None:
             is_input_sequence_running = False
 
 
-def _pop_next_regular_task(
-    prepared_skills: set[EquippedSkillRef],
-    skill_sequence: list[EquippedSkillRef],
-    link_skills_requirements: list[list[EquippedSkillRef]],
-) -> EquippedSkillRef | None:
-    """우선순위 기준 다음 일반 스킬 선택"""
-
-    # 자동 연계에 속한 스킬 참조 집합 구성
-    linked_skill_refs: set[EquippedSkillRef] = {
-        skill_ref
-        for requirements in link_skills_requirements
-        for skill_ref in requirements
-    }
-
-    # 우선순위 순서대로 사용 가능한 첫 스킬 선택
-    for skill_ref in skill_sequence:
-        if skill_ref not in prepared_skills:
-            continue
-
-        skill_id: str = app_state.macro.current_preset.skills.get_placed_skill_id(
-            skill_ref
-        )
-        setting: SkillUsageSetting = app_state.macro.current_preset.usage_settings[
-            skill_id
-        ]
-        in_link_skill: bool = skill_ref in linked_skill_refs
-        can_use: bool = (in_link_skill and setting.use_alone) or (
-            not in_link_skill and setting.use_skill
-        )
-        if not can_use:
-            continue
-
-        prepared_skills.discard(skill_ref)
-        return skill_ref
-
-    return None
-
-
 def build_task_list(show_info: bool = False) -> float:
     """task_list에 사용할 스킬 추가. task_list가 비어있으면 다음 스킬 준비까지 남은 시간(초)을 반환, 아니면 0.0 반환"""
 
@@ -882,46 +822,31 @@ def build_task_list(show_info: bool = False) -> float:
             app_state.macro.current_server
         )
     )
-    cooltimes: dict[EquippedSkillRef, float] = {
-        skill_ref: app_state.macro.current_server.skill_registry.get(
-            app_state.macro.current_preset.skills.get_placed_skill_id(skill_ref)
-        ).cooltime
-        * (100 - app_state.macro.current_cooltime_reduction)
-        / 100.0
-        for skill_ref in placed_refs
-    }
+    ready_delays_ms: dict[EquippedSkillRef, int] = (
+        _build_runtime_skill_ready_delays_ms()
+    )
     now: float = time.perf_counter()
 
-    # 쿨타임 완료 스킬 재준비
+    # 쿨타임과 추가 대기 완료 스킬 재준비
     for skill_ref in placed_refs:
         if skill_ref in app_state.macro.prepared_skills:
             continue
 
         started_at: float = app_state.macro.skill_cooltime_timers[skill_ref]
-        if (now - started_at) >= cooltimes[skill_ref]:
+        elapsed_ms: int = round((now - started_at) * 1000)
+        if elapsed_ms >= ready_delays_ms[skill_ref]:
             app_state.macro.prepared_skills.add(skill_ref)
 
-    prepared_link_skill_indices: list[int] = get_prepared_link_skill_indices(
+    next_task: tuple[EquippedSkillRef, ...] = take_next_task(
+        preset=app_state.macro.current_preset,
+        skills_info=app_state.macro.current_preset.usage_settings,
         prepared_skills=app_state.macro.prepared_skills,
-        link_skills_requirements=app_state.macro.link_skills_requirements,
+        auto_link_skill_groups=tuple(
+            tuple(link_skill) for link_skill in app_state.macro.using_link_skills
+        ),
+        skill_sequence=tuple(app_state.macro.skill_sequence),
     )
-
-    if prepared_link_skill_indices:
-        for skill_ref in app_state.macro.using_link_skills[
-            prepared_link_skill_indices[0]
-        ]:
-            app_state.macro.prepared_skills.discard(skill_ref)
-            app_state.macro.task_list.append(skill_ref)
-
-    else:
-        # 우선순위 기준 일반 스킬 1개 선택
-        next_regular_skill_ref: EquippedSkillRef | None = _pop_next_regular_task(
-            prepared_skills=app_state.macro.prepared_skills,
-            skill_sequence=app_state.macro.skill_sequence,
-            link_skills_requirements=app_state.macro.link_skills_requirements,
-        )
-        if next_regular_skill_ref is not None:
-            app_state.macro.task_list.append(next_regular_skill_ref)
+    app_state.macro.task_list.extend(next_task)
 
     if DEBUG_PRINT_INFO and show_info:
         print_macro_info(brief=False)
@@ -930,14 +855,23 @@ def build_task_list(show_info: bool = False) -> float:
         return 0.0
 
     # 모든 스킬이 쿨타임 중인 경우, 가장 빨리 준비되는 스킬까지 남은 시간 반환
-    remaining_times: list[float] = [
-        cooltimes[skill_ref] - (now - app_state.macro.skill_cooltime_timers[skill_ref])
+    remaining_times_ms: list[int] = [
+        ready_delays_ms[skill_ref]
+        - round(
+            (
+                now - app_state.macro.skill_cooltime_timers[skill_ref]
+            )
+            * 1000
+        )
         for skill_ref in placed_refs
         if skill_ref not in app_state.macro.prepared_skills
     ]
 
-    # 약간의 여유 시간을 추가하여 실제 준비 시점과의 오차 완화 (추후 설정 가능하게 개선 예정)
-    return max(0.0, min(remaining_times) + 0.2) if remaining_times else 0.0
+    return (
+        max(0, min(remaining_times_ms)) * 0.001
+        if remaining_times_ms
+        else 0.0
+    )
 
 
 def build_preview_task_list() -> tuple[EquippedSkillRef, ...]:
@@ -945,29 +879,20 @@ def build_preview_task_list() -> tuple[EquippedSkillRef, ...]:
 
     # 프리뷰 전용 상태 스냅샷 구성
     preview_state: PreviewTaskState = _build_preview_task_state()
-
-    prepared_link_skill_indices: list[int] = get_prepared_link_skill_indices(
-        prepared_skills=preview_state.prepared_skills,
-        link_skills_requirements=preview_state.link_skills_requirements,
-    )
-
-    # 자동 연계가 준비된 경우 실제 실행 순서와 동일하게 먼저 추가
-    for prepared_link_skill_index in prepared_link_skill_indices:
-        for skill_ref in preview_state.using_link_skills[prepared_link_skill_index]:
-            preview_state.prepared_skills.discard(skill_ref)
-            preview_state.task_list.append(skill_ref)
-
-    # 남은 일반 스킬을 우선순위대로 추가
     while True:
-        next_regular_skill_ref: EquippedSkillRef | None = _pop_next_regular_task(
+        next_task: tuple[EquippedSkillRef, ...] = take_next_task(
+            preset=app_state.macro.current_preset,
+            skills_info=app_state.macro.current_preset.usage_settings,
             prepared_skills=preview_state.prepared_skills,
-            skill_sequence=preview_state.skill_sequence,
-            link_skills_requirements=preview_state.link_skills_requirements,
+            auto_link_skill_groups=tuple(
+                tuple(link_skill) for link_skill in preview_state.using_link_skills
+            ),
+            skill_sequence=tuple(preview_state.skill_sequence),
         )
-        if next_regular_skill_ref is None:
+        if not next_task:
             break
 
-        preview_state.task_list.append(next_regular_skill_ref)
+        preview_state.task_list.extend(next_task)
 
     return tuple(preview_state.task_list)
 
@@ -984,10 +909,6 @@ def _build_preview_task_state() -> PreviewTaskState:
             using_link_skills=[
                 link_skill.copy() for link_skill in app_state.macro.using_link_skills
             ],
-            link_skills_requirements=[
-                requirements.copy()
-                for requirements in app_state.macro.link_skills_requirements
-            ],
         )
 
     # 미실행 중에는 프리뷰 전용 상태를 별도로 구성
@@ -996,25 +917,13 @@ def _build_preview_task_state() -> PreviewTaskState:
             app_state.macro.current_server
         )
     )
-    skill_ref_map: dict[str, EquippedSkillRef] = (
-        app_state.macro.current_preset.skills.get_placed_skill_ref_map(
-            app_state.macro.current_server
+    using_link_skills: list[list[EquippedSkillRef]] = [
+        list(link_skill_group)
+        for link_skill_group in build_auto_link_skill_groups(
+            server_spec=app_state.macro.current_server,
+            preset=app_state.macro.current_preset,
         )
-    )
-    using_link_skills: list[list[EquippedSkillRef]] = []
-
-    # 현재 배치 기준으로 실행 가능한 자동 연계만 프리뷰 대상에 포함
-    link_skill: LinkSkill
-    for link_skill in app_state.macro.current_preset.link_skills:
-        if link_skill.use_type != LinkUseType.AUTO:
-            continue
-
-        if not all(skill_id in skill_ref_map for skill_id in link_skill.skills):
-            continue
-
-        using_link_skills.append(
-            [skill_ref_map[skill_id] for skill_id in link_skill.skills]
-        )
+    ]
 
     prepared_skills: set[EquippedSkillRef]
     if (
@@ -1031,33 +940,15 @@ def _build_preview_task_state() -> PreviewTaskState:
     return PreviewTaskState(
         prepared_skills=prepared_skills,
         task_list=[],
-        skill_sequence=_collect_priority_skill_sequence(),
+        skill_sequence=list(
+            build_priority_skill_sequence(
+                server_spec=app_state.macro.current_server,
+                preset=app_state.macro.current_preset,
+                skills_info=app_state.macro.current_preset.usage_settings,
+            )
+        ),
         using_link_skills=using_link_skills,
-        link_skills_requirements=[
-            [skill_ref for skill_ref in link_skill] for link_skill in using_link_skills
-        ],
     )
-
-
-def get_prepared_link_skill_indices(
-    prepared_skills: set[EquippedSkillRef],
-    link_skills_requirements: list[list[EquippedSkillRef]],
-) -> list[int]:
-    """준비된 연계스킬 목록 반환"""
-
-    prepared_indices: list[int] = []
-    copied_prepared_skills: set[EquippedSkillRef] = prepared_skills.copy()
-
-    for idx, requirements in enumerate(link_skills_requirements):
-        if not all(skill_ref in copied_prepared_skills for skill_ref in requirements):
-            continue
-
-        for skill_ref in requirements:
-            copied_prepared_skills.discard(skill_ref)
-
-        prepared_indices.append(idx)
-
-    return prepared_indices
 
 
 def print_macro_info(brief: bool = False) -> None:
@@ -1072,4 +963,3 @@ def print_macro_info(brief: bool = False) -> None:
 
     print("스킬 정렬 순서:", app_state.macro.skill_sequence)
     print("연계스킬 스킬 리스트:", app_state.macro.using_link_skills)
-    print("연계스킬에 필요한 스킬 리스트:", app_state.macro.link_skills_requirements)

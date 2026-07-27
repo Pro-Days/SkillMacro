@@ -7,7 +7,7 @@ from functools import partial
 from typing import TYPE_CHECKING, Literal
 
 from PySide6.QtCore import QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QIcon, QPixmap
+from PySide6.QtGui import QColor, QIcon, QPixmap, QTransform
 from PySide6.QtWidgets import (
     QFrame,
     QGraphicsDropShadowEffect,
@@ -231,6 +231,9 @@ class Sidebar(QFrame):
         # 스킬 사용설정 무공비급 변경 시 사이드바 높이 동기화
         self.skill_settings.contentResized.connect(self.adjust_stack_height)
 
+        # 일반 설정 세부 영역 접기/펼치기 시 사이드바 높이 동기화
+        self.general_settings.contentResized.connect(self.adjust_stack_height)
+
         # 커스텀 무공비급 삭제 시 메인 UI 갱신 시그널 전파
         self.skill_settings.scrollDeleted.connect(self.scrollDeleted.emit)
 
@@ -371,6 +374,8 @@ class Sidebar(QFrame):
 class GeneralSettings(QFrame):
     """사이드바 타입 1 - 일반 설정"""
 
+    contentResized = Signal()
+
     def __init__(
         self,
         popup_manager: PopupManager,
@@ -459,6 +464,25 @@ class GeneralSettings(QFrame):
             func1=self.on_user_swap_key_clicked,
         )
 
+        # 쿨타임 추가 대기
+        self.cooltime_extra_wait_setting = self.SettingItem(
+            popup_manager=self.popup_manager,
+            title=config.specs.COOLTIME_EXTRA_WAIT.label,
+            tooltip=(
+                "스킬 쿨타임이 끝난 뒤 추가로 기다리는 시간입니다.\n"
+                "스킬 입력이 누락되면 값을 늘려주세요.\n"
+                "단위는 밀리초(millisecond, 0.001초)를 사용합니다.\n"
+                f"입력 가능한 범위는 {config.specs.COOLTIME_EXTRA_WAIT.min}~"
+                f"{config.specs.COOLTIME_EXTRA_WAIT.max}입니다."
+            ),
+            btn0_text=f"기본: {config.specs.COOLTIME_EXTRA_WAIT.default}",
+            btn0_enabled=True,
+            btn1_text="",
+            btn1_enabled=False,
+            func0=self.on_default_cooltime_extra_wait_clicked,
+            func1=self.on_user_cooltime_extra_wait_clicked,
+        )
+
         # 마우스 클릭
         self.click_setting = self.SettingItem(
             popup_manager=self.popup_manager,
@@ -524,6 +548,41 @@ class GeneralSettings(QFrame):
             func1=self.on_always_return_first_line_on_clicked,
         )
 
+        self.detail_settings_button: QPushButton = QPushButton("세부 설정")
+        self.detail_settings_button.setObjectName("detailSettingsBtn")
+        self.detail_settings_button.setFont(CustomFont(11))
+        self.detail_settings_button.setIconSize(QSize(10, 10))
+        self.detail_settings_button.setCheckable(True)
+        self.detail_settings_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.detail_settings_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.detail_settings_button.setFixedSize(140, 34)
+        self.detail_settings_button.toggled.connect(
+            self._on_detail_settings_toggled
+        )
+
+        self._update_detail_settings_arrow(
+            expanded=False,
+            dark=theme_manager.is_dark,
+        )
+        theme_manager.theme_changed.connect(
+            lambda dark: self._update_detail_settings_arrow(
+                expanded=self.detail_settings_button.isChecked(),
+                dark=dark,
+            )
+        )
+
+        self.detail_settings_container: QFrame = QFrame()
+        detail_settings_layout = QVBoxLayout()
+        detail_settings_layout.addWidget(self.cooltime_extra_wait_setting)
+        detail_settings_layout.addWidget(self.click_setting)
+        detail_settings_layout.addWidget(self.key_hold_setting)
+        detail_settings_layout.addWidget(self.remember_state_setting)
+        detail_settings_layout.addWidget(self.always_return_first_line_setting)
+        detail_settings_layout.setContentsMargins(0, 0, 0, 0)
+        detail_settings_layout.setSpacing(30)
+        self.detail_settings_container.setLayout(detail_settings_layout)
+        self.detail_settings_container.setVisible(False)
+
         layout = QVBoxLayout()
 
         layout.addWidget(self.title)
@@ -532,10 +591,11 @@ class GeneralSettings(QFrame):
         layout.addWidget(self.cooltime_setting)
         layout.addWidget(self.start_key_setting)
         layout.addWidget(self.swap_key_setting)
-        layout.addWidget(self.click_setting)
-        layout.addWidget(self.key_hold_setting)
-        layout.addWidget(self.remember_state_setting)
-        layout.addWidget(self.always_return_first_line_setting)
+        layout.addWidget(
+            self.detail_settings_button,
+            alignment=Qt.AlignmentFlag.AlignHCenter,
+        )
+        layout.addWidget(self.detail_settings_container)
 
         layout.setContentsMargins(10, 20, 10, 10)
         layout.setSpacing(30)
@@ -544,6 +604,30 @@ class GeneralSettings(QFrame):
         self.setLayout(layout)
 
         self.update_from_preset(app_state.macro.current_preset)
+
+    def _on_detail_settings_toggled(self, expanded: bool) -> None:
+        """세부 설정 표시 상태와 사이드바 높이 동기화"""
+
+        self.detail_settings_container.setVisible(expanded)
+        self._update_detail_settings_arrow(expanded, theme_manager.is_dark)
+        QTimer.singleShot(0, self.contentResized.emit)
+
+    def _update_detail_settings_arrow(self, expanded: bool, dark: bool) -> None:
+        """테마와 펼침 상태에 맞는 세부 설정 화살표 표시"""
+
+        arrow_pixmap = QPixmap(get_theme_image_path("down_arrow.png", dark))
+        if not expanded:
+            arrow_pixmap = arrow_pixmap.transformed(
+                QTransform().rotate(-90),
+                Qt.TransformationMode.SmoothTransformation,
+            )
+
+        self.detail_settings_button.setIcon(QIcon(arrow_pixmap))
+
+    def show_detail_settings(self) -> None:
+        """가이드 대상 표시를 위한 세부 설정 펼침"""
+
+        self.detail_settings_button.setChecked(True)
 
     def update_from_preset(self, preset: MacroPreset) -> None:
         """프리셋으로부터 위젯 상태를 업데이트"""
@@ -585,6 +669,19 @@ class GeneralSettings(QFrame):
         )
         self.swap_key_setting.set_buttons_enabled(
             not use_custom_swap_key, use_custom_swap_key
+        )
+
+        # 쿨타임 추가 대기
+        custom_cooltime_extra_wait: int = preset.settings.custom_cooltime_extra_wait
+        use_custom_cooltime_extra_wait: bool = (
+            preset.settings.use_custom_cooltime_extra_wait
+        )
+        self.cooltime_extra_wait_setting.set_right_button_text(
+            str(custom_cooltime_extra_wait)
+        )
+        self.cooltime_extra_wait_setting.set_buttons_enabled(
+            not use_custom_cooltime_extra_wait,
+            use_custom_cooltime_extra_wait,
         )
 
         # 마우스 클릭
@@ -749,6 +846,61 @@ class GeneralSettings(QFrame):
 
         # 유저 쿨타임 감소로 변경 (입력 값 유지)
         app_state.macro.current_preset.settings.use_custom_cooltime_reduction = True
+        self.update_from_preset(app_state.macro.current_preset)
+        self._on_data_changed()
+
+    def on_default_cooltime_extra_wait_clicked(self) -> None:
+        """기본 쿨타임 추가 대기 클릭시 실행"""
+
+        self.popup_manager.close_popup()
+
+        if app_state.macro.is_running:
+            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+            return
+
+        settings = app_state.macro.current_preset.settings
+        if not settings.use_custom_cooltime_extra_wait:
+            return
+
+        settings.use_custom_cooltime_extra_wait = False
+        app_state.macro.clear_cooltime_state()
+        self.update_from_preset(app_state.macro.current_preset)
+        self._on_data_changed()
+
+    def on_user_cooltime_extra_wait_clicked(self) -> None:
+        """사용자 쿨타임 추가 대기 클릭시 실행"""
+
+        def apply(extra_wait_ms: int) -> None:
+            settings = app_state.macro.current_preset.settings
+            if extra_wait_ms == settings.custom_cooltime_extra_wait:
+                return
+
+            settings.custom_cooltime_extra_wait = extra_wait_ms
+            settings.use_custom_cooltime_extra_wait = True
+            app_state.macro.clear_cooltime_state()
+            self.update_from_preset(app_state.macro.current_preset)
+            self._on_data_changed()
+
+        if self.popup_manager.is_popup_active(PopupKind.COOLTIME_EXTRA_WAIT):
+            self.popup_manager.close_popup()
+            return
+
+        self.popup_manager.close_popup()
+
+        if app_state.macro.is_running:
+            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+            return
+
+        settings = app_state.macro.current_preset.settings
+        if settings.use_custom_cooltime_extra_wait:
+            self.popup_manager.make_cooltime_extra_wait_popup(
+                self.cooltime_extra_wait_setting.right_button,
+                apply,
+            )
+            return
+
+        settings.use_custom_cooltime_extra_wait = True
+        app_state.macro.clear_cooltime_state()
         self.update_from_preset(app_state.macro.current_preset)
         self._on_data_changed()
 

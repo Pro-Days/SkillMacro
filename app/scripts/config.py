@@ -62,6 +62,9 @@ class MacroSpecs:
     COOLTIME_REDUCTION: ClassVar[SettingSpec] = SettingSpec(
         label="스킬속도(%)", default=0, min=0, max=70
     )
+    COOLTIME_EXTRA_WAIT: ClassVar[SettingSpec] = SettingSpec(
+        label="쿨타임 추가 대기", default=200, min=0, max=1000
+    )
     KEY_HOLD_SECONDS: ClassVar[KeyHoldSpec] = KeyHoldSpec(
         label="키 입력 유지 시간", default=0.0, min=0.0, max=3.0
     )

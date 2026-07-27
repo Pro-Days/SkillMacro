@@ -58,6 +58,11 @@ class MacroState:
         return config.specs.COOLTIME_REDUCTION.default
 
     @property
+    def current_cooltime_extra_wait(self) -> int:
+        """실제로 사용되는 쿨타임 추가 대기 시간을 반환"""
+        return self.current_preset.settings.effective_cooltime_extra_wait
+
+    @property
     def current_start_key(self) -> KeySpec:
         """실제로 사용되는 시작 키 값을 반환"""
         if self.current_preset.settings.use_custom_start_key:
@@ -96,9 +101,6 @@ class MacroState:
     # 여러 곳에서 참조되므로 여기에 보관
     task_list: list[EquippedSkillRef] = field(default_factory=list)
     prepared_skills: set[EquippedSkillRef] = field(default_factory=set)
-
-    # 연계스킬 수행에 필요한 스킬 정보 리스트
-    link_skills_requirements: list[list[EquippedSkillRef]] = field(default_factory=list)
 
     # 매크로 작동 중 사용하는 연계스킬 리스트
     using_link_skills: list[list[EquippedSkillRef]] = field(default_factory=list)

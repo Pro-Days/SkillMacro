@@ -990,6 +990,12 @@ class GuideManager:
         self._main_page()
         self.master.sidebar.change_page(index)  # type: ignore
 
+    def _sidebar_detail_settings(self) -> None:
+        """일반 설정의 세부 설정 영역 표시"""
+
+        self._sidebar_page(0)
+        self.master.sidebar.general_settings.show_detail_settings()
+
     def _link_editor_page(self) -> None:
         """임시 연계스킬 편집 페이지 진입"""
 
@@ -1437,7 +1443,7 @@ class GuideManager:
                         "마우스 클릭 설정 확인",
                         "평타 입력을 함께 사용할지 정합니다. 스킬만 사용할 때는 끄고, 평타를 섞어야 하면 켭니다.",
                         "sidebar.general.click",
-                        lambda: self._sidebar_page(0),
+                        self._sidebar_detail_settings,
                     ),
                     GuideStep(
                         "무공비급 슬롯 확인",

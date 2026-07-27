@@ -179,6 +179,7 @@ class _CalculatorResultsCacheKey:
 
     server_id: str
     delay_ms: int
+    cooltime_extra_wait_ms: int
     calculator_input_data: str
     equipped_scrolls: tuple[str, ...]
     placed_skills: tuple[str, ...]
@@ -700,6 +701,9 @@ class SimUI:
         return _CalculatorResultsCacheKey(
             server_id=preset.settings.server_id,
             delay_ms=app_state.macro.current_delay,
+            cooltime_extra_wait_ms=(
+                preset.settings.effective_cooltime_extra_wait
+            ),
             calculator_input_data=calculator_input_data,
             equipped_scrolls=tuple(preset.skills.equipped_scrolls),
             placed_skills=tuple(preset.skills.placed_skills),

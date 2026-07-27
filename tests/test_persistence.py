@@ -392,6 +392,8 @@ def _customize_preset(preset: MacroPreset, server_spec: ServerSpec) -> MacroPres
     preset.info.scroll_levels[scroll_id] = 5
     preset.settings.custom_delay = 450
     preset.settings.use_custom_delay = True
+    preset.settings.custom_cooltime_extra_wait = 350
+    preset.settings.use_custom_cooltime_extra_wait = True
     return preset
 
 

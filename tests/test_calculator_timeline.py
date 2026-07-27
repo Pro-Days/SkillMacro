@@ -79,9 +79,12 @@ def test_cooldown_is_respected_per_skill(
     synthetic_server: ServerSpec,
     full_preset: MacroPreset,
 ) -> None:
-    """스킬별 재사용 간격의 쿨타임 이상 유지 검증"""
+    """스킬별 재사용 간격의 쿨타임과 추가 대기 이상 유지 검증"""
 
     events: tuple[SkillUseEvent, ...] = _build_sequence(synthetic_server, full_preset)
+    extra_wait_seconds: float = (
+        full_preset.settings.effective_cooltime_extra_wait * 0.001
+    )
 
     # 스킬별 사용 시각 목록 수집
     use_times: dict[str, list[float]] = {}
@@ -92,7 +95,10 @@ def test_cooldown_is_respected_per_skill(
     for skill_id, times in use_times.items():
         cooltime: float = synthetic_server.skill_registry.get(skill_id).cooltime
         for previous_time, next_time in zip(times, times[1:]):
-            assert next_time - previous_time >= cooltime - 0.011
+            assert (
+                next_time - previous_time
+                >= cooltime + extra_wait_seconds - 0.011
+            )
 
 
 def test_cooltime_reduction_increases_usage_count(
