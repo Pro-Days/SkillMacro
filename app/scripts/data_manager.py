@@ -272,8 +272,22 @@ def migrate_macro_data_file(file_path: str) -> None:
                 raw_calculator.pop("equipped_state", None)
                 raw_calculator["candidate_groups"] = []
 
-            raw["version"] = DATA_VERSION
-            stored_version_obj = DATA_VERSION
+            raw["version"] = 7
+            stored_version_obj = 7
+            migrated = True
+
+        # v7 -> v8: 프리셋별 쿨타임 추가 대기 설정 주입
+        if stored_version_obj == 7:
+            raw_preset: dict[str, Any]
+            for raw_preset in raw["preset"]:
+                raw_settings: dict[str, Any] = raw_preset["settings"]
+                raw_settings["custom_cooltime_extra_wait"] = (
+                    config.specs.COOLTIME_EXTRA_WAIT.default
+                )
+                raw_settings["use_custom_cooltime_extra_wait"] = False
+
+            raw["version"] = 8
+            stored_version_obj = 8
             migrated = True
 
         # v3 이상 저장 데이터의 목표 분배 필드 누락 보정

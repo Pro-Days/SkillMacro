@@ -556,6 +556,21 @@ def _has_cooltime_state(placed_refs: list[EquippedSkillRef]) -> bool:
     return bool(placed_ref_set) and placed_ref_set.issubset(timer_ref_set)
 
 
+def _build_runtime_skill_ready_delays_ms() -> dict[EquippedSkillRef, int]:
+    """쿨타임과 추가 대기가 반영된 스킬별 재사용 가능 시간 구성"""
+
+    cooltimes_ms: dict[EquippedSkillRef, int] = build_skill_cooltimes_ms(
+        server_spec=app_state.macro.current_server,
+        preset=app_state.macro.current_preset,
+        cooltime_reduction=app_state.macro.current_cooltime_reduction,
+    )
+    extra_wait_ms: int = app_state.macro.current_cooltime_extra_wait
+    return {
+        skill_ref: cooltime_ms + extra_wait_ms
+        for skill_ref, cooltime_ms in cooltimes_ms.items()
+    }
+
+
 def _collect_ready_cooltime_skills(
     placed_refs: list[EquippedSkillRef],
 ) -> set[EquippedSkillRef]:
@@ -567,19 +582,18 @@ def _collect_ready_cooltime_skills(
         app_state.macro.prepared_skills & placed_ref_set
     )
     now: float = time.perf_counter()
-    cooltimes_ms: dict[EquippedSkillRef, int] = build_skill_cooltimes_ms(
-        server_spec=app_state.macro.current_server,
-        preset=app_state.macro.current_preset,
-        cooltime_reduction=app_state.macro.current_cooltime_reduction,
+    ready_delays_ms: dict[EquippedSkillRef, int] = (
+        _build_runtime_skill_ready_delays_ms()
     )
-    # 쿨타임이 지난 스킬을 준비 완료 상태로 반영
+
+    # 쿨타임과 추가 대기가 모두 지난 스킬을 준비 완료 상태로 반영
     for skill_ref in placed_refs:
         if skill_ref in prepared_skills:
             continue
 
         started_at: float = app_state.macro.skill_cooltime_timers[skill_ref]
         elapsed_ms: int = round((now - started_at) * 1000)
-        if elapsed_ms >= cooltimes_ms[skill_ref]:
+        if elapsed_ms >= ready_delays_ms[skill_ref]:
             prepared_skills.add(skill_ref)
 
     return prepared_skills
@@ -708,17 +722,23 @@ def _collect_ready_link_skill_ids(link_skill: LinkSkill) -> list[str]:
     # 연계스킬 자체 발동 이력 추적
     now: float = time.perf_counter()
     cooltime_reduction: float = app_state.macro.current_cooltime_reduction
+    extra_wait_ms: int = app_state.macro.current_cooltime_extra_wait
     skill_registry = app_state.macro.current_server.skill_registry
 
     ready_skill_ids: list[str] = []
     for skill_id in link_skill.skills:
-        cooltime: float = (
-            skill_registry.get(skill_id).cooltime * (100 - cooltime_reduction) / 100.0
+        ready_delay_ms: int = (
+            round(
+                skill_registry.get(skill_id).cooltime
+                * (100 - cooltime_reduction)
+                * 10
+            )
+            + extra_wait_ms
         )
         started_at: float | None = link_skill.skill_timers.get(skill_id)
 
-        # 미사용이거나 쿨타임 경과 시 사용 가능 후보로 포함
-        if started_at is None or (now - started_at) >= cooltime:
+        # 미사용이거나 쿨타임과 추가 대기 경과 시 사용 가능 후보로 포함
+        if started_at is None or round((now - started_at) * 1000) >= ready_delay_ms:
             ready_skill_ids.append(skill_id)
 
     return ready_skill_ids
@@ -802,21 +822,19 @@ def build_task_list(show_info: bool = False) -> float:
             app_state.macro.current_server
         )
     )
-    cooltimes_ms: dict[EquippedSkillRef, int] = build_skill_cooltimes_ms(
-        server_spec=app_state.macro.current_server,
-        preset=app_state.macro.current_preset,
-        cooltime_reduction=app_state.macro.current_cooltime_reduction,
+    ready_delays_ms: dict[EquippedSkillRef, int] = (
+        _build_runtime_skill_ready_delays_ms()
     )
     now: float = time.perf_counter()
 
-    # 쿨타임 완료 스킬 재준비
+    # 쿨타임과 추가 대기 완료 스킬 재준비
     for skill_ref in placed_refs:
         if skill_ref in app_state.macro.prepared_skills:
             continue
 
         started_at: float = app_state.macro.skill_cooltime_timers[skill_ref]
         elapsed_ms: int = round((now - started_at) * 1000)
-        if elapsed_ms >= cooltimes_ms[skill_ref]:
+        if elapsed_ms >= ready_delays_ms[skill_ref]:
             app_state.macro.prepared_skills.add(skill_ref)
 
     next_task: tuple[EquippedSkillRef, ...] = take_next_task(
@@ -838,7 +856,7 @@ def build_task_list(show_info: bool = False) -> float:
 
     # 모든 스킬이 쿨타임 중인 경우, 가장 빨리 준비되는 스킬까지 남은 시간 반환
     remaining_times_ms: list[int] = [
-        cooltimes_ms[skill_ref]
+        ready_delays_ms[skill_ref]
         - round(
             (
                 now - app_state.macro.skill_cooltime_timers[skill_ref]
@@ -849,7 +867,6 @@ def build_task_list(show_info: bool = False) -> float:
         if skill_ref not in app_state.macro.prepared_skills
     ]
 
-    # 조기 기상은 다음 루프에서 남은 시간을 다시 계산하므로 고정 여유시간 없이 정확한 시점 대기
     return (
         max(0, min(remaining_times_ms)) * 0.001
         if remaining_times_ms

@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from app.scripts.registry.skill_registry import ScrollDef
 
 
-DATA_VERSION: int = 7
+DATA_VERSION: int = 8
 
 
 class ThemeMode(str, Enum):
@@ -179,6 +179,10 @@ class MacroSettings:
     custom_cooltime_reduction: float = config.specs.COOLTIME_REDUCTION.default
     use_custom_cooltime_reduction: bool = False
 
+    # 쿨타임 종료 후 추가 대기 시간(ms)
+    custom_cooltime_extra_wait: int = config.specs.COOLTIME_EXTRA_WAIT.default
+    use_custom_cooltime_extra_wait: bool = False
+
     # 시작키
     custom_start_key: str = config.specs.DEFAULT_START_KEY.key_id
     use_custom_start_key: bool = False
@@ -208,6 +212,8 @@ class MacroSettings:
             use_custom_delay=data["use_custom_delay"],
             custom_cooltime_reduction=data["custom_cooltime_reduction"],
             use_custom_cooltime_reduction=data["use_custom_cooltime_reduction"],
+            custom_cooltime_extra_wait=data["custom_cooltime_extra_wait"],
+            use_custom_cooltime_extra_wait=data["use_custom_cooltime_extra_wait"],
             custom_start_key=data["custom_start_key"],
             use_custom_start_key=data["use_custom_start_key"],
             custom_key_hold_seconds=data["custom_key_hold_seconds"],
@@ -228,6 +234,8 @@ class MacroSettings:
             "use_custom_delay": self.use_custom_delay,
             "custom_cooltime_reduction": self.custom_cooltime_reduction,
             "use_custom_cooltime_reduction": self.use_custom_cooltime_reduction,
+            "custom_cooltime_extra_wait": self.custom_cooltime_extra_wait,
+            "use_custom_cooltime_extra_wait": self.use_custom_cooltime_extra_wait,
             "custom_start_key": self.custom_start_key,
             "use_custom_start_key": self.use_custom_start_key,
             "custom_key_hold_seconds": self.custom_key_hold_seconds,
@@ -497,6 +505,8 @@ class MacroPreset:
                 use_custom_delay=False,
                 custom_cooltime_reduction=default_cooltime_reduction,
                 use_custom_cooltime_reduction=False,
+                custom_cooltime_extra_wait=config.specs.COOLTIME_EXTRA_WAIT.default,
+                use_custom_cooltime_extra_wait=False,
                 custom_start_key=default_start_key_id,
                 use_custom_start_key=False,
                 custom_key_hold_seconds=config.specs.KEY_HOLD_SECONDS.default,

@@ -464,6 +464,25 @@ class GeneralSettings(QFrame):
             func1=self.on_user_swap_key_clicked,
         )
 
+        # 쿨타임 추가 대기
+        self.cooltime_extra_wait_setting = self.SettingItem(
+            popup_manager=self.popup_manager,
+            title=config.specs.COOLTIME_EXTRA_WAIT.label,
+            tooltip=(
+                "스킬 쿨타임이 끝난 뒤 추가로 기다리는 시간입니다.\n"
+                "스킬 입력이 누락되면 값을 늘려주세요.\n"
+                "단위는 밀리초(millisecond, 0.001초)를 사용합니다.\n"
+                f"입력 가능한 범위는 {config.specs.COOLTIME_EXTRA_WAIT.min}~"
+                f"{config.specs.COOLTIME_EXTRA_WAIT.max}입니다."
+            ),
+            btn0_text=f"기본: {config.specs.COOLTIME_EXTRA_WAIT.default}",
+            btn0_enabled=True,
+            btn1_text="",
+            btn1_enabled=False,
+            func0=self.on_default_cooltime_extra_wait_clicked,
+            func1=self.on_user_cooltime_extra_wait_clicked,
+        )
+
         # 마우스 클릭
         self.click_setting = self.SettingItem(
             popup_manager=self.popup_manager,
@@ -554,6 +573,7 @@ class GeneralSettings(QFrame):
 
         self.detail_settings_container: QFrame = QFrame()
         detail_settings_layout = QVBoxLayout()
+        detail_settings_layout.addWidget(self.cooltime_extra_wait_setting)
         detail_settings_layout.addWidget(self.click_setting)
         detail_settings_layout.addWidget(self.key_hold_setting)
         detail_settings_layout.addWidget(self.remember_state_setting)
@@ -649,6 +669,19 @@ class GeneralSettings(QFrame):
         )
         self.swap_key_setting.set_buttons_enabled(
             not use_custom_swap_key, use_custom_swap_key
+        )
+
+        # 쿨타임 추가 대기
+        custom_cooltime_extra_wait: int = preset.settings.custom_cooltime_extra_wait
+        use_custom_cooltime_extra_wait: bool = (
+            preset.settings.use_custom_cooltime_extra_wait
+        )
+        self.cooltime_extra_wait_setting.set_right_button_text(
+            str(custom_cooltime_extra_wait)
+        )
+        self.cooltime_extra_wait_setting.set_buttons_enabled(
+            not use_custom_cooltime_extra_wait,
+            use_custom_cooltime_extra_wait,
         )
 
         # 마우스 클릭
@@ -813,6 +846,61 @@ class GeneralSettings(QFrame):
 
         # 유저 쿨타임 감소로 변경 (입력 값 유지)
         app_state.macro.current_preset.settings.use_custom_cooltime_reduction = True
+        self.update_from_preset(app_state.macro.current_preset)
+        self._on_data_changed()
+
+    def on_default_cooltime_extra_wait_clicked(self) -> None:
+        """기본 쿨타임 추가 대기 클릭시 실행"""
+
+        self.popup_manager.close_popup()
+
+        if app_state.macro.is_running:
+            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+            return
+
+        settings = app_state.macro.current_preset.settings
+        if not settings.use_custom_cooltime_extra_wait:
+            return
+
+        settings.use_custom_cooltime_extra_wait = False
+        app_state.macro.clear_cooltime_state()
+        self.update_from_preset(app_state.macro.current_preset)
+        self._on_data_changed()
+
+    def on_user_cooltime_extra_wait_clicked(self) -> None:
+        """사용자 쿨타임 추가 대기 클릭시 실행"""
+
+        def apply(extra_wait_ms: int) -> None:
+            settings = app_state.macro.current_preset.settings
+            if extra_wait_ms == settings.custom_cooltime_extra_wait:
+                return
+
+            settings.custom_cooltime_extra_wait = extra_wait_ms
+            settings.use_custom_cooltime_extra_wait = True
+            app_state.macro.clear_cooltime_state()
+            self.update_from_preset(app_state.macro.current_preset)
+            self._on_data_changed()
+
+        if self.popup_manager.is_popup_active(PopupKind.COOLTIME_EXTRA_WAIT):
+            self.popup_manager.close_popup()
+            return
+
+        self.popup_manager.close_popup()
+
+        if app_state.macro.is_running:
+            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+            return
+
+        settings = app_state.macro.current_preset.settings
+        if settings.use_custom_cooltime_extra_wait:
+            self.popup_manager.make_cooltime_extra_wait_popup(
+                self.cooltime_extra_wait_setting.right_button,
+                apply,
+            )
+            return
+
+        settings.use_custom_cooltime_extra_wait = True
+        app_state.macro.clear_cooltime_state()
         self.update_from_preset(app_state.macro.current_preset)
         self._on_data_changed()
 

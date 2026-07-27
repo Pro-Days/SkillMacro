@@ -116,6 +116,7 @@ class PopupKind(str, Enum):
     SERVER = "settingServer"
     DELAY = "settingDelay"
     COOLTIME = "settingCooltime"
+    COOLTIME_EXTRA_WAIT = "settingCooltimeExtraWait"
     KEY_HOLD = "settingKeyHold"
     START_KEY = "settingStartKey"
     TAB_NAME = "tabName"
@@ -142,6 +143,7 @@ class NoticeKind(Enum):
     # 입력 검증
     DELAY_INPUT_ERROR = auto()  # 딜레이 입력 오류
     COOLTIME_INPUT_ERROR = auto()  # 쿨타임 입력 오류
+    COOLTIME_EXTRA_WAIT_INPUT_ERROR = auto()  # 쿨타임 추가 대기 입력 오류
     KEY_HOLD_INPUT_ERROR = auto()  # 키 입력 유지 시간 입력 오류
     START_KEY_CHANGE_ERROR = auto()  # 매크로 시작키 변경 오류
     SWAP_KEY_CHANGE_ERROR = auto()  # 스왑키 변경 오류
@@ -1034,6 +1036,14 @@ class NoticeController:
                     f"{config.specs.COOLTIME_REDUCTION.label}은(는) {config.specs.COOLTIME_REDUCTION.min}~{config.specs.COOLTIME_REDUCTION.max}까지의 수를 입력해야 합니다."
                 )
 
+            case NoticeKind.COOLTIME_EXTRA_WAIT_INPUT_ERROR:
+                return NoticeData(
+                    f"{config.specs.COOLTIME_EXTRA_WAIT.label}는 "
+                    f"{config.specs.COOLTIME_EXTRA_WAIT.min}~"
+                    f"{config.specs.COOLTIME_EXTRA_WAIT.max}까지의 정수를 "
+                    "입력해야 합니다."
+                )
+
             case NoticeKind.KEY_HOLD_INPUT_ERROR:
                 return NoticeData(
                     f"{config.specs.KEY_HOLD_SECONDS.label} 시간은 {config.specs.KEY_HOLD_SECONDS.min:g}~{config.specs.KEY_HOLD_SECONDS.max:g}초 사이의 수를 입력해야 합니다."
@@ -1485,6 +1495,44 @@ class PopupManager:
 
         self.make_input_popup(
             kind=PopupKind.COOLTIME,
+            anchor=anchor,
+            content=content,
+            placement=PopupPlacement.BELOW,
+        )
+
+    def make_cooltime_extra_wait_popup(
+        self,
+        anchor: QWidget,
+        on_selected: Callable[[int], None],
+    ) -> None:
+        """쿨타임 추가 대기 입력 팝업"""
+
+        default_text: str = str(app_state.macro.current_cooltime_extra_wait)
+        content: InputConfirmContent = InputConfirmContent(default_text=default_text)
+
+        def _submit(raw: str) -> None:
+            self.close_popup()
+
+            try:
+                value: int = int(raw)
+            except ValueError:
+                self.show_notice(NoticeKind.COOLTIME_EXTRA_WAIT_INPUT_ERROR)
+                return
+
+            if not (
+                config.specs.COOLTIME_EXTRA_WAIT.min
+                <= value
+                <= config.specs.COOLTIME_EXTRA_WAIT.max
+            ):
+                self.show_notice(NoticeKind.COOLTIME_EXTRA_WAIT_INPUT_ERROR)
+                return
+
+            on_selected(value)
+
+        content.submitted.connect(_submit)
+
+        self.make_input_popup(
+            kind=PopupKind.COOLTIME_EXTRA_WAIT,
             anchor=anchor,
             content=content,
             placement=PopupPlacement.BELOW,

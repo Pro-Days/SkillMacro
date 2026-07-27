@@ -20,6 +20,7 @@ from app.scripts.macro_scheduler import build_priority_skill_sequence
 from app.scripts.registry.key_registry import KeyRegistry, KeySpec
 from app.scripts.registry.server_registry import ServerSpec, server_registry
 from app.scripts.run_macro import (
+    _collect_ready_link_skill_ids,
     _restore_or_reset_cooltime_state,
     _settle_cooltime_state_after_stop,
     build_preview_task_list,
@@ -178,16 +179,18 @@ def test_build_task_list_runs_prepared_auto_link_first(
     assert app_state.macro.task_list == link_refs
 
 
-def test_build_task_list_returns_exact_cooldown_wait_without_fixed_margin(
+def test_build_task_list_includes_configured_cooldown_extra_wait(
     synthetic_server: ServerSpec,
     macro_state_with_preset: MacroPreset,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """쿨타임 대기의 임의 고정 지연 없는 밀리초 기준 계산 검증"""
+    """설정된 쿨타임 추가 대기를 포함한 잔여 시간 계산 검증"""
 
     placed_refs: list[EquippedSkillRef] = (
         macro_state_with_preset.skills.get_placed_skill_refs(synthetic_server)
     )
+    macro_state_with_preset.settings.custom_cooltime_extra_wait = 350
+    macro_state_with_preset.settings.use_custom_cooltime_extra_wait = True
     app_state.macro.skill_sequence = list(
         build_priority_skill_sequence(
             server_spec=synthetic_server,
@@ -211,7 +214,67 @@ def test_build_task_list_returns_exact_cooldown_wait_without_fixed_margin(
         ).cooltime
         for skill_ref in placed_refs
     )
-    assert wait_seconds == shortest_cooltime - 1.0
+    assert wait_seconds == pytest.approx(shortest_cooltime - 1.0 + 0.35)
+
+
+def test_each_skill_waits_its_own_cooldown_extra_wait(
+    synthetic_server: ServerSpec,
+    macro_state_with_preset: MacroPreset,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """다른 스킬의 대기 구간 중 쿨타임이 끝난 스킬의 개별 추가 대기 보장"""
+
+    placed_refs: list[EquippedSkillRef] = (
+        macro_state_with_preset.skills.get_placed_skill_refs(synthetic_server)
+    )
+    ready_ref: EquippedSkillRef = placed_refs[0]
+    cooling_priority_ref: EquippedSkillRef = placed_refs[2]
+    cooling_priority_id: str = (
+        macro_state_with_preset.skills.get_placed_skill_id(cooling_priority_ref)
+    )
+    macro_state_with_preset.usage_settings[cooling_priority_id] = SkillUsageSetting(
+        priority=1
+    )
+    app_state.macro.skill_sequence = list(
+        build_priority_skill_sequence(
+            server_spec=synthetic_server,
+            preset=macro_state_with_preset,
+            skills_info=macro_state_with_preset.usage_settings,
+        )
+    )
+    app_state.macro.prepared_skills = set()
+    app_state.macro.using_link_skills = []
+    app_state.macro.task_list = []
+    app_state.macro.skill_cooltime_timers = {
+        skill_ref: 100.0 for skill_ref in placed_refs
+    }
+
+    # 4.0초 스킬은 추가 대기까지 완료, 4.5초 우선순위 스킬은 쿨타임만 완료된 시점
+    monkeypatch.setattr(run_macro.time, "perf_counter", lambda: 104.55)
+
+    wait_seconds: float = build_task_list()
+
+    assert wait_seconds == 0.0
+    assert app_state.macro.task_list == [ready_ref]
+
+
+def test_manual_link_cooltime_state_includes_extra_wait(
+    synthetic_server: ServerSpec,
+    macro_state_with_preset: MacroPreset,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """수동 연계 쿨타임 동기화의 추가 대기 적용 검증"""
+
+    skill_id: str = macro_state_with_preset.skills.placed_skills[0]
+    link_skill = LinkSkill(skills=[skill_id], remember_state=True)
+    link_skill.skill_timers[skill_id] = 100.0
+    current_time: list[float] = [104.199]
+    monkeypatch.setattr(run_macro.time, "perf_counter", lambda: current_time[0])
+
+    assert _collect_ready_link_skill_ids(link_skill) == []
+
+    current_time[0] = 104.2
+    assert _collect_ready_link_skill_ids(link_skill) == [skill_id]
 
 
 def test_runtime_scheduler_matches_60_second_simulation_sequence(
@@ -219,7 +282,7 @@ def test_runtime_scheduler_matches_60_second_simulation_sequence(
     macro_state_with_preset: MacroPreset,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """가상 시계에서 런타임과 시뮬레이터의 전체 상태 일치 검증"""
+    """런타임 추가 대기를 제외한 공용 스케줄러의 전체 상태 일치 검증"""
 
     first_link_skill_id: str = macro_state_with_preset.skills.placed_skills[1]
     second_link_skill_id: str = macro_state_with_preset.skills.placed_skills[6]
@@ -245,6 +308,8 @@ def test_runtime_scheduler_matches_60_second_simulation_sequence(
         "perf_counter",
         lambda: started_at + current_time_seconds,
     )
+    macro_state_with_preset.settings.custom_cooltime_extra_wait = 0
+    macro_state_with_preset.settings.use_custom_cooltime_extra_wait = True
     init_macro()
 
     actual_events: list[SkillUseEvent] = []
