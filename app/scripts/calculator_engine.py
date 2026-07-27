@@ -1932,13 +1932,13 @@ def _normalize_inverse_stat_map(
 def _update_prepared_skills(
     placed_refs: list[EquippedSkillRef],
     skill_cooltime_timers_ms: dict[EquippedSkillRef, int],
-    skill_cooltimes_ms: dict[EquippedSkillRef, int],
+    skill_ready_delays_ms: dict[EquippedSkillRef, int],
     elapsed_time_ms: int,
     prepared_skills: set[EquippedSkillRef],
 ) -> None:
-    """쿨타임 종료 스킬 준비 상태 반영"""
+    """쿨타임과 추가 대기 종료 스킬 준비 상태 반영"""
 
-    # 현재 시점까지 쿨타임이 끝난 스킬만 준비 상태로 복귀
+    # 현재 시점까지 쿨타임과 추가 대기가 끝난 스킬만 준비 상태로 복귀
     for skill_ref in placed_refs:
         if skill_ref in prepared_skills:
             continue
@@ -1946,7 +1946,7 @@ def _update_prepared_skills(
         elapsed_from_last_use: int = (
             elapsed_time_ms - skill_cooltime_timers_ms[skill_ref]
         )
-        if elapsed_from_last_use < skill_cooltimes_ms[skill_ref]:
+        if elapsed_from_last_use < skill_ready_delays_ms[skill_ref]:
             continue
 
         prepared_skills.add(skill_ref)
@@ -1979,7 +1979,7 @@ def build_skill_use_sequence(
         skills_info=skills_info,
     )
 
-    # 쿨타임 감소를 반영한 스킬별 재사용 대기시간 계산
+    # 쿨타임 감소와 추가 대기를 반영한 스킬별 재사용 가능 시간 계산
     skill_cooltime_timers_ms: dict[EquippedSkillRef, int] = {
         skill_ref: 0 for skill_ref in placed_refs
     }
@@ -1988,6 +1988,11 @@ def build_skill_use_sequence(
         preset=preset,
         cooltime_reduction=cooltime_reduction,
     )
+    extra_wait_ms: int = preset.settings.effective_cooltime_extra_wait
+    skill_ready_delays_ms: dict[EquippedSkillRef, int] = {
+        skill_ref: cooltime_ms + extra_wait_ms
+        for skill_ref, cooltime_ms in skill_cooltimes_ms.items()
+    }
 
     # 60초 범위 내 실제 스킬 사용 시점 기록
     task_list: list[EquippedSkillRef] = []
@@ -1998,7 +2003,7 @@ def build_skill_use_sequence(
             _update_prepared_skills(
                 placed_refs=placed_refs,
                 skill_cooltime_timers_ms=skill_cooltime_timers_ms,
-                skill_cooltimes_ms=skill_cooltimes_ms,
+                skill_ready_delays_ms=skill_ready_delays_ms,
                 elapsed_time_ms=elapsed_time_ms,
                 prepared_skills=prepared_skills,
             )
@@ -2033,7 +2038,7 @@ def build_skill_use_sequence(
             break
 
         next_cooltime_ms: int = min(
-            skill_cooltimes_ms[skill_ref]
+            skill_ready_delays_ms[skill_ref]
             - (elapsed_time_ms - skill_cooltime_timers_ms[skill_ref])
             for skill_ref in waiting_refs
         )

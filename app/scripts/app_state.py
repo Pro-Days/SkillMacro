@@ -60,9 +60,7 @@ class MacroState:
     @property
     def current_cooltime_extra_wait(self) -> int:
         """실제로 사용되는 쿨타임 추가 대기 시간을 반환"""
-        if self.current_preset.settings.use_custom_cooltime_extra_wait:
-            return self.current_preset.settings.custom_cooltime_extra_wait
-        return config.specs.COOLTIME_EXTRA_WAIT.default
+        return self.current_preset.settings.effective_cooltime_extra_wait
 
     @property
     def current_start_key(self) -> KeySpec:

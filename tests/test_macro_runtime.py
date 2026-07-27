@@ -282,7 +282,7 @@ def test_runtime_scheduler_matches_60_second_simulation_sequence(
     macro_state_with_preset: MacroPreset,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """런타임 추가 대기를 제외한 공용 스케줄러의 전체 상태 일치 검증"""
+    """쿨타임 추가 대기를 포함한 런타임과 시뮬레이터의 전체 상태 일치 검증"""
 
     first_link_skill_id: str = macro_state_with_preset.skills.placed_skills[1]
     second_link_skill_id: str = macro_state_with_preset.skills.placed_skills[6]
@@ -293,6 +293,8 @@ def test_runtime_scheduler_matches_60_second_simulation_sequence(
         )
     )
     delay_ms: int = 300
+    macro_state_with_preset.settings.custom_cooltime_extra_wait = 350
+    macro_state_with_preset.settings.use_custom_cooltime_extra_wait = True
     expected_events: tuple[SkillUseEvent, ...] = build_skill_use_sequence(
         server_spec=synthetic_server,
         preset=macro_state_with_preset,
@@ -308,8 +310,6 @@ def test_runtime_scheduler_matches_60_second_simulation_sequence(
         "perf_counter",
         lambda: started_at + current_time_seconds,
     )
-    macro_state_with_preset.settings.custom_cooltime_extra_wait = 0
-    macro_state_with_preset.settings.use_custom_cooltime_extra_wait = True
     init_macro()
 
     actual_events: list[SkillUseEvent] = []

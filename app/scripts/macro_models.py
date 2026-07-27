@@ -202,6 +202,14 @@ class MacroSettings:
     # 스킬 사용 후 항상 1번 줄로 복귀
     always_return_to_first_line: bool = False
 
+    @property
+    def effective_cooltime_extra_wait(self) -> int:
+        """실제로 사용되는 쿨타임 추가 대기 시간 반환"""
+
+        if self.use_custom_cooltime_extra_wait:
+            return self.custom_cooltime_extra_wait
+        return config.specs.COOLTIME_EXTRA_WAIT.default
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "MacroSettings":
         """딕셔너리로부터 MacroSettings 생성"""
