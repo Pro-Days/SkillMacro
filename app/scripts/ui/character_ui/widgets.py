@@ -317,6 +317,7 @@ class ChoiceListPanels:
         add_clicked: Callable[[], None],
         # selector 아래쪽 제목
         option_title: str,
+        wrap_group: bool,
         selector_min_width: int = 0,
         list_min_width: int = 0,
         selector_scroll_min_height: int = 150,
@@ -336,9 +337,13 @@ class ChoiceListPanels:
         )
 
         self.group_container: QFrame = QFrame(self.selector_panel)
-        self.group_layout = QHBoxLayout(self.group_container)
-        self.group_layout.setContentsMargins(0, 0, 0, 0)
-        self.group_layout.setSpacing(6)
+        self.group_layout: QLayout
+        if wrap_group:
+            self.group_layout = FlowLayout(self.group_container, spacing=6)
+        else:
+            self.group_layout = QHBoxLayout(self.group_container)
+            self.group_layout.setContentsMargins(0, 0, 0, 0)
+            self.group_layout.setSpacing(6)
         selector_layout.addWidget(self.group_container)
 
         selector_layout.addWidget(
@@ -386,6 +391,12 @@ class ChoiceListPanels:
         )
 
         list_panel_layout.addWidget(self.list_scroll_area, 1)
+
+    def add_group_stretch(self) -> None:
+        """고정 행 레이아웃의 선택 버튼을 왼쪽 정렬"""
+
+        if isinstance(self.group_layout, QBoxLayout):
+            self.group_layout.addStretch(1)
 
     def make_choice_button(
         self,

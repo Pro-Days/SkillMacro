@@ -163,6 +163,7 @@ class TalismanTab(CharacterTab):
             add_text="+ 부적 추가",
             add_clicked=self._add_talisman,
             option_title="종류",
+            wrap_group=False,
             selector_min_width=320,
             list_min_width=_OWNED_TALISMAN_WIDTH,
             selector_scroll_min_height=210,
@@ -181,7 +182,7 @@ class TalismanTab(CharacterTab):
             self._grade_buttons[grade] = grade_button
             self._choice_panels.group_layout.addWidget(grade_button)
 
-        self._choice_panels.group_layout.addStretch(1)
+        self._choice_panels.add_group_stretch()
         return self._choice_panels.selector_panel
 
     def _build_owned_panel(self) -> QFrame:
