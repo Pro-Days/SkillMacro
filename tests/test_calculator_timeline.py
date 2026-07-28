@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 
+import app.scripts.calculator_engine as calculator_engine
 from app.scripts.calculator_engine import (
     DamageEvent,
     EvaluationContext,
@@ -15,6 +16,7 @@ from app.scripts.calculator_engine import (
     build_calculator_context,
     build_calculator_timeline,
     build_damage_events,
+    build_simulation_events,
     build_skill_use_sequence,
 )
 from app.scripts.calculator_models import BaseStats, FinalStats, PowerMetric, StatKey
@@ -26,12 +28,19 @@ from app.scripts.macro_models import (
     SkillUsageSetting,
 )
 from app.scripts.registry.server_registry import ServerSpec
+from app.scripts.registry.skill_registry import get_builtin_skill_id
 from app.scripts.simulate_macro import simulate_random_from_calculator
 
 # 시퀀스 공통 딜레이 입력값
 DELAY_MS: int = 300
 GOLDEN_PATH: Path = (
     Path(__file__).resolve().parent / "data" / "golden" / "timeline_damage_cases.json"
+)
+SKILL_SEQUENCE_GOLDEN_PATH: Path = (
+    Path(__file__).resolve().parent
+    / "data"
+    / "golden"
+    / "skill_sequence_14_skills.json"
 )
 
 
@@ -73,6 +82,38 @@ def test_sequence_is_deterministic(
 
     assert first == second
     assert len(first) > 0
+
+
+def test_14_skill_sequence_matches_golden(
+    synthetic_server: ServerSpec,
+    full_preset: MacroPreset,
+) -> None:
+    """14스킬 60초 시퀀스의 승인된 순서와 입력 시각 검증"""
+
+    assert len(full_preset.skills.get_placed_skill_refs(synthetic_server)) == 14
+
+    first_link_skill_id: str = full_preset.skills.placed_skills[1]
+    second_link_skill_id: str = full_preset.skills.placed_skills[6]
+    full_preset.link_skills.append(
+        LinkSkill(
+            use_type=LinkUseType.AUTO,
+            skills=[first_link_skill_id, second_link_skill_id],
+        )
+    )
+
+    actual_events: tuple[SkillUseEvent, ...] = _build_sequence(
+        synthetic_server,
+        full_preset,
+    )
+    with open(SKILL_SEQUENCE_GOLDEN_PATH, "r", encoding="utf-8") as file:
+        payload: dict[str, Any] = json.load(file)
+    event_rows: list[list[str | float]] = payload["events"]
+    expected_events: tuple[SkillUseEvent, ...] = tuple(
+        SkillUseEvent(skill_id=str(skill_id), time=float(event_time))
+        for skill_id, event_time in event_rows
+    )
+
+    assert actual_events == expected_events
 
 
 def test_cooldown_is_respected_per_skill(
@@ -203,6 +244,47 @@ def test_use_alone_allows_link_member_solo_use(
     slow_count: int = sum(1 for event in events if event.skill_id == slow_skill_id)
 
     assert fast_count > slow_count
+
+
+def test_basic_attacks_resume_at_allowed_window_and_keep_600ms_interval(
+    synthetic_server: ServerSpec,
+    full_preset: MacroPreset,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """중첩 스킬 보호 구간 이후 평타 재사용 시각 검증"""
+
+    full_preset.settings.use_default_attack = True
+    skill_id: str = full_preset.skills.placed_skills[0]
+    skill_uses: tuple[SkillUseEvent, ...] = (
+        SkillUseEvent(skill_id=skill_id, time=0.0),
+        SkillUseEvent(skill_id=skill_id, time=0.3),
+        SkillUseEvent(skill_id=skill_id, time=0.6),
+        SkillUseEvent(skill_id=skill_id, time=1.6),
+    )
+    monkeypatch.setattr(
+        calculator_engine,
+        "build_skill_use_sequence",
+        lambda **_kwargs: skill_uses,
+    )
+
+    hit_events: tuple[HitEvent, ...] = build_simulation_events(
+        server_spec=synthetic_server,
+        preset=full_preset,
+        skills_info=full_preset.usage_settings,
+        delay_ms=DELAY_MS,
+        cooltime_reduction=0.0,
+    )
+    basic_attack_skill_id: str = get_builtin_skill_id(
+        synthetic_server.id,
+        "평타",
+    )
+    basic_attack_times: list[float] = [
+        event.time
+        for event in hit_events
+        if event.skill_id == basic_attack_skill_id
+    ]
+
+    assert basic_attack_times[:3] == [0.9, 1.9, 2.5]
 
 
 @pytest.fixture
