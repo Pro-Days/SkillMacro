@@ -117,8 +117,9 @@ class MacroState:
     # 스킬 쿨타임 타이머
     skill_cooltime_timers: dict[EquippedSkillRef, float] = field(default_factory=dict)
 
-    # 스킬 선입력 보호를 위한 평타 중지 종료 시각
-    attack_pause_until: float = 0.0
+    # 평타 보호 구간 계산용 직전·다음 스킬 시각
+    last_skill_input_at: float | None = None
+    next_skill_input_at: float | None = None
 
     def clear_cooltime_state(self) -> None:
         """쿨타임 런타임 상태 초기화"""

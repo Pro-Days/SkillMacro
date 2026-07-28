@@ -9,6 +9,36 @@ if TYPE_CHECKING:
     from app.scripts.registry.server_registry import ServerSpec
 
 
+BASIC_ATTACK_AFTER_SKILL_MILLISECONDS: int = 300
+BASIC_ATTACK_BEFORE_SKILL_MILLISECONDS: int = 150
+BASIC_ATTACK_INTERVAL_MILLISECONDS: int = 600
+
+
+def can_use_basic_attack(
+    current_time: float,
+    last_skill_input_at: float | None,
+    next_skill_input_at: float | None,
+) -> bool:
+    """직전·다음 스킬 시각 기준 평타 입력 허용 여부 반환"""
+
+    after_skill_seconds: float = (
+        BASIC_ATTACK_AFTER_SKILL_MILLISECONDS * 0.001
+    )
+    if (
+        last_skill_input_at is not None
+        and current_time < last_skill_input_at + after_skill_seconds
+    ):
+        return False
+
+    before_skill_seconds: float = (
+        BASIC_ATTACK_BEFORE_SKILL_MILLISECONDS * 0.001
+    )
+    return (
+        next_skill_input_at is None
+        or current_time < next_skill_input_at - before_skill_seconds
+    )
+
+
 def build_priority_skill_sequence(
     server_spec: ServerSpec,
     preset: MacroPreset,

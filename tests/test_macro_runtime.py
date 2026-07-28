@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from typing import cast
 
 import pytest
-from pynput.keyboard import KeyCode
+from pynput.keyboard import Key, KeyCode
+from pynput.mouse import Button
 
 import app.scripts.run_macro as run_macro
 from app.scripts.app_state import app_state
@@ -16,7 +18,10 @@ from app.scripts.macro_models import (
     MacroPreset,
     SkillUsageSetting,
 )
-from app.scripts.macro_scheduler import build_priority_skill_sequence
+from app.scripts.macro_scheduler import (
+    build_priority_skill_sequence,
+    can_use_basic_attack,
+)
 from app.scripts.registry.key_registry import KeyRegistry, KeySpec
 from app.scripts.registry.server_registry import ServerSpec, server_registry
 from app.scripts.run_macro import (
@@ -150,6 +155,39 @@ def test_build_task_list_selects_priority_skill(
     assert selected_skill_id == target_skill_id
 
 
+def test_runtime_yields_when_no_skills_can_be_scheduled(
+    macro_state_with_preset: MacroPreset,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """빈 스킬 구성의 메인 런타임 폴링 대기 검증"""
+
+    macro_state_with_preset.skills.placed_skills = [
+        ""
+    ] * len(macro_state_with_preset.skills.placed_skills)
+    macro_state_with_preset.settings.use_default_attack = False
+    app_state.macro.is_running = True
+    app_state.macro.run_id = 1
+
+    wait_end_times: list[float] = []
+
+    def stop_after_wait(end_at: float) -> None:
+        wait_end_times.append(end_at)
+        app_state.macro.is_running = False
+
+    monkeypatch.setattr(run_macro.time, "perf_counter", lambda: 100.0)
+    monkeypatch.setattr(
+        run_macro,
+        "_wait_until_while_macro_running",
+        stop_after_wait,
+    )
+    monkeypatch.setattr(run_macro.keyboard, "Controller", lambda: None)
+    monkeypatch.setattr(run_macro.mouse, "Controller", lambda: None)
+
+    run_macro.running_macro_thread(run_id=1)
+
+    assert wait_end_times == [100.0 + run_macro.MACRO_SLEEP_POLL_SECONDS]
+
+
 def test_build_task_list_runs_prepared_auto_link_first(
     synthetic_server: ServerSpec,
     macro_state_with_preset: MacroPreset,
@@ -277,12 +315,240 @@ def test_manual_link_cooltime_state_includes_extra_wait(
     assert _collect_ready_link_skill_ids(link_skill) == [skill_id]
 
 
-def test_runtime_scheduler_matches_60_second_simulation_sequence(
+@pytest.mark.parametrize(
+    ("current_time", "expected"),
+    [
+        (10.299, False),
+        (10.3, True),
+        (10.849, True),
+        (10.85, False),
+    ],
+)
+def test_basic_attack_uses_fixed_asymmetric_skill_guards(
+    current_time: float,
+    expected: bool,
+) -> None:
+    """설정 딜레이와 무관한 스킬 후 300ms·스킬 전 150ms 보호 검증"""
+
+    assert (
+        can_use_basic_attack(
+            current_time=current_time,
+            last_skill_input_at=10.0,
+            next_skill_input_at=11.0,
+        )
+        is expected
+    )
+
+
+def test_clicking_mouse_thread_matches_basic_attack_schedule(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """실제 평타 스레드의 보호 구간 이후 600ms 입력 주기 검증"""
+
+    skill_input_times: tuple[float, ...] = (0.0, 0.3, 0.6, 1.6)
+    current_time: list[float] = [0.0]
+    next_skill_index: list[int] = [0]
+    click_times: list[float] = []
+
+    class RecordingMouseController:
+        """평타 입력 시각 기록용 마우스 컨트롤러"""
+
+        def click(self, _button: Button) -> None:
+            click_times.append(round(current_time[0], 3))
+
+    def advance_clock(seconds: float) -> None:
+        target_time: float = current_time[0] + seconds
+        while (
+            next_skill_index[0] < len(skill_input_times)
+            and skill_input_times[next_skill_index[0]] <= target_time
+        ):
+            skill_input_at: float = skill_input_times[next_skill_index[0]]
+            app_state.macro.last_skill_input_at = skill_input_at
+            next_skill_index[0] += 1
+            app_state.macro.next_skill_input_at = (
+                skill_input_times[next_skill_index[0]]
+                if next_skill_index[0] < len(skill_input_times)
+                else None
+            )
+
+        current_time[0] = target_time
+        if current_time[0] >= 3.0:
+            app_state.macro.is_running = False
+
+    monkeypatch.setattr(
+        run_macro.time,
+        "perf_counter",
+        lambda: current_time[0],
+    )
+    monkeypatch.setattr(run_macro.time, "sleep", advance_clock)
+    monkeypatch.setattr(
+        run_macro.mouse,
+        "Controller",
+        RecordingMouseController,
+    )
+
+    app_state.macro.is_running = True
+    app_state.macro.run_id = 1
+    app_state.macro.last_skill_input_at = None
+    app_state.macro.next_skill_input_at = skill_input_times[0]
+
+    run_macro.clicking_mouse_thread(run_id=1)
+
+    assert click_times == [0.9, 1.9, 2.5]
+
+
+def test_runtime_exposes_attack_window_between_queued_skills(
     synthetic_server: ServerSpec,
     macro_state_with_preset: MacroPreset,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """쿨타임 추가 대기를 포함한 런타임과 시뮬레이터의 전체 상태 일치 검증"""
+    """500ms 간격의 연속 스킬 사이 50ms 평타 허용 창 검증"""
+
+    macro_state_with_preset.settings.custom_delay = 500
+    macro_state_with_preset.settings.use_custom_delay = True
+    init_macro()
+
+    placed_refs: list[EquippedSkillRef] = (
+        macro_state_with_preset.skills.get_placed_skill_refs(synthetic_server)
+    )
+    app_state.macro.task_list = placed_refs[:2]
+    monkeypatch.setattr(app_state.macro, "is_running", True)
+
+    current_times: Iterator[float] = iter((100.0, 100.0))
+    monkeypatch.setattr(run_macro.time, "perf_counter", lambda: next(current_times))
+    monkeypatch.setattr(run_macro.keyboard, "Controller", lambda: None)
+    monkeypatch.setattr(run_macro.mouse, "Controller", lambda: None)
+    monkeypatch.setattr(run_macro, "_press_key_spec", lambda *_args: None)
+    monkeypatch.setattr(
+        run_macro,
+        "_wait_until_while_macro_running",
+        lambda _end_at: None,
+    )
+
+    is_used_skill, _current_line_index = run_macro.use_skill(
+        current_line_index=0,
+    )
+
+    assert is_used_skill is True
+    assert app_state.macro.last_skill_input_at == 100.0
+    assert app_state.macro.next_skill_input_at == 100.5
+    assert can_use_basic_attack(
+        current_time=100.31,
+        last_skill_input_at=app_state.macro.last_skill_input_at,
+        next_skill_input_at=app_state.macro.next_skill_input_at,
+    )
+    assert not can_use_basic_attack(
+        current_time=100.35,
+        last_skill_input_at=app_state.macro.last_skill_input_at,
+        next_skill_input_at=app_state.macro.next_skill_input_at,
+    )
+
+
+def _record_runtime_skill_events(
+    macro_state_with_preset: MacroPreset,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[SkillUseEvent, ...]:
+    """실제 런타임 경로의 60초 스킬 입력 기록"""
+
+    macro_state_with_preset.settings.use_default_attack = False
+    current_time_seconds: list[float] = [0.0]
+    end_time_seconds: float = 60.0
+    current_line_index: list[int] = [0]
+    recorded_events: list[SkillUseEvent] = []
+    clock_advance_count: list[int] = [0]
+    skill_key_index_by_value: dict[Key | KeyCode, int] = {
+        cast(Key | KeyCode, KeyRegistry.get(key_id).value): scroll_index
+        for scroll_index, key_id in enumerate(
+            macro_state_with_preset.skills.skill_keys
+        )
+    }
+    swap_key_value: Key | KeyCode = cast(
+        Key | KeyCode,
+        app_state.macro.current_swap_key.value,
+    )
+
+    class RecordingKeyboardController:
+        """스킬 슬롯과 입력 시각 기록용 키보드 컨트롤러"""
+
+        def press(self, key: Key | KeyCode) -> None:
+            if key == swap_key_value:
+                current_line_index[0] = 1 - current_line_index[0]
+                return
+
+            scroll_index: int | None = skill_key_index_by_value.get(key)
+            if scroll_index is None:
+                return
+
+            skill_ref = EquippedSkillRef(
+                scroll_index=scroll_index,
+                line_index=current_line_index[0],
+            )
+            recorded_events.append(
+                SkillUseEvent(
+                    skill_id=(
+                        macro_state_with_preset.skills.get_placed_skill_id(skill_ref)
+                    ),
+                    time=round(current_time_seconds[0], 3),
+                )
+            )
+
+        def release(self, _key: Key | KeyCode) -> None:
+            return
+
+    keyboard_controller = RecordingKeyboardController()
+
+    def advance_clock(seconds: float) -> None:
+        clock_advance_count[0] += 1
+        if clock_advance_count[0] > 10000:
+            pytest.fail("60초 런타임 가상 시계가 제한 횟수 안에 완료되지 않았습니다.")
+
+        clock_step_seconds: float = max(seconds, 0.000000001)
+        current_time_seconds[0] = min(
+            round(current_time_seconds[0] + clock_step_seconds, 9),
+            end_time_seconds,
+        )
+        if current_time_seconds[0] >= end_time_seconds:
+            app_state.macro.is_running = False
+
+    with monkeypatch.context() as runtime_patches:
+        runtime_patches.setattr(
+            run_macro.time,
+            "perf_counter",
+            lambda: current_time_seconds[0],
+        )
+        runtime_patches.setattr(
+            run_macro.time,
+            "time",
+            lambda: current_time_seconds[0],
+        )
+        runtime_patches.setattr(run_macro.time, "sleep", advance_clock)
+        runtime_patches.setattr(
+            run_macro.keyboard,
+            "Controller",
+            lambda: keyboard_controller,
+        )
+        runtime_patches.setattr(run_macro.mouse, "Controller", lambda: None)
+
+        app_state.macro.is_running = True
+        app_state.macro.run_id += 1
+        run_macro.running_macro_thread(run_id=app_state.macro.run_id)
+
+    return tuple(recorded_events)
+
+
+@pytest.mark.parametrize("cooltime_reduction", [0.0, 20.0, 40.0])
+def test_runtime_matches_60_second_simulation_sequence_for_14_skills(
+    synthetic_server: ServerSpec,
+    macro_state_with_preset: MacroPreset,
+    monkeypatch: pytest.MonkeyPatch,
+    cooltime_reduction: float,
+) -> None:
+    """스킬속도별 14스킬 런타임과 시뮬레이터의 60초 시퀀스 검증"""
+
+    placed_refs: list[EquippedSkillRef] = (
+        macro_state_with_preset.skills.get_placed_skill_refs(synthetic_server)
+    )
+    assert len(placed_refs) == 14
 
     first_link_skill_id: str = macro_state_with_preset.skills.placed_skills[1]
     second_link_skill_id: str = macro_state_with_preset.skills.placed_skills[6]
@@ -293,6 +559,10 @@ def test_runtime_scheduler_matches_60_second_simulation_sequence(
         )
     )
     delay_ms: int = 300
+    macro_state_with_preset.settings.custom_delay = delay_ms
+    macro_state_with_preset.settings.use_custom_delay = True
+    macro_state_with_preset.settings.custom_cooltime_reduction = cooltime_reduction
+    macro_state_with_preset.settings.use_custom_cooltime_reduction = True
     macro_state_with_preset.settings.custom_cooltime_extra_wait = 350
     macro_state_with_preset.settings.use_custom_cooltime_extra_wait = True
     expected_events: tuple[SkillUseEvent, ...] = build_skill_use_sequence(
@@ -300,45 +570,15 @@ def test_runtime_scheduler_matches_60_second_simulation_sequence(
         preset=macro_state_with_preset,
         skills_info=macro_state_with_preset.usage_settings,
         delay_ms=delay_ms,
-        cooltime_reduction=0.0,
+        cooltime_reduction=cooltime_reduction,
     )
 
-    started_at: float = 100.0
-    current_time_seconds: float = 0.0
-    monkeypatch.setattr(
-        run_macro.time,
-        "perf_counter",
-        lambda: started_at + current_time_seconds,
+    actual_events: tuple[SkillUseEvent, ...] = _record_runtime_skill_events(
+        macro_state_with_preset=macro_state_with_preset,
+        monkeypatch=monkeypatch,
     )
-    init_macro()
 
-    actual_events: list[SkillUseEvent] = []
-    while current_time_seconds < 60.0:
-        wait_seconds: float = 0.0
-        if not app_state.macro.task_list:
-            wait_seconds = build_task_list()
-
-        if app_state.macro.task_list:
-            skill_ref: EquippedSkillRef = app_state.macro.task_list.pop(0)
-            skill_id: str = macro_state_with_preset.skills.get_placed_skill_id(
-                skill_ref
-            )
-            app_state.macro.skill_cooltime_timers[skill_ref] = (
-                run_macro.time.perf_counter()
-            )
-            actual_events.append(
-                SkillUseEvent(
-                    skill_id=skill_id,
-                    time=round(current_time_seconds, 3),
-                )
-            )
-            current_time_seconds += delay_ms * 0.001
-            continue
-
-        assert wait_seconds > 0.0
-        current_time_seconds += wait_seconds
-
-    assert tuple(actual_events) == expected_events
+    assert actual_events == expected_events
 
 
 def test_cooltime_state_resets_when_remembering_is_disabled(

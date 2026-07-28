@@ -62,6 +62,9 @@ from app.scripts.calculator_models import (
 )
 from app.scripts.macro_models import EquippedSkillRef
 from app.scripts.macro_scheduler import (
+    BASIC_ATTACK_AFTER_SKILL_MILLISECONDS,
+    BASIC_ATTACK_BEFORE_SKILL_MILLISECONDS,
+    BASIC_ATTACK_INTERVAL_MILLISECONDS,
     build_auto_link_skill_groups,
     build_priority_skill_sequence,
     build_skill_cooltimes_ms,
@@ -119,8 +122,6 @@ POWER_METRIC_LABELS: dict[PowerMetric, str] = {
 # 타임라인 길이 상수
 TIMELINE_SECONDS: float = 60.0
 TIMELINE_MILLISECONDS: int = 60000
-BASIC_ATTACK_INTERVAL_MILLISECONDS: int = 625
-BASIC_ATTACK_PAUSE_BUFFER_MILLISECONDS: int = 50
 
 
 # 역산 시 음수 허용 범위
@@ -2047,6 +2048,62 @@ def build_skill_use_sequence(
     return tuple(used_skills)
 
 
+def _build_basic_attack_times_ms(
+    skill_uses: tuple[SkillUseEvent, ...],
+) -> tuple[int, ...]:
+    """스킬 보호 구간과 평타 재사용 간격 기준 평타 시각 구성"""
+
+    blocked_ranges: list[tuple[int, int]] = []
+    for skill_use in skill_uses:
+        skill_time_ms: int = int(round(skill_use.time * 1000))
+        blocked_ranges.append(
+            (
+                max(
+                    0,
+                    skill_time_ms - BASIC_ATTACK_BEFORE_SKILL_MILLISECONDS,
+                ),
+                min(
+                    TIMELINE_MILLISECONDS,
+                    skill_time_ms + BASIC_ATTACK_AFTER_SKILL_MILLISECONDS,
+                ),
+            )
+        )
+
+    # 인접 스킬의 중첩 보호 구간 병합
+    merged_ranges: list[tuple[int, int]] = []
+    for start_ms, end_ms in sorted(blocked_ranges):
+        if not merged_ranges or start_ms > merged_ranges[-1][1]:
+            merged_ranges.append((start_ms, end_ms))
+            continue
+
+        previous_start_ms, previous_end_ms = merged_ranges[-1]
+        merged_ranges[-1] = (
+            previous_start_ms,
+            max(previous_end_ms, end_ms),
+        )
+
+    basic_attack_times_ms: list[int] = []
+    next_attack_ready_ms: int = 0
+    blocked_range_index: int = 0
+    while next_attack_ready_ms < TIMELINE_MILLISECONDS:
+        while (
+            blocked_range_index < len(merged_ranges)
+            and merged_ranges[blocked_range_index][1] <= next_attack_ready_ms
+        ):
+            blocked_range_index += 1
+
+        if blocked_range_index < len(merged_ranges):
+            blocked_start_ms, blocked_end_ms = merged_ranges[blocked_range_index]
+            if blocked_start_ms <= next_attack_ready_ms < blocked_end_ms:
+                next_attack_ready_ms = blocked_end_ms
+                continue
+
+        basic_attack_times_ms.append(next_attack_ready_ms)
+        next_attack_ready_ms += BASIC_ATTACK_INTERVAL_MILLISECONDS
+
+    return tuple(basic_attack_times_ms)
+
+
 def build_simulation_events(
     server_spec: "ServerSpec",
     preset: "MacroPreset",
@@ -2066,34 +2123,13 @@ def build_simulation_events(
 
     hit_events: list[HitEvent] = []
     if preset.settings.use_default_attack:
-        basic_attack_pause_ms: int = delay_ms + BASIC_ATTACK_PAUSE_BUFFER_MILLISECONDS
-        basic_attack_pause_ranges: list[tuple[int, int]] = []
-        for skill_use in skill_uses:
-            skill_time_ms: int = int(round(skill_use.time * 1000))
-            basic_attack_pause_ranges.append(
-                (
-                    max(0, skill_time_ms - basic_attack_pause_ms),
-                    min(TIMELINE_MILLISECONDS, skill_time_ms + basic_attack_pause_ms),
-                )
-            )
-
-        # 평타 간격 기준으로 스킬 입력 구간 밖의 평타 이벤트만 확장
+        # 보호 구간 밖에서 준비되는 즉시 평타 이벤트 생성
         basic_attack_skill_id: str = get_builtin_skill_id(server_spec.id, "평타")
-        for current_time_ms in range(
-            0,
-            TIMELINE_MILLISECONDS,
-            BASIC_ATTACK_INTERVAL_MILLISECONDS,
-        ):
-            if any(
-                start_ms <= current_time_ms < end_ms
-                for start_ms, end_ms in basic_attack_pause_ranges
-            ):
-                continue
-
+        for current_time_ms in _build_basic_attack_times_ms(skill_uses):
             hit_events.append(
                 HitEvent(
                     skill_id=basic_attack_skill_id,
-                    time=round(current_time_ms * 0.001, 2),
+                    time=round(current_time_ms * 0.001, 3),
                     multiplier=1.0,
                 )
             )

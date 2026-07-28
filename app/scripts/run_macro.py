@@ -17,17 +17,19 @@ from app.scripts.macro_models import (
     LinkSkill,
 )
 from app.scripts.macro_scheduler import (
+    BASIC_ATTACK_INTERVAL_MILLISECONDS,
     build_auto_link_skill_groups,
     build_priority_skill_sequence,
     build_skill_cooltimes_ms,
+    can_use_basic_attack,
     take_next_task,
 )
 from app.scripts.registry.key_registry import KeyRegistry, KeySpec
 
 DEBUG_PRINT_INFO = False
-ATTACK_PAUSE_BUFFER_SECONDS = 0.05
 ATTACK_PAUSE_POLL_SECONDS = 0.01
 MACRO_SLEEP_POLL_SECONDS = 0.05
+SKILL_RECHECK_BUFFER_MILLISECONDS = 50
 
 
 # 전역 입력 상태 추적
@@ -362,11 +364,11 @@ def running_macro_thread(run_id: int) -> None:
     try:
         init_macro()
 
+        # 평타 사용 여부와 무관한 첫 스킬 입력 예정 시각 초기화
+        app_state.macro.next_skill_input_at = time.perf_counter()
+
         # 매크로 클릭 쓰레드
         if app_state.macro.current_use_default_attack:
-            # 첫 스킬 입력 전에 평타가 먼저 나가지 않도록 시작 직후 보호 구간 선예약
-            _pause_attack_for(_get_attack_hold_seconds())
-
             Thread(
                 target=clicking_mouse_thread,
                 args=[run_id],
@@ -379,24 +381,25 @@ def running_macro_thread(run_id: int) -> None:
             if not app_state.macro.task_list:
                 wait_seconds = build_task_list(show_info=DEBUG_PRINT_INFO)
 
-            # 다음 스킬이 아직 멀면 평타를 유지한 채 직전 보호 구간까지만 대기
+            # 스킬 준비 시점 직전의 재평가 구간 확보
             if not app_state.macro.task_list and wait_seconds > 0.0:
-                attack_hold_seconds: float = _get_attack_hold_seconds()
+                wait_milliseconds: int = round(wait_seconds * 1000)
+                recheck_lead_milliseconds: int = (
+                    app_state.macro.current_delay + SKILL_RECHECK_BUFFER_MILLISECONDS
+                )
 
-                if wait_seconds > attack_hold_seconds:
+                if wait_milliseconds > recheck_lead_milliseconds:
                     _wait_until_while_macro_running(
                         time.perf_counter()
-                        + (wait_seconds - attack_hold_seconds)
+                        + (wait_milliseconds - recheck_lead_milliseconds)
+                        * 0.001
                         * config.macro.SLEEP_COEFFICIENT_UNIT
                     )
                     continue
 
-                # 다음 스킬 임박 구간 동안 평타 중지 예약
-                _pause_attack_for(wait_seconds + ATTACK_PAUSE_BUFFER_SECONDS)
-
-            # 즉시 사용할 스킬이 있으면 평타 스레드 선차단
-            if app_state.macro.task_list:
-                _pause_attack_for(_get_attack_hold_seconds())
+            # 실행 가능한 스킬이 없으면 평타 제한용 다음 시각 해제
+            if not app_state.macro.task_list and wait_seconds <= 0.0:
+                app_state.macro.next_skill_input_at = None
 
             # 스킬 사용하고 사용 여부 리턴
             is_used_skill, current_line_index = use_skill(
@@ -414,9 +417,13 @@ def running_macro_thread(run_id: int) -> None:
                 app_state.macro.is_running = False
 
             if not is_used_skill:
+                wait_duration_seconds: float = (
+                    wait_seconds * config.macro.SLEEP_COEFFICIENT_UNIT
+                    if wait_seconds > 0.0
+                    else MACRO_SLEEP_POLL_SECONDS
+                )
                 _wait_until_while_macro_running(
-                    time.perf_counter()
-                    + wait_seconds * config.macro.SLEEP_COEFFICIENT_UNIT
+                    time.perf_counter() + wait_duration_seconds
                 )
     finally:
         if app_state.macro.run_id == run_id:
@@ -441,40 +448,68 @@ def clicking_mouse_thread(run_id: int) -> None:
     mouse_controller: mouse.Controller = mouse.Controller()
 
     while app_state.macro.is_running and app_state.macro.run_id == run_id:
-        # 스킬 입력 보호 구간에는 평타 클릭 보류
-        remaining_pause_seconds: float = (
-            app_state.macro.attack_pause_until - time.perf_counter()
-        )
-        if remaining_pause_seconds > 0.0:
-            time.sleep(min(remaining_pause_seconds, ATTACK_PAUSE_POLL_SECONDS))
+        # 직전·다음 스킬 보호 구간에는 평타 클릭 보류
+        if not can_use_basic_attack(
+            current_time=time.perf_counter(),
+            last_skill_input_at=app_state.macro.last_skill_input_at,
+            next_skill_input_at=app_state.macro.next_skill_input_at,
+        ):
+            time.sleep(ATTACK_PAUSE_POLL_SECONDS)
             continue
 
         mouse_controller.click(mouse.Button.left)
-        time.sleep(0.1)
+        time.sleep(BASIC_ATTACK_INTERVAL_MILLISECONDS * 0.001)
 
 
-def _get_attack_hold_seconds() -> float:
-    """다음 스킬 직전에 평타를 멈출 보호 구간 반환"""
+def _get_next_runnable_skill_at(not_before: float) -> float | None:
+    """현재 스케줄 상태에서 다음 실제 스킬 입력 가능 시각 반환"""
 
-    # 평타 1회 주기와 추가 버퍼를 합친 스킬 선점 구간 계산
-    attack_hold_seconds: float = (
-        app_state.macro.current_delay * 0.001
-    ) + ATTACK_PAUSE_BUFFER_SECONDS
-    return attack_hold_seconds
+    if app_state.macro.task_list:
+        return not_before
 
-
-def _pause_attack_for(duration_seconds: float) -> None:
-    """지정 시간 동안 평타를 중지하도록 예약"""
-
-    if duration_seconds <= 0.0:
-        return
-
-    # 이미 더 긴 중지 예약이 있으면 기존 종료 시각 유지
-    pause_until: float = time.perf_counter() + duration_seconds
-    app_state.macro.attack_pause_until = max(
-        app_state.macro.attack_pause_until,
-        pause_until,
+    placed_refs: list[EquippedSkillRef] = (
+        app_state.macro.current_preset.skills.get_placed_skill_refs(
+            app_state.macro.current_server
+        )
     )
+    ready_delays_ms: dict[EquippedSkillRef, int] = (
+        _build_runtime_skill_ready_delays_ms()
+    )
+    ready_at_by_ref: dict[EquippedSkillRef, float] = {
+        skill_ref: (
+            app_state.macro.skill_cooltime_timers[skill_ref]
+            + ready_delays_ms[skill_ref] * 0.001
+        )
+        for skill_ref in placed_refs
+        if skill_ref not in app_state.macro.prepared_skills
+    }
+    candidate_times: set[float] = {not_before}
+    candidate_times.update(
+        max(not_before, ready_at) for ready_at in ready_at_by_ref.values()
+    )
+
+    for candidate_time in sorted(candidate_times):
+        future_prepared_skills: set[EquippedSkillRef] = (
+            app_state.macro.prepared_skills.copy()
+        )
+        future_prepared_skills.update(
+            skill_ref
+            for skill_ref, ready_at in ready_at_by_ref.items()
+            if ready_at <= candidate_time
+        )
+        next_task: tuple[EquippedSkillRef, ...] = take_next_task(
+            preset=app_state.macro.current_preset,
+            skills_info=app_state.macro.current_preset.usage_settings,
+            prepared_skills=future_prepared_skills,
+            auto_link_skill_groups=tuple(
+                tuple(link_skill) for link_skill in app_state.macro.using_link_skills
+            ),
+            skill_sequence=tuple(app_state.macro.skill_sequence),
+        )
+        if next_task:
+            return candidate_time
+
+    return None
 
 
 def _wait_until_while_macro_running(end_at: float) -> None:
@@ -511,7 +546,7 @@ def _press_skill_keys(
     mouse_controller: mouse.Controller,
     skill_ref: EquippedSkillRef,
     current_line_index: int,
-) -> int:
+) -> tuple[int, float]:
     """줄 상태에 맞는 입력 수행"""
 
     # 현재 세로줄 공용키 기준 스킬 입력 키 조회
@@ -529,9 +564,10 @@ def _press_skill_keys(
         current_line_index = skill_ref.line_index
 
     # 프로그램 주입 스킬 입력 등록
+    skill_input_at: float = time.perf_counter()
     _press_key_spec(kbd_controller, mouse_controller, skill_key)
 
-    return current_line_index
+    return current_line_index, skill_input_at
 
 
 def _reset_cooltime_state(placed_refs: list[EquippedSkillRef]) -> None:
@@ -664,7 +700,8 @@ def init_macro() -> None:
             preset=app_state.macro.current_preset,
         )
     ]
-    app_state.macro.attack_pause_until = 0.0
+    app_state.macro.last_skill_input_at = None
+    app_state.macro.next_skill_input_at = None
 
     app_state.macro.task_list.clear()
     _restore_or_reset_cooltime_state(placed_refs)
@@ -676,14 +713,11 @@ def use_skill(current_line_index: int) -> tuple[bool, int]:
     if not app_state.macro.task_list:
         return False, current_line_index
 
-    # 스킬 입력 직전과 후속 딜레이 동안 평타 끼어들기 차단
-    _pause_attack_for(_get_attack_hold_seconds())
-
     kbd_controller: keyboard.Controller = keyboard.Controller()
     mouse_controller: mouse.Controller = mouse.Controller()
     skill_ref: EquippedSkillRef = app_state.macro.task_list.pop(0)
 
-    current_line_index = _press_skill_keys(
+    current_line_index, skill_input_at = _press_skill_keys(
         kbd_controller,
         mouse_controller,
         skill_ref,
@@ -691,11 +725,13 @@ def use_skill(current_line_index: int) -> tuple[bool, int]:
     )
     skill_used_at: float = time.perf_counter()
     app_state.macro.skill_cooltime_timers[skill_ref] = skill_used_at
+    app_state.macro.last_skill_input_at = skill_input_at
 
     delay_seconds: float = (
         app_state.macro.current_delay * 0.001 * config.macro.SLEEP_COEFFICIENT_NORMAL
     )
     delay_end_at: float = skill_used_at + delay_seconds
+    app_state.macro.next_skill_input_at = _get_next_runnable_skill_at(delay_end_at)
 
     # 옵션 활성화 시 스킬 사용 후 1번 줄로 복귀
     if app_state.macro.current_always_return_to_first_line and current_line_index != 0:
@@ -729,9 +765,7 @@ def _collect_ready_link_skill_ids(link_skill: LinkSkill) -> list[str]:
     for skill_id in link_skill.skills:
         ready_delay_ms: int = (
             round(
-                skill_registry.get(skill_id).cooltime
-                * (100 - cooltime_reduction)
-                * 10
+                skill_registry.get(skill_id).cooltime * (100 - cooltime_reduction) * 10
             )
             + extra_wait_ms
         )
@@ -773,31 +807,33 @@ def use_link_skill(link_skill: LinkSkill) -> None:
         if not skills_to_press:
             return
 
-        # 연계 입력 전체 구간 동안 평타 클릭 차단
-        link_skill_pause_seconds: float = (
-            len(skills_to_press) * app_state.macro.current_delay * 0.001
-        ) + ATTACK_PAUSE_BUFFER_SECONDS
-        _pause_attack_for(link_skill_pause_seconds)
-
         delay_seconds: float = (
             app_state.macro.current_delay
             * 0.001
             * config.macro.SLEEP_COEFFICIENT_NORMAL
         )
+        app_state.macro.next_skill_input_at = time.perf_counter()
 
         # 연계에 등록된 순서대로 스킬 입력 진행
-        for skill_id in skills_to_press:
+        for index, skill_id in enumerate(skills_to_press):
             skill_ref: EquippedSkillRef = skill_ref_map[skill_id]
 
             # 쿨타임 동기화 옵션 시 입력 직전 연계 자체 타이머 갱신
             if link_skill.remember_state:
                 link_skill.skill_timers[skill_id] = time.perf_counter()
 
-            current_line_index = _press_skill_keys(
+            current_line_index, skill_input_at = _press_skill_keys(
                 kbd_controller,
                 mouse_controller,
                 skill_ref,
                 current_line_index=current_line_index,
+            )
+            skill_used_at: float = time.perf_counter()
+            app_state.macro.last_skill_input_at = skill_input_at
+            app_state.macro.next_skill_input_at = (
+                skill_used_at + delay_seconds
+                if index + 1 < len(skills_to_press)
+                else None
             )
 
             time.sleep(delay_seconds)
@@ -857,21 +893,12 @@ def build_task_list(show_info: bool = False) -> float:
     # 모든 스킬이 쿨타임 중인 경우, 가장 빨리 준비되는 스킬까지 남은 시간 반환
     remaining_times_ms: list[int] = [
         ready_delays_ms[skill_ref]
-        - round(
-            (
-                now - app_state.macro.skill_cooltime_timers[skill_ref]
-            )
-            * 1000
-        )
+        - round((now - app_state.macro.skill_cooltime_timers[skill_ref]) * 1000)
         for skill_ref in placed_refs
         if skill_ref not in app_state.macro.prepared_skills
     ]
 
-    return (
-        max(0, min(remaining_times_ms)) * 0.001
-        if remaining_times_ms
-        else 0.0
-    )
+    return max(0, min(remaining_times_ms)) * 0.001 if remaining_times_ms else 0.0
 
 
 def build_preview_task_list() -> tuple[EquippedSkillRef, ...]:
