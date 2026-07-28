@@ -2038,6 +2038,7 @@ class EquipmentTab(CharacterTab):
             add_text=self._scroll_add_button_text(slot.slot, item),
             add_clicked=lambda: self._add_selected_scroll(slot.slot, item),
             option_title="확률",
+            wrap_group=True,
             selector_scroll_min_height=150,
             list_scroll_min_height=150,
         )
@@ -2059,7 +2060,7 @@ class EquipmentTab(CharacterTab):
             stat_buttons[stat_key] = stat_button
             panels.group_layout.addWidget(stat_button)
 
-        panels.group_layout.addStretch(1)
+        panels.add_group_stretch()
         tier_buttons: dict[ScrollTier, QPushButton] = {}
         for tier, effects in tier_effects.items():
             tier_button: QPushButton = self._build_scroll_tier_button(

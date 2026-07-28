@@ -999,6 +999,31 @@ ARMOR_SCROLL_STAT_VALUES: dict[ScrollTier, float] = {
     ScrollTier.SIXTY: 2.0,
     ScrollTier.HUNDRED: 1.0,
 }
+ARMOR_HP_SCROLL_EFFECTS: dict[
+    StatKey,
+    dict[ScrollTier, dict[StatKey, float]],
+] = {
+    StatKey.HP: {
+        ScrollTier.TEN: _stats((StatKey.HP, 25.0)),
+        ScrollTier.TWENTY: _stats((StatKey.HP, 20.0)),
+        ScrollTier.FIFTY: _stats((StatKey.HP, 15.0)),
+        ScrollTier.SIXTY: _stats((StatKey.HP, 10.0)),
+        ScrollTier.HUNDRED: _stats((StatKey.HP, 5.0)),
+    },
+    StatKey.HP_PERCENT: {
+        ScrollTier.TEN: _stats(
+            (StatKey.HP_PERCENT, 5.0),
+            (StatKey.ATTACK, 4.0),
+        ),
+        ScrollTier.TWENTY: _stats(
+            (StatKey.HP_PERCENT, 4.0),
+            (StatKey.ATTACK, 2.0),
+        ),
+        ScrollTier.FIFTY: _stats((StatKey.HP_PERCENT, 3.0)),
+        ScrollTier.SIXTY: _stats((StatKey.HP_PERCENT, 2.0)),
+        ScrollTier.HUNDRED: _stats((StatKey.HP_PERCENT, 1.0)),
+    },
+}
 
 
 def _build_armor_scroll_effects(
@@ -1034,6 +1059,7 @@ def _build_armor_scroll_effects(
         )
         for tier in ARMOR_SCROLL_STAT_VALUES
     }
+    effects.update(ARMOR_HP_SCROLL_EFFECTS)
     return effects
 
 
