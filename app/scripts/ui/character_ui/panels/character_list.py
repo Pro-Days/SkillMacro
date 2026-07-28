@@ -8,6 +8,8 @@ from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
     QLabel,
+    QLayout,
+    QScrollArea,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -161,7 +163,23 @@ class CharacterListPanel(QFrame):
 
         self.setObjectName("charPanel")
 
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        # 패널 높이가 부족할 때 목록과 관리 버튼을 함께 탐색하는 세로 스크롤
+        scroll: QScrollArea = QScrollArea(self)
+        scroll.setObjectName("charPanelScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        outer.addWidget(scroll)
+
+        content: QWidget = QWidget()
+        content.setObjectName("charPanelContent")
+        scroll.setWidget(content)
+
+        layout = QVBoxLayout(content)
+        layout.setSizeConstraint(QLayout.SizeConstraint.SetMinimumSize)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(0)
 
