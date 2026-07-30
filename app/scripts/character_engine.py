@@ -65,6 +65,7 @@ from app.scripts.character_models import (
 
 CHARACTER_BASE_HP: float = 50.0
 CHARACTER_HP_PER_LEVEL: float = 5.0
+LIVE_POWER_DISPLAY_LIMIT: float = 1_000_000.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -949,7 +950,7 @@ def _evaluate_live_power_metric(
         return 0.0
 
     power_value: float = evaluate_builtin_power_metric(final_stats, power_metric)
-    if not isfinite(power_value):
+    if not isfinite(power_value) or power_value >= LIVE_POWER_DISPLAY_LIMIT:
         return 0.0
 
     return power_value
