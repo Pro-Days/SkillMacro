@@ -47,6 +47,7 @@ from app.scripts.calculator_models import (
 from app.scripts.custom_classes import CustomFont
 from app.scripts.data_manager import save_data
 from app.scripts.macro_models import SkillUsageSetting
+from app.scripts.run_macro import is_input_sequence_active
 from app.scripts.ui.main_ui.sidebar import SkillSettingCardWidgets
 from app.scripts.ui.themes import theme_manager
 
@@ -897,8 +898,8 @@ class GuideManager:
     def _can_start_guide(self) -> bool:
         """가이드 시작 가능 여부 확인"""
 
-        # 매크로 실행 중 설정 화면 이동 차단
-        if app_state.macro.is_running:
+        # 입력 시퀀스 실행 중 설정 화면 이동 차단
+        if is_input_sequence_active():
             self._show_blocked_dialog("매크로 실행 중에는 가이드를 시작할 수 없습니다.")
             return False
 
@@ -1429,7 +1430,7 @@ class GuideManager:
                     ),
                     GuideStep(
                         "시작키 확인",
-                        "시작키는 매크로를 시작하고 중지하는 키입니다.",
+                        "짧게 누르면 매크로를 시작하거나 중지합니다. 계속 누르고 있으면 놓을 때까지 매크로를 실행합니다.",
                         "sidebar.general.start_key",
                         lambda: self._sidebar_page(0),
                     ),
@@ -1561,7 +1562,7 @@ class GuideManager:
                     ),
                     GuideStep(
                         "시작키 설정",
-                        "연계스킬을 수동으로 사용하기 위해 누를 시작키를 설정합니다.",
+                        "짧게 누르면 1회만 사용하고 실행 중 다시 누르면 중지합니다. 계속 누르고 있으면 스킬을 반복해서 사용합니다.",
                         "sidebar.link.editor.key",
                         self._link_editor_page,
                     ),

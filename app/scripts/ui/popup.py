@@ -88,6 +88,7 @@ from app.scripts.registry.resource_registry import (
     get_theme_image_path,
     resource_registry,
 )
+from app.scripts.run_macro import is_input_sequence_active
 from app.scripts.registry.server_registry import ServerSpec, server_registry
 from app.scripts.registry.skill_registry import (
     CUSTOM_SKILL_PREFIX,
@@ -956,7 +957,7 @@ class NoticeController:
 
             # 정적 메시지
             case NoticeKind.MACRO_IS_RUNNING:
-                return NoticeData("매크로가 작동중이기 때문에 수정할 수 없습니다.")
+                return NoticeData("매크로가 실행 중이기 때문에 수정할 수 없습니다.")
 
             case NoticeKind.EDITING_LINK_SKILL:
                 return NoticeData(
@@ -1196,6 +1197,16 @@ class PopupManager:
         self.hide_hover_card()
         self._popup_controller.close()
 
+    def reject_if_input_sequence_active(self) -> bool:
+        """실행 중인 입력 시퀀스가 있으면 설정 변경 요청 차단"""
+
+        if not is_input_sequence_active():
+            return False
+
+        self.close_popup()
+        self.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        return True
+
     def current_scroll_add_button(self) -> QPushButton | None:
         """현재 무공비급 선택 팝업의 새 스킬 추가 버튼 반환"""
 
@@ -1356,19 +1367,40 @@ class PopupManager:
     ) -> None:
         """ActionList 팝업 생성 공통 부분"""
 
-        # 매크로 실행 중일 때는 무시
-        if app_state.macro.is_running:
-            self.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        # 실행 중 입력 상태를 변경할 수 있는 액션 팝업 차단
+        if self.reject_if_input_sequence_active():
             return
 
         if self._popup_controller.is_visible():
             self._popup_controller.close()
 
+        guarded_actions: list[PopupAction] = []
+        for action in actions:
+            callback: Callable[[], None] | None = action.on_trigger
+
+            def _trigger(
+                callback: Callable[[], None] | None = callback,
+            ) -> None:
+                if self.reject_if_input_sequence_active():
+                    return
+                if callback is not None:
+                    callback()
+
+            guarded_actions.append(
+                PopupAction(
+                    id=action.id,
+                    text=action.text,
+                    enabled=action.enabled,
+                    is_selected=action.is_selected,
+                    on_trigger=_trigger,
+                )
+            )
+
         self._active_popup = kind
 
         self._popup_controller.show_action_list(
             anchor=anchor,
-            actions=actions,
+            actions=guarded_actions,
             options=PopupOptions(placement=placement),
         )
 
@@ -1381,9 +1413,8 @@ class PopupManager:
     ) -> None:
         """Input 팝업 생성 공통 부분"""
 
-        # 매크로 실행 중일 때는 무시
-        if app_state.macro.is_running:
-            self.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        # 실행 중 입력 상태를 변경할 수 있는 입력 팝업 차단
+        if self.reject_if_input_sequence_active():
             return
 
         if self._popup_controller.is_visible():
@@ -1435,6 +1466,9 @@ class PopupManager:
         content = InputConfirmContent(default_text=default_text)
 
         def _submit(raw: str) -> None:
+            if self.reject_if_input_sequence_active():
+                return
+
             self.close_popup()
 
             try:
@@ -1471,6 +1505,9 @@ class PopupManager:
         content = InputConfirmContent(default_text=default_text)
 
         def _submit(raw: str) -> None:
+            if self.reject_if_input_sequence_active():
+                return
+
             self.close_popup()
 
             try:
@@ -1511,6 +1548,9 @@ class PopupManager:
         content: InputConfirmContent = InputConfirmContent(default_text=default_text)
 
         def _submit(raw: str) -> None:
+            if self.reject_if_input_sequence_active():
+                return
+
             self.close_popup()
 
             try:
@@ -1549,6 +1589,9 @@ class PopupManager:
         content: InputConfirmContent = InputConfirmContent(default_text=default_text)
 
         def _submit(raw: str) -> None:
+            if self.reject_if_input_sequence_active():
+                return
+
             self.close_popup()
 
             try:
@@ -1589,9 +1632,8 @@ class PopupManager:
 
         self._stop_key_listener()
 
-        # 매크로 실행 중일 때는 무시
-        if app_state.macro.is_running:
-            self.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        # 실행 중 입력 상태를 변경할 수 있는 키 입력 팝업 차단
+        if self.reject_if_input_sequence_active():
             return
 
         default_key: KeySpec = app_state.macro.current_start_key
@@ -1599,6 +1641,9 @@ class PopupManager:
         content = KeyCaptureContent(default_key=default_key)
 
         def _submit(key: KeySpec | None) -> None:
+            if self.reject_if_input_sequence_active():
+                return
+
             self.close_popup()
 
             # 변경 없음
@@ -1673,6 +1718,9 @@ class PopupManager:
         content = InputConfirmContent(default_text=default_text)
 
         def _submit(text: str) -> None:
+            if self.reject_if_input_sequence_active():
+                return
+
             self.close_popup()
             on_submitted(text)
 
@@ -1693,9 +1741,8 @@ class PopupManager:
     ) -> None:
         """스킬키 입력 팝업"""
 
-        # 매크로 실행 중일 때는 무시
-        if app_state.macro.is_running:
-            self.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        # 실행 중 입력 상태를 변경할 수 있는 키 입력 팝업 차단
+        if self.reject_if_input_sequence_active():
             return
 
         self._stop_key_listener()
@@ -1704,6 +1751,9 @@ class PopupManager:
         content: KeyCaptureContent = KeyCaptureContent(default_key=default_key)
 
         def _submit(key: KeySpec | None) -> None:
+            if self.reject_if_input_sequence_active():
+                return
+
             self.close_popup()
 
             # 변경 없음
@@ -1778,8 +1828,7 @@ class PopupManager:
     ) -> None:
         """무공비급 선택 팝업"""
 
-        if app_state.macro.is_running:
-            self.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        if self.reject_if_input_sequence_active():
             return
 
         if self._popup_controller.is_visible():
@@ -1788,6 +1837,9 @@ class PopupManager:
         self._active_popup = PopupKind.SCROLL_SELECT
 
         def _open_add_dialog() -> None:
+            if self.reject_if_input_sequence_active():
+                return
+
             server_spec: ServerSpec = app_state.macro.current_server
             dialog: CustomSkillAddDialog = CustomSkillAddDialog(
                 server_id=server_spec.id,
@@ -1796,6 +1848,9 @@ class PopupManager:
             )
 
             def _on_added(skill_import: CustomSkillImport) -> None:
+                if self.reject_if_input_sequence_active():
+                    return
+
                 # SkillRegistry에 주입
                 for skill_id in skill_import.skills:
                     detail = skill_import.skill_details[skill_id]
@@ -1864,6 +1919,9 @@ class PopupManager:
         )
 
         def _picked(scroll_id: str) -> None:
+            if self.reject_if_input_sequence_active():
+                return
+
             self.close_popup()
             on_selected(scroll_id)
 
@@ -1884,14 +1942,16 @@ class PopupManager:
 
         self._stop_key_listener()
 
-        # 매크로 실행 중일 때는 무시
-        if app_state.macro.is_running:
-            self.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        # 실행 중 입력 상태를 변경할 수 있는 키 입력 팝업 차단
+        if self.reject_if_input_sequence_active():
             return
 
         content = KeyCaptureContent()
 
         def _submit(key: KeySpec | None) -> None:
+            if self.reject_if_input_sequence_active():
+                return
+
             self.close_popup()
 
             if key is None:
@@ -1962,9 +2022,8 @@ class PopupManager:
     ) -> None:
         """연계스킬 편집 페이지 스킬 선택 팝업"""
 
-        # 매크로 실행 중일 때는 무시
-        if app_state.macro.is_running:
-            self.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        # 실행 중 입력 상태를 변경할 수 있는 스킬 선택 팝업 차단
+        if self.reject_if_input_sequence_active():
             return
 
         if self._popup_controller.is_visible():
@@ -1978,6 +2037,9 @@ class PopupManager:
         )
 
         def _picked(skill_id: str) -> None:
+            if self.reject_if_input_sequence_active():
+                return
+
             self.close_popup()
             on_selected(skill_id)
 
@@ -3322,7 +3384,9 @@ class CustomSkillAddDialog(QDialog):
             except ValueError:
                 damage_input.set_valid(False)
                 if invalid_message is None:
-                    invalid_message = f"{skill_label} Lv.{lvl} 데미지는 숫자여야 합니다."
+                    invalid_message = (
+                        f"{skill_label} Lv.{lvl} 데미지는 숫자여야 합니다."
+                    )
 
                 continue
 

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
-from threading import Lock, Thread
+from dataclasses import dataclass, field
+from threading import Event, Lock, Thread
 from typing import NoReturn, cast
 
 from pynput import keyboard, mouse
@@ -47,6 +47,46 @@ injected_input_lock: Lock = Lock()
 is_input_sequence_running = False
 
 
+def is_input_sequence_active() -> bool:
+    """메인 매크로 또는 수동 연계 입력 실행 여부 반환"""
+
+    return app_state.macro.is_running or is_input_sequence_running
+
+
+@dataclass(slots=True)
+class ManualLinkSession:
+    """수동 연계 입력 한 번의 실행 상태"""
+
+    link_skill: LinkSkill
+    trigger_key: KeySpec
+    trigger_pressed_at: float
+    delay_seconds: float
+    hold_transition_at: float
+    stop_pressed_at: float | None = None
+    stop_event: Event = field(default_factory=Event)
+    is_hold: bool = False
+
+
+@dataclass(slots=True)
+class MacroStartSession:
+    """메인 매크로 시작키 한 번의 입력 상태"""
+
+    trigger_key: KeySpec
+    trigger_pressed_at: float
+    hold_transition_at: float
+    run_id: int
+    stop_pressed_at: float | None = None
+
+
+# 현재 실행 중인 수동 연계 입력 상태
+active_manual_link_session: ManualLinkSession | None = None
+manual_link_session_lock: Lock = Lock()
+
+# 현재 실행 중인 메인 매크로 시작 입력 상태
+active_macro_start_session: MacroStartSession | None = None
+macro_start_session_lock: Lock = Lock()
+
+
 @dataclass(slots=True)
 class PreviewTaskState:
     """프리뷰 계산용 상태 묶음"""
@@ -55,6 +95,123 @@ class PreviewTaskState:
     task_list: list[EquippedSkillRef]
     skill_sequence: list[EquippedSkillRef]
     using_link_skills: list[list[EquippedSkillRef]]
+
+
+def _reserve_stop_intent(key_spec: KeySpec, pressed_at: float) -> None:
+    """실행 중인 입력과 같은 키의 재입력을 중지 의도로 고정"""
+
+    # 메인 매크로 재입력의 대상 실행을 물리적 press 시점에 고정
+    with macro_start_session_lock:
+        macro_session: MacroStartSession | None = active_macro_start_session
+        if (
+            macro_session is not None
+            and macro_session.trigger_key.key_id == key_spec.key_id
+            and macro_session.trigger_pressed_at != pressed_at
+            and app_state.macro.is_running
+            and app_state.macro.run_id == macro_session.run_id
+        ):
+            macro_session.stop_pressed_at = pressed_at
+            handled_key_ids.add(key_spec.key_id)
+            return
+
+    # 수동 연계 재입력의 대상 실행을 물리적 press 시점에 고정
+    with manual_link_session_lock:
+        link_session: ManualLinkSession | None = active_manual_link_session
+        if (
+            link_session is not None
+            and link_session.trigger_key.key_id == key_spec.key_id
+            and link_session.trigger_pressed_at != pressed_at
+        ):
+            link_session.stop_pressed_at = pressed_at
+            handled_key_ids.add(key_spec.key_id)
+
+
+def _apply_pending_macro_stop(key_hold_seconds: float) -> None:
+    """유지 시간을 충족한 메인 매크로 중지 의도 확정"""
+
+    with macro_start_session_lock:
+        session: MacroStartSession | None = active_macro_start_session
+        if session is None or session.stop_pressed_at is None:
+            return
+
+        if (
+            pressed_key_started_at.get(session.trigger_key.key_id)
+            != session.stop_pressed_at
+        ):
+            session.stop_pressed_at = None
+            return
+
+        if (
+            is_key_held(session.trigger_key, key_hold_seconds)
+            and app_state.macro.is_running
+            and app_state.macro.run_id == session.run_id
+        ):
+            app_state.macro.is_running = False
+
+
+def _apply_pending_manual_link_stop(key_hold_seconds: float) -> None:
+    """유지 시간을 충족한 수동 연계 중지 의도 확정"""
+
+    with manual_link_session_lock:
+        session: ManualLinkSession | None = active_manual_link_session
+        if session is None or session.stop_pressed_at is None:
+            return
+
+        if (
+            pressed_key_started_at.get(session.trigger_key.key_id)
+            != session.stop_pressed_at
+        ):
+            session.stop_pressed_at = None
+            return
+
+        if is_key_held(session.trigger_key, key_hold_seconds):
+            session.stop_event.set()
+
+
+def _stop_manual_link_on_hold_release(key_spec: KeySpec) -> None:
+    """홀드 전환된 수동 연계의 단축키 해제를 중지 요청으로 처리"""
+
+    with manual_link_session_lock:
+        session: ManualLinkSession | None = active_manual_link_session
+        if session is None or session.trigger_key.key_id != key_spec.key_id:
+            return
+
+        if (
+            pressed_key_started_at.get(key_spec.key_id)
+            != session.trigger_pressed_at
+        ):
+            return
+
+        now: float = time.perf_counter()
+        if not session.is_hold and now < session.hold_transition_at:
+            return
+
+        session.is_hold = True
+        session.stop_event.set()
+
+
+def _stop_macro_on_hold_release(key_spec: KeySpec) -> None:
+    """홀드 전환된 메인 매크로의 시작키 해제를 중지 요청으로 처리"""
+
+    with macro_start_session_lock:
+        session: MacroStartSession | None = active_macro_start_session
+        if session is None or session.trigger_key.key_id != key_spec.key_id:
+            return
+
+        if (
+            pressed_key_started_at.get(key_spec.key_id)
+            != session.trigger_pressed_at
+        ):
+            return
+
+        if (
+            not app_state.macro.is_running
+            or app_state.macro.run_id != session.run_id
+            or time.perf_counter() < session.hold_transition_at
+        ):
+            return
+
+        app_state.macro.is_running = False
 
 
 def _register_injected_key_event(key_spec: KeySpec) -> None:
@@ -124,8 +281,10 @@ def on_press(key: Key | KeyCode | None) -> None:
     if key_spec is not None:
         # 최초 입력 시점 기록 및 이전 처리 상태 초기화
         if key_spec not in pressed_keys:
-            pressed_key_started_at[key_spec.key_id] = time.perf_counter()
+            pressed_at: float = time.perf_counter()
+            pressed_key_started_at[key_spec.key_id] = pressed_at
             handled_key_ids.discard(key_spec.key_id)
+            _reserve_stop_intent(key_spec, pressed_at)
 
         pressed_keys.add(key_spec)
 
@@ -143,6 +302,9 @@ def on_release(key: Key | KeyCode | None) -> None:
         # 프로그램이 보낸 키 해제 입력은 눌림 상태 추적에서 제외
         if _consume_injected_input_event(key_spec, injected_release_counts):
             return
+
+        _stop_manual_link_on_hold_release(key_spec)
+        _stop_macro_on_hold_release(key_spec)
 
         # 눌림 상태 및 1회 처리 상태 해제
         pressed_keys.discard(key_spec)
@@ -178,11 +340,16 @@ def on_click(
     # 마우스 버튼 press 상태 등록
     if pressed:
         if key_spec not in pressed_keys:
-            pressed_key_started_at[key_spec.key_id] = time.perf_counter()
+            pressed_at: float = time.perf_counter()
+            pressed_key_started_at[key_spec.key_id] = pressed_at
             handled_key_ids.discard(key_spec.key_id)
+            _reserve_stop_intent(key_spec, pressed_at)
 
         pressed_keys.add(key_spec)
         return
+
+    _stop_manual_link_on_hold_release(key_spec)
+    _stop_macro_on_hold_release(key_spec)
 
     # 마우스 버튼 release 상태 해제
     pressed_keys.discard(key_spec)
@@ -243,6 +410,8 @@ def _press_key_spec(
 def checking_kb_thread() -> NoReturn:
     """키보드 입력 감지 쓰레드"""
 
+    global active_macro_start_session
+    global active_manual_link_session
     global has_user_activity, handled_key_ids, is_input_sequence_running
 
     # 키보드 리스너 시작
@@ -272,13 +441,17 @@ def checking_kb_thread() -> NoReturn:
         # 시작키 유지 시간 기준 충족 여부 확인
         key_hold_seconds: float = app_state.macro.current_key_hold_seconds
         start_key: KeySpec = app_state.macro.current_start_key
-        is_start_key_ready: bool = (
-            is_key_held(start_key, key_hold_seconds)
-            and start_key.key_id not in handled_key_ids
-        )
+        start_pressed_at: float | None = pressed_key_started_at.get(start_key.key_id)
+
+        # press 시점에 고정한 메인 매크로 중지 의도 판정
+        _apply_pending_macro_stop(key_hold_seconds)
 
         # 매크로 시작/중지
-        if is_start_key_ready:
+        if (
+            start_pressed_at is not None
+            and is_key_held(start_key, key_hold_seconds)
+            and start_key.key_id not in handled_key_ids
+        ):
             handled_key_ids.add(start_key.key_id)
 
             # 실행 중이면 즉시 종료 상태 전환
@@ -288,7 +461,6 @@ def checking_kb_thread() -> NoReturn:
             # 실행 중이 아니면 새 실행 시작
             else:
                 if is_input_sequence_running:
-                    time.sleep(0.5 * config.macro.SLEEP_COEFFICIENT_NORMAL)
                     continue
 
                 is_input_sequence_running = True
@@ -296,21 +468,40 @@ def checking_kb_thread() -> NoReturn:
 
                 # 매크로 번호 증가
                 app_state.macro.run_id += 1
+                run_id: int = app_state.macro.run_id
+
+                delay_seconds: float = (
+                    app_state.macro.current_delay
+                    * 0.001
+                    * config.macro.SLEEP_COEFFICIENT_NORMAL
+                )
+                session = MacroStartSession(
+                    trigger_key=start_key,
+                    trigger_pressed_at=start_pressed_at,
+                    hold_transition_at=time.perf_counter() + delay_seconds,
+                    run_id=run_id,
+                )
+                with macro_start_session_lock:
+                    active_macro_start_session = session
 
                 # 매크로 쓰레드 시작
                 Thread(
                     target=running_macro_thread,
-                    args=[app_state.macro.run_id],
+                    args=[run_id],
                     daemon=True,
                 ).start()
 
-            # 매크로 실행/중지 이후에는 잠시 키 입력 무시
-            time.sleep(0.5 * config.macro.SLEEP_COEFFICIENT_NORMAL)
-
-            # 다음 루프로 넘어감
             continue
 
         if is_input_sequence_running:
+            # press 시점에 고정한 수동 연계 중지 의도 판정
+            _apply_pending_manual_link_stop(key_hold_seconds)
+
+            with manual_link_session_lock:
+                active_link_session: ManualLinkSession | None = (
+                    active_manual_link_session
+                )
+
             # 연계스킬
             for link_skill in app_state.macro.current_preset.link_skills:
                 if link_skill.key_type == LinkKeyType.OFF or link_skill.key is None:
@@ -318,6 +509,13 @@ def checking_kb_thread() -> NoReturn:
 
                 link_key: KeySpec = KeyRegistry.get(link_skill.key)
                 if link_key in pressed_keys:
+                    if (
+                        active_link_session is not None
+                        and link_key.key_id
+                        == active_link_session.trigger_key.key_id
+                    ):
+                        continue
+
                     handled_key_ids.add(link_key.key_id)
 
             time.sleep(0.05 * config.macro.SLEEP_COEFFICIENT_NORMAL)
@@ -331,16 +529,36 @@ def checking_kb_thread() -> NoReturn:
 
             # 연계스킬 키가 눌렸다면
             link_key: KeySpec = KeyRegistry.get(link_skill.key)
+            trigger_pressed_at: float | None = pressed_key_started_at.get(
+                link_key.key_id
+            )
             if (
-                is_key_held(link_key, key_hold_seconds)
+                trigger_pressed_at is not None
+                and is_key_held(link_key, key_hold_seconds)
                 and link_key.key_id not in handled_key_ids
             ):
+                delay_seconds: float = (
+                    app_state.macro.current_delay
+                    * 0.001
+                    * config.macro.SLEEP_COEFFICIENT_NORMAL
+                )
+                activated_at: float = time.perf_counter()
+                session = ManualLinkSession(
+                    link_skill=link_skill,
+                    trigger_key=link_key,
+                    trigger_pressed_at=trigger_pressed_at,
+                    delay_seconds=delay_seconds,
+                    hold_transition_at=activated_at + delay_seconds,
+                )
+
                 handled_key_ids.add(link_key.key_id)
-                is_input_sequence_running = True
+                with manual_link_session_lock:
+                    active_manual_link_session = session
+                    is_input_sequence_running = True
 
                 Thread(
                     target=use_link_skill,
-                    args=[link_skill],
+                    args=[session],
                     daemon=True,
                 ).start()
                 break
@@ -350,13 +568,14 @@ def checking_kb_thread() -> NoReturn:
             time.sleep(0.05 * config.macro.SLEEP_COEFFICIENT_NORMAL)
             continue
 
-        # 연계스킬이 실행되었으면 0.25초 슬립
-        time.sleep(0.25 * config.macro.SLEEP_COEFFICIENT_NORMAL)
+        # 연계 실행 직후부터 실행 중 입력 감지 주기로 복귀
+        continue
 
 
 def running_macro_thread(run_id: int) -> None:
     """매크로 메인 쓰레드"""
 
+    global active_macro_start_session
     global is_input_sequence_running
 
     current_line_index: int = 0
@@ -438,6 +657,11 @@ def running_macro_thread(run_id: int) -> None:
                     current_line_index,
                 )
             finally:
+                with macro_start_session_lock:
+                    session: MacroStartSession | None = active_macro_start_session
+                    if session is not None and session.run_id == run_id:
+                        active_macro_start_session = None
+
                 # 매크로 종료 후 입력 점유 상태 해제
                 is_input_sequence_running = False
 
@@ -752,8 +976,11 @@ def use_skill(current_line_index: int) -> tuple[bool, int]:
     return True, current_line_index
 
 
-def _collect_ready_link_skill_ids(link_skill: LinkSkill) -> list[str]:
-    """연계스킬 타이머 기준 사용 가능 스킬 ID 목록 반환"""
+def _get_link_skill_readiness(
+    link_skill: LinkSkill,
+    skill_timers: dict[str, float],
+) -> tuple[list[str], float]:
+    """연계스킬 타이머 기준 사용 가능 목록과 다음 준비 대기 반환"""
 
     # 연계스킬 자체 발동 이력 추적
     now: float = time.perf_counter()
@@ -762,6 +989,7 @@ def _collect_ready_link_skill_ids(link_skill: LinkSkill) -> list[str]:
     skill_registry = app_state.macro.current_server.skill_registry
 
     ready_skill_ids: list[str] = []
+    minimum_wait_ms: int | None = None
     for skill_id in link_skill.skills:
         ready_delay_ms: int = (
             round(
@@ -769,23 +997,145 @@ def _collect_ready_link_skill_ids(link_skill: LinkSkill) -> list[str]:
             )
             + extra_wait_ms
         )
-        started_at: float | None = link_skill.skill_timers.get(skill_id)
+        started_at: float | None = skill_timers.get(skill_id)
 
         # 미사용이거나 쿨타임과 추가 대기 경과 시 사용 가능 후보로 포함
-        if started_at is None or round((now - started_at) * 1000) >= ready_delay_ms:
+        if started_at is None:
             ready_skill_ids.append(skill_id)
+            continue
 
-    return ready_skill_ids
+        elapsed_ms: int = round((now - started_at) * 1000)
+        remaining_ms: int = ready_delay_ms - elapsed_ms
+        if remaining_ms <= 0:
+            ready_skill_ids.append(skill_id)
+            continue
+
+        if minimum_wait_ms is None or remaining_ms < minimum_wait_ms:
+            minimum_wait_ms = remaining_ms
+
+    if ready_skill_ids:
+        return ready_skill_ids, 0.0
+
+    wait_seconds: float = (
+        minimum_wait_ms * 0.001 if minimum_wait_ms is not None else 0.0
+    )
+    return ready_skill_ids, wait_seconds
 
 
-def use_link_skill(link_skill: LinkSkill) -> None:
-    """연계스킬 사용 함수"""
+def _is_manual_link_trigger_pressed(session: ManualLinkSession) -> bool:
+    """수동 연계를 시작한 최초 단축키 입력의 유지 여부 반환"""
 
-    global is_input_sequence_running
+    return (
+        session.trigger_key in pressed_keys
+        and pressed_key_started_at.get(session.trigger_key.key_id)
+        == session.trigger_pressed_at
+    )
+
+
+def _wait_for_manual_link_hold(session: ManualLinkSession) -> bool:
+    """최초 입력이 딜레이 동안 유지되면 홀드 상태로 전환"""
+
+    while not session.stop_event.is_set():
+        if not _is_manual_link_trigger_pressed(session):
+            return False
+
+        remaining_seconds: float = session.hold_transition_at - time.perf_counter()
+        if remaining_seconds <= 0.0:
+            session.is_hold = True
+            return True
+
+        time.sleep(min(remaining_seconds, MACRO_SLEEP_POLL_SECONDS))
+
+    return False
+
+
+def _wait_for_manual_link_cooldown(
+    session: ManualLinkSession,
+    wait_seconds: float,
+) -> None:
+    """홀드 중지 상태를 확인하며 다음 스킬 준비까지 대기"""
+
+    end_at: float = time.perf_counter() + wait_seconds
+    while not session.stop_event.is_set():
+        if not _is_manual_link_trigger_pressed(session):
+            session.stop_event.set()
+            return
+
+        remaining_seconds: float = end_at - time.perf_counter()
+        if remaining_seconds <= 0.0:
+            return
+
+        time.sleep(min(remaining_seconds, MACRO_SLEEP_POLL_SECONDS))
+
+
+def _run_manual_link_cycle(
+    session: ManualLinkSession,
+    skills_to_press: list[str],
+    skill_ref_map: dict[str, EquippedSkillRef],
+    skill_timers: dict[str, float],
+    kbd_controller: keyboard.Controller,
+    mouse_controller: mouse.Controller,
+) -> bool:
+    """현재 연계 입력 방식 그대로 한 사이클 실행"""
 
     current_line_index: int = 0
+
+    try:
+        if not skills_to_press:
+            return True
+
+        app_state.macro.next_skill_input_at = time.perf_counter()
+
+        # 연계에 등록된 순서대로 스킬 입력 진행
+        for index, skill_id in enumerate(skills_to_press):
+            if session.stop_event.is_set():
+                return False
+
+            skill_ref: EquippedSkillRef = skill_ref_map[skill_id]
+
+            # 쿨타임 동기화 옵션 시 입력 직전 연계 자체 타이머 갱신
+            if session.link_skill.remember_state:
+                skill_timers[skill_id] = time.perf_counter()
+
+            current_line_index, skill_input_at = _press_skill_keys(
+                kbd_controller,
+                mouse_controller,
+                skill_ref,
+                current_line_index=current_line_index,
+            )
+            skill_used_at: float = time.perf_counter()
+
+            # 동기화 OFF 홀드의 현재 실행 주기 전용 쿨타임 기록
+            if not session.link_skill.remember_state:
+                skill_timers[skill_id] = skill_used_at
+
+            app_state.macro.last_skill_input_at = skill_input_at
+            app_state.macro.next_skill_input_at = (
+                skill_used_at + session.delay_seconds
+                if index + 1 < len(skills_to_press)
+                else None
+            )
+
+            time.sleep(session.delay_seconds)
+
+        return True
+    finally:
+        # 매 사이클 종료 후 기존 수동 연계와 동일한 1줄 상태 복구
+        _restore_first_line_state(
+            kbd_controller,
+            mouse_controller,
+            current_line_index,
+        )
+
+
+def use_link_skill(session: ManualLinkSession) -> None:
+    """연계스킬 사용 함수"""
+
+    global active_manual_link_session, is_input_sequence_running
+
     kbd_controller: keyboard.Controller = keyboard.Controller()
     mouse_controller: mouse.Controller = mouse.Controller()
+    link_skill: LinkSkill = session.link_skill
 
     try:
         skill_ref_map: dict[str, EquippedSkillRef] = (
@@ -799,53 +1149,62 @@ def use_link_skill(link_skill: LinkSkill) -> None:
 
         # 쿨타임 동기화 옵션 시 연계스킬 타이머 기준으로 필터링
         if link_skill.remember_state:
-            skills_to_press: list[str] = _collect_ready_link_skill_ids(link_skill)
+            skill_timers: dict[str, float] = link_skill.skill_timers
+            skills_to_press, _wait_seconds = _get_link_skill_readiness(
+                link_skill,
+                skill_timers,
+            )
         else:
+            skill_timers = {}
             skills_to_press = list(link_skill.skills)
 
-        # 입력할 스킬이 없으면 상태를 건드리지 않고 종료
-        if not skills_to_press:
+        # 최초 한 사이클은 기존 수동 연계와 동일한 목록과 순서로 실행
+        if not _run_manual_link_cycle(
+            session,
+            skills_to_press,
+            skill_ref_map,
+            skill_timers,
+            kbd_controller,
+            mouse_controller,
+        ):
             return
 
-        delay_seconds: float = (
-            app_state.macro.current_delay
-            * 0.001
-            * config.macro.SLEEP_COEFFICIENT_NORMAL
-        )
-        app_state.macro.next_skill_input_at = time.perf_counter()
+        if not _wait_for_manual_link_hold(session):
+            return
 
-        # 연계에 등록된 순서대로 스킬 입력 진행
-        for index, skill_id in enumerate(skills_to_press):
-            skill_ref: EquippedSkillRef = skill_ref_map[skill_id]
-
-            # 쿨타임 동기화 옵션 시 입력 직전 연계 자체 타이머 갱신
-            if link_skill.remember_state:
-                link_skill.skill_timers[skill_id] = time.perf_counter()
-
-            current_line_index, skill_input_at = _press_skill_keys(
-                kbd_controller,
-                mouse_controller,
-                skill_ref,
-                current_line_index=current_line_index,
+        # 홀드 중에는 준비된 연계 스킬만 현재 연계 순서대로 반복 실행
+        while not session.stop_event.is_set():
+            skills_to_press, wait_seconds = _get_link_skill_readiness(
+                link_skill,
+                skill_timers,
             )
-            skill_used_at: float = time.perf_counter()
-            app_state.macro.last_skill_input_at = skill_input_at
-            app_state.macro.next_skill_input_at = (
-                skill_used_at + delay_seconds
-                if index + 1 < len(skills_to_press)
-                else None
-            )
+            if skills_to_press:
+                if not _run_manual_link_cycle(
+                    session,
+                    skills_to_press,
+                    skill_ref_map,
+                    skill_timers,
+                    kbd_controller,
+                    mouse_controller,
+                ):
+                    return
+                continue
 
-            time.sleep(delay_seconds)
+            if wait_seconds <= 0.0:
+                return
+
+            _wait_for_manual_link_cooldown(
+                session,
+                wait_seconds,
+            )
     finally:
-        try:
-            # 연계 입력 종료 후 1줄 상태 복구
-            _restore_first_line_state(
-                kbd_controller,
-                mouse_controller,
-                current_line_index,
-            )
-        finally:
+        if session.stop_event.is_set():
+            app_state.macro.next_skill_input_at = None
+
+        with manual_link_session_lock:
+            if active_manual_link_session is session:
+                active_manual_link_session = None
+
             # 연계 입력 종료 후 입력 점유 상태 해제
             is_input_sequence_running = False
 
