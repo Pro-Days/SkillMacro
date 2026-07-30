@@ -9,9 +9,21 @@ from collections.abc import Iterator
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import Qt
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication, QTabBar
 
 import app.scripts
+import app.scripts.run_macro as run_macro
+from app.scripts import data_manager
+from app.scripts.app_state import app_state
+from app.scripts.config import config
+from app.scripts.ui.popup import (
+    InputConfirmContent,
+    PopupAction,
+    PopupKind,
+    PopupPlacement,
+)
 
 
 def _collect_module_names() -> list[str]:
@@ -105,6 +117,85 @@ def test_main_window_and_lazy_pages_construct_offscreen(
     assert simulator.graph_page is graph_page
     assert simulator.results_page is results_page
     assert simulator.character_page is character_page
+
+    # 수동 연계 입력 중 프리셋 전환 차단 확인
+    data_manager.add_preset()
+    window.main_ui.tab_widget.add_tab(app_state.macro.presets[-1])
+    window.main_ui.tab_widget.setCurrentIndex(0)
+    window.show()
+    qapplication.processEvents()
+    assert app_state.macro.current_preset_index == 0
+
+    tab_bar: QTabBar = window.main_ui.tab_widget.get_tab_bar()
+    popup_manager = window.get_popup_manager()
+
+    # 메뉴를 연 뒤 수동 연계가 시작되어도 액션 콜백 실행 차단
+    blocked_action_calls: list[bool] = []
+    popup_manager.make_action_list_popup(
+        PopupKind.PRESET_ADD,
+        window.main_ui.tab_widget.add_tab_button,
+        [
+            PopupAction(
+                id="blockedAction",
+                text="차단 확인",
+                on_trigger=lambda: blocked_action_calls.append(True),
+            )
+        ],
+        PopupPlacement.BELOW,
+    )
+    run_macro.is_input_sequence_running = True
+    try:
+        popup_manager._popup_controller._on_triggered("blockedAction")
+        qapplication.processEvents()
+        assert blocked_action_calls == []
+    finally:
+        run_macro.is_input_sequence_running = False
+
+    # 팝업을 연 뒤 수동 연계가 시작되어도 제출 시점 변경 차단
+    settings = app_state.macro.current_preset.settings
+    settings.use_custom_delay = True
+    window.sidebar.general_settings.update_from_preset(app_state.macro.current_preset)
+    window.sidebar.general_settings.on_user_delay_clicked()
+
+    popup_content = popup_manager._popup_controller.host.current_content()
+    assert isinstance(popup_content, InputConfirmContent)
+
+    original_delay: int = settings.custom_delay
+    blocked_delay: int = (
+        config.specs.DELAY.min
+        if original_delay != config.specs.DELAY.min
+        else config.specs.DELAY.max
+    )
+
+    run_macro.is_input_sequence_running = True
+    try:
+        popup_content.submitted.emit(str(blocked_delay))
+        qapplication.processEvents()
+        assert settings.custom_delay == original_delay
+
+        # 직접 설정 버튼과 프리셋 탭도 같은 실행 경계에서 차단
+        window.sidebar.general_settings.on_default_delay_clicked()
+        assert settings.use_custom_delay is True
+
+        QTest.mouseClick(
+            tab_bar,
+            Qt.MouseButton.LeftButton,
+            pos=tab_bar.tabRect(1).center(),
+        )
+        qapplication.processEvents()
+        assert window.main_ui.tab_widget.currentIndex() == 0
+        assert app_state.macro.current_preset_index == 0
+    finally:
+        run_macro.is_input_sequence_running = False
+
+    QTest.mouseClick(
+        tab_bar,
+        Qt.MouseButton.LeftButton,
+        pos=tab_bar.tabRect(1).center(),
+    )
+    qapplication.processEvents()
+    assert window.main_ui.tab_widget.currentIndex() == 1
+    assert app_state.macro.current_preset_index == 1
 
     window.hide()
     window.deleteLater()

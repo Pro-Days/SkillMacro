@@ -439,7 +439,10 @@ class GeneralSettings(QFrame):
         self.start_key_setting = self.SettingItem(
             popup_manager=self.popup_manager,
             title="시작키 설정",
-            tooltip=("매크로를 시작하기 위한 키입니다."),
+            tooltip=(
+                "짧게 누르면 매크로를 시작하거나 중지합니다.\n"
+                "계속 누르고 있으면 놓을 때까지 매크로를 실행합니다."
+            ),
             btn0_text=f"기본: {config.specs.DEFAULT_START_KEY.display}",
             btn0_enabled=True,
             btn1_text="",
@@ -556,9 +559,7 @@ class GeneralSettings(QFrame):
         self.detail_settings_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.detail_settings_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.detail_settings_button.setFixedSize(140, 34)
-        self.detail_settings_button.toggled.connect(
-            self._on_detail_settings_toggled
-        )
+        self.detail_settings_button.toggled.connect(self._on_detail_settings_toggled)
 
         self._update_detail_settings_arrow(
             expanded=False,
@@ -737,9 +738,8 @@ class GeneralSettings(QFrame):
 
         self.popup_manager.close_popup()
 
-        # 매크로 실행 중일 때는 무시
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        # 입력 시퀀스 실행 중일 때는 무시
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         # 이미 기본 딜레이라면 무시
@@ -773,9 +773,8 @@ class GeneralSettings(QFrame):
 
         self.popup_manager.close_popup()
 
-        # 매크로 실행 중일 때는 무시
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        # 입력 시퀀스 실행 중일 때는 무시
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         # 이미 유저 딜레이라면 딜레이 입력 팝업 열기
@@ -793,9 +792,8 @@ class GeneralSettings(QFrame):
 
         self.popup_manager.close_popup()
 
-        # 매크로 실행 중일 때는 무시
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        # 입력 시퀀스 실행 중일 때는 무시
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         # 이미 기본 쿨타임 감소라면 무시
@@ -832,9 +830,8 @@ class GeneralSettings(QFrame):
 
         self.popup_manager.close_popup()
 
-        # 매크로 실행 중일 때는 무시
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        # 입력 시퀀스 실행 중일 때는 무시
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         # 이미 유저 쿨타임 감소라면 쿨타임 감소 입력 팝업 열기
@@ -854,8 +851,7 @@ class GeneralSettings(QFrame):
 
         self.popup_manager.close_popup()
 
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         settings = app_state.macro.current_preset.settings
@@ -887,8 +883,7 @@ class GeneralSettings(QFrame):
 
         self.popup_manager.close_popup()
 
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         settings = app_state.macro.current_preset.settings
@@ -907,8 +902,7 @@ class GeneralSettings(QFrame):
     def on_forget_previous_state_clicked(self) -> None:
         self.popup_manager.close_popup()
 
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         if not app_state.macro.current_preset.settings.remember_previous_state:
@@ -923,8 +917,7 @@ class GeneralSettings(QFrame):
     def on_remember_previous_state_clicked(self) -> None:
         self.popup_manager.close_popup()
 
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         if app_state.macro.current_preset.settings.remember_previous_state:
@@ -941,9 +934,8 @@ class GeneralSettings(QFrame):
 
         self.popup_manager.close_popup()
 
-        # 매크로 실행 중일 때는 무시
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        # 입력 시퀀스 실행 중일 때는 무시
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         # 이미 기본 시작키라면 무시
@@ -990,9 +982,8 @@ class GeneralSettings(QFrame):
 
         self.popup_manager.close_popup()
 
-        # 매크로 실행 중일 때는 무시
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        # 입력 시퀀스 실행 중일 때는 무시
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         # 이미 유저 시작키라면 시작키 입력 팝업 열기
@@ -1024,9 +1015,8 @@ class GeneralSettings(QFrame):
 
         self.popup_manager.close_popup()
 
-        # 매크로 실행 중일 때는 무시
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        # 입력 시퀀스 실행 중일 때는 무시
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         # 이미 기본 키 입력 유지라면 무시
@@ -1065,9 +1055,8 @@ class GeneralSettings(QFrame):
 
         self.popup_manager.close_popup()
 
-        # 매크로 실행 중일 때는 무시
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        # 입력 시퀀스 실행 중일 때는 무시
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         # 이미 유저 키 입력 유지라면 키 입력 유지 입력 팝업 열기
@@ -1087,9 +1076,8 @@ class GeneralSettings(QFrame):
 
         self.popup_manager.close_popup()
 
-        # 매크로 실행 중일 때는 무시
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        # 입력 시퀀스 실행 중일 때는 무시
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         # 이미 False 라면 무시
@@ -1105,8 +1093,7 @@ class GeneralSettings(QFrame):
 
         self.popup_manager.close_popup()
 
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         if not app_state.macro.current_preset.settings.use_custom_swap_key:
@@ -1146,8 +1133,7 @@ class GeneralSettings(QFrame):
 
         self.popup_manager.close_popup()
 
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         if app_state.macro.current_preset.settings.use_custom_swap_key:
@@ -1177,8 +1163,7 @@ class GeneralSettings(QFrame):
 
         self.popup_manager.close_popup()
 
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         if not app_state.macro.current_preset.settings.always_return_to_first_line:
@@ -1193,8 +1178,7 @@ class GeneralSettings(QFrame):
 
         self.popup_manager.close_popup()
 
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         if app_state.macro.current_preset.settings.always_return_to_first_line:
@@ -1209,9 +1193,8 @@ class GeneralSettings(QFrame):
 
         self.popup_manager.close_popup()
 
-        # 매크로 실행 중일 때는 무시
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        # 입력 시퀀스 실행 중일 때는 무시
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         # 이미 타입1 이라면 무시
@@ -1832,6 +1815,9 @@ class SkillSettings(QFrame):
     def _on_edit_custom_scroll(self) -> None:
         """커스텀 무공비급 수정 다이얼로그 열기"""
 
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
+
         server_spec = app_state.macro.current_server
         scroll_def: ScrollDef = server_spec.skill_registry.get_scroll(
             self._selected_scroll_id
@@ -1860,6 +1846,9 @@ class SkillSettings(QFrame):
         )
 
         def _on_edited(skill_import: CustomSkillImport) -> None:
+            if self.popup_manager.reject_if_input_sequence_active():
+                return
+
             # 현재 세션 레지스트리 반영
             for sid in skill_import.skills:
                 detail = skill_import.skill_details[sid]
@@ -1906,6 +1895,9 @@ class SkillSettings(QFrame):
     def _on_delete_custom_scroll(self) -> None:
         """커스텀 무공비급 삭제"""
 
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
+
         scroll_id: str = self._selected_scroll_id
         server_spec = app_state.macro.current_server
         scroll_def = server_spec.skill_registry.get_scroll(scroll_id)
@@ -1948,6 +1940,9 @@ class SkillSettings(QFrame):
     def change_skill_usage(self, skill_idx: int) -> None:
         """사용 여부 변경"""
 
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
+
         # 현재 선택된 스킬의 사용 여부 토글
         preset: MacroPreset = self._get_preset()
         skill_id: str = self._skill_ids[skill_idx]
@@ -1961,6 +1956,9 @@ class SkillSettings(QFrame):
     def change_use_sole(self, skill_idx: int) -> None:
         """단독 사용 변경"""
 
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
+
         # 현재 선택된 스킬의 단독 사용 여부 토글
         preset: MacroPreset = self._get_preset()
         skill_id: str = self._skill_ids[skill_idx]
@@ -1973,6 +1971,9 @@ class SkillSettings(QFrame):
 
     def change_priority(self, skill_idx: int) -> None:
         """스킬 우선순위 변경"""
+
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
 
         # 현재 선택된 스킬과 배치 상태 조회
         preset: MacroPreset = self._get_preset()
@@ -2117,6 +2118,9 @@ class LinkSkillSettings(QFrame):
         """연계스킬 제거"""
 
         self.popup_manager.close_popup()
+
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
 
         preset: MacroPreset = self._get_preset()
         del preset.link_skills[num]
@@ -2330,7 +2334,9 @@ class LinkSkillEditor(QFrame):
             popup_manager=self.popup_manager,
             title="단축키",
             tooltip=(
-                "매크로가 실행 중이지 않을 때 해당 연계스킬을 작동시킬 단축키입니다."
+                "매크로가 실행 중이지 않을 때 해당 연계스킬을 작동시킬 단축키입니다.\n"
+                "짧게 누르면 연계를 1회 사용하고, 실행 중 다시 누르면 중지합니다.\n"
+                "계속 누르고 있으면 연계스킬을 반복해서 사용합니다."
             ),
             btn0_text="설정안함",
             btn1_text="",
@@ -2345,7 +2351,7 @@ class LinkSkillEditor(QFrame):
             popup_manager=self.popup_manager,
             title="쿨타임 동기화",
             tooltip=(
-                "단축키로 연계스킬을 작동시킬 때 쿨타임이 준비된 스킬만 사용하고, 사용한 스킬의 쿨타임을 기록합니다.\n"
+                "켜면 쿨타임이 준비된 스킬만 사용하고 사용한 스킬의 쿨타임을 기록합니다.\n"
                 "쿨타임은 연계스킬마다 별도로 기록됩니다."
             ),
             btn0_text="끄기",
@@ -2506,6 +2512,9 @@ class LinkSkillEditor(QFrame):
 
         self.popup_manager.close_popup()
 
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
+
         # 이미 자동이면 무시
         if self.data.use_type == LinkUseType.AUTO:
             return
@@ -2549,6 +2558,9 @@ class LinkSkillEditor(QFrame):
 
         self.popup_manager.close_popup()
 
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
+
         # 이미 수동이면 무시
         if self.data.use_type == LinkUseType.MANUAL:
             return
@@ -2562,6 +2574,9 @@ class LinkSkillEditor(QFrame):
 
         self.popup_manager.close_popup()
 
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
+
         self.data.clear_key()
         self._after_data_changed(update_skills=False)
 
@@ -2569,6 +2584,9 @@ class LinkSkillEditor(QFrame):
         """쿨타임 동기화 켜기"""
 
         self.popup_manager.close_popup()
+
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
 
         if self.data.remember_state:
             return
@@ -2580,6 +2598,9 @@ class LinkSkillEditor(QFrame):
         """쿨타임 동기화 끄기"""
 
         self.popup_manager.close_popup()
+
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
 
         if not self.data.remember_state:
             return
@@ -2635,6 +2656,9 @@ class LinkSkillEditor(QFrame):
 
         self.popup_manager.close_popup()
 
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
+
         # 스킬 제거
         self.data.skills.pop(i)
 
@@ -2647,6 +2671,9 @@ class LinkSkillEditor(QFrame):
         """i번째 스킬을 direction 방향으로 이동"""
 
         self.popup_manager.close_popup()
+
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
 
         # 이동 대상 인덱스 계산
         target_index: int = i + direction
@@ -2665,6 +2692,9 @@ class LinkSkillEditor(QFrame):
         """스킬 추가"""
 
         self.popup_manager.close_popup()
+
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
 
         all_skills: list[str] = self._get_all_skill_ids()
         if not all_skills:
@@ -2713,6 +2743,9 @@ class LinkSkillEditor(QFrame):
         """편집 저장"""
 
         self.popup_manager.close_popup()
+
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
 
         allowed_skill_ids: set[str] = set(self._get_all_skill_ids())
         self.data.skills = [

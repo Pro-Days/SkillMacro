@@ -687,6 +687,9 @@ class SkillMigrationManager:
     def show_manual(self) -> None:
         """커스텀 무공비급 이전 화면 수동 표시"""
 
+        if self.master.get_popup_manager().reject_if_input_sequence_active():
+            return
+
         server_spec: ServerSpec = app_state.macro.current_server
         if not has_custom_scrolls(server_spec):
             return
@@ -715,6 +718,9 @@ class SkillMigrationManager:
 
     def _handle_apply(self, pairs: list[MigrationPair]) -> None:
         """선택한 교체 쌍 적용"""
+
+        if self.master.get_popup_manager().reject_if_input_sequence_active():
+            return
 
         server_id: str = app_state.macro.current_preset.settings.server_id
         apply_skill_migration(app_state.macro.presets, server_id, pairs)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QRect, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QRect, QSignalBlocker, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+import app.scripts.run_macro as run_macro
 from app.scripts.app_state import app_state
 from app.scripts.custom_classes import CustomFont, SkillImage
 from app.scripts.data_manager import (
@@ -31,7 +32,6 @@ from app.scripts.registry.resource_registry import (
     resource_registry,
 )
 from app.scripts.registry.skill_registry import ScrollDef
-from app.scripts.run_macro import build_preview_task_list
 from app.scripts.ui.popup import (
     NoticeKind,
     PopupAction,
@@ -138,8 +138,21 @@ class MainUI(QFrame):
 
         self.presetChanged.emit(app_state.macro.presets[index], index)
 
+    @staticmethod
+    def _is_preset_operation_blocked() -> bool:
+        """실행 중 프리셋 조작 차단 여부 반환"""
+
+        return run_macro.is_input_sequence_active()
+
     def on_tab_changed(self, index: int) -> None:
         """탭 변경 처리"""
+
+        if self._is_preset_operation_blocked():
+            current_index: int = app_state.macro.current_preset_index
+            if index != current_index:
+                with QSignalBlocker(self.tab_widget):
+                    self.tab_widget.setCurrentIndex(current_index)
+            return
 
         update_recent_preset(index)
         self.tab_widget.get_current_tab().update_from_preset()
@@ -165,7 +178,7 @@ class MainUI(QFrame):
 
         self.popup_manager.close_popup()
 
-        if app_state.macro.is_running:
+        if self._is_preset_operation_blocked():
             self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
             return
 
@@ -180,8 +193,8 @@ class MainUI(QFrame):
         """탭 추가 처리"""
 
         def create_new_preset() -> None:
-            # 메뉴 표시 이후 매크로 실행 상태 재확인
-            if app_state.macro.is_running:
+            # 메뉴 표시 이후 입력 시퀀스 실행 상태 재확인
+            if self._is_preset_operation_blocked():
                 self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
                 return
 
@@ -191,8 +204,8 @@ class MainUI(QFrame):
             self.tab_widget.add_tab(preset)
 
         def create_from_current_preset() -> None:
-            # 메뉴 표시 이후 매크로 실행 상태 재확인
-            if app_state.macro.is_running:
+            # 메뉴 표시 이후 입력 시퀀스 실행 상태 재확인
+            if self._is_preset_operation_blocked():
                 self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
                 return
 
@@ -208,7 +221,7 @@ class MainUI(QFrame):
 
         self.popup_manager.close_popup()
 
-        if app_state.macro.is_running:
+        if self._is_preset_operation_blocked():
             self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
             return
 
@@ -235,7 +248,7 @@ class MainUI(QFrame):
     def on_remove_tab_clicked(self, index: int) -> None:
         """탭 제거 처리"""
 
-        if app_state.macro.is_running:
+        if self._is_preset_operation_blocked():
             self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
             return
 
@@ -266,7 +279,7 @@ class MainUI(QFrame):
 
         self.popup_manager.close_popup()
 
-        if app_state.macro.is_running:
+        if self._is_preset_operation_blocked():
             self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
             return
 
@@ -291,7 +304,7 @@ class MainUI(QFrame):
 
         self.popup_manager.close_popup()
 
-        if app_state.macro.is_running:
+        if self._is_preset_operation_blocked():
             self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
             return
 
@@ -516,7 +529,7 @@ class Tab(QFrame):
     def on_skill_key_clicked(self, index: int) -> None:
         """공용키 버튼 클릭"""
 
-        if app_state.macro.is_running:
+        if run_macro.is_input_sequence_active():
             self.noticeRequested.emit(NoticeKind.MACRO_IS_RUNNING)
             return
 
@@ -529,7 +542,7 @@ class Tab(QFrame):
             self.noticeRequested.emit(NoticeKind.EDITING_LINK_SKILL)
             return
 
-        if app_state.macro.is_running:
+        if run_macro.is_input_sequence_active():
             self.noticeRequested.emit(NoticeKind.MACRO_IS_RUNNING)
             return
 
@@ -551,7 +564,7 @@ class Tab(QFrame):
             self.noticeRequested.emit(NoticeKind.EDITING_LINK_SKILL)
             return
 
-        if app_state.macro.is_running:
+        if run_macro.is_input_sequence_active():
             self.cancel_skill_selection()
             self.noticeRequested.emit(NoticeKind.MACRO_IS_RUNNING)
             return
@@ -587,7 +600,7 @@ class Tab(QFrame):
             self.noticeRequested.emit(NoticeKind.EDITING_LINK_SKILL)
             return
 
-        if app_state.macro.is_running:
+        if run_macro.is_input_sequence_active():
             self.cancel_skill_selection()
             self.noticeRequested.emit(NoticeKind.MACRO_IS_RUNNING)
             return
@@ -868,7 +881,7 @@ class SkillPreview(QFrame):
     def update_preview(self) -> None:
         """프리뷰 갱신"""
 
-        task_list: tuple[EquippedSkillRef, ...] = build_preview_task_list()
+        task_list: tuple[EquippedSkillRef, ...] = run_macro.build_preview_task_list()
         if task_list == self.previous_task_list:
             return
 

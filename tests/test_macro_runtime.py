@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import cast
 
 import pytest
@@ -25,7 +25,7 @@ from app.scripts.macro_scheduler import (
 from app.scripts.registry.key_registry import KeyRegistry, KeySpec
 from app.scripts.registry.server_registry import ServerSpec, server_registry
 from app.scripts.run_macro import (
-    _collect_ready_link_skill_ids,
+    _get_link_skill_readiness,
     _restore_or_reset_cooltime_state,
     _settle_cooltime_state_after_stop,
     build_preview_task_list,
@@ -309,10 +309,618 @@ def test_manual_link_cooltime_state_includes_extra_wait(
     current_time: list[float] = [104.199]
     monkeypatch.setattr(run_macro.time, "perf_counter", lambda: current_time[0])
 
-    assert _collect_ready_link_skill_ids(link_skill) == []
+    assert _get_link_skill_readiness(link_skill, link_skill.skill_timers) == (
+        [],
+        0.001,
+    )
 
     current_time[0] = 104.2
-    assert _collect_ready_link_skill_ids(link_skill) == [skill_id]
+    assert _get_link_skill_readiness(link_skill, link_skill.skill_timers) == (
+        [skill_id],
+        0.0,
+    )
+
+
+class StopCheckingThread(Exception):
+    """입력 감지 무한 루프의 작업 시작 직후 종료 신호"""
+
+
+class FakeListener:
+    """입력 리스너 시작 경계 대체"""
+
+    def __init__(self, **_callbacks: Callable[..., None]) -> None:
+        return
+
+    def start(self) -> None:
+        return
+
+
+class FakeThread:
+    """입력 작업 스레드 시작 경계 대체"""
+
+    def start(self) -> None:
+        return
+
+
+CheckingThreadArgument = int | run_macro.ManualLinkSession
+CheckingThreadStart = tuple[
+    Callable[..., None],
+    list[CheckingThreadArgument],
+    bool,
+]
+
+
+def _run_checking_thread_until_first_sleep(
+    monkeypatch: pytest.MonkeyPatch,
+    sleep_seconds: list[float] | None = None,
+) -> list[CheckingThreadStart]:
+    """입력 감지 스레드의 첫 작업 시작 정보 기록"""
+
+    started_threads: list[CheckingThreadStart] = []
+
+    def record_thread(
+        *,
+        target: Callable[..., None],
+        args: list[CheckingThreadArgument],
+        daemon: bool,
+    ) -> FakeThread:
+        started_threads.append((target, args, daemon))
+        return FakeThread()
+
+    def stop_after_task_start(seconds: float) -> None:
+        if sleep_seconds is not None:
+            sleep_seconds.append(seconds)
+        raise StopCheckingThread
+
+    monkeypatch.setattr(run_macro.time, "sleep", stop_after_task_start)
+    monkeypatch.setattr(run_macro.keyboard, "Listener", FakeListener)
+    monkeypatch.setattr(run_macro.mouse, "Listener", FakeListener)
+    monkeypatch.setattr(run_macro, "Thread", record_thread)
+
+    with pytest.raises(StopCheckingThread):
+        run_macro.checking_kb_thread()
+
+    return started_threads
+
+
+def _start_main_macro_from_checking_thread(
+    macro_state_with_preset: MacroPreset,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[KeySpec, list[float]]:
+    """실제 입력 감지 경계에서 메인 매크로 시작 상태 구성"""
+
+    macro_state_with_preset.settings.custom_delay = 300
+    macro_state_with_preset.settings.use_custom_delay = True
+    start_key: KeySpec = app_state.macro.current_start_key
+    current_time: list[float] = [100.0]
+
+    monkeypatch.setattr(
+        run_macro.time,
+        "perf_counter",
+        lambda: current_time[0],
+    )
+    monkeypatch.setattr(run_macro, "pressed_keys", {start_key})
+    monkeypatch.setattr(
+        run_macro,
+        "pressed_key_started_at",
+        {start_key.key_id: 99.0},
+    )
+    monkeypatch.setattr(run_macro, "handled_key_ids", set())
+    monkeypatch.setattr(run_macro, "injected_release_counts", {})
+    monkeypatch.setattr(run_macro, "has_user_activity", False)
+    monkeypatch.setattr(run_macro, "is_input_sequence_running", False)
+    monkeypatch.setattr(run_macro, "active_manual_link_session", None)
+    monkeypatch.setattr(
+        run_macro,
+        "active_macro_start_session",
+        None,
+        raising=False,
+    )
+    app_state.macro.is_running = False
+    app_state.macro.run_id = 0
+
+    sleep_seconds: list[float] = []
+    started_threads = _run_checking_thread_until_first_sleep(
+        monkeypatch,
+        sleep_seconds,
+    )
+
+    assert started_threads == [
+        (run_macro.running_macro_thread, [1], True),
+    ]
+    assert sleep_seconds == [0.05]
+    assert app_state.macro.is_running is True
+    assert app_state.macro.run_id == 1
+    assert run_macro.is_input_sequence_running is True
+    return start_key, current_time
+
+
+def test_main_macro_short_release_preserves_existing_toggle_start(
+    macro_state_with_preset: MacroPreset,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """짧은 시작키 해제 후 기존 메인 매크로 실행 유지 검증"""
+
+    start_key, current_time = _start_main_macro_from_checking_thread(
+        macro_state_with_preset,
+        monkeypatch,
+    )
+    current_time[0] = 100.1
+
+    run_macro.on_release(cast(Key | KeyCode, start_key.value))
+
+    assert app_state.macro.is_running is True
+
+
+def test_main_macro_hold_release_stops_after_current_delay(
+    macro_state_with_preset: MacroPreset,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """현재 딜레이 이상 유지한 시작키 해제의 메인 매크로 중지 검증"""
+
+    start_key, current_time = _start_main_macro_from_checking_thread(
+        macro_state_with_preset,
+        monkeypatch,
+    )
+    session: run_macro.MacroStartSession | None = (
+        run_macro.active_macro_start_session
+    )
+    assert session is not None
+    assert session.hold_transition_at == 100.3
+
+    current_time[0] = 100.31
+    run_macro.on_release(cast(Key | KeyCode, start_key.value))
+
+    assert app_state.macro.is_running is False
+
+
+@pytest.mark.parametrize("trigger_kind", ["main", "link"])
+def test_checking_thread_preserves_press_time_when_release_races_with_activation(
+    macro_state_with_preset: MacroPreset,
+    monkeypatch: pytest.MonkeyPatch,
+    trigger_kind: str,
+) -> None:
+    """유지 판정 직후 키 해제와 실행 활성화의 경합 검증"""
+
+    macro_state_with_preset.settings.custom_delay = 300
+    macro_state_with_preset.settings.use_custom_delay = True
+    trigger_key: KeySpec = (
+        app_state.macro.current_start_key
+        if trigger_kind == "main"
+        else KeyRegistry.get("q")
+    )
+    link_skill = LinkSkill(
+        key_type=LinkKeyType.ON,
+        key=trigger_key.key_id,
+        skills=[macro_state_with_preset.skills.placed_skills[0]],
+    )
+    macro_state_with_preset.link_skills = (
+        [link_skill] if trigger_kind == "link" else []
+    )
+
+    monkeypatch.setattr(run_macro.time, "perf_counter", lambda: 100.0)
+    monkeypatch.setattr(run_macro, "pressed_keys", {trigger_key})
+    monkeypatch.setattr(
+        run_macro,
+        "pressed_key_started_at",
+        {trigger_key.key_id: 99.0},
+    )
+    monkeypatch.setattr(run_macro, "handled_key_ids", set())
+    monkeypatch.setattr(run_macro, "injected_release_counts", {})
+    monkeypatch.setattr(run_macro, "has_user_activity", False)
+    monkeypatch.setattr(run_macro, "is_input_sequence_running", False)
+    monkeypatch.setattr(run_macro, "active_manual_link_session", None)
+    monkeypatch.setattr(run_macro, "active_macro_start_session", None)
+    app_state.macro.is_running = False
+    app_state.macro.run_id = 0
+
+    def release_after_hold_check(
+        key_spec: KeySpec,
+        _hold_seconds: float,
+    ) -> bool:
+        if key_spec != trigger_key:
+            return False
+
+        run_macro.on_release(cast(Key | KeyCode, trigger_key.value))
+        return True
+
+    monkeypatch.setattr(run_macro, "is_key_held", release_after_hold_check)
+
+    started_threads = _run_checking_thread_until_first_sleep(monkeypatch)
+
+    assert len(started_threads) == 1
+    target, args, daemon = started_threads[0]
+    assert daemon is True
+    if trigger_kind == "main":
+        assert target is run_macro.running_macro_thread
+        assert args == [1]
+        session = cast(
+            run_macro.MacroStartSession,
+            run_macro.active_macro_start_session,
+        )
+    else:
+        assert target is run_macro.use_link_skill
+        session = cast(run_macro.ManualLinkSession, args[0])
+
+    assert session.trigger_pressed_at == 99.0
+
+
+def _record_manual_link_run(
+    monkeypatch: pytest.MonkeyPatch,
+    link_skill: LinkSkill,
+    event_hook: Callable[[list[float], float], None],
+    initial_time: float,
+    trigger_pressed_at: float,
+    delay_seconds: float,
+) -> tuple[list[tuple[float, str]], run_macro.ManualLinkSession]:
+    """가상 시계와 실제 입력 콜백을 사용한 수동 연계 입력 기록"""
+
+    current_time: list[float] = [initial_time]
+    recorded_inputs: list[tuple[float, str]] = []
+    trigger_key: KeySpec = KeyRegistry.get("q")
+    session = run_macro.ManualLinkSession(
+        link_skill=link_skill,
+        trigger_key=trigger_key,
+        trigger_pressed_at=trigger_pressed_at,
+        delay_seconds=delay_seconds,
+        hold_transition_at=initial_time + delay_seconds,
+    )
+
+    def advance_clock(seconds: float) -> None:
+        target_time: float = round(current_time[0] + seconds, 6)
+        event_hook(current_time, target_time)
+        current_time[0] = target_time
+
+    def record_input(
+        _kbd_controller: None,
+        _mouse_controller: None,
+        key_spec: KeySpec,
+    ) -> None:
+        recorded_inputs.append((current_time[0], key_spec.key_id))
+
+    monkeypatch.setattr(run_macro.time, "perf_counter", lambda: current_time[0])
+    monkeypatch.setattr(run_macro.time, "sleep", advance_clock)
+    monkeypatch.setattr(run_macro.keyboard, "Controller", lambda: None)
+    monkeypatch.setattr(run_macro.mouse, "Controller", lambda: None)
+    monkeypatch.setattr(run_macro, "_press_key_spec", record_input)
+    monkeypatch.setattr(run_macro, "pressed_keys", {trigger_key})
+    monkeypatch.setattr(
+        run_macro,
+        "pressed_key_started_at",
+        {trigger_key.key_id: trigger_pressed_at},
+    )
+    monkeypatch.setattr(run_macro, "handled_key_ids", {trigger_key.key_id})
+    monkeypatch.setattr(run_macro, "is_input_sequence_running", True)
+    monkeypatch.setattr(run_macro, "active_manual_link_session", session)
+
+    run_macro.use_link_skill(session)
+    return recorded_inputs, session
+
+
+@pytest.mark.parametrize("remember_state", [False, True])
+@pytest.mark.parametrize("hold_for_one_cycle", [False, True])
+def test_manual_link_single_use_preserves_input_timeline_and_state(
+    macro_state_with_preset: MacroPreset,
+    monkeypatch: pytest.MonkeyPatch,
+    remember_state: bool,
+    hold_for_one_cycle: bool,
+) -> None:
+    """수동 연계 1회 실행의 입력 시각·줄 복귀·쿨타임 상태 계약 검증"""
+
+    macro_state_with_preset.settings.custom_delay = 300
+    macro_state_with_preset.settings.use_custom_delay = True
+    skill_ids: list[str] = [
+        macro_state_with_preset.skills.placed_skills[index] for index in (0, 2, 1)
+    ]
+    link_skill = LinkSkill(skills=skill_ids, remember_state=remember_state)
+    trigger_pressed_at: float = 9.9
+    released: list[bool] = [False]
+
+    def release_trigger(current_time: list[float], target_time: float) -> None:
+        release_at: float = 10.7 if hold_for_one_cycle else 10.15
+        if not released[0] and current_time[0] < release_at <= target_time:
+            current_time[0] = release_at
+            run_macro.on_release(KeyCode.from_char("q"))
+            released[0] = True
+
+    recorded_inputs, session = _record_manual_link_run(
+        monkeypatch=monkeypatch,
+        link_skill=link_skill,
+        event_hook=release_trigger,
+        initial_time=10.0,
+        trigger_pressed_at=trigger_pressed_at,
+        delay_seconds=0.3,
+    )
+
+    assert recorded_inputs == [
+        (10.0, "2"),
+        (10.3, "3"),
+        (10.6, "h"),
+        (10.6, "2"),
+        (10.9, "h"),
+    ]
+    assert app_state.macro.last_skill_input_at == 10.6
+    assert app_state.macro.next_skill_input_at is None
+    assert run_macro.is_input_sequence_running is False
+    assert session.is_hold is hold_for_one_cycle
+    assert link_skill.skill_timers == (
+        {
+            skill_ids[0]: 10.0,
+            skill_ids[1]: 10.3,
+            skill_ids[2]: 10.6,
+        }
+        if remember_state
+        else {}
+    )
+
+
+@pytest.mark.parametrize(
+    ("stop_kind", "expected_skill_count", "expected_hold"),
+    [
+        ("repress", 2, False),
+        ("hold_release", 2, True),
+    ],
+)
+def test_manual_link_stops_before_next_skill_from_real_input_callbacks(
+    macro_state_with_preset: MacroPreset,
+    monkeypatch: pytest.MonkeyPatch,
+    stop_kind: str,
+    expected_skill_count: int,
+    expected_hold: bool,
+) -> None:
+    """재입력과 홀드 해제의 다음 연계 스킬 차단 검증"""
+
+    macro_state_with_preset.settings.custom_delay = 300
+    macro_state_with_preset.settings.use_custom_delay = True
+    macro_state_with_preset.settings.custom_key_hold_seconds = 0.2
+    macro_state_with_preset.settings.use_custom_key_hold_seconds = True
+    skill_ids: list[str] = [
+        macro_state_with_preset.skills.placed_skills[index] for index in (0, 2, 4)
+    ]
+    link_skill = LinkSkill(skills=skill_ids)
+    trigger_pressed_at: float = -0.1
+    stop_input_sent: list[bool] = [False]
+
+    def send_stop_input(current_time: list[float], target_time: float) -> None:
+        if stop_kind == "repress" and not stop_input_sent[0]:
+            current_time[0] = 0.15
+            run_macro.on_release(KeyCode.from_char("q"))
+            current_time[0] = 0.16
+            run_macro.on_press(KeyCode.from_char("q"))
+            stop_input_sent[0] = True
+
+        if (
+            stop_kind == "repress"
+            and stop_input_sent[0]
+            and current_time[0] < 0.361 <= target_time
+        ):
+            current_time[0] = 0.361
+            run_macro._apply_pending_manual_link_stop(
+                app_state.macro.current_key_hold_seconds,
+            )
+
+        if (
+            stop_kind == "hold_release"
+            and not stop_input_sent[0]
+            and current_time[0] < 0.45 <= target_time
+        ):
+            current_time[0] = 0.45
+            run_macro.on_release(KeyCode.from_char("q"))
+            stop_input_sent[0] = True
+
+    recorded_inputs, session = _record_manual_link_run(
+        monkeypatch=monkeypatch,
+        link_skill=link_skill,
+        event_hook=send_stop_input,
+        initial_time=0.0,
+        trigger_pressed_at=trigger_pressed_at,
+        delay_seconds=0.3,
+    )
+    input_times: list[float] = [
+        input_time for input_time, key_id in recorded_inputs if key_id != "h"
+    ]
+
+    assert input_times == [index * 0.3 for index in range(expected_skill_count)]
+    assert session.stop_event.is_set()
+    assert session.is_hold is expected_hold
+    assert app_state.macro.next_skill_input_at is None
+    assert run_macro.is_input_sequence_running is False
+
+
+@pytest.mark.parametrize("trigger_kind", ["main", "link"])
+@pytest.mark.parametrize("session_ends_early", [False, True])
+def test_repress_stop_intent_is_not_retargeted_after_hold_delay(
+    macro_state_with_preset: MacroPreset,
+    monkeypatch: pytest.MonkeyPatch,
+    trigger_kind: str,
+    session_ends_early: bool,
+) -> None:
+    """재입력 중지의 유지 시간 적용과 대상 실행 고정 검증"""
+
+    macro_state_with_preset.settings.custom_key_hold_seconds = 0.5
+    macro_state_with_preset.settings.use_custom_key_hold_seconds = True
+    trigger_key: KeySpec = (
+        app_state.macro.current_start_key
+        if trigger_kind == "main"
+        else KeyRegistry.get("q")
+    )
+    link_skill = LinkSkill(
+        key_type=LinkKeyType.ON,
+        key=trigger_key.key_id,
+        skills=[macro_state_with_preset.skills.placed_skills[0]],
+    )
+    macro_state_with_preset.link_skills = (
+        [link_skill] if trigger_kind == "link" else []
+    )
+    current_time: list[float] = [100.0]
+    macro_session = run_macro.MacroStartSession(
+        trigger_key=trigger_key,
+        trigger_pressed_at=99.0,
+        hold_transition_at=99.3,
+        run_id=1,
+    )
+    link_session = run_macro.ManualLinkSession(
+        link_skill=link_skill,
+        trigger_key=trigger_key,
+        trigger_pressed_at=99.0,
+        delay_seconds=0.3,
+        hold_transition_at=99.3,
+    )
+
+    monkeypatch.setattr(
+        run_macro.time,
+        "perf_counter",
+        lambda: current_time[0],
+    )
+    monkeypatch.setattr(run_macro, "pressed_keys", set())
+    monkeypatch.setattr(run_macro, "pressed_key_started_at", {})
+    monkeypatch.setattr(run_macro, "handled_key_ids", set())
+    monkeypatch.setattr(run_macro, "has_user_activity", False)
+    monkeypatch.setattr(run_macro, "is_input_sequence_running", True)
+    monkeypatch.setattr(
+        run_macro,
+        "active_macro_start_session",
+        macro_session if trigger_kind == "main" else None,
+    )
+    monkeypatch.setattr(
+        run_macro,
+        "active_manual_link_session",
+        link_session if trigger_kind == "link" else None,
+    )
+    app_state.macro.is_running = trigger_kind == "main"
+    app_state.macro.run_id = 1
+
+    run_macro.on_press(cast(Key | KeyCode, trigger_key.value))
+
+    assert trigger_key.key_id in run_macro.handled_key_ids
+    assert app_state.macro.is_running is (trigger_kind == "main")
+    assert not link_session.stop_event.is_set()
+
+    current_time[0] = 100.49
+    assert _run_checking_thread_until_first_sleep(monkeypatch) == []
+    assert app_state.macro.is_running is (trigger_kind == "main")
+    assert not link_session.stop_event.is_set()
+
+    if session_ends_early:
+        app_state.macro.is_running = False
+        run_macro.is_input_sequence_running = False
+        run_macro.active_macro_start_session = None
+        run_macro.active_manual_link_session = None
+
+    current_time[0] = 100.501
+    assert _run_checking_thread_until_first_sleep(monkeypatch) == []
+    assert trigger_key.key_id in run_macro.handled_key_ids
+    if trigger_kind == "main":
+        assert app_state.macro.is_running is False
+    else:
+        assert link_session.stop_event.is_set() is not session_ends_early
+
+
+@pytest.mark.parametrize("remember_state", [False, True])
+def test_manual_link_hold_reuses_cooldown_and_resets_only_temporary_state(
+    macro_state_with_preset: MacroPreset,
+    monkeypatch: pytest.MonkeyPatch,
+    remember_state: bool,
+) -> None:
+    """홀드 재사용과 동기화 OFF 임시 쿨타임 폐기 검증"""
+
+    macro_state_with_preset.settings.custom_delay = 300
+    macro_state_with_preset.settings.use_custom_delay = True
+    skill_id: str = macro_state_with_preset.skills.placed_skills[0]
+    link_skill = LinkSkill(skills=[skill_id], remember_state=remember_state)
+    trigger_pressed_at: float = -0.1
+    released: list[bool] = [False]
+
+    def release_after_reuse(current_time: list[float], target_time: float) -> None:
+        if not released[0] and current_time[0] < 4.3 <= target_time:
+            current_time[0] = 4.3
+            run_macro.on_release(KeyCode.from_char("q"))
+            released[0] = True
+
+    recorded_inputs, session = _record_manual_link_run(
+        monkeypatch=monkeypatch,
+        link_skill=link_skill,
+        event_hook=release_after_reuse,
+        initial_time=0.0,
+        trigger_pressed_at=trigger_pressed_at,
+        delay_seconds=0.3,
+    )
+    input_times: list[float] = [
+        input_time for input_time, key_id in recorded_inputs if key_id != "h"
+    ]
+
+    assert input_times == [0.0, 4.2]
+    assert session.is_hold is True
+    assert link_skill.skill_timers == ({skill_id: 4.2} if remember_state else {})
+
+
+def test_checking_thread_uses_current_delay_for_manual_link_hold_transition(
+    macro_state_with_preset: MacroPreset,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """실제 입력 감지 경계의 현재 딜레이 기반 홀드 전환 시각 검증"""
+
+    macro_state_with_preset.settings.custom_delay = 450
+    macro_state_with_preset.settings.use_custom_delay = True
+    macro_state_with_preset.settings.custom_key_hold_seconds = 0.2
+    macro_state_with_preset.settings.use_custom_key_hold_seconds = True
+    trigger_key: KeySpec = KeyRegistry.get("q")
+    trigger_pressed_at: float = 99.8
+    current_time: list[float] = [100.0]
+    link_skill = LinkSkill(
+        key_type=LinkKeyType.ON,
+        key=trigger_key.key_id,
+        skills=[macro_state_with_preset.skills.placed_skills[0]],
+    )
+    macro_state_with_preset.link_skills = [link_skill]
+
+    monkeypatch.setattr(
+        run_macro.time,
+        "perf_counter",
+        lambda: current_time[0],
+    )
+    monkeypatch.setattr(run_macro, "pressed_keys", {trigger_key})
+    monkeypatch.setattr(
+        run_macro,
+        "pressed_key_started_at",
+        {trigger_key.key_id: trigger_pressed_at},
+    )
+    monkeypatch.setattr(run_macro, "handled_key_ids", set())
+    monkeypatch.setattr(run_macro, "has_user_activity", False)
+    monkeypatch.setattr(run_macro, "is_input_sequence_running", False)
+    monkeypatch.setattr(run_macro, "active_manual_link_session", None)
+
+    sleep_seconds: list[float] = []
+    started_threads = _run_checking_thread_until_first_sleep(
+        monkeypatch,
+        sleep_seconds,
+    )
+
+    assert len(started_threads) == 1
+    assert sleep_seconds == [0.05]
+    target, args, daemon = started_threads[0]
+    assert target is run_macro.use_link_skill
+    assert daemon is True
+    assert len(args) == 1
+    session = cast(run_macro.ManualLinkSession, args[0])
+    assert session.link_skill is link_skill
+    assert session.trigger_key == trigger_key
+    assert session.trigger_pressed_at == trigger_pressed_at
+    assert session.delay_seconds == 0.45
+    assert session.hold_transition_at == 100.45
+
+    current_time[0] = 100.1
+    run_macro.on_release(KeyCode.from_char("q"))
+    current_time[0] = 100.11
+    run_macro.on_press(KeyCode.from_char("q"))
+
+    current_time[0] = 100.3
+    assert _run_checking_thread_until_first_sleep(monkeypatch) == []
+    assert not session.stop_event.is_set()
+
+    current_time[0] = 100.311
+    assert _run_checking_thread_until_first_sleep(monkeypatch) == []
+    assert session.stop_event.is_set()
 
 
 @pytest.mark.parametrize(
