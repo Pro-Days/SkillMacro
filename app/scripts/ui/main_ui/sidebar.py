@@ -2512,6 +2512,9 @@ class LinkSkillEditor(QFrame):
 
         self.popup_manager.close_popup()
 
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
+
         # 이미 자동이면 무시
         if self.data.use_type == LinkUseType.AUTO:
             return
@@ -2555,6 +2558,9 @@ class LinkSkillEditor(QFrame):
 
         self.popup_manager.close_popup()
 
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
+
         # 이미 수동이면 무시
         if self.data.use_type == LinkUseType.MANUAL:
             return
@@ -2568,6 +2574,9 @@ class LinkSkillEditor(QFrame):
 
         self.popup_manager.close_popup()
 
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
+
         self.data.clear_key()
         self._after_data_changed(update_skills=False)
 
@@ -2575,6 +2584,9 @@ class LinkSkillEditor(QFrame):
         """쿨타임 동기화 켜기"""
 
         self.popup_manager.close_popup()
+
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
 
         if self.data.remember_state:
             return
@@ -2586,6 +2598,9 @@ class LinkSkillEditor(QFrame):
         """쿨타임 동기화 끄기"""
 
         self.popup_manager.close_popup()
+
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
 
         if not self.data.remember_state:
             return
@@ -2641,6 +2656,9 @@ class LinkSkillEditor(QFrame):
 
         self.popup_manager.close_popup()
 
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
+
         # 스킬 제거
         self.data.skills.pop(i)
 
@@ -2653,6 +2671,9 @@ class LinkSkillEditor(QFrame):
         """i번째 스킬을 direction 방향으로 이동"""
 
         self.popup_manager.close_popup()
+
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
 
         # 이동 대상 인덱스 계산
         target_index: int = i + direction
@@ -2671,6 +2692,9 @@ class LinkSkillEditor(QFrame):
         """스킬 추가"""
 
         self.popup_manager.close_popup()
+
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
 
         all_skills: list[str] = self._get_all_skill_ids()
         if not all_skills:
