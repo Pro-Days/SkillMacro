@@ -48,6 +48,7 @@ _GRADE_ORDER: tuple[TalismanGrade, ...] = (
     TalismanGrade.RARE,
     TalismanGrade.HEROIC,
     TalismanGrade.LEGENDARY,
+    TalismanGrade.MYTHIC,
 )
 
 

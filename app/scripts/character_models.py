@@ -876,6 +876,8 @@ class TalismanGrade(str, Enum):
     HEROIC = "영웅"
     # 전설 등급
     LEGENDARY = "전설"
+    # 신화 등급
+    MYTHIC = "신화"
 
 
 @dataclass(frozen=True, slots=True)
