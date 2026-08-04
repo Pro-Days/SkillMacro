@@ -26,6 +26,8 @@ from app.scripts.character_engine import (
     validate_character_store,
 )
 from app.scripts.character_models import (
+    AdditionalStatGroup,
+    AdditionalStatLine,
     CharacterProfile,
     CharacterStore,
     CharacterTalisman,
@@ -109,9 +111,7 @@ def test_unknown_equipped_title_is_rejected(basic_profile: CharacterProfile) -> 
 def test_unknown_talisman_key_is_rejected(basic_profile: CharacterProfile) -> None:
     """존재하지 않는 부적 종류의 명시적 거부 검증"""
 
-    basic_profile.talismans.append(
-        CharacterTalisman(talisman_key="없는부적", level=1)
-    )
+    basic_profile.talismans.append(CharacterTalisman(talisman_key="없는부적", level=1))
 
     with pytest.raises(ValueError):
         validate_character_profile(basic_profile)
@@ -144,7 +144,8 @@ def test_live_view_aggregates_inputs_hand_computed(
 
     기본 체력 = 50 + 레벨 * 5
     단전: 상단전 체력% +3/저항% +1, 중단전 공격력% +1
-    칭호: 슬롯 스탯 그대로 합산, VIP: 드랍률% +3
+    칭호: 슬롯 스탯 그대로 합산, 추가 스탯: 같은 그룹의 중복 스탯도 합산
+    VIP: 드랍률% +3
     """
 
     # 공격력 +100, 보스 공격력% +5 칭호 장착 구성
@@ -158,6 +159,15 @@ def test_live_view_aggregates_inputs_hand_computed(
     )
     basic_profile.titles.append(title)
     basic_profile.equipped.title_id = title.id
+    basic_profile.additional_stat_groups.append(
+        AdditionalStatGroup(
+            name="기타",
+            stats=[
+                AdditionalStatLine(stat_key=StatKey.ATTACK, value=20.0),
+                AdditionalStatLine(stat_key=StatKey.ATTACK, value=30.0),
+            ],
+        )
+    )
     basic_profile.vip = True
 
     live: LiveStatView = compute_live_view(basic_profile)
@@ -179,8 +189,8 @@ def test_live_view_aggregates_inputs_hand_computed(
     assert base_values[StatKey.RESIST_PERCENT.value] == pytest.approx(1.0)
     assert base_values[StatKey.ATTACK_PERCENT.value] == pytest.approx(1.0)
 
-    # 칭호와 VIP 반영 확인
-    assert base_values[StatKey.ATTACK.value] == pytest.approx(100.0)
+    # 칭호와 같은 그룹 내 중복 추가 스탯, VIP 반영 확인
+    assert base_values[StatKey.ATTACK.value] == pytest.approx(150.0)
     assert base_values[StatKey.BOSS_ATTACK_PERCENT.value] == pytest.approx(5.0)
     assert base_values[StatKey.DROP_RATE_PERCENT.value] == pytest.approx(3.0)
 
@@ -387,10 +397,7 @@ def test_optimize_stat_distribution_matches_exhaustive_damage_score(
         values: dict[StatKey, float] = compute_live_view(candidate).final.values
         crit_rate: float = min(values[StatKey.CRIT_RATE_PERCENT], 100.0)
         return values[StatKey.ATTACK] * (
-            1.0
-            + crit_rate
-            * (values[StatKey.CRIT_DAMAGE_PERCENT] - 100.0)
-            / 10000.0
+            1.0 + crit_rate * (values[StatKey.CRIT_DAMAGE_PERCENT] - 100.0) / 10000.0
         )
 
     optimized_score: float = damage_score(optimized)

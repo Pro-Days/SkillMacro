@@ -70,7 +70,8 @@
         },
         "pill": {
           "active": []
-        }
+        },
+        "additional_stat_groups": []
       },
       "expected": {
         "final_stats": {
@@ -743,7 +744,8 @@
         },
         "pill": {
           "active": ["추천환"]
-        }
+        },
+        "additional_stat_groups": []
       },
       "expected": {
         "final_stats": {

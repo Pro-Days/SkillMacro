@@ -1600,8 +1600,8 @@ QFrame#charStatCellEmpty {{ background: transparent; }}
 QLabel#charStatLabel {{ color: #787671; background: transparent; }}
 QLabel#charStatValue {{ color: #1A1A1A; background: transparent; }}
 
-/* 칭호 */
-QFrame#charTitleItem {{
+/* 칭호와 추가 스탯 그룹 */
+QFrame#charTitleItem, QFrame#charStatGroupItem {{
     background-color: #FFFFFF; border: 1px solid #E5E3DF; border-radius: 12px;
 }}
 QFrame#charTitleItem[equipped=true] {{ background-color: #EFECFD; border-color: #9180F7; }}
@@ -3211,8 +3211,8 @@ QFrame#charStatCellEmpty {{ background: transparent; }}
 QLabel#charStatLabel {{ color: #A0A0C0; background: transparent; }}
 QLabel#charStatValue {{ color: #E8E8F0; background: transparent; }}
 
-/* 칭호 */
-QFrame#charTitleItem {{
+/* 칭호와 추가 스탯 그룹 */
+QFrame#charTitleItem, QFrame#charStatGroupItem {{
     background-color: #1E1E2E; border: 1px solid #363650; border-radius: 12px;
 }}
 QFrame#charTitleItem[equipped=true] {{ background-color: #2E2A4A; border-color: #9180F7; }}

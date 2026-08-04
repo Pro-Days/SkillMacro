@@ -9,7 +9,7 @@ from uuid import uuid4
 from app.scripts.calculator_models import RealmTier, StatKey
 from app.scripts.registry.resource_registry import convert_resource_path
 
-CHARACTER_DATA_VERSION: int = 1
+CHARACTER_DATA_VERSION: int = 2
 DEFAULT_CHARACTER_NAME: str = "새 캐릭터"
 TITLE_STAT_SLOT_COUNT: int = 3
 EQUIPMENT_OPTION_SLOT_COUNT: int = 3
@@ -18,6 +18,7 @@ MAX_CHARACTER_LEVEL: int = 200
 MAX_TALISMAN_LEVEL: int = 14
 MAX_ELIXIR_COUNT: int = 10
 MAX_REFORGE_STEP: int = 20
+MAX_CHARACTER_INPUT_VALUE: float = 999.99
 
 
 class EquipmentSlot(str, Enum):
@@ -692,6 +693,58 @@ class PillState:
 
 
 @dataclass(slots=True)
+class AdditionalStatLine:
+    """추가 스탯 입력 라인"""
+
+    stat_key: StatKey
+    value: float
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AdditionalStatLine":
+        """저장 데이터로부터 추가 스탯 라인 복원"""
+
+        return cls(
+            stat_key=StatKey(str(data["stat_key"])),
+            value=float(data["value"]),
+        )
+
+    def to_dict(self) -> dict[str, str | float]:
+        """추가 스탯 라인 직렬화"""
+
+        return {
+            "stat_key": self.stat_key.value,
+            "value": float(self.value),
+        }
+
+
+@dataclass(slots=True)
+class AdditionalStatGroup:
+    """추가 스탯 그룹"""
+
+    name: str = ""
+    stats: list[AdditionalStatLine] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AdditionalStatGroup":
+        """저장 데이터로부터 추가 스탯 그룹 복원"""
+
+        return cls(
+            name=str(data["name"]),
+            stats=[
+                AdditionalStatLine.from_dict(item) for item in _read_list(data, "stats")
+            ],
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """추가 스탯 그룹 직렬화"""
+
+        return {
+            "name": self.name,
+            "stats": [stat.to_dict() for stat in self.stats],
+        }
+
+
+@dataclass(slots=True)
 class CharacterProfile:
     """전역 캐릭터 프로필"""
 
@@ -709,6 +762,7 @@ class CharacterProfile:
     display_stand: DisplayStandState = field(default_factory=DisplayStandState)
     elixir: ElixirState = field(default_factory=ElixirState)
     pill: PillState = field(default_factory=PillState)
+    additional_stat_groups: list[AdditionalStatGroup] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "CharacterProfile":
@@ -736,6 +790,10 @@ class CharacterProfile:
             ),
             elixir=ElixirState.from_dict(_read_dict(data, "elixir")),
             pill=PillState.from_dict(_read_dict(data, "pill")),
+            additional_stat_groups=[
+                AdditionalStatGroup.from_dict(item)
+                for item in _read_list(data, "additional_stat_groups")
+            ],
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -756,6 +814,9 @@ class CharacterProfile:
             "display_stand": self.display_stand.to_dict(),
             "elixir": self.elixir.to_dict(),
             "pill": self.pill.to_dict(),
+            "additional_stat_groups": [
+                group.to_dict() for group in self.additional_stat_groups
+            ],
         }
 
 

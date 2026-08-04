@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.scripts.character_models import MAX_CHARACTER_INPUT_VALUE
 from app.scripts.custom_classes import CustomFont, StyledButton
 
 
@@ -61,7 +62,7 @@ class NormalizingLineEdit(QLineEdit):
         parent: QWidget | None = None,
         *,
         min_value: float = 0.0,
-        max_value: float = 100.0,
+        max_value: float = MAX_CHARACTER_INPUT_VALUE,
         integer: bool = False,
     ) -> None:
         super().__init__(text, parent)
@@ -70,7 +71,9 @@ class NormalizingLineEdit(QLineEdit):
         if integer:
             self.setValidator(QIntValidator(int(min_value), int(max_value), self))
         else:
-            self.setValidator(QDoubleValidator(min_value, max_value, 2, self))
+            validator = QDoubleValidator(min_value, max_value, 2, self)
+            validator.setNotation(QDoubleValidator.Notation.StandardNotation)
+            self.setValidator(validator)
 
         self.editingFinished.connect(self._commit_value)
 
@@ -149,7 +152,7 @@ class StepperField(QFrame):
         unit: str = "",
         max_width: int = 0,
         min_value: float = 0.0,
-        max_value: float = 100.0,
+        max_value: float = MAX_CHARACTER_INPUT_VALUE,
         integer: bool = False,
     ) -> None:
         super().__init__(parent)
