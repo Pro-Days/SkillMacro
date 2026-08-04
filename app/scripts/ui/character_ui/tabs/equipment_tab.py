@@ -1772,6 +1772,7 @@ class EquipmentTab(CharacterTab):
             container,
             str(item.reforge_step),
             unit="강",
+            max_value=MAX_REFORGE_STEP,
             integer=True,
         )
         field.setFixedWidth(84)
@@ -2299,14 +2300,13 @@ class EquipmentTab(CharacterTab):
         box.setContentsMargins(0, 0, 0, 0)
         box.setSpacing(5)
 
-        unit: str = "%" if "%" in label else ""
         box.addWidget(_field_caption(container, label))
 
         # %스탯과 일반 스탯 모두 동일한 칸 폭으로 통일
         field: QWidget = (
-            StaticValueField(container, value, unit=unit)
+            StaticValueField(container, value)
             if readonly
-            else StepperField(container, value, unit=unit)
+            else StepperField(container, value)
         )
         if isinstance(field, StepperField) and on_changed is not None:
             field.value_changed.connect(lambda target=field: on_changed(target))

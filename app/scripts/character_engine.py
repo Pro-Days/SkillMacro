@@ -48,6 +48,7 @@ from app.scripts.character_models import (
     MAX_TALISMAN_LEVEL,
     TALISMAN_SPECS,
     AdditionalLine,
+    AdditionalStatGroup,
     CharacterProfile,
     CharacterStore,
     CharacterTalisman,
@@ -553,6 +554,20 @@ def _validate_consumables(profile: CharacterProfile) -> None:
             raise ValueError("pill is not supported")
 
 
+def _validate_additional_stat_groups(profile: CharacterProfile) -> None:
+    """추가 스탯 그룹 입력 검증"""
+
+    for group in profile.additional_stat_groups:
+        if not group.name.strip():
+            raise ValueError("additional stat group name is required")
+
+        for stat in group.stats:
+            if not isfinite(stat.value):
+                raise ValueError("additional stat value must be finite")
+
+            _validate_non_negative_float(stat.value, "additional stat value")
+
+
 def validate_character_profile(profile: CharacterProfile) -> None:
     """캐릭터 프로필 전체 검증"""
 
@@ -563,6 +578,7 @@ def validate_character_profile(profile: CharacterProfile) -> None:
     _validate_equipment_state(profile)
     _validate_display_stand(profile)
     _validate_consumables(profile)
+    _validate_additional_stat_groups(profile)
 
 
 def validate_character_store(store: CharacterStore) -> None:
@@ -904,6 +920,17 @@ def _add_pills(
         _merge_stats(accumulated, PILL_SPECS[pill].effects)
 
 
+def _add_additional_stat_groups(
+    accumulated: dict[StatKey, float],
+    groups: list[AdditionalStatGroup],
+) -> None:
+    """추가 스탯 그룹 기여 누적"""
+
+    for group in groups:
+        for stat in group.stats:
+            _add_stat(accumulated, stat.stat_key, stat.value)
+
+
 def _accumulate_pill_excluded_base_stats(
     profile: CharacterProfile,
 ) -> dict[StatKey, float]:
@@ -917,6 +944,7 @@ def _accumulate_pill_excluded_base_stats(
     _add_equipment(accumulated, profile)
     _add_display_stand(accumulated, profile)
     _add_elixirs(accumulated, profile)
+    _add_additional_stat_groups(accumulated, profile.additional_stat_groups)
     return accumulated
 
 

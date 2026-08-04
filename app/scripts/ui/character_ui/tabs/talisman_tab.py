@@ -618,6 +618,7 @@ class TalismanTab(CharacterTab):
             str(talisman.level),
             unit="Lv",
             max_width=96,
+            max_value=MAX_TALISMAN_LEVEL,
             integer=True,
         )
         level_field.value_changed.connect(

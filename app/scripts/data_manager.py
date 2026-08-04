@@ -365,12 +365,59 @@ def create_default_characters_data() -> None:
         json.dump(default_store.to_dict(), f, ensure_ascii=False, indent=4)
 
 
+def migrate_character_data_file(file_path: str) -> None:
+    """characters.json 저장 구조를 현재 버전으로 마이그레이션"""
+
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            raw_obj: object = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return
+
+    if not isinstance(raw_obj, dict):
+        return
+
+    try:
+        raw: dict[str, Any] = raw_obj
+        if raw.get("version") != 1:
+            return
+
+        raw_characters: object = raw["characters"]
+        if not isinstance(raw_characters, list):
+            return
+
+        for raw_character in raw_characters:
+            if not isinstance(raw_character, dict):
+                return
+
+            raw_character["additional_stat_groups"] = []
+
+        raw["version"] = 2
+
+    except (KeyError, TypeError, ValueError):
+        return
+
+    try:
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(raw, f, ensure_ascii=False, indent=4)
+    except OSError as error:
+        log_text: str = _format_data_failure_log(
+            file_path,
+            "characters.json 마이그레이션 저장",
+            error,
+            None,
+        )
+        raise DataRecoveryStartupError(log_text) from error
+
+
 def load_characters() -> CharacterStore:
     """characters.json 로드 후 전역 캐릭터 상태에 반영"""
 
     # 최초 실행 시 빈 캐릭터 저장소 파일 생성
     if not os.path.isfile(characters_file_dir):
         create_default_characters_data()
+
+    migrate_character_data_file(characters_file_dir)
 
     try:
         # 캐릭터 저장 루트 로드

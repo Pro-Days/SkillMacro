@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
 
 from app.scripts.calculator_models import REALM_TIER_SPECS
 from app.scripts.character_engine import optimize_danjeon, optimize_stat_distribution
-from app.scripts.character_models import CharacterProfile
+from app.scripts.character_models import MAX_CHARACTER_LEVEL, CharacterProfile
 from app.scripts.custom_classes import CustomFont, StyledButton
 from app.scripts.ui.character_ui.change_handler import CharacterChangeHandler
 from app.scripts.ui.character_ui.constants import (
@@ -29,6 +29,7 @@ from app.scripts.ui.character_ui.widgets import (
 )
 
 _ITEM_FIELD_WIDTH: int = 84
+_MAX_STAT_DISTRIBUTION_VALUE: int = MAX_CHARACTER_LEVEL * 5
 
 
 class _Budget(QFrame):
@@ -177,7 +178,7 @@ class DistributionTab(CharacterTab):
                 effect,
                 self._recalc_stat,
                 self._stat_fields,
-                max_value=1000,
+                max_value=_MAX_STAT_DISTRIBUTION_VALUE,
             )
             for key, label, effect in STAT_DISTRIBUTION_ITEMS
         ]

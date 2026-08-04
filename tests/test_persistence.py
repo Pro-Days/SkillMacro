@@ -12,6 +12,8 @@ from app.scripts import data_manager
 from app.scripts.app_state import app_state
 from app.scripts.character_models import (
     CHARACTER_DATA_VERSION,
+    AdditionalStatGroup,
+    AdditionalStatLine,
     CharacterProfile,
     CharacterStore,
 )
@@ -241,6 +243,36 @@ def test_future_character_version_is_detected(
     assert data_manager.has_future_character_data_version() is True
 
 
+def test_load_characters_migrates_v1_additional_stat_groups(
+    isolated_data_paths: dict[str, str],
+) -> None:
+    """v1 캐릭터 저장값 보존과 빈 추가 스탯 그룹 주입 검증"""
+
+    store_payload: dict[str, Any] = CharacterStore.create_default().to_dict()
+    store_payload["version"] = 1
+    raw_character: dict[str, Any] = store_payload["characters"][0]
+    raw_character["name"] = "마이그레이션 대상"
+    raw_character["level"] = 120
+    raw_character.pop("additional_stat_groups")
+    _write_text(
+        isolated_data_paths["characters_file_dir"],
+        json.dumps(store_payload, ensure_ascii=False),
+    )
+
+    loaded: CharacterStore = data_manager.load_characters()
+
+    assert loaded.version == CHARACTER_DATA_VERSION
+    assert loaded.characters[0].name == "마이그레이션 대상"
+    assert loaded.characters[0].level == 120
+    assert loaded.characters[0].additional_stat_groups == []
+    assert _list_backups(isolated_data_paths["data_path"], "characters") == []
+
+    with open(isolated_data_paths["characters_file_dir"], "r", encoding="utf-8") as f:
+        migrated_payload: dict[str, Any] = json.load(f)
+    assert migrated_payload["version"] == CHARACTER_DATA_VERSION
+    assert migrated_payload["characters"][0]["additional_stat_groups"] == []
+
+
 def test_save_then_load_characters_preserves_state(
     isolated_data_paths: dict[str, str],
 ) -> None:
@@ -249,6 +281,15 @@ def test_save_then_load_characters_preserves_state(
     store: CharacterStore = CharacterStore.create_default()
     store.characters[0].name = "첫 번째 캐릭터"
     store.characters[0].level = 120
+    store.characters[0].additional_stat_groups = [
+        AdditionalStatGroup(
+            name="도감",
+            stats=[
+                AdditionalStatLine(stat_key=StatKey.ATTACK, value=20.0),
+                AdditionalStatLine(stat_key=StatKey.ATTACK, value=30.0),
+            ],
+        )
+    ]
     second_character: CharacterProfile = CharacterStore.create_default().characters[0]
     second_character.name = "두 번째 캐릭터"
     second_character.level = 80
@@ -269,6 +310,15 @@ def test_save_then_load_characters_preserves_state(
         "두 번째 캐릭터",
     ]
     assert [character.level for character in loaded.characters] == [120, 80]
+    assert loaded.characters[0].additional_stat_groups == [
+        AdditionalStatGroup(
+            name="도감",
+            stats=[
+                AdditionalStatLine(stat_key=StatKey.ATTACK, value=20.0),
+                AdditionalStatLine(stat_key=StatKey.ATTACK, value=30.0),
+            ],
+        )
+    ]
     assert os.path.isfile(isolated_data_paths["characters_file_dir"])
 
 
