@@ -70,6 +70,18 @@ def test_every_scroll_skill_has_complete_level_table(
                 assert level in skill_def.levels, f"{skill_id} 레벨 {level} 누락"
                 assert skill_def.levels[level] > 0.0, f"{skill_id} 레벨 {level} 계수 오류"
 
+                hits = skill_def.hits_by_level[level]
+                assert hits, f"{skill_id} 레벨 {level} 타격 누락"
+                assert all(hit.offset_ms >= 0 for hit in hits), (
+                    f"{skill_id} 레벨 {level} 타격 시각 오류"
+                )
+                assert all(hit.multiplier > 0.0 for hit in hits), (
+                    f"{skill_id} 레벨 {level} 타격 계수 오류"
+                )
+                assert sum(hit.multiplier for hit in hits) == pytest.approx(
+                    skill_def.levels[level]
+                ), f"{skill_id} 레벨 {level} 총 데미지 불일치"
+
 
 def test_talisman_specs_cover_all_levels() -> None:
     """부적 데이터의 전체 레벨 구간 수치 완결성 검증"""

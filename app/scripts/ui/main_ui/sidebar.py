@@ -1852,7 +1852,10 @@ class SkillSettings(QFrame):
             for sid in skill_import.skills:
                 detail = skill_import.skill_details[sid]
                 server_spec.skill_registry.add_skill_def(
-                    SkillDef.from_detail_dict(sid, server_spec.id, detail.to_dict())
+                    SkillDef.from_custom_definition(
+                        server_spec.id,
+                        detail,
+                    )
                 )
 
             for scroll in skill_import.scrolls:
