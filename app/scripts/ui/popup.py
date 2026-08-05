@@ -135,6 +135,9 @@ class NoticeKind(Enum):
     MACRO_IS_RUNNING = auto()  # 매크로 작동중
     EDITING_LINK_SKILL = auto()  # 연계스킬 수정중
     AFK_STOPPED = auto()  # 잠수 방지 종료
+    LINK_SKILL_NOT_RUNNABLE = auto()  # 연계스킬 실행 불가
+    LINK_SKILL_ADJUSTED = auto()  # 연계스킬 구성 정리
+    LINK_SKILL_AUTO_DISABLED = auto()  # 연계스킬 자동 사용 해제
 
     # 스킬 관련
     SKILL_NOT_SELECTED = auto()  # 스킬 미선택
@@ -961,7 +964,7 @@ class NoticeController:
 
             case NoticeKind.EDITING_LINK_SKILL:
                 return NoticeData(
-                    "연계스킬을 수정중이기 때문에 장착스킬을 변경할 수 없습니다."
+                    "연계스킬을 수정 중이기 때문에 장착 스킬과 무공비급을 변경할 수 없습니다."
                 )
 
             case NoticeKind.AFK_STOPPED:
@@ -970,9 +973,26 @@ class NoticeController:
                     "warning",
                 )
 
+            case NoticeKind.LINK_SKILL_NOT_RUNNABLE:
+                return NoticeData(
+                    "연계스킬에 배치되지 않은 스킬이 있어 실행할 수 없습니다."
+                )
+
+            case NoticeKind.LINK_SKILL_ADJUSTED:
+                return NoticeData(
+                    "장착 무공비급이 바뀌어 일부 연계스킬을 정리했습니다.",
+                    "warning",
+                )
+
+            case NoticeKind.LINK_SKILL_AUTO_DISABLED:
+                return NoticeData(
+                    "실행할 수 없는 연계스킬의 자동 사용을 껐습니다.",
+                    "warning",
+                )
+
             case NoticeKind.SKILL_NOT_SELECTED:
                 return NoticeData(
-                    "해당 연계스킬에 장착중이지 않은 스킬이 포함되어있습니다."
+                    "배치되지 않은 스킬이 있어 자동 사용을 켤 수 없습니다."
                 )
 
             case NoticeKind.AUTO_ALREADY_EXIST:

@@ -545,6 +545,50 @@ def test_checking_thread_preserves_press_time_when_release_races_with_activation
     assert session.trigger_pressed_at == 99.0
 
 
+def test_unavailable_manual_link_requests_notice_without_skill_input(
+    macro_state_with_preset: MacroPreset,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """미배치 스킬 연계 단축키의 입력 차단과 알림 요청 검증"""
+
+    trigger_key: KeySpec = KeyRegistry.get("q")
+    unplaced_skill_id: str = macro_state_with_preset.skills.placed_skills[0]
+    macro_state_with_preset.skills.placed_skills[0] = ""
+    link_skill = LinkSkill(
+        key_type=LinkKeyType.ON,
+        key=trigger_key.key_id,
+        skills=[unplaced_skill_id],
+    )
+    session = run_macro.ManualLinkSession(
+        link_skill=link_skill,
+        trigger_key=trigger_key,
+        trigger_pressed_at=99.0,
+        delay_seconds=0.3,
+        hold_transition_at=99.3,
+    )
+
+    monkeypatch.setattr(run_macro.keyboard, "Controller", lambda: None)
+    monkeypatch.setattr(run_macro.mouse, "Controller", lambda: None)
+    monkeypatch.setattr(
+        run_macro,
+        "_run_manual_link_cycle",
+        lambda *_args, **_kwargs: pytest.fail("실행 불가 연계가 입력을 시도함"),
+    )
+    monkeypatch.setattr(run_macro, "is_input_sequence_running", True)
+    monkeypatch.setattr(run_macro, "active_manual_link_session", session)
+    monkeypatch.setattr(
+        app_state.macro,
+        "has_pending_link_skill_unavailable_notice",
+        False,
+    )
+
+    run_macro.use_link_skill(session)
+
+    assert run_macro.active_manual_link_session is None
+    assert run_macro.is_input_sequence_running is False
+    assert app_state.macro.has_pending_link_skill_unavailable_notice is True
+
+
 def _record_manual_link_run(
     monkeypatch: pytest.MonkeyPatch,
     link_skill: LinkSkill,

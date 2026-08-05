@@ -379,6 +379,30 @@ class LinkSkill:
         self.remember_state = remember
 
 
+@dataclass(frozen=True)
+class LinkSkillReconcileResult:
+    """연계스킬 정리 결과"""
+
+    # 사용 가능한 스킬이 없어 삭제된 연계 수
+    removed: int = 0
+    # 스킬이 일부 제거되어 구성이 바뀐 연계 수
+    truncated: int = 0
+    # 자동에서 수동으로 전환된 연계 수
+    disabled: int = 0
+
+    @property
+    def has_composition_change(self) -> bool:
+        """연계 삭제 또는 구성 변경 발생 여부"""
+
+        return bool(self.removed or self.truncated)
+
+    @property
+    def changed(self) -> bool:
+        """정리로 인한 변경 발생 여부"""
+
+        return bool(self.removed or self.truncated or self.disabled)
+
+
 @dataclass(slots=True)
 class PresetInfo:
     """프리셋 정보 데이터 모델"""
@@ -485,6 +509,64 @@ class MacroPreset:
             "link_skills": [ls.to_dict() for ls in self.link_skills],
             "info": self.info.to_dict(),
         }
+
+    def reconcile_link_skills(
+        self,
+        allowed_skill_ids: set[str],
+    ) -> LinkSkillReconcileResult:
+        """허용 스킬과 하단 배치의 최종 상태 기준 연계스킬 정리"""
+
+        reconciled_link_skills: list[LinkSkill] = []
+        removed: int = 0
+        truncated: int = 0
+
+        for link_skill in self.link_skills:
+            filtered_skill_ids: list[str] = [
+                skill_id
+                for skill_id in link_skill.skills
+                if skill_id in allowed_skill_ids
+            ]
+
+            # 사용 가능한 스킬이 없는 연계 제거
+            if not filtered_skill_ids:
+                removed += 1
+                continue
+
+            if filtered_skill_ids != link_skill.skills:
+                # 남은 순서와 단축키, 자동 사용 설정은 그대로 유지
+                link_skill.skills = filtered_skill_ids
+                truncated += 1
+
+            reconciled_link_skills.append(link_skill)
+
+        self.link_skills = reconciled_link_skills
+
+        # 절삭 결과까지 반영한 최종 배치 기준으로만 자동 사용 해제 판정
+        disabled: int = self.disable_unrunnable_auto_link_skills()
+
+        return LinkSkillReconcileResult(
+            removed=removed,
+            truncated=truncated,
+            disabled=disabled,
+        )
+
+    def disable_unrunnable_auto_link_skills(self) -> int:
+        """하단 배치되지 않은 자동 연계를 수동으로 전환하고 전환 수 반환"""
+
+        placed_skill_ids: set[str] = set(self.skills.get_placed_skill_ids())
+        disabled: int = 0
+
+        for link_skill in self.link_skills:
+            if link_skill.use_type != LinkUseType.AUTO:
+                continue
+
+            if all(skill_id in placed_skill_ids for skill_id in link_skill.skills):
+                continue
+
+            link_skill.set_manual()
+            disabled += 1
+
+        return disabled
 
     @classmethod
     def create_default(

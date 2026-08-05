@@ -13,7 +13,6 @@ from app.scripts.config import config
 from app.scripts.custom_skill_models import CustomSkillImport
 from app.scripts.macro_models import (
     DATA_VERSION,
-    LinkSkill,
     MacroPreset,
     MacroPresetFile,
     MacroPresetRepository,
@@ -943,29 +942,9 @@ def sanitize_preset_registry_references(preset: MacroPreset) -> bool:
         preset.usage_settings.pop(stale_skill_id, None)
         changed = True
 
-    # 존재하지 않는 스킬이 포함된 연계스킬 정리
-    filtered_link_skills: list[LinkSkill] = []
-    link_skill: LinkSkill
-    for link_skill in preset.link_skills:
-        filtered_skill_ids: list[str] = [
-            skill_id for skill_id in link_skill.skills if skill_id in valid_skill_ids
-        ]
-
-        if not filtered_skill_ids:
-            changed = True
-            continue
-
-        if filtered_skill_ids != link_skill.skills:
-            link_skill.skills = filtered_skill_ids
-            link_skill.set_manual()
-            link_skill.clear_key()
-            changed = True
-
-        filtered_link_skills.append(link_skill)
-
-    # 정리된 연계스킬 목록 반영
-    if filtered_link_skills != preset.link_skills:
-        preset.link_skills = filtered_link_skills
+    # 존재하지 않는 스킬 제거 후 최종 배치 기준 자동 연계 상태 정리
+    if preset.reconcile_link_skills(valid_skill_ids).changed:
+        changed = True
 
     return changed
 

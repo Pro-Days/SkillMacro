@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 import app.scripts.run_macro as run_macro
-from app.scripts.app_state import app_state
+from app.scripts.app_state import SidebarPage, app_state
 from app.scripts.custom_classes import CustomFont, SkillImage
 from app.scripts.data_manager import (
     add_preset,
@@ -42,7 +42,11 @@ from app.scripts.ui.popup import (
 from app.scripts.ui.themes import theme_manager
 
 if TYPE_CHECKING:
-    from app.scripts.macro_models import LinkSkill, MacroPreset, SkillUsageSetting
+    from app.scripts.macro_models import (
+        LinkSkillReconcileResult,
+        MacroPreset,
+        SkillUsageSetting,
+    )
     from app.scripts.ui.main_window import MainWindow
     from app.scripts.ui.popup import HoverCardData
 
@@ -83,6 +87,11 @@ class MainUI(QFrame):
 
     def _tick_preview_update(self) -> None:
         """프리뷰 갱신"""
+
+        # 입력 감지 스레드에서 요청한 실행 불가 연계 알림 소비
+        if app_state.macro.has_pending_link_skill_unavailable_notice:
+            app_state.macro.has_pending_link_skill_unavailable_notice = False
+            self.popup_manager.show_notice(NoticeKind.LINK_SKILL_NOT_RUNNABLE)
 
         # 실행 중에는 런타임 상태 기반 프리뷰 주기 갱신
         if app_state.macro.is_running:
@@ -538,7 +547,7 @@ class Tab(QFrame):
     def on_scroll_clicked(self, scroll_index: int) -> None:
         """상단 무공비급 버튼 클릭"""
 
-        if app_state.ui.current_sidebar_page == 4:
+        if app_state.ui.current_sidebar_page == SidebarPage.LINK_SKILL_EDITOR:
             self.noticeRequested.emit(NoticeKind.EDITING_LINK_SKILL)
             return
 
@@ -559,7 +568,7 @@ class Tab(QFrame):
     def on_placed_skill_clicked(self, skill_ref: EquippedSkillRef) -> None:
         """하단 스킬 슬롯 클릭"""
 
-        if app_state.ui.current_sidebar_page == 4:
+        if app_state.ui.current_sidebar_page == SidebarPage.LINK_SKILL_EDITOR:
             self.cancel_skill_selection()
             self.noticeRequested.emit(NoticeKind.EDITING_LINK_SKILL)
             return
@@ -587,15 +596,17 @@ class Tab(QFrame):
             return
 
         # 현재 하단 슬롯에서 제거되는 스킬의 파생 설정 정리
-        self.clear_placed_skill(placed_skill_id)
+        # 연계 상태까지 반영한 뒤 dataChanged로 한 번에 갱신하도록 중간 신호 생략
+        self.clear_placed_skill(placed_skill_id, emit_signal=False)
         self.set_placed_skill(skill_ref, "")
+        self._disable_unrunnable_auto_link_skills()
         self.cancel_skill_selection()
         self.dataChanged.emit()
 
     def on_available_skill_clicked(self, skill_ref: EquippedSkillRef) -> None:
         """상단 제공 스킬 클릭"""
 
-        if app_state.ui.current_sidebar_page == 4:
+        if app_state.ui.current_sidebar_page == SidebarPage.LINK_SKILL_EDITOR:
             self.cancel_skill_selection()
             self.noticeRequested.emit(NoticeKind.EDITING_LINK_SKILL)
             return
@@ -634,9 +645,11 @@ class Tab(QFrame):
         )
         if current_skill_id:
             # 같은 슬롯 재배치 전 기존 스킬의 파생 설정 우선 정리
-            self.clear_placed_skill(current_skill_id)
+            # 연계 상태까지 반영한 뒤 dataChanged로 한 번에 갱신하도록 중간 신호 생략
+            self.clear_placed_skill(current_skill_id, emit_signal=False)
 
         self.set_placed_skill(selected_ref, selected_skill_id)
+        self._disable_unrunnable_auto_link_skills()
         self.cancel_skill_selection()
         self.dataChanged.emit()
 
@@ -674,7 +687,7 @@ class Tab(QFrame):
 
         # 새 장착 결과 반영 및 연계/공유 상태 동기화
         self.preset.skills.equipped_scrolls[scroll_index] = target_scroll_id
-        self._sync_link_skills_to_available_skills()
+        self._reconcile_link_skills()
         self._sync_to_shared_data()
         self.update_from_preset()
 
@@ -684,34 +697,27 @@ class Tab(QFrame):
 
         return True
 
-    def _sync_link_skills_to_available_skills(self) -> None:
-        """현재 무공비급 기준으로 연계스킬 목록 정리"""
+    def _reconcile_link_skills(self) -> None:
+        """현재 무공비급과 하단 배치 기준 연계스킬 상태 정리"""
 
         available_skill_ids: set[str] = set(
             self.preset.skills.get_available_skill_ids(app_state.macro.current_server)
         )
-        filtered_link_skills: list[LinkSkill] = []
+        result: LinkSkillReconcileResult = self.preset.reconcile_link_skills(
+            available_skill_ids
+        )
 
-        # 현재 무공비급이 더 이상 제공하지 않는 스킬은 연계 목록에서 제거
-        for link_skill in self.preset.link_skills:
-            filtered_skill_ids: list[str] = [
-                skill_id
-                for skill_id in link_skill.skills
-                if skill_id in available_skill_ids
-            ]
+        if result.has_composition_change:
+            self.noticeRequested.emit(NoticeKind.LINK_SKILL_ADJUSTED)
 
-            if not filtered_skill_ids:
-                continue
+        if result.disabled:
+            self.noticeRequested.emit(NoticeKind.LINK_SKILL_AUTO_DISABLED)
 
-            if filtered_skill_ids != link_skill.skills:
-                # 스킬 구성 변경 시 자동 연계와 단축키 설정 초기화
-                link_skill.skills = filtered_skill_ids
-                link_skill.set_manual()
-                link_skill.clear_key()
+    def _disable_unrunnable_auto_link_skills(self) -> None:
+        """배치 변경으로 실행 불가해진 자동 연계 해제 및 알림 요청"""
 
-            filtered_link_skills.append(link_skill)
-
-        self.preset.link_skills = filtered_link_skills
+        if self.preset.disable_unrunnable_auto_link_skills():
+            self.noticeRequested.emit(NoticeKind.LINK_SKILL_AUTO_DISABLED)
 
     def clear_skill_if_placed(
         self,
@@ -736,12 +742,6 @@ class Tab(QFrame):
 
     def clear_placed_skill(self, skill_id: str, emit_signal: bool = True) -> None:
         """배치 해제 파생 설정 정리"""
-
-        # 연계에 포함된 스킬의 수동 설정 복원
-        for link in self.preset.link_skills:
-            if skill_id in link.skills:
-                link.set_manual()
-                link.clear_key()
 
         # 우선순위 제거 및 뒤 번호 당기기
         setting: SkillUsageSetting = self.preset.usage_settings[skill_id]

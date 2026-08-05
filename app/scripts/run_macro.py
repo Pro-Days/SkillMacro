@@ -1145,6 +1145,7 @@ def use_link_skill(session: ManualLinkSession) -> None:
         )
 
         if not all(skill_id in skill_ref_map for skill_id in link_skill.skills):
+            app_state.macro.has_pending_link_skill_unavailable_notice = True
             return
 
         # 쿨타임 동기화 옵션 시 연계스킬 타이머 기준으로 필터링

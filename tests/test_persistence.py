@@ -548,20 +548,30 @@ def test_sanitize_removes_stale_registry_references(
 ) -> None:
     stale_scroll_id: str = "custom:test_server:삭제된비급"
     stale_skill_id: str = "custom:test_server:삭제된스킬"
-    valid_skill_id: str = full_preset.skills.placed_skills[2]
+    first_valid_skill_id: str = full_preset.skills.placed_skills[2]
+    second_valid_skill_id: str = full_preset.skills.placed_skills[4]
+    unplaced_skill_id: str = full_preset.skills.placed_skills[6]
     full_preset.skills.equipped_scrolls[0] = stale_scroll_id
     full_preset.skills.placed_skills[0] = stale_skill_id
+    full_preset.skills.placed_skills[6] = ""
     full_preset.info.scroll_levels[stale_scroll_id] = 9
     full_preset.usage_settings[stale_skill_id] = SkillUsageSetting(priority=2)
     partially_valid_link: LinkSkill = LinkSkill(
         use_type=LinkUseType.AUTO,
         key_type=LinkKeyType.ON,
         key="q",
-        skills=[valid_skill_id, stale_skill_id],
+        skills=[first_valid_skill_id, stale_skill_id, second_valid_skill_id],
         remember_state=True,
+    )
+    unplaced_link: LinkSkill = LinkSkill(
+        use_type=LinkUseType.AUTO,
+        key_type=LinkKeyType.ON,
+        key="e",
+        skills=[unplaced_skill_id],
     )
     full_preset.link_skills = [
         partially_valid_link,
+        unplaced_link,
         LinkSkill(skills=[stale_skill_id]),
     ]
 
@@ -570,11 +580,42 @@ def test_sanitize_removes_stale_registry_references(
     assert full_preset.skills.placed_skills[0] == ""
     assert stale_scroll_id not in full_preset.info.scroll_levels
     assert stale_skill_id not in full_preset.usage_settings
-    assert full_preset.link_skills == [partially_valid_link]
-    assert partially_valid_link.skills == [valid_skill_id]
-    assert partially_valid_link.use_type == LinkUseType.MANUAL
-    assert partially_valid_link.key is None
+    assert full_preset.link_skills == [partially_valid_link, unplaced_link]
+    assert partially_valid_link.skills == [
+        first_valid_skill_id,
+        second_valid_skill_id,
+    ]
+    # 구성이 바뀌어도 남은 스킬이 모두 배치되어 있으면 자동 사용까지 유지
+    assert partially_valid_link.use_type == LinkUseType.AUTO
+    assert partially_valid_link.key_type == LinkKeyType.ON
+    assert partially_valid_link.key == "q"
     assert partially_valid_link.remember_state is True
+    # 남은 스킬이 배치되어 있지 않은 연계만 자동 사용 해제
+    assert unplaced_link.skills == [unplaced_skill_id]
+    assert unplaced_link.use_type == LinkUseType.MANUAL
+    assert unplaced_link.key_type == LinkKeyType.ON
+    assert unplaced_link.key == "e"
+
+
+def test_unplaced_link_skill_preserves_sequence_and_shortcut(
+    full_preset: MacroPreset,
+) -> None:
+    first_skill_id: str = full_preset.skills.placed_skills[1]
+    second_skill_id: str = full_preset.skills.placed_skills[8]
+    link_skill: LinkSkill = LinkSkill(
+        use_type=LinkUseType.AUTO,
+        key_type=LinkKeyType.ON,
+        key="q",
+        skills=[first_skill_id, second_skill_id],
+    )
+    full_preset.link_skills = [link_skill]
+    full_preset.skills.placed_skills[8] = ""
+
+    assert full_preset.disable_unrunnable_auto_link_skills() == 1
+    assert link_skill.skills == [first_skill_id, second_skill_id]
+    assert link_skill.use_type == LinkUseType.MANUAL
+    assert link_skill.key_type == LinkKeyType.ON
+    assert link_skill.key == "q"
 
 
 def test_sanitize_leaves_valid_preset_unchanged(
