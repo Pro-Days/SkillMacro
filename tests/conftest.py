@@ -109,16 +109,16 @@ def build_synthetic_server(
         skill_a_id: str = f"builtin:{SYNTHETIC_SERVER_ID}:scroll_{scroll_index}_a"
         skill_b_id: str = f"builtin:{SYNTHETIC_SERVER_ID}:scroll_{scroll_index}_b"
 
-        skills[skill_a_id] = SkillDef(
-            id=skill_a_id,
+        skills[skill_a_id] = SkillDef.from_immediate_levels(
+            skill_id=skill_a_id,
             server_id=SYNTHETIC_SERVER_ID,
             name=f"S{scroll_index}A",
             cooltime=base_cooltime + scroll_index * cooltime_step,
             target_count=base_target_count + (scroll_index % 5) * target_count_step,
             levels=_make_levels(base_damage + scroll_index * damage_step),
         )
-        skills[skill_b_id] = SkillDef(
-            id=skill_b_id,
+        skills[skill_b_id] = SkillDef.from_immediate_levels(
+            skill_id=skill_b_id,
             server_id=SYNTHETIC_SERVER_ID,
             name=f"S{scroll_index}B",
             cooltime=base_cooltime + scroll_index * cooltime_step + 1.0,

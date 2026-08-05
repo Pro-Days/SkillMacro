@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -28,7 +29,10 @@ from app.scripts.macro_models import (
     SkillUsageSetting,
 )
 from app.scripts.registry.server_registry import ServerSpec
-from app.scripts.registry.skill_registry import get_builtin_skill_id
+from app.scripts.registry.skill_registry import (
+    SkillDef,
+    get_builtin_skill_id,
+)
 from app.scripts.simulate_macro import simulate_random_from_calculator
 
 # 시퀀스 공통 딜레이 입력값
@@ -287,6 +291,57 @@ def test_basic_attacks_resume_at_allowed_window_and_keep_600ms_interval(
     assert basic_attack_times[:3] == [0.9, 1.9, 2.5]
 
 
+def test_skill_use_expands_to_timed_hits_with_60_second_cutoff(
+    synthetic_server: ServerSpec,
+    full_preset: MacroPreset,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """스킬 입력과 분리된 타격 시각 및 60초 경계 검증"""
+
+    skill_id: str = full_preset.skills.placed_skills[0]
+    original_skill_def: SkillDef = synthetic_server.skill_registry.get(skill_id)
+    timed_detail: dict[str, Any] = {
+        "name": original_skill_def.name,
+        "cooltime": original_skill_def.cooltime,
+        "target_count": original_skill_def.target_count,
+        "damage_events": [
+            {"offset_ms": 0, "levels": {"1": 1.0}},
+            {"offset_ms": 500, "levels": {"1": 1.5}},
+        ],
+    }
+    timed_skill_def: SkillDef = SkillDef.from_builtin_detail_dict(
+        skill_id=skill_id,
+        server_id=original_skill_def.server_id,
+        detail=timed_detail,
+    )
+    synthetic_server.skill_registry.add_skill_def(timed_skill_def)
+    assert timed_skill_def.levels[1] == 2.5
+
+    skill_uses: tuple[SkillUseEvent, ...] = (
+        SkillUseEvent(skill_id=skill_id, time=0.2),
+        SkillUseEvent(skill_id=skill_id, time=59.8),
+    )
+    monkeypatch.setattr(
+        calculator_engine,
+        "build_skill_use_sequence",
+        lambda **_kwargs: skill_uses,
+    )
+
+    hit_events: tuple[HitEvent, ...] = build_simulation_events(
+        server_spec=synthetic_server,
+        preset=full_preset,
+        skills_info=full_preset.usage_settings,
+        delay_ms=DELAY_MS,
+        cooltime_reduction=0.0,
+    )
+
+    assert hit_events == (
+        HitEvent(skill_id=skill_id, time=0.2, multiplier=1.0),
+        HitEvent(skill_id=skill_id, time=0.7, multiplier=1.5),
+        HitEvent(skill_id=skill_id, time=59.8, multiplier=1.0),
+    )
+
+
 @pytest.fixture
 def timeline(
     synthetic_server: ServerSpec,
@@ -342,6 +397,55 @@ def test_seed_controls_random_damage(
     first: list[DamageEvent] = build_with_seed(1234.0)
     assert build_with_seed(1234.0) == first
     assert build_with_seed(5678.0) != first
+
+
+def test_random_damage_and_critical_are_rolled_per_hit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """같은 스킬의 연속 타격별 랜덤 피해와 치명타 독립 판정 검증"""
+
+    class FixedRandom:
+        def __init__(self) -> None:
+            self._damage_rolls: Iterator[float] = iter((0.95, 1.05))
+            self._critical_rolls: Iterator[float] = iter((0.25, 0.75))
+
+        def uniform(self, minimum: float, maximum: float) -> float:
+            assert (minimum, maximum) == (0.95, 1.05)
+            return next(self._damage_rolls)
+
+        def random(self) -> float:
+            return next(self._critical_rolls)
+
+    fixed_random = FixedRandom()
+
+    def build_fixed_random(_seed: float | None) -> FixedRandom:
+        return fixed_random
+
+    monkeypatch.setattr(
+        calculator_engine.random,
+        "Random",
+        build_fixed_random,
+    )
+
+    stat_values: dict[StatKey, float] = {stat_key: 0.0 for stat_key in StatKey}
+    stat_values[StatKey.ATTACK] = 100.0
+    stat_values[StatKey.CRIT_RATE_PERCENT] = 50.0
+    stat_values[StatKey.CRIT_DAMAGE_PERCENT] = 200.0
+    resolved_stats: FinalStats = FinalStats(values=stat_values)
+    hit_events: tuple[HitEvent, ...] = (
+        HitEvent(skill_id="test", time=0.0, multiplier=1.0),
+        HitEvent(skill_id="test", time=0.5, multiplier=1.0),
+    )
+
+    damage_events: list[DamageEvent] = build_damage_events(
+        hit_events=hit_events,
+        resolved_stats=resolved_stats,
+        is_boss=False,
+        deterministic=False,
+        random_seed=1.0,
+    )
+
+    assert [event.damage for event in damage_events] == pytest.approx([190.0, 105.0])
 
 
 def test_boss_flag_increases_total_damage(

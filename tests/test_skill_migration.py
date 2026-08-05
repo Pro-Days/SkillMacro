@@ -36,8 +36,8 @@ def _inject_custom_scroll(server_spec: ServerSpec) -> None:
         (CUSTOM_SKILL_B_ID, "커스텀B"),
     ):
         server_spec.skill_registry.add_skill_def(
-            SkillDef(
-                id=skill_id,
+            SkillDef.from_immediate_levels(
+                skill_id=skill_id,
                 server_id=SYNTHETIC_SERVER_ID,
                 name=name,
                 cooltime=5.0,

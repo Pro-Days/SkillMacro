@@ -136,7 +136,7 @@ if TYPE_CHECKING:
     from app.scripts.macro_models import MacroPreset
     from app.scripts.ocr import OcrStatCandidate
     from app.scripts.registry.server_registry import ServerSpec
-    from app.scripts.registry.skill_registry import ScrollDef, SkillDef
+    from app.scripts.registry.skill_registry import ScrollDef, SkillDef, SkillHitDef
     from app.scripts.ui.main_window import MainWindow
     from app.scripts.ui.popup import HoverCardData
 
@@ -174,6 +174,16 @@ def _build_formula_options(
 
 
 @dataclass(frozen=True, slots=True)
+class _SkillDefinitionCacheEntry:
+    """계산 결과에 영향을 주는 스킬 정의 스냅샷"""
+
+    skill_id: str
+    hits_by_level: tuple[tuple[int, tuple[SkillHitDef, ...]], ...]
+    cooltime: float
+    target_count: int
+
+
+@dataclass(frozen=True, slots=True)
 class _CalculatorResultsCacheKey:
     """계산 결과 페이지 캐시 식별자"""
 
@@ -183,7 +193,7 @@ class _CalculatorResultsCacheKey:
     calculator_input_data: str
     equipped_scrolls: tuple[str, ...]
     placed_skills: tuple[str, ...]
-    skill_definitions: tuple[tuple[str, tuple[tuple[int, float], ...], float, int], ...]
+    skill_definitions: tuple[_SkillDefinitionCacheEntry, ...]
     scroll_levels: tuple[tuple[str, int], ...]
     usage_settings: tuple[tuple[str, tuple[bool, bool, int]], ...]
     link_skills: tuple[tuple[str, str, str | None, tuple[str, ...]], ...]
@@ -646,30 +656,23 @@ class SimUI:
             )
             skill_ids.update(scroll_def.skills)
 
-        skill_definition_rows: list[
-            tuple[str, tuple[tuple[int, float], ...], float, int]
-        ] = []
+        skill_definition_entries: list[_SkillDefinitionCacheEntry] = []
         for skill_id in sorted(skill_ids):
             skill_def: SkillDef = app_state.macro.current_server.skill_registry.get(
                 skill_id
             )
-            skill_levels: tuple[tuple[int, float], ...] = tuple(
-                (int(level), float(damage))
-                for level, damage in sorted(skill_def.levels.items())
-            )
-            skill_definition_rows.append(
-                (
-                    skill_id,
-                    skill_levels,
-                    float(skill_def.cooltime),
-                    int(skill_def.target_count),
+            skill_definition_entries.append(
+                _SkillDefinitionCacheEntry(
+                    skill_id=skill_id,
+                    hits_by_level=tuple(sorted(skill_def.hits_by_level.items())),
+                    cooltime=skill_def.cooltime,
+                    target_count=skill_def.target_count,
                 )
             )
 
-        skill_definitions: tuple[
-            tuple[str, tuple[tuple[int, float], ...], float, int],
-            ...,
-        ] = tuple(skill_definition_rows)
+        skill_definitions: tuple[_SkillDefinitionCacheEntry, ...] = tuple(
+            skill_definition_entries
+        )
 
         # 스킬 사용 설정을 스킬 ID 순서로 고정
         usage_settings: tuple[tuple[str, tuple[bool, bool, int]], ...] = tuple(

@@ -2134,22 +2134,26 @@ def build_simulation_events(
                 )
             )
 
-    # 사용 시점과 현재 레벨 스킬 계수를 조합해 최종 이벤트 생성
+    # 입력 시점과 스킬별 타격 오프셋을 조합해 60초 내 피해 이벤트 생성
     for skill_use in skill_uses:
         skill_level: int = preset.info.get_skill_level(
             server_spec,
             skill_use.skill_id,
         )
-        skill_damage: float = float(
-            server_spec.skill_registry.get(skill_use.skill_id).levels[skill_level]
-        )
-        hit_events.append(
-            HitEvent(
-                skill_id=skill_use.skill_id,
-                time=skill_use.time,
-                multiplier=skill_damage,
+        skill_def: "SkillDef" = server_spec.skill_registry.get(skill_use.skill_id)
+        skill_use_time_ms: int = int(round(skill_use.time * 1000))
+        for skill_hit in skill_def.hits_by_level[skill_level]:
+            hit_time_ms: int = skill_use_time_ms + skill_hit.offset_ms
+            if hit_time_ms >= TIMELINE_MILLISECONDS:
+                continue
+
+            hit_events.append(
+                HitEvent(
+                    skill_id=skill_use.skill_id,
+                    time=round(hit_time_ms * 0.001, 3),
+                    multiplier=skill_hit.multiplier,
+                )
             )
-        )
 
     # 시각화/평가 일관성을 위한 시간순 정렬
     ordered_hit_events: tuple[HitEvent, ...] = tuple(

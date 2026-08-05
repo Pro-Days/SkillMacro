@@ -1874,8 +1874,9 @@ class PopupManager:
                 # SkillRegistry에 주입
                 for skill_id in skill_import.skills:
                     detail = skill_import.skill_details[skill_id]
-                    skill_def: SkillDef = SkillDef.from_detail_dict(
-                        skill_id, server_spec.id, detail.to_dict()
+                    skill_def: SkillDef = SkillDef.from_custom_definition(
+                        server_spec.id,
+                        detail,
                     )
                     server_spec.skill_registry.add_skill_def(skill_def)
 

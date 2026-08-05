@@ -10,7 +10,7 @@ import pytest
 from app.scripts import data_manager
 from app.scripts.custom_skill_models import CustomSkillImport, CustomSkillImportError
 from app.scripts.registry.server_registry import server_registry
-from app.scripts.registry.skill_registry import SkillRegistry
+from app.scripts.registry.skill_registry import SkillDef, SkillHitDef, SkillRegistry
 
 # 테스트 커스텀 스킬/무공비급 ID 상수
 SKILL_A_ID: str = "custom:한월 RPG:테스트스킬A"
@@ -54,6 +54,22 @@ def test_valid_import_dict_roundtrip_is_stable() -> None:
     skill_import: CustomSkillImport = CustomSkillImport.from_dict(payload)
 
     assert skill_import.to_dict() == payload
+
+
+def test_custom_skill_damage_normalizes_to_one_immediate_hit() -> None:
+    """커스텀 레벨 계수의 사용 즉시 단일 타격 호환 검증"""
+
+    payload: dict[str, Any] = _make_import_payload()
+    skill_import: CustomSkillImport = CustomSkillImport.from_dict(payload)
+    skill_def: SkillDef = SkillDef.from_custom_definition(
+        server_id="한월 RPG",
+        definition=skill_import.skill_details[SKILL_A_ID],
+    )
+
+    assert skill_def.levels[1] == 2.0
+    assert skill_def.hits_by_level[1] == (
+        SkillHitDef(offset_ms=0, multiplier=2.0),
+    )
 
 
 @pytest.mark.parametrize(
