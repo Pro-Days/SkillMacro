@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.scripts.app_state import app_state
+from app.scripts.app_state import SidebarPage, app_state
 from app.scripts.calculator_engine import build_internal_base_stats
 from app.scripts.calculator_models import (
     BaseStats,
@@ -904,7 +904,10 @@ class GuideManager:
             return False
 
         # 사용자가 편집 중인 연계스킬 보호
-        if self.master.sidebar.page_navigator.currentIndex() == 3:
+        if (
+            self.master.sidebar.page_navigator.currentIndex()
+            == SidebarPage.LINK_SKILL_EDITOR
+        ):
             self._show_blocked_dialog(
                 "연계스킬 편집을 마친 뒤 가이드를 시작할 수 있습니다."
             )
@@ -985,25 +988,30 @@ class GuideManager:
         self.master.popup_manager.close_popup()
         self.master.change_layout(0)
 
-    def _sidebar_page(self, index: int) -> None:
+    def _sidebar_page(self, page: SidebarPage) -> None:
         """사이드바 페이지 진입"""
 
         self._main_page()
-        self.master.sidebar.change_page(index)  # type: ignore
+        self.master.sidebar.change_page(page)
 
     def _sidebar_detail_settings(self) -> None:
         """일반 설정의 세부 설정 영역 표시"""
 
-        self._sidebar_page(0)
+        self._sidebar_page(SidebarPage.GENERAL)
         self.master.sidebar.general_settings.show_detail_settings()
 
     def _link_editor_page(self) -> None:
         """임시 연계스킬 편집 페이지 진입"""
 
-        self._sidebar_page(2)
-        if self.master.sidebar.page_navigator.currentIndex() == 3:
+        # 이미 편집 페이지에 있으면 초안을 새로 만들지 않고 현재 편집 상태 유지
+        if (
+            self.master.sidebar.page_navigator.currentIndex()
+            == SidebarPage.LINK_SKILL_EDITOR
+        ):
+            self._main_page()
             return
 
+        self._sidebar_page(SidebarPage.LINK_SKILL)
         self.master.sidebar.link_skill_settings.create_new()
         self._opened_link_editor = True
 
@@ -1016,13 +1024,13 @@ class GuideManager:
         )
         if (
             self.master.page_navigator.currentIndex() == 0
-            and self.master.sidebar.page_navigator.currentIndex() == 1
+            and self.master.sidebar.page_navigator.currentIndex() == SidebarPage.SKILL
             and add_button is not None
         ):
             return
 
         # 무공비급 사용 설정 화면 진입
-        self._sidebar_page(1)
+        self._sidebar_page(SidebarPage.SKILL)
 
         # 선택 무공비급 영역 기준 팝업 표시
         self.master.sidebar.skill_settings.on_scroll_select_clicked()
@@ -1036,7 +1044,7 @@ class GuideManager:
             self._opened_link_editor = False
             return
 
-        self._sidebar_page(2)
+        self._sidebar_page(SidebarPage.LINK_SKILL)
 
     def _ensure_calculator_layout(self) -> None:
         """메인 화면을 계산기로 전환
@@ -1408,37 +1416,37 @@ class GuideManager:
                         "현재 화면 구조 확인",
                         "이 프로그램은 프리셋 단위로 설정을 저장하고 사용합니다. 프리셋마다 서버, 무공비급, 스킬 배치, 계산기 입력이 따로 저장됩니다.",
                         "main.preset_tabs",
-                        lambda: self._sidebar_page(0),
+                        lambda: self._sidebar_page(SidebarPage.GENERAL),
                     ),
                     GuideStep(
                         "서버와 직업 확인",
                         "먼저 현재 프리셋에서 사용할 서버와 직업을 확인합니다.",
                         "sidebar.general.server",
-                        lambda: self._sidebar_page(0),
+                        lambda: self._sidebar_page(SidebarPage.GENERAL),
                     ),
                     GuideStep(
                         "딜레이 확인",
                         "딜레이는 스킬 사이 입력 간격입니다. 너무 낮으면 스킬이 누락될 수 있고, 너무 높으면 사용이 느려집니다.",
                         "sidebar.general.delay",
-                        lambda: self._sidebar_page(0),
+                        lambda: self._sidebar_page(SidebarPage.GENERAL),
                     ),
                     GuideStep(
                         "스킬속도 확인",
                         "캐릭터의 스킬속도(%) 스탯을 입력하면 쿨타임 계산에 반영됩니다.",
                         "sidebar.general.cooltime",
-                        lambda: self._sidebar_page(0),
+                        lambda: self._sidebar_page(SidebarPage.GENERAL),
                     ),
                     GuideStep(
                         "시작키 확인",
                         "짧게 누르면 매크로를 시작하거나 중지합니다. 계속 누르고 있으면 놓을 때까지 매크로를 실행합니다.",
                         "sidebar.general.start_key",
-                        lambda: self._sidebar_page(0),
+                        lambda: self._sidebar_page(SidebarPage.GENERAL),
                     ),
                     GuideStep(
                         "스왑 키 확인",
                         "스왑 키는 1줄과 2줄을 바꿀 때 사용됩니다. 실제 게임 키 설정과 일치해야 합니다.",
                         "sidebar.general.swap_key",
-                        lambda: self._sidebar_page(0),
+                        lambda: self._sidebar_page(SidebarPage.GENERAL),
                     ),
                     GuideStep(
                         "마우스 클릭 설정 확인",
@@ -1510,13 +1518,13 @@ class GuideManager:
                         "커스텀 무공비급 진입 위치",
                         "커스텀 무공비급은 스킬 사용설정의 무공비급 목록에서 추가할 수 있습니다.",
                         "sidebar.skill.selected_scroll",
-                        lambda: self._sidebar_page(1),
+                        lambda: self._sidebar_page(SidebarPage.SKILL),
                     ),
                     GuideStep(
                         "무공비급 선택 팝업 열기",
                         "무공비급 선택 영역을 누르면 현재 서버에서 사용할 수 있는 무공비급 목록이 열립니다.",
                         "sidebar.skill.selected_scroll",
-                        lambda: self._sidebar_page(1),
+                        lambda: self._sidebar_page(SidebarPage.SKILL),
                     ),
                     GuideStep(
                         "새 스킬 추가 위치",
@@ -1534,7 +1542,7 @@ class GuideManager:
                         "마무리",
                         "추가된 무공비급은 기존 무공비급처럼 선택하고 배치할 수 있습니다.",
                         "sidebar.skill.selected_scroll",
-                        lambda: self._sidebar_page(1),
+                        lambda: self._sidebar_page(SidebarPage.SKILL),
                     ),
                 ),
             ),
@@ -1546,13 +1554,13 @@ class GuideManager:
                         "연계스킬 위치 확인",
                         "연계스킬은 여러 스킬을 하나의 스킬처럼 묶어서 사용하는 기능입니다.",
                         "sidebar.nav.link",
-                        lambda: self._sidebar_page(2),
+                        lambda: self._sidebar_page(SidebarPage.LINK_SKILL),
                     ),
                     GuideStep(
                         "새 연계스킬 만들기",
                         "이 버튼을 눌러 새 연계스킬을 만들 수 있습니다.",
                         "sidebar.link.create",
-                        lambda: self._sidebar_page(2),
+                        lambda: self._sidebar_page(SidebarPage.LINK_SKILL),
                     ),
                     GuideStep(
                         "자동 사용",
@@ -1794,37 +1802,37 @@ class GuideManager:
                         "스킬 사용설정 위치",
                         "스킬 사용설정은 장착한 무공비급의 스킬별 동작 방식을 정하는 곳입니다.",
                         "sidebar.nav.skill",
-                        lambda: self._sidebar_page(1),
+                        lambda: self._sidebar_page(SidebarPage.SKILL),
                     ),
                     GuideStep(
                         "설정할 무공비급 선택",
                         "현재 선택한 무공비급의 스킬이 아래 카드에 표시됩니다. 다른 무공비급을 설정하려면 이 영역에서 선택합니다.",
                         "sidebar.skill.selected_scroll",
-                        lambda: self._sidebar_page(1),
+                        lambda: self._sidebar_page(SidebarPage.SKILL),
                     ),
                     GuideStep(
                         "스킬 카드 목록",
                         "선택된 무공비급의 스킬의 설정을 변경할 수 있습니다.",
                         "sidebar.skill.cards",
-                        lambda: self._sidebar_page(1),
+                        lambda: self._sidebar_page(SidebarPage.SKILL),
                     ),
                     GuideStep(
                         "사용 여부",
                         "사용 여부를 끄면 매크로가 해당 스킬을 자동으로 사용하지 않습니다.",
                         "sidebar.skill.usage",
-                        lambda: self._sidebar_page(1),
+                        lambda: self._sidebar_page(SidebarPage.SKILL),
                     ),
                     GuideStep(
                         "단독 사용",
                         "단독 사용은 자동 연계스킬에 포함된 스킬이 다른 스킬들을 기다리지 않고 이 스킬을 우선적으로 사용할지 정하는 설정입니다.",
                         "sidebar.skill.sole",
-                        lambda: self._sidebar_page(1),
+                        lambda: self._sidebar_page(SidebarPage.SKILL),
                     ),
                     GuideStep(
                         "우선순위",
                         "여러 스킬이 동시에 준비되면 우선순위 번호가 낮은 스킬을 먼저 사용합니다.",
                         "sidebar.skill.priority",
-                        lambda: self._sidebar_page(1),
+                        lambda: self._sidebar_page(SidebarPage.SKILL),
                     ),
                     GuideStep(
                         "마무리",

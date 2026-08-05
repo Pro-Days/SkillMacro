@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.scripts.app_state import app_state
+from app.scripts.app_state import SidebarPage, app_state
 from app.scripts.config import config
 from app.scripts.custom_classes import CustomFont, SkillImage
 from app.scripts.custom_skill_models import CustomScrollDefinition, CustomSkillImport
@@ -253,9 +253,7 @@ class Sidebar(QFrame):
         self.page_navigator.setFixedWidth(300)
 
         # 초기 페이지 설정
-        self.page_navigator.setCurrentIndex(0)
-        self.nav_button.set_active_button(0)
-        self.adjust_stack_height()
+        self.change_page(SidebarPage.GENERAL)
 
         # 무공비급바
         self.scroll_area: QScrollArea = QScrollArea()
@@ -289,14 +287,14 @@ class Sidebar(QFrame):
         """연계스킬 편집 요청 처리: 편집기 로드 후 편집 페이지로 이동."""
 
         self.link_skill_editor.load(data, int(index))
-        self.change_page(3)
+        self.change_page(SidebarPage.LINK_SKILL_EDITOR)
 
     def _on_link_skill_editor_closed(self) -> None:
         """연계스킬 편집 페이지 종료(취소/저장 이후) 시 목록 페이지로 복귀."""
 
         # 목록 UI를 최신 상태로 갱신
         self.link_skill_settings.update_from_preset(self.preset)
-        self.change_page(2)
+        self.change_page(SidebarPage.LINK_SKILL)
 
     def _on_link_skill_editor_saved(self) -> None:
         """연계스킬 저장 완료 후 사이드바 전체 갱신."""
@@ -311,12 +309,12 @@ class Sidebar(QFrame):
         self.preset = preset
         self.preset_index = int(preset_index)
 
-        if self.page_navigator.currentIndex() == 3:
+        if self.page_navigator.currentIndex() == SidebarPage.LINK_SKILL_EDITOR:
             self.link_skill_editor.cancel()
 
         self.update_from_preset()
 
-        self.change_page(0)
+        self.change_page(SidebarPage.GENERAL)
 
     def update_from_preset(self) -> None:
         """프리셋을 사이드바 페이지들에 적용"""
@@ -344,15 +342,16 @@ class Sidebar(QFrame):
 
         self.adjust_stack_height()
 
-    def change_page(self, index: Literal[0, 1, 2, 3]) -> None:
+    def change_page(self, page: SidebarPage) -> None:
         """페이지 변경"""
 
-        self.page_navigator.setCurrentIndex(index)
+        self.page_navigator.setCurrentIndex(page)
+        app_state.ui.current_sidebar_page = page
 
-        # 인덱스 3은 연계스킬 편집 페이지,
-        # 버튼 3은 계산기 페이지이므로 활성화하지 않음
-        if index != 3:
-            self.nav_button.set_active_button(index)
+        # 연계스킬 편집 페이지는 대응하는 네비게이션 버튼이 없음
+        # (같은 자리의 버튼은 계산기 전환용이므로 활성화하지 않음)
+        if page != SidebarPage.LINK_SKILL_EDITOR:
+            self.nav_button.set_active_button(page)
 
         self.adjust_stack_height()
 
@@ -1905,8 +1904,14 @@ class SkillSettings(QFrame):
 
         remove_custom_scroll(server_spec.id, scroll_id)
 
-        # 모든 프리셋에서 삭제된 무공비급/스킬 관련 데이터 정리
+        # 삭제가 반영된 레지스트리 기준 유효 스킬 목록
+        valid_skill_ids: set[str] = set(server_spec.skill_registry.get_all_skill_ids())
+
+        # 같은 서버의 모든 프리셋에서 삭제된 무공비급/스킬 관련 데이터 정리
         for preset in app_state.macro.presets:
+            if preset.settings.server_id != server_spec.id:
+                continue
+
             # 장착 무공비급 슬롯에서 제거
             for i, sid in enumerate(preset.skills.equipped_scrolls):
                 if sid == scroll_id:
@@ -1924,12 +1929,8 @@ class SkillSettings(QFrame):
             # 무공비급 레벨 저장값 제거
             preset.info.scroll_levels.pop(scroll_id, None)
 
-            # 해당 스킬을 포함하는 연계스킬 제거
-            preset.link_skills = [
-                ls
-                for ls in preset.link_skills
-                if not deleted_skill_ids.intersection(ls.skills)
-            ]
+            # 삭제된 스킬만 제외하고 남은 연계 순서와 단축키 유지
+            preset.reconcile_link_skills(valid_skill_ids)
 
         self._selected_scroll_id = ""
         self.update_from_preset(self._get_preset())
@@ -2772,6 +2773,10 @@ class LinkSkillEditor(QFrame):
             preset.link_skills[index] = self.data
             self._editing_index = index
 
+        # 저장 시점의 하단 배치 기준 자동 연계 상태 보정
+        if preset.disable_unrunnable_auto_link_skills():
+            self.popup_manager.show_notice(NoticeKind.LINK_SKILL_AUTO_DISABLED)
+
         self._on_data_changed()
 
         self.saved.emit()
@@ -2971,16 +2976,19 @@ class LinkSkillEditor(QFrame):
 
 
 class NavigationButtons(QFrame):
+    # 사이드바 페이지가 아닌 계산기 화면으로 이동하는 버튼 위치
+    _CALCULATOR_BUTTON_INDEX: int = 3
+
     def __init__(
         self,
-        change_page: Callable[[Literal[0, 1, 2, 3]], None],
+        change_page: Callable[[SidebarPage], None],
         change_layout: Callable[[int], None],
         guide_requested: Callable[[], None],
     ) -> None:
         super().__init__()
 
         self.setObjectName("navButtonsFrame")
-        self.change_page: Callable[[Literal[0, 1, 2, 3]], None] = change_page
+        self.change_page: Callable[[SidebarPage], None] = change_page
         self.change_layout: Callable[[int], None] = change_layout
         self.guide_requested: Callable[[], None] = guide_requested
 
@@ -3011,8 +3019,11 @@ class NavigationButtons(QFrame):
         for idx, button in enumerate(self.buttons):
             layout.addWidget(button)
 
-            if idx != 3:
-                button.clicked.connect(partial(lambda x: self.change_page(x), idx))
+            # 마지막 버튼만 사이드바 페이지가 아닌 계산기 화면 전환용
+            if idx != self._CALCULATOR_BUTTON_INDEX:
+                button.clicked.connect(
+                    partial(lambda page: self.change_page(page), SidebarPage(idx))
+                )
             else:
                 button.clicked.connect(lambda: self.change_layout(1))
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import IntEnum
 from typing import ClassVar
 
 from app.scripts.calculator_models import CustomPowerFormula
@@ -9,7 +10,6 @@ from app.scripts.config import config
 from app.scripts.macro_models import (
     EquippedSkillRef,
     LinkKeyType,
-    LinkSkill,
     MacroPreset,
     ThemeMode,
 )
@@ -17,6 +17,15 @@ from app.scripts.registry.key_registry import KeyRegistry, KeySpec
 from app.scripts.registry.server_registry import ServerSpec, server_registry
 
 # todo: preset에 종속된 인스턴스들 모두 옮기기
+
+
+class SidebarPage(IntEnum):
+    """사이드바 페이지"""
+
+    GENERAL = 0
+    SKILL = 1
+    LINK_SKILL = 2
+    LINK_SKILL_EDITOR = 3
 
 
 @dataclass
@@ -114,6 +123,9 @@ class MacroState:
     # 잠수 방지 종료 알림 대기 여부
     has_pending_afk_notice: bool = False
 
+    # 실행 불가 연계 단축키 알림 대기 여부
+    has_pending_link_skill_unavailable_notice: bool = False
+
     # 스킬 쿨타임 타이머
     skill_cooltime_timers: dict[EquippedSkillRef, float] = field(default_factory=dict)
 
@@ -154,7 +166,7 @@ class UiState:
     backup_notice_logs: list[str] = field(default_factory=list)
 
     # 현재 활성화된 사이드바 페이지 인덱스
-    current_sidebar_page: int = 0
+    current_sidebar_page: SidebarPage = SidebarPage.GENERAL
 
     # 시작키 설정 중인지
     # todo: SessionState로 이동 고려

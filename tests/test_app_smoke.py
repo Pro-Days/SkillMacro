@@ -16,10 +16,12 @@ from PySide6.QtWidgets import QApplication, QTabBar
 import app.scripts
 import app.scripts.run_macro as run_macro
 from app.scripts import data_manager
-from app.scripts.app_state import app_state
+from app.scripts.app_state import SidebarPage, app_state
 from app.scripts.config import config
+from app.scripts.macro_models import LinkSkill, LinkUseType
 from app.scripts.ui.popup import (
     InputConfirmContent,
+    NoticeKind,
     PopupAction,
     PopupKind,
     PopupPlacement,
@@ -118,6 +120,63 @@ def test_main_window_and_lazy_pages_construct_offscreen(
     assert simulator.results_page is results_page
     assert simulator.character_page is character_page
 
+    # 연계 편집 중 스킬·무공비급 변경 차단과 저장 시 자동 상태 보정
+    preset = app_state.macro.current_preset
+    current_tab = window.main_ui.tab_widget.get_current_tab()
+    server = app_state.macro.current_server
+    scroll_id: str = server.skill_registry.get_all_scroll_ids()[0]
+    skill_id: str = server.skill_registry.get_scroll(scroll_id).skills[0]
+    preset.skills.equipped_scrolls[0] = scroll_id
+    preset.skills.placed_skills[0] = skill_id
+    preset.link_skills = [LinkSkill(use_type=LinkUseType.AUTO, skills=[skill_id])]
+    current_tab.update_from_preset()
+    window.sidebar.update_from_preset()
+
+    popup_manager = window.get_popup_manager()
+    editing_notices: list[NoticeKind] = []
+    current_tab.noticeRequested.connect(editing_notices.append)
+    monkeypatch.setattr(
+        popup_manager._notice_controller,
+        "show",
+        lambda _kind, _text=None: None,
+    )
+
+    window.show()
+    qapplication.processEvents()
+    window.sidebar.link_skill_settings.edit(0)
+    assert app_state.ui.current_sidebar_page == SidebarPage.LINK_SKILL_EDITOR
+
+    QTest.mouseClick(
+        current_tab.placed_skills.columns[0].buttons[0],
+        Qt.MouseButton.LeftButton,
+    )
+    QTest.mouseClick(
+        current_tab.available_skills.columns[0].skill_buttons[0],
+        Qt.MouseButton.LeftButton,
+    )
+    QTest.mouseClick(
+        current_tab.available_skills.get_scroll_button(0),
+        Qt.MouseButton.LeftButton,
+    )
+    QTest.mouseClick(
+        current_tab.available_skills.get_scroll_button(1),
+        Qt.MouseButton.LeftButton,
+    )
+    qapplication.processEvents()
+
+    assert preset.skills.placed_skills[0] == skill_id
+    assert preset.skills.equipped_scrolls[0] == scroll_id
+    assert preset.skills.equipped_scrolls[1] == ""
+    assert current_tab.get_selected_skill_ref() is None
+    assert not popup_manager.is_popup_active(PopupKind.SCROLL_SELECT)
+    assert editing_notices == [NoticeKind.EDITING_LINK_SKILL] * 4
+
+    # 편집 외부에서 배치 상태가 달라져도 실행 불가능한 AUTO 저장 방지
+    preset.skills.placed_skills[0] = ""
+    window.sidebar.link_skill_editor.save()
+    assert preset.link_skills[0].use_type == LinkUseType.MANUAL
+    assert app_state.ui.current_sidebar_page == SidebarPage.LINK_SKILL
+
     # 수동 연계 입력 중 프리셋 전환 차단 확인
     data_manager.add_preset()
     window.main_ui.tab_widget.add_tab(app_state.macro.presets[-1])
@@ -196,6 +255,18 @@ def test_main_window_and_lazy_pages_construct_offscreen(
     qapplication.processEvents()
     assert window.main_ui.tab_widget.currentIndex() == 1
     assert app_state.macro.current_preset_index == 1
+
+    # 입력 감지 스레드의 실행 불가 연계 알림을 UI 스레드에서 1회 소비
+    shown_notices: list[NoticeKind] = []
+    monkeypatch.setattr(
+        popup_manager,
+        "show_notice",
+        lambda kind, _text=None: shown_notices.append(kind),
+    )
+    app_state.macro.has_pending_link_skill_unavailable_notice = True
+    window.main_ui._tick_preview_update()
+    assert shown_notices == [NoticeKind.LINK_SKILL_NOT_RUNNABLE]
+    assert app_state.macro.has_pending_link_skill_unavailable_notice is False
 
     window.hide()
     window.deleteLater()
