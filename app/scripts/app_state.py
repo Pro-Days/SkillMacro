@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 from typing import ClassVar
 
-from app.scripts.calculator_models import CustomPowerFormula
+from app.scripts.calculator_models import CustomPowerFormula, RefinementStrategy
 from app.scripts.character_models import CharacterStore
 from app.scripts.config import config
 from app.scripts.macro_models import (
@@ -41,6 +41,9 @@ class MacroState:
 
     # 전역 사용자 정의 전투력 공식 목록
     custom_power_formulas: list[CustomPowerFormula] = field(default_factory=list)
+
+    # 전역 사용자 재련 전략 목록
+    refinement_strategies: list[RefinementStrategy] = field(default_factory=list)
 
     @property
     def current_preset(self) -> MacroPreset:

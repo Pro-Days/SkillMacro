@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any
 
 from app.scripts.app_state import app_state
+from app.scripts.calculator_models import RefinementInput
 from app.scripts.character_engine import validate_character_store
 from app.scripts.character_models import CHARACTER_DATA_VERSION, CharacterStore
 from app.scripts.config import config
@@ -287,6 +288,20 @@ def migrate_macro_data_file(file_path: str) -> None:
 
             raw["version"] = 8
             stored_version_obj = 8
+            migrated = True
+
+        # v8 -> v9: 재련 시뮬레이터 입력과 전역 재련 전략 저장소 주입
+        if stored_version_obj == 8:
+            raw["refinement_strategies"] = []
+
+            raw_preset: dict[str, Any]
+            for raw_preset in raw["preset"]:
+                raw_info: dict[str, Any] = raw_preset["info"]
+                raw_calculator: dict[str, Any] = raw_info["calculator"]
+                raw_calculator["refinement"] = RefinementInput.create_default().to_dict()
+
+            raw["version"] = 9
+            stored_version_obj = 9
             migrated = True
 
         # v3 이상 저장 데이터의 목표 분배 필드 누락 보정
@@ -1067,9 +1082,10 @@ def load_data(num: int = -1) -> None:
         )
         target_index = 0
 
-    # 프리셋/전역 공식 메모리 반영
+    # 프리셋/전역 공식·전략 메모리 반영
     app_state.macro.presets = preset_file.preset
     app_state.macro.custom_power_formulas = preset_file.custom_power_formulas
+    app_state.macro.refinement_strategies = preset_file.refinement_strategies
     app_state.macro.current_preset_index = target_index
     app_state.ui.theme_mode = preset_file.theme_mode
     app_state.ui.guide_prompt_handled = preset_file.guide_prompt_handled
@@ -1109,6 +1125,7 @@ def create_default_data() -> None:
         last_app_version=app_state.ui.last_app_version,
         recent_preset=0,
         custom_power_formulas=[],
+        refinement_strategies=[],
         preset=[get_default_preset()],
     )
     repo.save(preset_file)
@@ -1132,6 +1149,7 @@ def save_data() -> None:
         last_app_version=app_state.ui.last_app_version,
         recent_preset=app_state.macro.current_preset_index,
         custom_power_formulas=app_state.macro.custom_power_formulas.copy(),
+        refinement_strategies=app_state.macro.refinement_strategies.copy(),
         preset=app_state.macro.presets.copy(),
     )
 

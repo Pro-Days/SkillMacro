@@ -6,7 +6,11 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, ClassVar, cast
 
-from app.scripts.calculator_models import CalculatorPresetInput, CustomPowerFormula
+from app.scripts.calculator_models import (
+    CalculatorPresetInput,
+    CustomPowerFormula,
+    RefinementStrategy,
+)
 from app.scripts.config import config
 
 if TYPE_CHECKING:
@@ -15,7 +19,7 @@ if TYPE_CHECKING:
     from app.scripts.registry.skill_registry import ScrollDef
 
 
-DATA_VERSION: int = 8
+DATA_VERSION: int = 9
 
 
 class ThemeMode(str, Enum):
@@ -634,6 +638,7 @@ class MacroPresetFile:
     last_app_version: str = ""
     recent_preset: int = 0
     custom_power_formulas: list[CustomPowerFormula] = field(default_factory=list)
+    refinement_strategies: list[RefinementStrategy] = field(default_factory=list)
     preset: list[MacroPreset] = field(default_factory=list)
 
     @classmethod
@@ -650,6 +655,10 @@ class MacroPresetFile:
                 CustomPowerFormula.from_dict(raw_formula)
                 for raw_formula in data["custom_power_formulas"]
             ],
+            refinement_strategies=[
+                RefinementStrategy.from_dict(raw_strategy)
+                for raw_strategy in data["refinement_strategies"]
+            ],
             preset=[MacroPreset.from_dict(p) for p in data["preset"]],
         )
 
@@ -665,6 +674,9 @@ class MacroPresetFile:
             "custom_power_formulas": [
                 custom_formula.to_dict()
                 for custom_formula in self.custom_power_formulas
+            ],
+            "refinement_strategies": [
+                strategy.to_dict() for strategy in self.refinement_strategies
             ],
             "preset": [p.to_dict() for p in self.preset],
         }
