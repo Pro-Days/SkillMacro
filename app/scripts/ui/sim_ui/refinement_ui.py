@@ -105,8 +105,8 @@ _INPUT_COLUMN_MIN_WIDTH: int = 300
 # Qt 위젯 폭 상한 (폭 제한을 푸는 용도)
 _UNLIMITED_WIDTH: int = 16_777_215
 
-# 분위수 배열에서 권장 준비량 기준 위치
-_RECOMMENDED_PREPARATION_INDEX: int = PREPARATION_PROBABILITIES.index(0.9)
+# 재련비 분포 그래프의 90% 분위수 배열 위치
+_DISTRIBUTION_PERCENTILE_INDEX: int = PREPARATION_PROBABILITIES.index(0.9)
 
 # 확률별 필요량 표 헤더
 _PREPARATION_TABLE_HEADERS: tuple[str, ...] = (
@@ -585,8 +585,7 @@ class _KpiRow(ResponsiveColumnsBox):
         self.cost_card.set_value(
             f"{row.expected.cost:,.0f}",
             "전",
-            "90% 기준 "
-            f"{_format_amount(row.cost_quantiles[_RECOMMENDED_PREPARATION_INDEX])}",
+            "",
         )
         self.point_card.set_value(
             f"{row.expected.points:,.1f}",
@@ -791,7 +790,7 @@ def _build_cost_distribution_canvas(
     row: RefinementTargetRow = report.target_row
     common_markers: tuple[tuple[str, float], ...] = (
         ("기대값", row.expected.cost),
-        ("90%", row.cost_quantiles[_RECOMMENDED_PREPARATION_INDEX]),
+        ("90%", row.cost_quantiles[_DISTRIBUTION_PERCENTILE_INDEX]),
     )
     markers: tuple[tuple[str, float], ...] = (
         common_markers
@@ -799,7 +798,7 @@ def _build_cost_distribution_canvas(
         else common_markers + (result_marker,)
     )
 
-    # 두 탭 모두 기대값·90% 기준으로 동일한 가로 범위를 유지
+    # 두 탭 모두 기대값·90% 기준으로 동일한 가로 범위 유지
     return RefinementDistributionCanvas(
         parent,
         "",
@@ -1355,10 +1354,7 @@ class _SummarySection(_ResultSection):
                 )
             )
 
-        self._preparation_table.set_rows(
-            tuple(preparation_rows),
-            _RECOMMENDED_PREPARATION_INDEX,
-        )
+        self._preparation_table.set_rows(tuple(preparation_rows))
 
     def _apply_graph(self, report: RefinementReport) -> None:
         """단계별 효율 그래프 재구성"""
@@ -1432,10 +1428,6 @@ class _TargetAnalysisSection(_ResultSection):
         self._distribution_card: SectionCard = SectionCard(
             self._content,
             "재련비 분포",
-        )
-        _add_card_unit(
-            self._distribution_card,
-            "기대값·90% 기준 중 큰 값 + 2% 여백",
         )
         self._distribution_container: QFrame = QFrame(self._distribution_card)
         self._distribution_layout: QVBoxLayout = QVBoxLayout(
