@@ -66,6 +66,7 @@ from app.scripts.refinement_data import (
 )
 from app.scripts.refinement_engine import (
     PREPARATION_PROBABILITIES,
+    RefinementEfficiencyRow,
     RefinementInputError,
     RefinementReport,
     RefinementStrategyChoice,
@@ -717,23 +718,24 @@ def _build_efficiency_delta_series(
     """로그 총비용 기준 단계별 효율 변화량 구성"""
 
     # 전투력 상승량이 계산된 목표 단계만 효율 계산에 포함
-    power_rows: tuple[RefinementTargetRow, ...] = tuple(
-        target_row
-        for target_row in report.rows
-        if target_row.power_delta is not None
+    power_rows: tuple[RefinementEfficiencyRow, ...] = tuple(
+        efficiency_row
+        for efficiency_row in report.efficiency_rows
+        if efficiency_row.power_delta is not None
     )
     if not power_rows:
         return None
 
     # 0강 기준 효율을 0으로 두고 각 단계의 누적 효율 계산
     efficiency_values: tuple[float, ...] = (0.0,) + tuple(
-        target_row.power_delta / math.log10(target_row.expected.economic_cost)
-        for target_row in power_rows
+        efficiency_row.power_delta
+        / math.log10(efficiency_row.expected_economic_cost)
+        for efficiency_row in power_rows
     )
 
     # 1강−0강부터 n강−(n−1)강까지 변화량과 표시 단계 구성
     steps: tuple[int, ...] = tuple(
-        target_row.target_step for target_row in power_rows
+        efficiency_row.target_step for efficiency_row in power_rows
     )
     values: tuple[float, ...] = tuple(
         current - previous
@@ -1338,17 +1340,17 @@ class _SummarySection(_ResultSection):
     ) -> None:
         """준비량 표 갱신"""
 
-        reachable_map: dict[float, int | None] = dict(report.reachable_steps)
+        reachable_map: dict[float, int] = dict(report.reachable_steps)
         preparation_rows: list[tuple[str | _ChipCell, ...]] = []
         for index, probability in enumerate(PREPARATION_PROBABILITIES):
-            reachable_step: int | None = reachable_map[probability]
+            reachable_step: int = reachable_map[probability]
             required_cost: float = row.cost_quantiles[index]
             preparation_rows.append(
                 (
                     f"{int(probability * 100)}% {_PREPARATION_LABELS[index]}",
                     _format_amount(required_cost),
                     _format_points(row.point_quantiles[index]),
-                    f"{reachable_step}강" if reachable_step is not None else "없음",
+                    f"{reachable_step}강",
                     _budget_chip(report.budget - required_cost),
                 )
             )
@@ -1425,7 +1427,6 @@ class _TargetAnalysisSection(_ResultSection):
             _PREPARATION_TABLE_HEADERS,
         )
         point_card.add_widget(self._point_table)
-        self._point_note: QLabel = _add_card_note(point_card, "")
         self._content_layout.addWidget(point_card)
 
         self._distribution_card: SectionCard = SectionCard(
@@ -1503,25 +1504,8 @@ class _TargetAnalysisSection(_ResultSection):
         self._cost_table.set_rows(tuple(cost_rows), highlight_index)
         self._point_table.set_rows(tuple(point_rows), highlight_index)
 
-        self._apply_point_note(report)
         self._distribution_card.set_title(f"{report.target_step}강 재련비 분포")
         self._apply_graphs(report)
-
-    def _apply_point_note(self, report: RefinementReport) -> None:
-        """보조를 쓰지 않는 구간 안내 갱신"""
-
-        # 이 전략에서 강화포인트가 전혀 들지 않는 마지막 단계 조회
-        free_steps: tuple[int, ...] = tuple(
-            row.target_step for row in report.rows if row.expected.points <= 0.0
-        )
-        if not free_steps:
-            self._point_note.hide()
-            return
-
-        self._point_note.setText(
-            f"{max(free_steps)}강 이하는 이 전략에서 보조를 쓰지 않아 전부 0pt입니다."
-        )
-        self._point_note.show()
 
     def _apply_graphs(self, report: RefinementReport) -> None:
         """재련비 분포와 단계별 도달 확률 그래프 재구성"""

@@ -167,6 +167,15 @@ class RefinementTargetRow:
 
 
 @dataclass(frozen=True, slots=True)
+class RefinementEfficiencyRow:
+    """0강 기준 목표 단계 하나의 효율 계산 입력"""
+
+    target_step: int
+    expected_economic_cost: float
+    power_delta: float | None
+
+
+@dataclass(frozen=True, slots=True)
 class RefinementReport:
     """재련 시뮬레이터 계산 결과 전체"""
 
@@ -179,7 +188,8 @@ class RefinementReport:
     plan: RefinementPlan
     strategy: RefinementStrategyChoice
     rows: tuple[RefinementTargetRow, ...]
-    reachable_steps: tuple[tuple[float, int | None], ...]
+    efficiency_rows: tuple[RefinementEfficiencyRow, ...]
+    reachable_steps: tuple[tuple[float, int], ...]
     cost_distribution: RefinementDistribution
     baseline_power: float | None
     power_error: str | None
@@ -642,12 +652,14 @@ def validate_refinement_input(
 
 def _build_reachable_steps(
     rows: tuple[RefinementTargetRow, ...],
-) -> tuple[tuple[float, int | None], ...]:
+    start_step: int,
+) -> tuple[tuple[float, int], ...]:
     """확률 기준별 현재 재화로 도달 가능한 최고 단계 계산"""
 
-    reachable: list[tuple[float, int | None]] = []
+    reachable: list[tuple[float, int]] = []
     for probability in PREPARATION_PROBABILITIES:
-        highest_step: int | None = None
+        # 추가 재련 가능 여부와 관계없이 현재 단계까지는 이미 도달한 상태
+        highest_step: int = start_step
         for row in rows:
             if row.reach_probability < probability:
                 continue
@@ -751,7 +763,52 @@ def build_refinement_report(
     except (ValueError, KeyError, ZeroDivisionError) as error:
         power_error = str(error) or "전투력을 계산할 수 없습니다."
 
-    # 목표 단계별 결과 행 구성
+    # 0강 기준 단계별 효율 계산 입력 구성
+    zero_step_power: float | None = None
+    if context is not None:
+        zero_step_power = context.baseline_power + evaluate_arbitrary_stat_delta(
+            context,
+            refinement_stat_delta(refinement.equipment, start_step, 0),
+            refinement.selected_formula_id,
+        )
+
+    power_deltas_from_current: dict[int, float] = {}
+    efficiency_rows: list[RefinementEfficiencyRow] = []
+    for target_step in range(1, MAX_REFINE_STEP + 1):
+        if cancel_checker is not None:
+            cancel_checker()
+
+        expected_from_zero: ExpectedTotals = compute_expected_totals(
+            plan,
+            0,
+            target_step,
+            point_price,
+        )
+        power_delta_from_zero: float | None = None
+        if context is not None and zero_step_power is not None:
+            power_delta_from_current: float = evaluate_arbitrary_stat_delta(
+                context,
+                refinement_stat_delta(
+                    refinement.equipment,
+                    start_step,
+                    target_step,
+                ),
+                refinement.selected_formula_id,
+            )
+            power_deltas_from_current[target_step] = power_delta_from_current
+            power_delta_from_zero = (
+                context.baseline_power + power_delta_from_current - zero_step_power
+            )
+
+        efficiency_rows.append(
+            RefinementEfficiencyRow(
+                target_step=target_step,
+                expected_economic_cost=expected_from_zero.economic_cost,
+                power_delta=power_delta_from_zero,
+            )
+        )
+
+    # 현재 시작 단계 기준 목표 단계별 결과 행 구성
     rows: list[RefinementTargetRow] = []
     for target_step in target_steps:
         if cancel_checker is not None:
@@ -776,11 +833,7 @@ def build_refinement_report(
         power_delta: float | None = None
         efficiency: float | None = None
         if context is not None:
-            power_delta = evaluate_arbitrary_stat_delta(
-                context,
-                stat_delta,
-                refinement.selected_formula_id,
-            )
+            power_delta = power_deltas_from_current[target_step]
             if expected.economic_cost > 0.0:
                 efficiency = power_delta / expected.economic_cost
 
@@ -818,7 +871,8 @@ def build_refinement_report(
         plan=plan,
         strategy=strategy,
         rows=tuple(rows),
-        reachable_steps=_build_reachable_steps(tuple(rows)),
+        efficiency_rows=tuple(efficiency_rows),
+        reachable_steps=_build_reachable_steps(tuple(rows), start_step),
         cost_distribution=cost_distributions[refinement.target_step],
         baseline_power=baseline_power,
         power_error=power_error,
