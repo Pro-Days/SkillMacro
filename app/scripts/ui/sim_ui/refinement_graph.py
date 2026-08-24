@@ -433,10 +433,12 @@ class RefinementStepLineCanvas(_RefinementStepCanvasBase):
         steps: tuple[int, ...],
         values: tuple[float, ...],
         value_formatter: Callable[[float], str],
+        guide_values: tuple[float, ...],
         highlight_step: int | None = None,
         value_axis_formatter: Callable[[float], str] | None = None,
         value_range: tuple[float, float] | None = None,
     ) -> None:
+        self._guide_values: tuple[float, ...] = guide_values
         super().__init__(
             parent,
             title,
@@ -455,6 +457,19 @@ class RefinementStepLineCanvas(_RefinementStepCanvasBase):
         self.clear()
         if not self._steps:
             return
+
+        # 주요 확률 눈금을 기본 격자보다 선명한 실선으로 구성
+        for guide_value in self._guide_values:
+            guide_line: pg.InfiniteLine = pg.InfiniteLine(
+                pos=guide_value,
+                angle=0,
+                pen=pg.mkPen(
+                    self.graph_palette.guide_line,
+                    width=1.5,
+                ),
+            )
+            guide_line.setZValue(-1)
+            self.addItem(guide_line)
 
         line_color: str = self.graph_palette.dpm_normal_bar
         self.plot(

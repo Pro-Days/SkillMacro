@@ -108,6 +108,9 @@ _UNLIMITED_WIDTH: int = 16_777_215
 # 재련비 분포 그래프의 90% 분위수 배열 위치
 _DISTRIBUTION_PERCENTILE_INDEX: int = PREPARATION_PROBABILITIES.index(0.9)
 
+# 단계별 도달 확률 그래프의 강조 눈금
+_REACH_PROBABILITY_GUIDE_VALUES: tuple[float, ...] = (0.2, 0.4, 0.6, 0.8, 1.0)
+
 # 확률별 필요량 표 헤더
 _PREPARATION_TABLE_HEADERS: tuple[str, ...] = (
     "목표",
@@ -1382,6 +1385,38 @@ class _TargetAnalysisSection(_ResultSection):
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
 
+        self._reach_probability_card: SectionCard = SectionCard(
+            self._content,
+            "단계별 도달 확률",
+        )
+        _add_card_unit(
+            self._reach_probability_card,
+            "현재 보유 재화로 각 단계까지 도달할 확률",
+        )
+        self._reach_probability_container: QFrame = QFrame(
+            self._reach_probability_card
+        )
+        self._reach_probability_layout: QVBoxLayout = QVBoxLayout(
+            self._reach_probability_container
+        )
+        self._reach_probability_layout.setContentsMargins(0, 0, 0, 0)
+        self._reach_probability_layout.setSpacing(10)
+        self._reach_probability_card.add_widget(self._reach_probability_container)
+        self._content_layout.addWidget(self._reach_probability_card)
+
+        self._distribution_card: SectionCard = SectionCard(
+            self._content,
+            "재련비 분포",
+        )
+        self._distribution_container: QFrame = QFrame(self._distribution_card)
+        self._distribution_layout: QVBoxLayout = QVBoxLayout(
+            self._distribution_container
+        )
+        self._distribution_layout.setContentsMargins(0, 0, 0, 0)
+        self._distribution_layout.setSpacing(0)
+        self._distribution_card.add_widget(self._distribution_container)
+        self._content_layout.addWidget(self._distribution_card)
+
         expectation_card: SectionCard = SectionCard(
             self._content,
             "단계별 도달 확률과 기대 소모량",
@@ -1424,38 +1459,6 @@ class _TargetAnalysisSection(_ResultSection):
         )
         point_card.add_widget(self._point_table)
         self._content_layout.addWidget(point_card)
-
-        self._distribution_card: SectionCard = SectionCard(
-            self._content,
-            "재련비 분포",
-        )
-        self._distribution_container: QFrame = QFrame(self._distribution_card)
-        self._distribution_layout: QVBoxLayout = QVBoxLayout(
-            self._distribution_container
-        )
-        self._distribution_layout.setContentsMargins(0, 0, 0, 0)
-        self._distribution_layout.setSpacing(0)
-        self._distribution_card.add_widget(self._distribution_container)
-        self._content_layout.addWidget(self._distribution_card)
-
-        self._reach_probability_card: SectionCard = SectionCard(
-            self._content,
-            "단계별 도달 확률",
-        )
-        _add_card_unit(
-            self._reach_probability_card,
-            "현재 보유 재화로 각 단계까지 도달할 확률",
-        )
-        self._reach_probability_container: QFrame = QFrame(
-            self._reach_probability_card
-        )
-        self._reach_probability_layout: QVBoxLayout = QVBoxLayout(
-            self._reach_probability_container
-        )
-        self._reach_probability_layout.setContentsMargins(0, 0, 0, 0)
-        self._reach_probability_layout.setSpacing(10)
-        self._reach_probability_card.add_widget(self._reach_probability_container)
-        self._content_layout.addWidget(self._reach_probability_card)
 
     def apply_report(self, report: RefinementReport) -> None:
         """단계별 표와 분포 그래프 갱신"""
@@ -1527,6 +1530,7 @@ class _TargetAnalysisSection(_ResultSection):
                 reach_steps,
                 reach_probabilities,
                 _format_probability,
+                _REACH_PROBABILITY_GUIDE_VALUES,
                 highlight_step=report.target_step,
                 value_axis_formatter=lambda value: f"{value * 100:.0f}%",
                 value_range=(0.0, 1.05),
@@ -1546,6 +1550,14 @@ class _StatEfficiencySection(_ResultSection):
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
 
+        graph_card: SectionCard = SectionCard(self._content, "단계별 효율")
+        self._graph_container: QFrame = QFrame(graph_card)
+        self._graph_layout: QVBoxLayout = QVBoxLayout(self._graph_container)
+        self._graph_layout.setContentsMargins(0, 0, 0, 0)
+        self._graph_layout.setSpacing(10)
+        graph_card.add_widget(self._graph_container)
+        self._content_layout.addWidget(graph_card)
+
         power_card: SectionCard = SectionCard(self._content, "재련 전후 전투력")
         self._formula_unit: QLabel = _add_card_unit(power_card, "")
         self._summary_list: _KeyValueList = _KeyValueList(power_card)
@@ -1560,14 +1572,6 @@ class _StatEfficiencySection(_ResultSection):
         )
         table_card.add_widget(self._table)
         self._content_layout.addWidget(table_card)
-
-        graph_card: SectionCard = SectionCard(self._content, "단계별 효율")
-        self._graph_container: QFrame = QFrame(graph_card)
-        self._graph_layout: QVBoxLayout = QVBoxLayout(self._graph_container)
-        self._graph_layout.setContentsMargins(0, 0, 0, 0)
-        self._graph_layout.setSpacing(10)
-        graph_card.add_widget(self._graph_container)
-        self._content_layout.addWidget(graph_card)
 
     def apply_report(self, report: RefinementReport) -> None:
         """스탯 정보 갱신"""
