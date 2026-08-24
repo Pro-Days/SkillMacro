@@ -769,14 +769,12 @@ def _build_cost_distribution_canvas(
         else common_markers + (result_marker,)
     )
 
-    # 두 탭 모두 기대값·90% 기준으로 동일한 가로 범위 유지
     return RefinementDistributionCanvas(
         parent,
         "",
         report.cost_distribution,
         _format_amount,
         markers,
-        tuple(value for _, value in common_markers),
     )
 
 

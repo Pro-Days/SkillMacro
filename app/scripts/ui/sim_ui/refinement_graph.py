@@ -509,20 +509,14 @@ class _RefinementCurveCanvasBase(_RefinementCanvasBase):
         distribution: RefinementDistribution,
         value_formatter: Callable[[float], str],
         markers: tuple[tuple[str, float], ...],
-        range_markers: tuple[float, ...] | None = None,
     ) -> None:
         super().__init__(parent, title)
 
         self._value_formatter: Callable[[float], str] = value_formatter
         self._markers: tuple[tuple[str, float], ...] = markers
-        self._range_markers: tuple[float, ...] = (
-            tuple(value for _, value in markers)
-            if range_markers is None
-            else range_markers
-        )
         self._range_right_edge: float | None = (
-            max(value * (1.0 + _RANGE_MARGIN_RATIO) for value in self._range_markers)
-            if self._range_markers
+            max(value * (1.0 + _RANGE_MARGIN_RATIO) for _, value in markers)
+            if markers
             else None
         )
         self._samples: _DistributionSamples = _sample_distribution(
@@ -583,6 +577,8 @@ class _RefinementCurveCanvasBase(_RefinementCanvasBase):
                     ],
                     "color": self.graph_palette.axis_text,
                     "movable": False,
+                    # 좌우 가장자리에서는 라벨을 그래프 안쪽으로 전환
+                    "anchors": ((0.0, 0.5), (1.0, 0.5)),
                 },
             )
             self.addItem(line)
@@ -621,7 +617,6 @@ class RefinementDistributionCanvas(_RefinementCurveCanvasBase):
         distribution: RefinementDistribution,
         value_formatter: Callable[[float], str],
         markers: tuple[tuple[str, float], ...] = (),
-        range_markers: tuple[float, ...] | None = None,
     ) -> None:
         super().__init__(
             parent,
@@ -629,7 +624,6 @@ class RefinementDistributionCanvas(_RefinementCurveCanvasBase):
             distribution,
             value_formatter,
             markers,
-            range_markers,
         )
 
         left_axis: pg.AxisItem = self.getAxis("left")
