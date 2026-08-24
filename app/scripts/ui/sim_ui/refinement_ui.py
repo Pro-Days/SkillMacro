@@ -222,17 +222,6 @@ def _strategy_name(choice: RefinementStrategyChoice) -> str:
     return choice.strategy_name
 
 
-def _strategy_label(choice: RefinementStrategyChoice) -> str:
-    """선택된 전략 한 줄 표시 문자열 구성"""
-
-    thresholds: tuple[str, ...] = _strategy_thresholds(choice)
-    if thresholds == ("무보조",):
-        name: str = _strategy_name(choice)
-        return name if name == "무보조" else f"{name} · 무보조"
-
-    return f"{_strategy_name(choice)} · {' / '.join(thresholds)}"
-
-
 def _clear_layout(target_layout: QLayout) -> None:
     """레이아웃의 기존 위젯 제거"""
 
@@ -262,27 +251,6 @@ def _stretch_field(field: KVInput | KVComboInput) -> None:
     )
     inner.setMaximumWidth(_UNLIMITED_WIDTH)
     inner.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-
-
-def _add_card_unit(card: SectionCard, text: str) -> QLabel:
-    """카드 헤더 오른쪽 단위·기준 안내 추가"""
-
-    unit_label: QLabel = QLabel(text, card)
-    unit_label.setObjectName("resultsSubTitle")
-    unit_label.setFont(CustomFont(9))
-    card.add_header_widget(unit_label)
-    return unit_label
-
-
-def _add_card_note(card: SectionCard, text: str) -> QLabel:
-    """카드 아래쪽 보조 설명 추가"""
-
-    note_label: QLabel = QLabel(text, card)
-    note_label.setObjectName("resultsSubTitle")
-    note_label.setFont(CustomFont(9))
-    note_label.setWordWrap(True)
-    card.add_widget(note_label)
-    return note_label
 
 
 def _parse_amount(text: str) -> float | None:
@@ -844,16 +812,12 @@ def _add_efficiency_delta_graph(
         )
     )
 
-    # 상대 고효율·양수·음수 범례 구성
+    # 상대 고효율 범례 구성
     palette = get_graph_palette()
     layout.addWidget(
         _GraphLegend(
             parent,
-            (
-                ("상대 고효율", palette.efficiency_high_bar, False),
-                ("+ 증가", palette.dpm_normal_bar, False),
-                ("- 감소", palette.dpm_center_bar, False),
-            ),
+            (("상대 고효율", palette.efficiency_high_bar, False),),
         )
     )
 
@@ -1389,10 +1353,6 @@ class _TargetAnalysisSection(_ResultSection):
             self._content,
             "단계별 도달 확률",
         )
-        _add_card_unit(
-            self._reach_probability_card,
-            "현재 보유 재화로 각 단계까지 도달할 확률",
-        )
         self._reach_probability_container: QFrame = QFrame(
             self._reach_probability_card
         )
@@ -1433,15 +1393,6 @@ class _TargetAnalysisSection(_ResultSection):
             ),
         )
         expectation_card.add_widget(self._expectation_table)
-
-        budget_notice: QLabel = QLabel(
-            "현재 재화 대비는 보유 재화에서 기대 재련비를 뺀 결과로 판정합니다.",
-            expectation_card,
-        )
-        budget_notice.setObjectName("resultsSubTitle")
-        budget_notice.setFont(CustomFont(9))
-        budget_notice.setWordWrap(True)
-        expectation_card.add_widget(budget_notice)
         self._content_layout.addWidget(expectation_card)
 
         cost_card: SectionCard = SectionCard(self._content, "확률별 필요 재련비")
@@ -1559,7 +1510,6 @@ class _StatEfficiencySection(_ResultSection):
         self._content_layout.addWidget(graph_card)
 
         power_card: SectionCard = SectionCard(self._content, "재련 전후 전투력")
-        self._formula_unit: QLabel = _add_card_unit(power_card, "")
         self._summary_list: _KeyValueList = _KeyValueList(power_card)
         power_card.add_widget(self._summary_list)
         self._content_layout.addWidget(power_card)
@@ -1580,9 +1530,9 @@ class _StatEfficiencySection(_ResultSection):
         equipment_label: str = REFINEMENT_EQUIPMENT_LABELS[report.equipment]
 
         # 재련 전후 전투력 요약
-        self._formula_unit.setText(report.formula_label)
         if report.power_error is not None:
             power_rows: tuple[tuple[str, str], ...] = (
+                ("기준 전투력", report.formula_label),
                 ("재련 대상", f"{equipment_label} · {report.level_cap}제"),
                 ("전투력 계산", f"계산 불가 ({report.power_error})"),
             )
@@ -1592,12 +1542,13 @@ class _StatEfficiencySection(_ResultSection):
             baseline: float = report.baseline_power or 0.0
             delta: float = row.power_delta or 0.0
             power_rows = (
+                ("기준 전투력", report.formula_label),
                 ("재련 대상", f"{equipment_label} · {report.level_cap}제"),
                 ("재련 전", f"{baseline:,.2f}"),
                 ("재련 후", f"{baseline + delta:,.2f}"),
                 ("상승", _format_power(delta)),
             )
-            self._summary_list.set_rows(power_rows, positive_rows=(3,))
+            self._summary_list.set_rows(power_rows, positive_rows=(4,))
 
         # 단계별 스탯 표 구성
         highlight_index: int | None = None
@@ -1658,7 +1609,6 @@ class _LuckSection(_ResultSection):
         self._content_layout.addWidget(input_card)
 
         cost_card: SectionCard = SectionCard(self._content, "재련비")
-        self._basis_unit: QLabel = _add_card_unit(cost_card, "")
         self._cost_list: _KeyValueList = _KeyValueList(cost_card)
         cost_card.add_widget(self._cost_list)
 
@@ -1727,11 +1677,6 @@ class _LuckSection(_ResultSection):
             return
 
         row: RefinementTargetRow = report.target_row
-
-        self._basis_unit.setText(
-            f"{report.start_step}강 → {report.target_step}강 · "
-            f"{_strategy_label(report.strategy)}"
-        )
 
         # 재련비 백분위 계산
         cost_ratio: float = report.cost_distribution.probability_at_most(actual_cost)
@@ -1828,7 +1773,6 @@ class _StrategySection(QFrame):
 
         # 저장한 전략 목록
         list_card: SectionCard = SectionCard(self, "저장한 전략")
-        _add_card_unit(list_card, "모든 프리셋에서 공유")
         self._list_container: QFrame = QFrame(list_card)
         self._list_layout: QVBoxLayout = QVBoxLayout(self._list_container)
         self._list_layout.setContentsMargins(0, 0, 0, 0)
@@ -1891,16 +1835,6 @@ class _StrategySection(QFrame):
         form_grid.setColumnStretch(0, 1)
         form_grid.setColumnStretch(1, 1)
         self._editor_card.add_layout(form_grid)
-
-        self._form_message: QLabel = QLabel(
-            f"3pt 시작 단계는 7pt 시작 단계보다 낮아야 합니다 "
-            f"(0 ~ {REFINE_ATTEMPT_STEP_COUNT - 1}강).",
-            self._editor_card,
-        )
-        self._form_message.setObjectName("resultsSubTitle")
-        self._form_message.setFont(CustomFont(9))
-        self._form_message.setWordWrap(True)
-        self._editor_card.add_widget(self._form_message)
 
         button_row: QHBoxLayout = QHBoxLayout()
         button_row.setContentsMargins(0, 0, 0, 0)
@@ -2032,19 +1966,10 @@ class _StrategySection(QFrame):
         self._on_form_changed()
 
     def _on_form_changed(self) -> None:
-        """편집 폼 입력 검증"""
+        """전략 이름 입력 오류 표시 해제"""
 
-        # 저장 가능 여부를 안내 문구로 즉시 표시
-        error: str | None = self._current_form_error()
-        if error is None:
+        if self._name_input.input.text().strip():
             self._name_input.input.set_valid(True)
-            self._form_message.setText(
-                f"3pt 시작 단계는 7pt 시작 단계보다 낮아야 합니다 "
-                f"(0 ~ {REFINE_ATTEMPT_STEP_COUNT - 1}강)."
-            )
-            return
-
-        self._form_message.setText(error)
 
     def _current_form_error(self) -> str | None:
         """현재 편집 폼 입력 오류 반환"""
@@ -2404,13 +2329,6 @@ class RefinementPage(QFrame):
         card.add_widget(self._strategy_input)
         card.add_widget(self._formula_input)
 
-        self._auto_result_label: QLabel = QLabel("", card)
-        self._auto_result_label.setObjectName("resultsSubTitle")
-        self._auto_result_label.setFont(CustomFont(9))
-        self._auto_result_label.setWordWrap(True)
-        self._auto_result_label.hide()
-        card.add_widget(self._auto_result_label)
-
         return card
 
     def _build_result_column(self, parent: QWidget) -> QWidget:
@@ -2514,7 +2432,6 @@ class RefinementPage(QFrame):
         self._report = None
         self._report_preset_index = None
         self._kpi_row.clear_report()
-        self._auto_result_label.hide()
         self._summary_section.clear_report()
         self._target_section.clear_report()
         self._strategy_section.clear_report()
@@ -2837,7 +2754,6 @@ class RefinementPage(QFrame):
         self._report = report
         self._report_preset_index = app_state.macro.current_preset_index
         self._kpi_row.set_report(report)
-        self._update_auto_result_label(report)
         self._summary_section.set_report(report)
         self._target_section.set_report(report)
         self._strategy_section.set_report(report)
@@ -2845,18 +2761,6 @@ class RefinementPage(QFrame):
         self._luck_section.set_report(report)
 
         self._go_tab(0)
-
-    def _update_auto_result_label(self, report: RefinementReport) -> None:
-        """입력 열의 전략 선택 결과 안내 갱신"""
-
-        if report.strategy.mode != RefinementStrategyMode.AUTO:
-            self._auto_result_label.hide()
-            return
-
-        self._auto_result_label.setText(
-            f"선택 결과 · {' / '.join(_strategy_thresholds(report.strategy))}"
-        )
-        self._auto_result_label.show()
 
     def _cleanup_thread(self) -> None:
         """완료된 계산 스레드 정리"""
