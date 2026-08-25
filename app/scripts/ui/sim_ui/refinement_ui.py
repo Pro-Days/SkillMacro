@@ -167,10 +167,17 @@ def _format_points(value: float) -> str:
     return f"{value:,.1f}pt" if value != round(value) else f"{value:,.0f}pt"
 
 
-def _format_probability(value: float) -> str:
-    """확률 표시 문자열 구성"""
+def _format_probability_value(value: float) -> str:
+    """확률의 백분율 숫자 표시 문자열 구성"""
 
-    return f"{value * 100:.2f}%"
+    formatted: str = f"{value * 100:.2f}".rstrip("0").rstrip(".")
+    return "0" if formatted == "-0" else formatted
+
+
+def _format_probability(value: float) -> str:
+    """단위가 포함된 확률 표시 문자열 구성"""
+
+    return f"{_format_probability_value(value)}%"
 
 
 def _format_power(value: float) -> str:
@@ -549,7 +556,7 @@ class _KpiRow(ResponsiveColumnsBox):
         row: RefinementTargetRow = report.target_row
 
         self.reach_card.set_value(
-            f"{row.reach_probability * 100:.2f}",
+            _format_probability_value(row.reach_probability),
             "%",
             f"{report.start_step}강 → {report.target_step}강",
         )

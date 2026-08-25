@@ -125,9 +125,12 @@ class RefinementDistribution:
             return 0.0
 
         if unit_count >= self.pmf.size:
-            return float(self.pmf.sum())
+            cumulative_probability: float = float(self.pmf.sum())
+        else:
+            cumulative_probability = float(self.pmf[: unit_count + 1].sum())
 
-        return float(self.pmf[: unit_count + 1].sum())
+        # 푸리에 역변환의 미세한 수치 오차가 확률 범위를 벗어나지 않도록 제한
+        return min(1.0, max(0.0, cumulative_probability))
 
     def quantile(self, probability: float) -> float:
         """누적 확률을 처음 넘는 지점의 값 반환"""
