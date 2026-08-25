@@ -1697,7 +1697,7 @@ def _luck_chip(ratio: float) -> _ChipCell:
     """백분위와 운 평가를 담은 칩 구성"""
 
     return _ChipCell(
-        f"하위 {ratio * 100:.1f}% · {_luck_comment(ratio)}",
+        f"상위 {ratio * 100:.1f}% · {_luck_comment(ratio)}",
         _luck_tone(ratio),
     )
 
