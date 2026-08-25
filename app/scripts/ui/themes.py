@@ -1220,7 +1220,6 @@ QFrame#refinementKpiCard[tone="good"] {{ border-left-color: #27AE60; }}
 QLabel#refinementKpiKey {{ color: #555555; background: transparent; border: 0px; }}
 QLabel#refinementKpiValue {{ color: #111111; background: transparent; border: 0px; }}
 QLabel#refinementKpiUnit {{ color: #555555; background: transparent; border: 0px; }}
-QLabel#refinementKpiSub {{ color: #7A8795; background: transparent; border: 0px; }}
 
 /* 요약 큰 숫자 블록 */
 QFrame#refinementHeroBox {{
@@ -2932,7 +2931,6 @@ QFrame#refinementKpiCard[tone="good"] {{ border-left-color: #4ECB71; }}
 QLabel#refinementKpiKey {{ color: #A0A0C0; background: transparent; border: 0px; }}
 QLabel#refinementKpiValue {{ color: #E8E8F0; background: transparent; border: 0px; }}
 QLabel#refinementKpiUnit {{ color: #A0A0C0; background: transparent; border: 0px; }}
-QLabel#refinementKpiSub {{ color: #7878A0; background: transparent; border: 0px; }}
 
 /* 요약 큰 숫자 블록 */
 QFrame#refinementHeroBox {{

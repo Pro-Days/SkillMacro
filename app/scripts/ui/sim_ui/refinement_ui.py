@@ -513,25 +513,19 @@ class _KpiCard(QFrame):
         value_row.addWidget(self._unit_label, 0, Qt.AlignmentFlag.AlignBottom)
         value_row.addStretch(1)
 
-        self._sub_label: QLabel = QLabel("", self)
-        self._sub_label.setObjectName("refinementKpiSub")
-        self._sub_label.setFont(CustomFont(9))
-
         layout.addWidget(self._title_label)
         layout.addLayout(value_row)
-        layout.addWidget(self._sub_label)
 
-    def set_value(self, value: str, unit: str, sub_text: str) -> None:
+    def set_value(self, value: str, unit: str) -> None:
         """지표 값 갱신"""
 
         self._value_label.setText(value)
         self._unit_label.setText(unit)
-        self._sub_label.setText(sub_text)
 
     def clear_value(self) -> None:
         """지표 값 초기화"""
 
-        self.set_value("-", "", "")
+        self.set_value("-", "")
 
 
 class _KpiRow(ResponsiveColumnsBox):
@@ -558,29 +552,23 @@ class _KpiRow(ResponsiveColumnsBox):
         self.reach_card.set_value(
             _format_probability_value(row.reach_probability),
             "%",
-            f"{report.start_step}강 → {report.target_step}강",
         )
         self.cost_card.set_value(
             f"{row.expected.cost:,.0f}",
             "전",
-            "",
         )
         self.point_card.set_value(
             f"{row.expected.points:,.1f}",
             "pt",
-            _format_amount(row.expected.points * report.point_price),
         )
 
-        # 전투력을 계산하지 못하면 사유를 표시
         if report.power_error is not None or row.power_delta is None:
-            self.power_card.set_value("-", "", "전투력 계산 불가")
+            self.power_card.set_value("-", "")
             return
 
-        baseline: float = report.baseline_power or 0.0
         self.power_card.set_value(
             f"{row.power_delta:+,.0f}",
             "",
-            f"기준 {baseline:,.0f}",
         )
 
     def clear_report(self) -> None:
