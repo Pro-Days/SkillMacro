@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from math import ceil
 
 import numpy as np
 import pyqtgraph as pg
@@ -40,6 +41,41 @@ _CANVAS_HEIGHT: int = 260
 _VALUE_AXIS_WIDTH: int = 76
 
 
+class _MinimumUnitAxisItem(pg.AxisItem):
+    """자동 눈금 간격을 지정 최소 단위의 정수배로 제한하는 축"""
+
+    def __init__(self, minimum_unit: float) -> None:
+        super().__init__(orientation="bottom")
+        self._minimum_unit: float = minimum_unit
+
+    def tickSpacing(
+        self,
+        min_value: float,
+        max_value: float,
+        size: float,
+    ) -> list[tuple[float, float]]:
+        """현재 표시 범위에 맞춘 최소 단위 배수 눈금 간격 반환"""
+
+        automatic_levels: list[tuple[float, float]] = super().tickSpacing(
+            min_value,
+            max_value,
+            size,
+        )
+        snapped_levels: list[tuple[float, float]] = []
+        lower_spacing: float = self._minimum_unit
+        for spacing, _offset in reversed(automatic_levels):
+            multiple: int = max(1, ceil(spacing / lower_spacing))
+            snapped_spacing: float = multiple * lower_spacing
+
+            # 같은 간격으로 합쳐진 눈금 단계 제외
+            if not snapped_levels or snapped_spacing > snapped_levels[-1][0]:
+                snapped_levels.append((snapped_spacing, 0.0))
+
+            lower_spacing = snapped_spacing
+
+        return list(reversed(snapped_levels))
+
+
 class _DistributionSamples:
     """분포 표시용 표본 지점 묶음"""
 
@@ -62,6 +98,7 @@ class _DistributionSamples:
 
 def _sample_distribution(
     distribution: RefinementDistribution,
+    minimum_bin_width: float,
     display_upper_value: float | None = None,
 ) -> _DistributionSamples:
     """분포를 표시용 구간 확률과 누적 확률로 집계"""
@@ -87,7 +124,12 @@ def _sample_distribution(
         )
 
     upper_index: int = min(pmf.size, int(upper_value / unit_value) + 1)
-    bin_size: int = max(1, upper_index // _DISTRIBUTION_BIN_COUNT)
+    # 실제 최소 재련비보다 잘게 나뉘는 표시 구간 방지
+    minimum_bin_size: int = max(1, ceil(minimum_bin_width / unit_value))
+    bin_size: int = max(
+        minimum_bin_size,
+        upper_index // _DISTRIBUTION_BIN_COUNT,
+    )
     bin_count: int = max(1, upper_index // bin_size)
 
     # 구간 단위로 확률 합산
@@ -107,8 +149,16 @@ def _sample_distribution(
 class _RefinementCanvasBase(pg.PlotWidget):
     """재련 그래프 공통 축·툴팁 구성"""
 
-    def __init__(self, parent: QWidget, title: str) -> None:
-        super().__init__(parent=parent)
+    def __init__(
+        self,
+        parent: QWidget,
+        title: str,
+        bottom_axis: pg.AxisItem | None = None,
+    ) -> None:
+        if bottom_axis is None:
+            super().__init__(parent=parent)
+        else:
+            super().__init__(parent=parent, axisItems={"bottom": bottom_axis})
 
         self.setObjectName("refinementCanvas")
         self.graph_palette: GraphPalette = get_graph_palette()
@@ -509,8 +559,9 @@ class _RefinementCurveCanvasBase(_RefinementCanvasBase):
         distribution: RefinementDistribution,
         value_formatter: Callable[[float], str],
         markers: tuple[tuple[str, float], ...],
+        minimum_unit: float,
     ) -> None:
-        super().__init__(parent, title)
+        super().__init__(parent, title, _MinimumUnitAxisItem(minimum_unit))
 
         self._value_formatter: Callable[[float], str] = value_formatter
         self._markers: tuple[tuple[str, float], ...] = markers
@@ -521,6 +572,7 @@ class _RefinementCurveCanvasBase(_RefinementCanvasBase):
         )
         self._samples: _DistributionSamples = _sample_distribution(
             distribution,
+            minimum_unit,
             self._range_right_edge,
         )
 
@@ -616,6 +668,7 @@ class RefinementDistributionCanvas(_RefinementCurveCanvasBase):
         title: str,
         distribution: RefinementDistribution,
         value_formatter: Callable[[float], str],
+        minimum_unit: float,
         markers: tuple[tuple[str, float], ...] = (),
     ) -> None:
         super().__init__(
@@ -624,6 +677,7 @@ class RefinementDistributionCanvas(_RefinementCurveCanvasBase):
             distribution,
             value_formatter,
             markers,
+            minimum_unit,
         )
 
         left_axis: pg.AxisItem = self.getAxis("left")

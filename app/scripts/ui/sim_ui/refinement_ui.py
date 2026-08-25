@@ -781,6 +781,7 @@ def _build_cost_distribution_canvas(
         "",
         report.cost_distribution,
         _format_amount,
+        min(report.plan.costs),
         markers,
     )
 
