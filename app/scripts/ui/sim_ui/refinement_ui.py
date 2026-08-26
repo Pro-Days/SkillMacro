@@ -2746,6 +2746,7 @@ class RefinementPage(QFrame):
         )
         self._thread.progress_signal.connect(self._on_progress)
         self._thread.finished_signal.connect(self._on_finished)
+        self._thread.finished.connect(self._cleanup_thread)
 
         self._calculate_button.setEnabled(False)
         self._overlay.show_overlay("재련 결과 계산 중...", "대기 중...", 0)
@@ -2771,7 +2772,6 @@ class RefinementPage(QFrame):
 
         self._overlay.hide()
         self._calculate_button.setEnabled(True)
-        self._cleanup_thread()
 
         if is_cancelled:
             return
@@ -2794,7 +2794,7 @@ class RefinementPage(QFrame):
         self._go_tab(0)
 
     def _cleanup_thread(self) -> None:
-        """완료된 계산 스레드 정리"""
+        """QThread 완전 종료 후 참조 정리"""
 
         if self._thread is None:
             return

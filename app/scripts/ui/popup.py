@@ -3080,16 +3080,14 @@ class CustomPowerFormulaManageDialog(QDialog):
         ]
 
         # 삭제된 공식을 선택한 모든 프리셋 기준 공식 복구
-        preset_index: int
-        for preset_index, preset in enumerate(app_state.macro.presets):
-            if preset.info.calculator.selected_formula_id != formula_id:
-                continue
+        default_formula_id: str = PowerMetric.SKILL_SPEED_BOSS_DAMAGE_CHECK.value
+        for preset in app_state.macro.presets:
+            calculator = preset.info.calculator
+            if calculator.selected_formula_id == formula_id:
+                calculator.selected_formula_id = default_formula_id
 
-            app_state.macro.presets[
-                preset_index
-            ].info.calculator.selected_formula_id = (
-                PowerMetric.SKILL_SPEED_BOSS_DAMAGE_CHECK.value
-            )
+            if calculator.refinement.selected_formula_id == formula_id:
+                calculator.refinement.selected_formula_id = default_formula_id
 
         save_data()
         self._rebuild_formula_rows()
