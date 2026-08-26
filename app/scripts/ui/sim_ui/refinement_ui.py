@@ -1202,11 +1202,21 @@ class _SummarySection(_ResultSection):
                 title_label,
                 row_index,
                 0,
-                Qt.AlignmentFlag.AlignTop,
+                Qt.AlignmentFlag.AlignVCenter,
             )
 
-        detail_grid.addWidget(self._strategy_tags, 0, 1)
-        detail_grid.addWidget(self._stat_tags, 1, 1)
+        detail_grid.addWidget(
+            self._strategy_tags,
+            0,
+            1,
+            Qt.AlignmentFlag.AlignVCenter,
+        )
+        detail_grid.addWidget(
+            self._stat_tags,
+            1,
+            1,
+            Qt.AlignmentFlag.AlignVCenter,
+        )
         detail_grid.addLayout(power_row, 2, 1)
 
         body: QHBoxLayout = QHBoxLayout()
