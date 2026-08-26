@@ -274,7 +274,11 @@ def _parse_amount(text: str) -> float | None:
     return float(normalized)
 
 
-def _format_amount_input(input_widget: CustomLineEdit) -> None:
+def _format_amount_input(
+    input_widget: CustomLineEdit,
+    *,
+    preserve_zero_buffer: bool,
+) -> None:
     """재화 입력값에 천 단위 구분 기호 적용"""
 
     text: str = input_widget.text()
@@ -282,7 +286,13 @@ def _format_amount_input(input_widget: CustomLineEdit) -> None:
     if not digits or not digits.isdigit():
         return
 
-    formatted: str = f"{int(digits):,}"
+    # 첫 유효 숫자를 교체하는 동안 선행 쉼표만 숨기고 기존 자릿수 유지
+    is_zero_buffer: bool = len(digits) > 1 and not digits.strip("0")
+    formatted: str = (
+        text.strip().lstrip(",")
+        if preserve_zero_buffer and is_zero_buffer
+        else f"{int(digits):,}"
+    )
     if formatted == text:
         return
 
@@ -1611,6 +1621,12 @@ class _LuckSection(_ResultSection):
         )
         _stretch_field(self._cost_input)
         self._cost_input.input.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self._cost_input.input.editingFinished.connect(
+            lambda: _format_amount_input(
+                self._cost_input.input,
+                preserve_zero_buffer=False,
+            )
+        )
         input_card.add_widget(self._cost_input)
         self._content_layout.addWidget(input_card)
 
@@ -1654,7 +1670,10 @@ class _LuckSection(_ResultSection):
         if self._is_loading:
             return
 
-        _format_amount_input(self._cost_input.input)
+        _format_amount_input(
+            self._cost_input.input,
+            preserve_zero_buffer=True,
+        )
 
         actual_cost: float | None = _parse_amount(self._cost_input.input.text())
 
@@ -2292,6 +2311,12 @@ class RefinementPage(QFrame):
         for field in (self._budget_input, self._bundle_price_input):
             _stretch_field(field)
             field.input.setAlignment(Qt.AlignmentFlag.AlignRight)
+            field.input.editingFinished.connect(
+                lambda input_widget=field.input: _format_amount_input(
+                    input_widget,
+                    preserve_zero_buffer=False,
+                )
+            )
 
         card.add_widget(self._budget_input)
         card.add_widget(self._bundle_price_input)
@@ -2615,7 +2640,7 @@ class RefinementPage(QFrame):
     def _on_amount_input_changed(self, input_widget: CustomLineEdit) -> None:
         """재화 입력 서식 적용 후 상태 반영"""
 
-        _format_amount_input(input_widget)
+        _format_amount_input(input_widget, preserve_zero_buffer=True)
         self._on_input_changed()
 
     def _on_input_changed(self) -> None:
