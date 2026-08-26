@@ -706,6 +706,7 @@ class RefinementDistributionCanvas(_RefinementCurveCanvasBase):
 
         self._cumulative_view.setXLink(primary_view)
         self._cumulative_view.setMouseEnabled(x=False, y=False)
+        self._cumulative_view.setMenuEnabled(False)
         primary_view.sigResized.connect(self._sync_cumulative_view_geometry)
         self._sync_cumulative_view_geometry()
 
