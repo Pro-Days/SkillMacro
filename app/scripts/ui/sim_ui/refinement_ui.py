@@ -1192,7 +1192,9 @@ class _SummarySection(_ResultSection):
         power_row.addWidget(self._power_delta_label)
         power_row.addStretch(1)
 
-        for row_index, title in enumerate(("전략", "목표 단계 스탯", "재련 전후 전투력")):
+        for row_index, title in enumerate(
+            ("전략", "목표 단계 스탯 변화량", "재련 전후 전투력")
+        ):
             title_label: QLabel = QLabel(title, detail)
             title_label.setObjectName("resultsSubTitle")
             title_label.setFont(CustomFont(10))
