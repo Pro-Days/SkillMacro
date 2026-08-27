@@ -2049,9 +2049,16 @@ class _StrategySection(QFrame):
         self._on_strategies_changed()
 
     def _delete_strategy(self, strategy: RefinementStrategy) -> None:
-        """전략 삭제"""
+        """전략 삭제 및 모든 프리셋 선택 상태 복구"""
 
         app_state.macro.refinement_strategies.remove(strategy)
+
+        # 삭제된 전략을 참조하는 프리셋을 유효한 기본 전략 모드로 복구
+        for preset in app_state.macro.presets:
+            refinement: RefinementInput = preset.info.calculator.refinement
+            if refinement.selected_strategy_id == strategy.id:
+                refinement.strategy_mode = RefinementStrategyMode.AUTO
+                refinement.selected_strategy_id = ""
 
         # 편집 중이던 전략이 삭제되면 폼도 초기화
         if self._editing_strategy_id == strategy.id:
@@ -2622,12 +2629,18 @@ class RefinementPage(QFrame):
     def _on_strategies_changed(self) -> None:
         """전략 목록 변경 후 선택지 동기화"""
 
+        refinement: RefinementInput = self._get_refinement_input()
         self._is_loading_state = True
+        self._strategy_mode_input.combobox.setCurrentIndex(
+            list(RefinementStrategyMode).index(refinement.strategy_mode)
+        )
         self._refresh_strategy_options()
         self._is_loading_state = False
 
         self._update_strategy_enabled()
-        self._on_input_changed()
+        if refinement.strategy_mode == RefinementStrategyMode.USER:
+            self._on_input_changed()
+
         self._sync_content_height()
 
     def _on_actual_result_changed(self, actual_cost: float) -> None:
