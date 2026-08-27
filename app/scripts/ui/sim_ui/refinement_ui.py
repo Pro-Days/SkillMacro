@@ -89,6 +89,7 @@ from app.scripts.ui.sim_ui.graph import get_graph_palette
 from app.scripts.ui.sim_ui.refinement_graph import (
     RefinementDistributionCanvas,
     RefinementSignedDeltaBarCanvas,
+    RefinementStepBarCanvas,
     RefinementStepLineCanvas,
 )
 
@@ -1393,6 +1394,19 @@ class _TargetAnalysisSection(_ResultSection):
         self._distribution_card.add_widget(self._distribution_container)
         self._content_layout.addWidget(self._distribution_card)
 
+        total_cost_card: SectionCard = SectionCard(
+            self._content,
+            "단계별 총 비용 그래프",
+        )
+        self._total_cost_container: QFrame = QFrame(total_cost_card)
+        self._total_cost_layout: QVBoxLayout = QVBoxLayout(
+            self._total_cost_container
+        )
+        self._total_cost_layout.setContentsMargins(0, 0, 0, 0)
+        self._total_cost_layout.setSpacing(10)
+        total_cost_card.add_widget(self._total_cost_container)
+        self._content_layout.addWidget(total_cost_card)
+
         expectation_card: SectionCard = SectionCard(
             self._content,
             "단계별 도달 확률과 기대 소모량",
@@ -1470,10 +1484,11 @@ class _TargetAnalysisSection(_ResultSection):
         self._apply_graphs(report)
 
     def _apply_graphs(self, report: RefinementReport) -> None:
-        """재련비 분포와 단계별 도달 확률 그래프 재구성"""
+        """재련비 분포와 단계별 도달 확률·총 비용 그래프 재구성"""
 
         _clear_layout(self._distribution_layout)
         _clear_layout(self._reach_probability_layout)
+        _clear_layout(self._total_cost_layout)
         row: RefinementTargetRow = report.target_row
 
         self._distribution_layout.addWidget(
@@ -1484,7 +1499,7 @@ class _TargetAnalysisSection(_ResultSection):
             )
         )
 
-        reach_steps: tuple[int, ...] = tuple(
+        target_steps: tuple[int, ...] = tuple(
             target_row.target_step for target_row in report.rows
         )
         reach_probabilities: tuple[float, ...] = tuple(
@@ -1494,7 +1509,7 @@ class _TargetAnalysisSection(_ResultSection):
             RefinementStepLineCanvas(
                 self._reach_probability_container,
                 "",
-                reach_steps,
+                target_steps,
                 reach_probabilities,
                 _format_probability,
                 _REACH_PROBABILITY_GUIDE_VALUES,
@@ -1507,6 +1522,19 @@ class _TargetAnalysisSection(_ResultSection):
             _GraphLegend(
                 self._reach_probability_container,
                 (("선택한 목표", get_graph_palette().dpm_median_bar, True),),
+            )
+        )
+
+        total_costs: tuple[float, ...] = tuple(
+            target_row.expected.economic_cost for target_row in report.rows
+        )
+        self._total_cost_layout.addWidget(
+            RefinementStepBarCanvas(
+                self._total_cost_container,
+                "",
+                target_steps,
+                total_costs,
+                _format_amount,
             )
         )
 
