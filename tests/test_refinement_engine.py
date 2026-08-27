@@ -30,6 +30,7 @@ from app.scripts.refinement_engine import (
     build_plan,
     choose_auto_strategy,
     compute_distributions,
+    compute_economic_cost_distribution,
     compute_expected_totals,
     expected_weight_total,
     point_price_from_bundle,
@@ -197,6 +198,43 @@ def test_distribution_reproduces_expected_value_and_total_mass() -> None:
 
     # 목표 단계가 높을수록 같은 확률 기준 준비량이 커야 함
     assert distributions[5].quantile(0.9) < distribution.quantile(0.9)
+
+
+def test_economic_cost_distribution_includes_assist_point_value() -> None:
+    """총 비용 분포가 재련비와 강화포인트 환산액을 함께 반영하는지 검증"""
+
+    assist_points: tuple[int, ...] = (3,) * REFINE_ATTEMPT_STEP_COUNT
+    plan: RefinementPlan = build_plan(50, False, False, assist_points)
+    point_price: float = point_price_from_bundle(100000.0)
+    distribution: RefinementDistribution = compute_economic_cost_distribution(
+        plan,
+        point_price,
+        0,
+        10,
+    )
+    expected: ExpectedTotals = compute_expected_totals(plan, 0, 10, point_price)
+
+    assert distribution.unit_value == pytest.approx(plan.cost_unit_value)
+    assert distribution.total_mass() == pytest.approx(1.0, abs=1e-9)
+    assert distribution.mean() == pytest.approx(expected.economic_cost, rel=1e-6)
+
+
+def test_economic_cost_distribution_keeps_refinement_grid_floor() -> None:
+    """총 비용 격자가 할인된 재련비 단위보다 촘촘해지지 않는지 검증"""
+
+    assist_points: tuple[int, ...] = (3,) * REFINE_ATTEMPT_STEP_COUNT
+    plan: RefinementPlan = build_plan(50, True, True, assist_points)
+    point_price: float = point_price_from_bundle(100000.0)
+    distribution: RefinementDistribution = compute_economic_cost_distribution(
+        plan,
+        point_price,
+        0,
+        10,
+    )
+    expected: ExpectedTotals = compute_expected_totals(plan, 0, 10, point_price)
+
+    assert distribution.unit_value == pytest.approx(plan.cost_unit_value)
+    assert distribution.mean() == pytest.approx(expected.economic_cost, rel=0.01)
 
 
 def test_distribution_quantiles_are_monotonic() -> None:

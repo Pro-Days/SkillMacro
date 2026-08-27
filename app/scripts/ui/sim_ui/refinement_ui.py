@@ -66,6 +66,7 @@ from app.scripts.refinement_data import (
 )
 from app.scripts.refinement_engine import (
     PREPARATION_PROBABILITIES,
+    RefinementDistribution,
     RefinementEfficiencyRow,
     RefinementInputError,
     RefinementReport,
@@ -106,7 +107,7 @@ _INPUT_COLUMN_MIN_WIDTH: int = 300
 # Qt 위젯 폭 상한 (폭 제한을 푸는 용도)
 _UNLIMITED_WIDTH: int = 16_777_215
 
-# 재련비 분포 그래프의 90% 분위수 배열 위치
+# 비용 분포 그래프의 90% 분위수 배열 위치
 _DISTRIBUTION_PERCENTILE_INDEX: int = PREPARATION_PROBABILITIES.index(0.9)
 
 # 단계별 도달 확률 그래프의 강조 눈금
@@ -757,17 +758,19 @@ def _build_efficiency_delta_series(
     )
 
 
-def _build_cost_distribution_canvas(
+def _build_distribution_canvas(
     parent: QWidget,
-    report: RefinementReport,
+    distribution: RefinementDistribution,
+    expected_value: float,
+    percentile_value: float,
+    minimum_unit: float,
     result_marker: tuple[str, float] | None,
 ) -> RefinementDistributionCanvas:
-    """목표·재화 분석과 운빨 분석이 공유하는 재련비 분포 그래프 구성"""
+    """목표·재화 분석과 운빨 분석이 공유하는 비용 분포 그래프 구성"""
 
-    row: RefinementTargetRow = report.target_row
     common_markers: tuple[tuple[str, float], ...] = (
-        ("기대값", row.expected.cost),
-        ("90%", row.cost_quantiles[_DISTRIBUTION_PERCENTILE_INDEX]),
+        ("기대값", expected_value),
+        ("90%", percentile_value),
     )
     markers: tuple[tuple[str, float], ...] = (
         common_markers
@@ -778,9 +781,9 @@ def _build_cost_distribution_canvas(
     return RefinementDistributionCanvas(
         parent,
         "",
-        report.cost_distribution,
+        distribution,
         _format_amount,
-        min(report.plan.costs),
+        minimum_unit,
         markers,
     )
 
@@ -1383,7 +1386,7 @@ class _TargetAnalysisSection(_ResultSection):
 
         self._distribution_card: SectionCard = SectionCard(
             self._content,
-            "재련비 분포",
+            "총 비용",
         )
         self._distribution_container: QFrame = QFrame(self._distribution_card)
         self._distribution_layout: QVBoxLayout = QVBoxLayout(
@@ -1480,21 +1483,33 @@ class _TargetAnalysisSection(_ResultSection):
         self._cost_table.set_rows(tuple(cost_rows), highlight_index)
         self._point_table.set_rows(tuple(point_rows), highlight_index)
 
-        self._distribution_card.set_title(f"{report.target_step}강 재련비 분포")
+        self._distribution_card.set_title(f"{report.target_step}강 총 비용")
         self._apply_graphs(report)
 
     def _apply_graphs(self, report: RefinementReport) -> None:
-        """재련비 분포와 단계별 도달 확률·총 비용 그래프 재구성"""
+        """총 비용 분포와 단계별 도달 확률·총 비용 그래프 재구성"""
 
         _clear_layout(self._distribution_layout)
         _clear_layout(self._reach_probability_layout)
         _clear_layout(self._total_cost_layout)
         row: RefinementTargetRow = report.target_row
 
+        economic_distribution: RefinementDistribution = (
+            report.economic_cost_distribution
+        )
+        minimum_economic_cost: float = min(
+            cost + points * report.point_price
+            for cost, points in zip(report.plan.costs, report.plan.assist_points)
+        )
         self._distribution_layout.addWidget(
-            _build_cost_distribution_canvas(
+            _build_distribution_canvas(
                 self._distribution_container,
-                report,
+                economic_distribution,
+                row.expected.economic_cost,
+                economic_distribution.quantile(
+                    PREPARATION_PROBABILITIES[_DISTRIBUTION_PERCENTILE_INDEX]
+                ),
+                minimum_economic_cost,
                 ("보유 재화", report.budget) if report.budget > 0.0 else None,
             )
         )
@@ -1744,9 +1759,12 @@ class _LuckSection(_ResultSection):
         # 분포 위 내 결과 위치 그래프 재구성
         _clear_layout(self._graph_layout)
         self._graph_layout.addWidget(
-            _build_cost_distribution_canvas(
+            _build_distribution_canvas(
                 self._graph_container,
-                report,
+                report.cost_distribution,
+                row.expected.cost,
+                row.cost_quantiles[_DISTRIBUTION_PERCENTILE_INDEX],
+                min(report.plan.costs),
                 ("사용 재련비", actual_cost),
             )
         )

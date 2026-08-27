@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from math import gcd
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -195,6 +196,7 @@ class RefinementReport:
     efficiency_rows: tuple[RefinementEfficiencyRow, ...]
     reachable_steps: tuple[tuple[float, int], ...]
     cost_distribution: RefinementDistribution
+    economic_cost_distribution: RefinementDistribution
     baseline_power: float | None
     power_error: str | None
     formula_label: str
@@ -482,6 +484,55 @@ def compute_distributions(
     }
 
 
+def compute_economic_cost_distribution(
+    plan: RefinementPlan,
+    point_price: float,
+    start_step: int,
+    target_step: int,
+) -> RefinementDistribution:
+    """재련비와 강화포인트 환산액을 합친 총 비용 분포 계산"""
+
+    attempt_costs: tuple[float, ...] = tuple(
+        cost + points * point_price
+        for cost, points in zip(plan.costs, plan.assist_points)
+    )
+    expected_cost: float = expected_weight_total(
+        plan.success_rates,
+        attempt_costs,
+        start_step,
+        target_step,
+    )
+
+    # 재련비와 포인트 환산액을 모두 정확히 표현하는 최대 금액 단위 계산
+    scaled_attempt_costs: tuple[int, ...] = tuple(
+        int(round(cost * POINT_BUNDLE_SIZE))
+        for cost in attempt_costs[:target_step]
+    )
+    common_unit: float = float(gcd(*scaled_attempt_costs)) / POINT_BUNDLE_SIZE
+
+    # 기존 재련비 분포보다 촘촘해지지 않도록 하고,
+    # 공약수가 지나치게 작을 때는 최대 FFT 격자 범위에 맞춰 단위 확대
+    grid_limited_unit: float = (
+        expected_cost * float(_GRID_MEAN_FACTOR) / float(_MAX_GRID_SIZE)
+    )
+    unit_value: float = max(
+        plan.cost_unit_value,
+        common_unit,
+        grid_limited_unit,
+    )
+    weight_units: tuple[int, ...] = tuple(
+        max(1, int(round(cost / unit_value))) for cost in attempt_costs
+    )
+
+    return compute_distributions(
+        plan.success_rates,
+        weight_units,
+        unit_value,
+        start_step,
+        (target_step,),
+    )[target_step]
+
+
 def choose_auto_strategy(
     level_cap: int,
     use_refine_pet: bool,
@@ -713,7 +764,7 @@ def build_refinement_report(
     )
 
     if progress_callback is not None:
-        progress_callback("재련비 분포 계산 중...", 10)
+        progress_callback("비용 분포 계산 중...", 10)
 
     if cancel_checker is not None:
         cancel_checker()
@@ -740,6 +791,15 @@ def build_refinement_report(
         1.0,
         start_step,
         target_steps,
+    )
+
+    economic_cost_distribution: RefinementDistribution = (
+        compute_economic_cost_distribution(
+            plan,
+            point_price,
+            start_step,
+            refinement.target_step,
+        )
     )
 
     if progress_callback is not None:
@@ -923,6 +983,7 @@ def build_refinement_report(
         efficiency_rows=tuple(efficiency_rows),
         reachable_steps=_build_reachable_steps(tuple(rows), start_step),
         cost_distribution=cost_distributions[refinement.target_step],
+        economic_cost_distribution=economic_cost_distribution,
         baseline_power=baseline_power,
         power_error=power_error,
         formula_label=formula_label,
