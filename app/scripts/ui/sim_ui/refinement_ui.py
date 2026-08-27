@@ -701,14 +701,14 @@ def _build_efficiency_delta_series(
     if not power_rows:
         return None
 
-    # 0강 기준 효율을 0으로 두고 각 단계의 누적 효율 계산
+    # 유효한 최저 단계의 효율을 0으로 두고 각 단계의 누적 효율 계산
     efficiency_values: tuple[float, ...] = (0.0,) + tuple(
         efficiency_row.power_delta
         / math.log10(efficiency_row.expected_economic_cost)
         for efficiency_row in power_rows
     )
 
-    # 1강−0강부터 n강−(n−1)강까지 변화량과 표시 단계 구성
+    # 기준 다음 단계부터 n강−(n−1)강까지 변화량과 표시 단계 구성
     steps: tuple[int, ...] = tuple(
         efficiency_row.target_step for efficiency_row in power_rows
     )

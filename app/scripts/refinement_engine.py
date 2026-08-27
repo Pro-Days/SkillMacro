@@ -43,6 +43,7 @@ from app.scripts.refinement_data import (
     REFINE_BASE_SUCCESS_RATES,
     REFINE_COST_UNIT,
     REFINEMENT_ASSIST_SPECS,
+    REFINEMENT_STAT_KEYS,
     refine_cost_multiplier,
     refinement_stat_delta,
 )
@@ -171,7 +172,7 @@ class RefinementTargetRow:
 
 @dataclass(frozen=True, slots=True)
 class RefinementEfficiencyRow:
-    """0강 기준 목표 단계 하나의 효율 계산 입력"""
+    """유효한 최저 단계 기준 목표 단계 하나의 효율 계산 입력"""
 
     target_step: int
     expected_economic_cost: float
@@ -766,30 +767,37 @@ def build_refinement_report(
     except (ValueError, KeyError, ZeroDivisionError) as error:
         power_error = str(error) or "전투력을 계산할 수 없습니다."
 
-    # 0강 기준 단계별 효율 계산 입력 구성
-    zero_step_power: float | None = None
+    # 역산한 베이스 스탯이 음수가 아닌 최저 재련 단계 결정
+    efficiency_baseline_step: int | None = None
     if context is not None:
-        zero_step_power = context.baseline_power + evaluate_arbitrary_stat_delta(
-            context,
-            refinement_stat_delta(refinement.equipment, start_step, 0),
-            refinement.selected_formula_id,
-        )
+        refinement_stat_keys: tuple[StatKey, StatKey, StatKey] = REFINEMENT_STAT_KEYS[
+            refinement.equipment
+        ]
+        for candidate_step in range(MAX_REFINE_STEP + 1):
+            candidate_base_stats: BaseStats = context.baseline_base_stats.with_changes(
+                refinement_stat_delta(
+                    refinement.equipment,
+                    start_step,
+                    candidate_step,
+                )
+            )
+            if any(
+                candidate_base_stats.values[stat_key.value] < 0.0
+                for stat_key in refinement_stat_keys
+            ):
+                continue
 
+            efficiency_baseline_step = candidate_step
+            break
+
+    # 현재 시작 단계 기준 전투력 변화량 공유 캐시 구성
     power_deltas_from_current: dict[int, float] = {}
-    efficiency_rows: list[RefinementEfficiencyRow] = []
-    for target_step in range(1, MAX_REFINE_STEP + 1):
-        if cancel_checker is not None:
-            cancel_checker()
+    if context is not None:
+        for target_step in range(1, MAX_REFINE_STEP + 1):
+            if cancel_checker is not None:
+                cancel_checker()
 
-        expected_from_zero: ExpectedTotals = compute_expected_totals(
-            plan,
-            0,
-            target_step,
-            point_price,
-        )
-        power_delta_from_zero: float | None = None
-        if context is not None and zero_step_power is not None:
-            power_delta_from_current: float = evaluate_arbitrary_stat_delta(
+            power_deltas_from_current[target_step] = evaluate_arbitrary_stat_delta(
                 context,
                 refinement_stat_delta(
                     refinement.equipment,
@@ -798,18 +806,56 @@ def build_refinement_report(
                 ),
                 refinement.selected_formula_id,
             )
-            power_deltas_from_current[target_step] = power_delta_from_current
-            power_delta_from_zero = (
-                context.baseline_power + power_delta_from_current - zero_step_power
-            )
 
-        efficiency_rows.append(
-            RefinementEfficiencyRow(
-                target_step=target_step,
-                expected_economic_cost=expected_from_zero.economic_cost,
-                power_delta=power_delta_from_zero,
-            )
+    # 유효한 최저 단계부터의 누적 비용과 전투력 기준 효율 구성
+    efficiency_rows: list[RefinementEfficiencyRow] = []
+    if context is not None and efficiency_baseline_step is not None:
+        baseline_power_delta: float = evaluate_arbitrary_stat_delta(
+            context,
+            refinement_stat_delta(
+                refinement.equipment,
+                start_step,
+                efficiency_baseline_step,
+            ),
+            refinement.selected_formula_id,
         )
+        for target_step in range(efficiency_baseline_step + 1, MAX_REFINE_STEP + 1):
+            if cancel_checker is not None:
+                cancel_checker()
+
+            expected_from_baseline: ExpectedTotals = compute_expected_totals(
+                plan,
+                efficiency_baseline_step,
+                target_step,
+                point_price,
+            )
+            efficiency_rows.append(
+                RefinementEfficiencyRow(
+                    target_step=target_step,
+                    expected_economic_cost=expected_from_baseline.economic_cost,
+                    power_delta=(
+                        power_deltas_from_current[target_step] - baseline_power_delta
+                    ),
+                )
+            )
+    elif context is None:
+        for target_step in range(1, MAX_REFINE_STEP + 1):
+            if cancel_checker is not None:
+                cancel_checker()
+
+            expected_from_zero: ExpectedTotals = compute_expected_totals(
+                plan,
+                0,
+                target_step,
+                point_price,
+            )
+            efficiency_rows.append(
+                RefinementEfficiencyRow(
+                    target_step=target_step,
+                    expected_economic_cost=expected_from_zero.economic_cost,
+                    power_delta=None,
+                )
+            )
 
     # 현재 시작 단계 기준 목표 단계별 결과 행 구성
     rows: list[RefinementTargetRow] = []
