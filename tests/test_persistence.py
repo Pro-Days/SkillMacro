@@ -16,7 +16,11 @@ from app.scripts.character_models import (
     AdditionalStatLine,
     CharacterProfile,
     CharacterStore,
+    DisplayStandColumn,
+    DisplayStandInputMode,
+    DisplayStandState,
     EquipmentSlot,
+    ReforgeInputMode,
 )
 from app.scripts.calculator_models import (
     CalculatorPresetInput,
@@ -320,6 +324,84 @@ def test_load_characters_migrates_v2_vambrace_slot(
     )
     assert loaded.characters[0].equipment.equipped[EquipmentSlot.VAMBRACE] is None
     assert _list_backups(isolated_data_paths["data_path"], "characters") == []
+
+
+def test_load_characters_migrates_v3_inputs_to_manual_mode(
+    isolated_data_paths: dict[str, str],
+) -> None:
+    """v3 장비·진열대 수치를 직접 입력으로 보존하는 마이그레이션 검증"""
+
+    store_payload: dict[str, Any] = CharacterStore.create_default().to_dict()
+    store_payload["version"] = 3
+    raw_character: dict[str, Any] = store_payload["characters"][0]
+    raw_character["equipment"]["owned"].append(
+        {
+            "name": "기존 무기",
+            "kind": "weapon",
+            "item_name": None,
+            "level": 0,
+            "tier": 1,
+            "grade": "basic",
+            "base_stat_lines": [],
+            "reforge_step": 10,
+            "reforge_stats": {"attack": 31.0, "attack_percent": 1.5},
+            "scrolls": [],
+            "potentials": [None, None, None],
+            "additionals": [None, None, None],
+        }
+    )
+    raw_character["display_stand"] = {
+        "entries": {
+            "찬란한 가죽": {
+                "helmet": 1.25,
+            }
+        }
+    }
+    _write_text(
+        isolated_data_paths["characters_file_dir"],
+        json.dumps(store_payload, ensure_ascii=False),
+    )
+
+    loaded: CharacterStore = data_manager.load_characters()
+
+    migrated_equipment = loaded.characters[0].equipment.owned[0]
+    assert migrated_equipment.reforge_mode == ReforgeInputMode.MANUAL
+    assert migrated_equipment.reforge_step is None
+    assert migrated_equipment.reforge_stats == {
+        StatKey.ATTACK: 31.0,
+        StatKey.ATTACK_PERCENT: 1.5,
+    }
+    migrated_stand = loaded.characters[0].display_stand
+    assert migrated_stand.input_mode == DisplayStandInputMode.MANUAL
+    assert migrated_stand.entries["찬란한 가죽"] == {
+        DisplayStandColumn.HELMET: 1.25
+    }
+    assert migrated_stand.step_entries == {}
+    assert _list_backups(isolated_data_paths["data_path"], "characters") == []
+
+
+def test_display_stand_serialization_excludes_derived_set_step() -> None:
+    """자동 세트 단계가 저장 데이터에서 제거되는지 검증"""
+
+    state = DisplayStandState.from_dict(
+        {
+            "input_mode": DisplayStandInputMode.STEP.value,
+            "entries": {},
+            "step_entries": {
+                "찬란한 가죽": {
+                    DisplayStandColumn.HELMET.value: 10,
+                    DisplayStandColumn.SET.value: 8,
+                }
+            },
+        }
+    )
+
+    assert state.step_entries == {
+        "찬란한 가죽": {DisplayStandColumn.HELMET: 10}
+    }
+    assert state.to_dict()["step_entries"] == {
+        "찬란한 가죽": {DisplayStandColumn.HELMET.value: 10}
+    }
 
 
 def test_save_then_load_characters_preserves_state(

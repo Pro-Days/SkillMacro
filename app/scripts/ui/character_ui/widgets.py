@@ -30,6 +30,9 @@ from app.scripts.character_models import MAX_CHARACTER_INPUT_VALUE
 from app.scripts.custom_classes import CustomFont, StyledButton
 
 
+CHARACTER_FIELD_HEIGHT: int = 34
+
+
 class CharComboBox(QComboBox):
     """공유 콤보박스"""
 
@@ -195,7 +198,7 @@ class StepperField(QFrame):
             )
             layout.addWidget(unit_label)
 
-        self.setFixedHeight(34)
+        self.setFixedHeight(CHARACTER_FIELD_HEIGHT)
         self.setMaximumWidth(max_width if max_width else 132)
 
     def number(self) -> float:
@@ -250,7 +253,7 @@ class StaticValueField(QFrame):
             )
             layout.addWidget(unit_label)
 
-        self.setFixedHeight(34)
+        self.setFixedHeight(CHARACTER_FIELD_HEIGHT)
         self.setMaximumWidth(132)
 
     def set_number(self, value: float) -> None:

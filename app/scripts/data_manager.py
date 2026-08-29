@@ -393,7 +393,7 @@ def migrate_character_data_file(file_path: str) -> None:
 
     try:
         raw: dict[str, Any] = raw_obj
-        if raw.get("version") not in (1, 2):
+        if raw.get("version") not in (1, 2, 3):
             return
 
         raw_characters: object = raw["characters"]
@@ -425,6 +425,35 @@ def migrate_character_data_file(file_path: str) -> None:
                 raw_equipped["vambrace"] = None
 
             raw["version"] = 3
+
+        if raw["version"] == 3:
+            for raw_character in raw_characters:
+                if not isinstance(raw_character, dict):
+                    return
+
+                raw_equipment = raw_character["equipment"]
+                if not isinstance(raw_equipment, dict):
+                    return
+
+                raw_owned: object = raw_equipment["owned"]
+                if not isinstance(raw_owned, list):
+                    return
+
+                for raw_item in raw_owned:
+                    if not isinstance(raw_item, dict):
+                        return
+
+                    raw_item["reforge_mode"] = "manual"
+                    raw_item["reforge_step"] = None
+
+                raw_display_stand: object = raw_character["display_stand"]
+                if not isinstance(raw_display_stand, dict):
+                    return
+
+                raw_display_stand["input_mode"] = "manual"
+                raw_display_stand["step_entries"] = {}
+
+            raw["version"] = 4
 
     except (KeyError, TypeError, ValueError):
         return

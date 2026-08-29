@@ -3,6 +3,11 @@ from __future__ import annotations
 import pytest
 
 from app.scripts.calculator_models import REALM_TIER_SPECS, RealmTier, StatKey
+from app.scripts.character_data import (
+    DISPLAY_STAND_SPECS,
+    display_stand_set_step,
+    display_stand_step_value,
+)
 from app.scripts.character_engine import (
     CHARACTER_BASE_HP,
     CHARACTER_HP_PER_LEVEL,
@@ -33,10 +38,14 @@ from app.scripts.character_models import (
     CharacterTalisman,
     CharacterTitle,
     DanjeonDistribution,
+    DisplayStandColumn,
+    DisplayStandInputMode,
     EquipmentFreeStatLine,
+    EquipmentGrade,
     EquipmentKind,
     EquipmentSlot,
     OwnedEquipment,
+    ReforgeInputMode,
     StatDistribution,
     TitleStatSlot,
     TALISMAN_SPECS,
@@ -197,6 +206,130 @@ def test_live_view_aggregates_inputs_hand_computed(
     # 최종 스탯의 resolve 일관성과 공식 전투력 양수 확인
     assert live.final.values == live.base.resolve().values
     assert live.official_power > 0.0
+
+
+def test_live_view_uses_fixed_equipment_reforge_step_values(
+    basic_profile: CharacterProfile,
+) -> None:
+    """장비 단계 모드가 공통 재련표의 누적 수치를 합산하는지 검증"""
+
+    weapon = create_equipment(
+        basic_profile,
+        OwnedEquipment(
+            name="자동 재련 무기",
+            kind=EquipmentKind.WEAPON,
+            level=0,
+            tier=1,
+            grade=EquipmentGrade.BASIC,
+            reforge_mode=ReforgeInputMode.STEP,
+            reforge_step=10,
+        ),
+    )
+    equip_equipment(basic_profile, EquipmentSlot.WEAPON, weapon.name)
+
+    base_values = compute_live_view(basic_profile).base.values
+
+    assert base_values[StatKey.ATTACK] == pytest.approx(60.0)
+    assert base_values[StatKey.ATTACK_PERCENT] == pytest.approx(2.0)
+    assert base_values[StatKey.SKILL_DAMAGE_PERCENT] == pytest.approx(3.0)
+
+
+def test_live_view_uses_only_active_display_stand_source(
+    basic_profile: CharacterProfile,
+) -> None:
+    """진열대 자동 단계와 직접 입력 데이터 중 활성 방식만 합산하는지 검증"""
+
+    stand_name: str = DISPLAY_STAND_SPECS[0].name
+    basic_profile.display_stand.input_mode = DisplayStandInputMode.STEP
+    basic_profile.display_stand.entries = {
+        stand_name: {DisplayStandColumn.HELMET: 999.0}
+    }
+    basic_profile.display_stand.step_entries = {
+        stand_name: {
+            DisplayStandColumn.HELMET: 10,
+            DisplayStandColumn.ARMOR: 10,
+            DisplayStandColumn.BELT: 10,
+            DisplayStandColumn.SHOES: 8,
+        }
+    }
+
+    base_values = compute_live_view(basic_profile).base.values
+
+    assert base_values[StatKey.EXP_PERCENT] == pytest.approx(2.2)
+    assert base_values[StatKey.ATTACK] == pytest.approx(11.0)
+    assert base_values[StatKey.DROP_RATE_PERCENT] == pytest.approx(2.2)
+    assert base_values[StatKey.ATTACK_PERCENT] == pytest.approx(3.7)
+    assert base_values[StatKey.STR_PERCENT] == pytest.approx(1.6)
+    assert base_values[StatKey.DEXTERITY_PERCENT] == pytest.approx(1.6)
+    assert base_values[StatKey.VITALITY_PERCENT] == pytest.approx(1.6)
+    assert base_values[StatKey.LUCK_PERCENT] == pytest.approx(1.6)
+
+    del basic_profile.display_stand.step_entries[stand_name][
+        DisplayStandColumn.HELMET
+    ]
+    incomplete_values = compute_live_view(basic_profile).base.values
+
+    assert incomplete_values[StatKey.EXP_PERCENT] == pytest.approx(0.0)
+    assert incomplete_values[StatKey.STR_PERCENT] == pytest.approx(0.0)
+    assert incomplete_values[StatKey.DEXTERITY_PERCENT] == pytest.approx(0.0)
+    assert incomplete_values[StatKey.VITALITY_PERCENT] == pytest.approx(0.0)
+    assert incomplete_values[StatKey.LUCK_PERCENT] == pytest.approx(0.0)
+
+
+def test_display_stand_set_step_is_derived_from_all_four_equipment_steps() -> None:
+    """세트 단계의 최저 단계 적용과 미진열 전파 규칙 검증"""
+
+    entry = {
+        DisplayStandColumn.HELMET: 10,
+        DisplayStandColumn.ARMOR: 10,
+        DisplayStandColumn.BELT: 10,
+        DisplayStandColumn.SHOES: 8,
+    }
+
+    assert display_stand_set_step(entry) == 8
+    del entry[DisplayStandColumn.HELMET]
+    assert display_stand_set_step(entry) is None
+
+
+def test_display_stand_auto_set_step_cannot_be_stored(
+    basic_profile: CharacterProfile,
+) -> None:
+    """자동 세트 단계를 독립 입력값으로 저장할 수 없는지 검증"""
+
+    basic_profile.display_stand.step_entries = {
+        DISPLAY_STAND_SPECS[0].name: {DisplayStandColumn.SET: 8}
+    }
+
+    with pytest.raises(ValueError, match="auto column is not editable"):
+        validate_character_profile(basic_profile)
+
+
+def test_display_stand_step_values_follow_full_fixed_table() -> None:
+    """진열대 0~20강 전체 수치가 확정 규칙을 따르는지 검증"""
+
+    for step in range(21):
+        assert display_stand_step_value(
+            DisplayStandColumn.HELMET, step
+        ) == pytest.approx(0.2 * (step + 1))
+        assert display_stand_step_value(
+            DisplayStandColumn.ARMOR, step
+        ) == pytest.approx(float(step + 1))
+        assert display_stand_step_value(
+            DisplayStandColumn.BELT, step
+        ) == pytest.approx(0.4 if step == 0 else 0.2 * (step + 1))
+        assert display_stand_step_value(
+            DisplayStandColumn.SHOES, step
+        ) == pytest.approx(0.3 * (step + 1))
+
+        if step == 0:
+            expected_set_value: float = 0.1
+        elif step <= 10:
+            expected_set_value = 0.2 * step
+        else:
+            expected_set_value = 0.4 * step - 2.0
+        assert display_stand_step_value(
+            DisplayStandColumn.SET, step
+        ) == pytest.approx(expected_set_value)
 
 
 def test_calculator_input_fill_matches_profile(

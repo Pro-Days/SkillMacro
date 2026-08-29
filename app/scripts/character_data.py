@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.scripts.calculator_models import StatKey
+from app.scripts.calculator_models import RefinementEquipment, StatKey
 from app.scripts.character_models import (
     AdditionalOption,
     DisplayStandColumn,
@@ -11,6 +11,7 @@ from app.scripts.character_models import (
     PotentialOption,
     ScrollTier,
 )
+from app.scripts.refinement_data import REFINEMENT_STAT_KEYS
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,38 +80,28 @@ ARMOR_SLOT_STAT_KEYS: dict[EquipmentSlot, StatKey] = {
 }
 
 
-EQUIPMENT_REFORGE_STAT_KEYS: dict[EquipmentSlot, tuple[StatKey, ...]] = {
-    EquipmentSlot.HELMET: (
-        StatKey.LUCK,
-        StatKey.LUCK_PERCENT,
-        StatKey.EXP_PERCENT,
-    ),
-    EquipmentSlot.ARMOR: (
-        StatKey.STR,
-        StatKey.STR_PERCENT,
-        StatKey.EXP_PERCENT,
-    ),
-    EquipmentSlot.BELT: (
-        StatKey.VITALITY,
-        StatKey.VITALITY_PERCENT,
-        StatKey.EXP_PERCENT,
-    ),
-    EquipmentSlot.SHOES: (
-        StatKey.DEXTERITY,
-        StatKey.DEXTERITY_PERCENT,
-        StatKey.EXP_PERCENT,
-    ),
-    EquipmentSlot.WEAPON: (
-        StatKey.ATTACK,
-        StatKey.ATTACK_PERCENT,
-        StatKey.SKILL_DAMAGE_PERCENT,
-    ),
-    EquipmentSlot.RING1: (),
-    EquipmentSlot.RING2: (),
-    EquipmentSlot.NECKLACE: (),
-    EquipmentSlot.EARRING: (),
-    EquipmentSlot.VAMBRACE: (),
+REFORGE_EQUIPMENT_BY_SLOT: dict[EquipmentSlot, RefinementEquipment] = {
+    EquipmentSlot.HELMET: RefinementEquipment.HELMET,
+    EquipmentSlot.ARMOR: RefinementEquipment.ARMOR,
+    EquipmentSlot.BELT: RefinementEquipment.BELT,
+    EquipmentSlot.SHOES: RefinementEquipment.SHOES,
+    EquipmentSlot.WEAPON: RefinementEquipment.WEAPON,
 }
+
+
+EQUIPMENT_REFORGE_STAT_KEYS: dict[EquipmentSlot, tuple[StatKey, ...]] = {
+    slot: REFINEMENT_STAT_KEYS[equipment]
+    for slot, equipment in REFORGE_EQUIPMENT_BY_SLOT.items()
+}
+EQUIPMENT_REFORGE_STAT_KEYS.update(
+    {
+        EquipmentSlot.RING1: (),
+        EquipmentSlot.RING2: (),
+        EquipmentSlot.NECKLACE: (),
+        EquipmentSlot.EARRING: (),
+        EquipmentSlot.VAMBRACE: (),
+    }
+)
 
 
 NECKLACE_REFORGE_STAT_KEYS: dict[str, tuple[StatKey, ...]] = {
@@ -1157,6 +1148,67 @@ DISPLAY_STAND_SPECS: tuple[DisplayStandSpec, ...] = tuple(
         key=lambda spec: (spec.level, -spec.tier),
     )
 )
+
+
+# 진열대 단계별 누적 수치
+# 열 순서: 투구 경험치%, 갑옷 공격력, 허리띠 드랍률%, 신발 공격력%, 세트 올스탯%
+_DISPLAY_STAND_STEP_VALUES: tuple[
+    tuple[float, float, float, float, float], ...
+] = (
+    (0.2, 1.0, 0.4, 0.3, 0.1),
+    (0.4, 2.0, 0.4, 0.6, 0.2),
+    (0.6, 3.0, 0.6, 0.9, 0.4),
+    (0.8, 4.0, 0.8, 1.2, 0.6),
+    (1.0, 5.0, 1.0, 1.5, 0.8),
+    (1.2, 6.0, 1.2, 1.8, 1.0),
+    (1.4, 7.0, 1.4, 2.1, 1.2),
+    (1.6, 8.0, 1.6, 2.4, 1.4),
+    (1.8, 9.0, 1.8, 2.7, 1.6),
+    (2.0, 10.0, 2.0, 3.0, 1.8),
+    (2.2, 11.0, 2.2, 3.3, 2.0),
+    (2.4, 12.0, 2.4, 3.6, 2.4),
+    (2.6, 13.0, 2.6, 3.9, 2.8),
+    (2.8, 14.0, 2.8, 4.2, 3.2),
+    (3.0, 15.0, 3.0, 4.5, 3.6),
+    (3.2, 16.0, 3.2, 4.8, 4.0),
+    (3.4, 17.0, 3.4, 5.1, 4.4),
+    (3.6, 18.0, 3.6, 5.4, 4.8),
+    (3.8, 19.0, 3.8, 5.7, 5.2),
+    (4.0, 20.0, 4.0, 6.0, 5.6),
+    (4.2, 21.0, 4.2, 6.3, 6.0),
+)
+
+_DISPLAY_STAND_COLUMN_INDEX: dict[DisplayStandColumn, int] = {
+    DisplayStandColumn.HELMET: 0,
+    DisplayStandColumn.ARMOR: 1,
+    DisplayStandColumn.BELT: 2,
+    DisplayStandColumn.SHOES: 3,
+    DisplayStandColumn.SET: 4,
+}
+
+DISPLAY_STAND_EQUIPMENT_COLUMNS: tuple[DisplayStandColumn, ...] = (
+    DisplayStandColumn.HELMET,
+    DisplayStandColumn.ARMOR,
+    DisplayStandColumn.BELT,
+    DisplayStandColumn.SHOES,
+)
+
+
+def display_stand_step_value(column: DisplayStandColumn, step: int) -> float:
+    """진열대 열과 단계에 대응하는 고정 수치 반환"""
+
+    return _DISPLAY_STAND_STEP_VALUES[step][_DISPLAY_STAND_COLUMN_INDEX[column]]
+
+
+def display_stand_set_step(
+    entry: dict[DisplayStandColumn, int],
+) -> int | None:
+    """네 장비가 모두 진열된 경우 가장 낮은 세트 단계 반환"""
+
+    if any(column not in entry for column in DISPLAY_STAND_EQUIPMENT_COLUMNS):
+        return None
+
+    return min(entry[column] for column in DISPLAY_STAND_EQUIPMENT_COLUMNS)
 
 
 DISPLAY_STAND_COLUMN_STAT_KEYS: dict[DisplayStandColumn, tuple[StatKey, ...]] = {
