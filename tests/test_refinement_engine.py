@@ -1,7 +1,15 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 import pytest
+
+from tests.conftest import make_calculator_input, make_realistic_base_stats
+
+if TYPE_CHECKING:
+    from app.scripts.macro_models import MacroPreset
+    from app.scripts.registry.server_registry import ServerSpec
 
 from app.scripts.calculator_models import (
     RefinementEquipment,
@@ -21,6 +29,9 @@ from app.scripts.refinement_data import (
 )
 from app.scripts.refinement_engine import (
     PREPARATION_PROBABILITIES,
+    RefinementReport,
+    build_refinement_report,
+    resolve_grid,
     ExpectedTotals,
     RefinementDistribution,
     RefinementInputError,
@@ -29,9 +40,11 @@ from app.scripts.refinement_engine import (
     assist_points_from_thresholds,
     build_plan,
     choose_auto_strategy,
+    compute_distribution_series,
     compute_distributions,
     compute_economic_cost_distribution,
     compute_expected_totals,
+    economic_attempt_costs,
     expected_weight_total,
     point_price_from_bundle,
     resolve_strategy_choice,
@@ -185,7 +198,7 @@ def test_distribution_reproduces_expected_value_and_total_mass() -> None:
     plan: RefinementPlan = build_plan(50, False, False, NO_ASSIST_POINTS)
     distributions: dict[int, RefinementDistribution] = compute_distributions(
         plan.success_rates,
-        plan.cost_units,
+        plan.costs,
         plan.cost_unit_value,
         0,
         (5, 10),
@@ -219,22 +232,119 @@ def test_economic_cost_distribution_includes_assist_point_value() -> None:
     assert distribution.mean() == pytest.approx(expected.economic_cost, rel=1e-6)
 
 
-def test_economic_cost_distribution_keeps_refinement_grid_floor() -> None:
-    """총 비용 격자가 할인된 재련비 단위보다 촘촘해지지 않는지 검증"""
+@pytest.mark.parametrize(
+    ("level_cap", "use_discount", "bundle_price", "assist_point"),
+    [
+        # 강화주머니 가격이 재련비 격자와 나누어떨어지지 않는 조합
+        (50, True, 8000.0, 3),
+        (180, False, 8000.0, 7),
+        (180, True, 8000.0, 3),
+        (0, False, 7777.0, 7),
+        (110, True, 1.0, 3),
+    ],
+)
+def test_economic_cost_distribution_preserves_mean_off_grid(
+    level_cap: int,
+    use_discount: bool,
+    bundle_price: float,
+    assist_point: int,
+) -> None:
+    """시도 비용이 격자 배수가 아니어도 기대 총 비용이 보존되는지 검증
 
-    assist_points: tuple[int, ...] = (3,) * REFINE_ATTEMPT_STEP_COUNT
-    plan: RefinementPlan = build_plan(50, True, True, assist_points)
-    point_price: float = point_price_from_bundle(100000.0)
+    격자 배수로 반올림하면 기대값에 계통 오차가 생기므로, 인접 격자에
+    평균이 보존되도록 나눠 싣는 방식이 유지되는지 확인한다.
+    """
+
+    assist_points: tuple[int, ...] = (assist_point,) * REFINE_ATTEMPT_STEP_COUNT
+    plan: RefinementPlan = build_plan(
+        level_cap,
+        use_discount,
+        use_discount,
+        assist_points,
+    )
+    point_price: float = point_price_from_bundle(bundle_price)
     distribution: RefinementDistribution = compute_economic_cost_distribution(
         plan,
         point_price,
         0,
-        10,
+        12,
     )
-    expected: ExpectedTotals = compute_expected_totals(plan, 0, 10, point_price)
+    expected: ExpectedTotals = compute_expected_totals(plan, 0, 12, point_price)
 
-    assert distribution.unit_value == pytest.approx(plan.cost_unit_value)
-    assert distribution.mean() == pytest.approx(expected.economic_cost, rel=0.01)
+    # 시도 비용이 실제로 격자 배수가 아닌 조합인지 먼저 확인
+    attempt_costs: tuple[float, ...] = economic_attempt_costs(plan, point_price)
+    remainders: list[float] = [
+        abs((cost / plan.cost_unit_value) % 1.0) for cost in attempt_costs
+    ]
+    assert max(remainders) > 1e-6
+
+    assert distribution.total_mass() == pytest.approx(1.0, abs=1e-6)
+    assert distribution.mean() == pytest.approx(expected.economic_cost, rel=1e-6)
+
+
+def test_distribution_grid_stays_within_limit() -> None:
+    """소모량 규모가 커도 격자 크기가 상한 안에 머무는지 검증
+
+    격자 크기를 무한정 키우면 계산 시간과 메모리가 함께 커지므로,
+    상한에 닿으면 격자 단위를 넓혀 표현 범위를 확보해야 한다.
+    """
+
+    assist_points: tuple[int, ...] = (7,) * REFINE_ATTEMPT_STEP_COUNT
+    plan: RefinementPlan = build_plan(180, False, False, assist_points)
+    point_price: float = point_price_from_bundle(250000.0)
+    distribution: RefinementDistribution = compute_economic_cost_distribution(
+        plan,
+        point_price,
+        0,
+        20,
+    )
+    expected: ExpectedTotals = compute_expected_totals(plan, 0, 20, point_price)
+
+    assert distribution.pmf.size <= 1 << 20
+    assert distribution.unit_value > plan.cost_unit_value
+    assert distribution.total_mass() == pytest.approx(1.0, abs=1e-6)
+    assert distribution.mean() == pytest.approx(expected.economic_cost, rel=1e-4)
+
+
+def test_distribution_series_matches_full_distribution() -> None:
+    """분포 요약 결과가 전체 분포에서 뽑은 값과 같은지 검증"""
+
+    plan: RefinementPlan = build_plan(110, False, False, NO_ASSIST_POINTS)
+    target_steps: tuple[int, ...] = (4, 8, 12)
+    budget: float = 20_000_000.0
+
+    summaries, detail = compute_distribution_series(
+        plan.success_rates,
+        plan.costs,
+        plan.cost_unit_value,
+        0,
+        target_steps,
+        reach_threshold=budget,
+        detail_target=12,
+    )
+    distributions: dict[int, RefinementDistribution] = compute_distributions(
+        plan.success_rates,
+        plan.costs,
+        plan.cost_unit_value,
+        0,
+        target_steps,
+    )
+
+    assert detail is not None
+    assert detail.pmf.size == distributions[12].pmf.size
+
+    for target_step in target_steps:
+        distribution: RefinementDistribution = distributions[target_step]
+        summary = summaries[target_step]
+        assert summary.reach_probability == pytest.approx(
+            distribution.probability_at_most(budget)
+        )
+        assert summary.quantiles == pytest.approx(
+            tuple(
+                distribution.quantile(probability)
+                for probability in PREPARATION_PROBABILITIES
+            )
+        )
 
 
 def test_distribution_quantiles_are_monotonic() -> None:
@@ -243,7 +353,7 @@ def test_distribution_quantiles_are_monotonic() -> None:
     plan: RefinementPlan = build_plan(80, False, False, NO_ASSIST_POINTS)
     distribution: RefinementDistribution = compute_distributions(
         plan.success_rates,
-        plan.cost_units,
+        plan.costs,
         plan.cost_unit_value,
         0,
         (8,),
@@ -422,3 +532,77 @@ def test_weapon_and_armor_stat_delta_follows_cumulative_table() -> None:
 
     # 같은 단계면 변화가 없어야 함
     assert refinement_stat_delta(RefinementEquipment.SHOES, 7, 7) == {}
+
+
+def test_report_reports_progress_and_honours_cancel(
+    synthetic_server: "ServerSpec",
+    full_preset: "MacroPreset",
+) -> None:
+    """리포트 계산이 진행률을 보고하고 취소 요청에 빠르게 반응하는지 검증"""
+
+    full_preset.info.calculator = make_calculator_input()
+    full_preset.info.calculator.base_stats = make_realistic_base_stats()
+
+    # 가장 무거운 조건 (0강 → 20강 무보조)
+    refinement: RefinementInput = RefinementInput(
+        level_cap=180,
+        start_step=0,
+        target_step=MAX_REFINE_STEP,
+        budget=100_000_000.0,
+        point_bundle_price=8000.0,
+        strategy_mode=RefinementStrategyMode.NONE,
+    )
+
+    progress_values: list[int] = []
+    cancel_calls: list[int] = []
+
+    report: RefinementReport = build_refinement_report(
+        server_spec=synthetic_server,
+        preset=full_preset,
+        skills_info=full_preset.usage_settings,
+        delay_ms=100,
+        base_stats=full_preset.info.calculator.base_stats,
+        custom_formulas=(),
+        refinement=refinement,
+        strategies=(),
+        formula_label="테스트",
+        progress_callback=lambda _message, value: progress_values.append(value),
+        cancel_checker=lambda: cancel_calls.append(1),
+    )
+
+    # 진행률은 단조 증가해야 하고 계산 도중 여러 번 보고돼야 한다
+    assert len(progress_values) >= 10
+    assert progress_values == sorted(progress_values)
+    assert progress_values[-1] >= 95
+
+    # 취소 확인이 충분히 자주 일어나야 취소 버튼이 즉시 반응한다
+    assert len(cancel_calls) >= 50
+
+    assert report.target_row.target_step == MAX_REFINE_STEP
+
+
+def test_report_cancel_propagates() -> None:
+    """취소 예외가 계산 중간에 그대로 전파되는지 검증"""
+
+    plan: RefinementPlan = build_plan(180, False, False, NO_ASSIST_POINTS)
+
+    class _Cancelled(Exception):
+        """테스트용 취소 신호"""
+
+    call_count: int = 0
+
+    def cancel_checker() -> None:
+        nonlocal call_count
+        call_count += 1
+        if call_count > 3:
+            raise _Cancelled()
+
+    with pytest.raises(_Cancelled):
+        resolve_grid(
+            plan.success_rates,
+            plan.costs,
+            plan.cost_unit_value,
+            0,
+            MAX_REFINE_STEP,
+            cancel_checker,
+        )

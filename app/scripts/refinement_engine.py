@@ -10,13 +10,23 @@
 기대값은 단계별 첫 통과(현재 단계 → 다음 단계) 재귀로 정확히 계산하고,
 분포와 분위수는 첫 통과 확률생성함수를 단위원 격자에서 평가한 뒤
 역푸리에 변환으로 복원한다.
+
+분포 격자는 다음 세 가지를 지킨다.
+
+- 시도 1회 소모량이 격자 배수가 아니면 인접한 두 격자에 소수부 비율대로
+  나눠 싣는다. 기대 소모량이 정확히 보존되므로 재련비와 강화포인트
+  환산액을 함께 다루면서도 격자를 잘게 쪼갤 필요가 없다.
+- 필요한 표현 범위는 저해상도 격자로 먼저 찾는다. 끝부분에 남는 질량은
+  분해능이 아니라 표현 범위에 따라 정해지므로 실해상도 격자를 여러 번
+  다시 만들지 않아도 된다.
+- 표현 범위가 격자 크기 상한을 넘으면 크기 대신 단위를 넓힌다. 계산량과
+  메모리 사용량이 소모량 규모와 무관하게 일정한 범위에 머문다.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from math import gcd
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -60,11 +70,18 @@ PREPARATION_PROBABILITIES: tuple[float, ...] = (0.25, 0.5, 0.75, 0.9)
 
 # 분포 격자 최소/최대 크기
 _MIN_GRID_SIZE: int = 1 << 10
-_MAX_GRID_SIZE: int = 1 << 22
+_MAX_GRID_SIZE: int = 1 << 20
 
-# 격자 크기 결정에 사용하는 기대값 배수와 꼬리 허용 질량
+# 표현 범위 탐색 시작점으로 쓰는 기대값 배수와 꼬리 허용 질량
 _GRID_MEAN_FACTOR: int = 8
-_GRID_TAIL_TOLERANCE: float = 1e-9
+_GRID_TAIL_TOLERANCE: float = 1e-7
+
+# 평균 보존 분배로 생기는 흐림의 허용 상한 (평균 대비 표준편차 비율)
+#
+# 시도 1회 비용이 격자 배수가 아니면 인접한 두 격자에 평균이 보존되도록
+# 나눠 싣는다. 이때 시도마다 최대 unit/2 의 표준편차가 더해지므로,
+# 누적 흐림이 평균의 이 비율을 넘지 않는 범위에서만 격자를 넓힌다.
+_MAX_SPLIT_BLUR_RATIO: float = 1e-3
 
 
 class RefinementInputError(ValueError):
@@ -77,9 +94,7 @@ class RefinementPlan:
 
     # 단계별 실제 재련비 (할인 반영)
     costs: tuple[float, ...]
-    # 단계별 재련비의 격자 단위 개수
-    cost_units: tuple[int, ...]
-    # 격자 단위 1개당 실제 재련비
+    # 분포 계산에 쓰는 기본 격자 단위 1개당 재련비
     cost_unit_value: float
     # 단계별 성공확률 (보조 반영)
     success_rates: tuple[float, ...]
@@ -270,9 +285,6 @@ def build_plan(
     costs: tuple[float, ...] = tuple(
         base_cost * multiplier for base_cost in base_costs
     )
-    cost_units: tuple[int, ...] = tuple(
-        int(round(base_cost / REFINE_COST_UNIT)) for base_cost in base_costs
-    )
 
     # 보조 성공확률 증가량 반영
     point_bonus: dict[int, float] = {
@@ -285,7 +297,6 @@ def build_plan(
 
     return RefinementPlan(
         costs=costs,
-        cost_units=cost_units,
         cost_unit_value=REFINE_COST_UNIT * multiplier,
         success_rates=success_rates,
         assist_points=assist_points,
@@ -374,45 +385,93 @@ def compute_expected_totals(
     )
 
 
-def _select_grid_size(expected_units: float) -> int:
-    """기대 소모량 기준 초기 격자 크기 결정"""
+def _split_shift(
+    grid_points: np.ndarray,
+    weight: float,
+    unit_value: float,
+) -> np.ndarray:
+    """시도 1회 소모량의 생성함수 반환 (평균 보존 분배)
 
-    # 기대값의 일정 배수를 덮는 2의 거듭제곱 격자 사용
-    required: float = expected_units * float(_GRID_MEAN_FACTOR)
-    grid_size: int = _MIN_GRID_SIZE
-    while grid_size < required and grid_size < _MAX_GRID_SIZE:
-        grid_size <<= 1
+    소모량이 격자 배수가 아니면 인접한 두 격자에 나눠 싣는다. 배분 비율을
+    소수부와 맞추므로 기대 소모량이 정확히 보존되고, 격자 배수로 반올림할
+    때 생기는 계통 오차가 사라진다.
+    """
 
-    return grid_size
+    # 격자 개수와 소수부 분리
+    scaled: float = weight / unit_value
+    lower_count: int = int(np.floor(scaled + 1e-9))
+    upper_ratio: float = scaled - float(lower_count)
+
+    base: np.ndarray = grid_points**lower_count
+    if upper_ratio <= 1e-12:
+        return base
+
+    # (1-f)·z^k + f·z^(k+1) 를 z^k 로 묶어 거듭제곱 1회로 계산
+    return base * (1.0 - upper_ratio + upper_ratio * grid_points)
 
 
-def _build_pmfs(
+def _max_split_unit(
     success_rates: tuple[float, ...],
-    weight_units: tuple[int, ...],
+    weights: tuple[float, ...],
+    base_unit: float,
+    start_step: int,
+    target_step: int,
+) -> float:
+    """분배 흐림이 허용 범위를 넘지 않는 최대 격자 단위 반환"""
+
+    expected_value: float = expected_weight_total(
+        success_rates, weights, start_step, target_step
+    )
+    attempt_weights: tuple[float, ...] = (1.0,) * REFINE_ATTEMPT_STEP_COUNT
+    expected_attempts: float = expected_weight_total(
+        success_rates, attempt_weights, start_step, target_step
+    )
+    if expected_attempts <= 0.0 or expected_value <= 0.0:
+        return base_unit
+
+    # 시도당 분배 분산은 최대 unit²/4 이므로 누적 표준편차는 unit/2·√n
+    blur_limited_unit: float = (
+        2.0 * _MAX_SPLIT_BLUR_RATIO * expected_value / expected_attempts**0.5
+    )
+    return max(base_unit, blur_limited_unit)
+
+
+def _iter_target_distributions(
+    success_rates: tuple[float, ...],
+    weights: tuple[float, ...],
+    unit_value: float,
     start_step: int,
     target_steps: tuple[int, ...],
     grid_size: int,
-) -> dict[int, np.ndarray]:
-    """확률생성함수를 격자에서 평가해 목표 단계별 분포 복원"""
+    progress_callback: Callable[[int], None] | None = None,
+    cancel_checker: Callable[[], None] | None = None,
+) -> "Iterator[tuple[int, RefinementDistribution]]":
+    """목표 단계별 누적 소모량 분포를 낮은 단계부터 하나씩 복원
+
+    누적곱을 목표 단계 수만큼 모아 두면 메모리 사용량이 격자 크기에
+    비례해 커지므로, 목표 단계에 닿을 때마다 곧바로 역변환해 넘긴다.
+    """
 
     # 단위원 위 격자점 구성 (실수 신호이므로 절반만 사용)
     half_size: int = grid_size // 2 + 1
     angles: np.ndarray = 2.0 * np.pi * np.arange(half_size) / float(grid_size)
     grid_points: np.ndarray = np.exp(1j * angles)
 
-    # 목표 단계별 누적곱과 복원 결과 저장
     max_target: int = max(target_steps)
+    target_step_set: set[int] = set(target_steps)
+    done_count: int = 0
+
     running_product: np.ndarray = np.ones(half_size, dtype=np.complex128)
     previous_pgf: np.ndarray = np.ones(half_size, dtype=np.complex128)
-    pmfs: dict[int, np.ndarray] = {}
-
-    target_step_set: set[int] = set(target_steps)
     for step in range(max_target):
+        if cancel_checker is not None:
+            cancel_checker()
+
         success_rate: float = success_rates[step]
         failure_rate: float = 1.0 - success_rate
 
-        # 시도 1회 소모량에 해당하는 위상 이동
-        shift: np.ndarray = grid_points ** weight_units[step]
+        # 시도 1회 소모량에 해당하는 생성함수
+        shift: np.ndarray = _split_shift(grid_points, weights[step], unit_value)
 
         # 하락 시 아래 단계를 다시 통과해야 하므로 직전 단계 함수를 사용
         denominator: np.ndarray = 1.0 - failure_rate * shift * (
@@ -426,16 +485,162 @@ def _build_pmfs(
             running_product = running_product * current_pgf
 
             if (step + 1) in target_step_set:
-                pmfs[step + 1] = np.fft.irfft(np.conj(running_product), n=grid_size)
+                pmf: np.ndarray = np.fft.irfft(
+                    np.conj(running_product), n=grid_size
+                )
+                yield step + 1, RefinementDistribution(
+                    pmf=pmf,
+                    unit_value=unit_value,
+                )
+
+                done_count += 1
+                if progress_callback is not None:
+                    progress_callback(done_count * 100 // len(target_steps))
 
         previous_pgf = current_pgf
 
-    return pmfs
+
+def _is_zero_weight_range(
+    weights: tuple[float, ...],
+    start_step: int,
+    target_step: int,
+) -> bool:
+    """구간 내 소모량이 전부 0인지 여부 반환"""
+
+    return all(weight == 0.0 for weight in weights[start_step:target_step])
+
+
+def _zero_distribution(unit_value: float) -> "RefinementDistribution":
+    """0에 확률이 몰린 분포 반환"""
+
+    zero_pmf: np.ndarray = np.zeros(1, dtype=np.float64)
+    zero_pmf[0] = 1.0
+    return RefinementDistribution(pmf=zero_pmf, unit_value=unit_value)
+
+
+# 표현 범위 탐색에 쓰는 저해상도 격자 크기
+_PROBE_GRID_SIZE: int = 1 << 16
+
+# 저해상도 탐색은 분해능 손실을 감안해 더 엄격한 기준을 적용
+_PROBE_TOLERANCE_MARGIN: float = 0.01
+
+
+def _tail_mass(
+    success_rates: tuple[float, ...],
+    weights: tuple[float, ...],
+    unit_value: float,
+    start_step: int,
+    target_step: int,
+    grid_size: int,
+    cancel_checker: Callable[[], None] | None = None,
+) -> float:
+    """지정 격자에서 끝부분에 남는 확률 질량 반환"""
+
+    _, distribution = next(
+        iter(
+            _iter_target_distributions(
+                success_rates,
+                weights,
+                unit_value,
+                start_step,
+                (target_step,),
+                grid_size,
+                cancel_checker=cancel_checker,
+            )
+        )
+    )
+    return float(distribution.pmf[grid_size * 3 // 4 :].sum())
+
+
+def _probe_value_range(
+    success_rates: tuple[float, ...],
+    weights: tuple[float, ...],
+    start_step: int,
+    target_step: int,
+    cancel_checker: Callable[[], None] | None = None,
+) -> float:
+    """접힘 오차가 허용 범위에 드는 최소 표현 범위 탐색
+
+    끝부분에 남는 질량은 분해능이 아니라 표현 범위에 따라 정해지므로,
+    실제 계산보다 훨씬 작은 격자로 범위만 먼저 찾아 둔다. 이렇게 하면
+    실해상도 격자를 여러 번 다시 만들지 않아도 된다.
+    """
+
+    expected_value: float = expected_weight_total(
+        success_rates, weights, start_step, target_step
+    )
+    value_range: float = expected_value * float(_GRID_MEAN_FACTOR)
+    tolerance: float = _GRID_TAIL_TOLERANCE * _PROBE_TOLERANCE_MARGIN
+
+    # 표현 범위를 2배씩 넓히며 꼬리 질량이 기준 아래로 내려가는 지점 탐색
+    while value_range < expected_value * float(1 << 20):
+        tail_mass: float = _tail_mass(
+            success_rates,
+            weights,
+            value_range / float(_PROBE_GRID_SIZE),
+            start_step,
+            target_step,
+            _PROBE_GRID_SIZE,
+            cancel_checker,
+        )
+        if tail_mass <= tolerance:
+            return value_range
+
+        value_range *= 2.0
+
+    return value_range
+
+
+def resolve_grid(
+    success_rates: tuple[float, ...],
+    weights: tuple[float, ...],
+    base_unit: float,
+    start_step: int,
+    target_step: int,
+    cancel_checker: Callable[[], None] | None = None,
+) -> tuple[float, int]:
+    """접힘 오차가 허용 범위에 들도록 격자 단위와 크기 결정
+
+    격자를 넓히는 방법은 두 가지다. 크기를 키우면 분해능을 유지한 채
+    표현 범위가 늘지만 계산량도 함께 는다. 단위를 키우면 계산량 그대로
+    표현 범위만 는 대신 분배 흐림이 커진다. 계산량이 상한에 닿기 전까지는
+    크기를 키우고, 그 뒤에는 흐림 허용치까지 단위를 키운다.
+    """
+
+    value_range: float = _probe_value_range(
+        success_rates,
+        weights,
+        start_step,
+        target_step,
+        cancel_checker,
+    )
+    max_unit: float = _max_split_unit(
+        success_rates, weights, base_unit, start_step, target_step
+    )
+
+    # 필요한 표현 범위를 담을 수 있는 최소 격자 구성
+    unit_value: float = base_unit
+    while True:
+        grid_size: int = _MIN_GRID_SIZE
+        while (
+            float(grid_size) * unit_value < value_range
+            and grid_size < _MAX_GRID_SIZE
+        ):
+            grid_size <<= 1
+
+        if float(grid_size) * unit_value >= value_range:
+            return unit_value, grid_size
+
+        # 계산량 상한에 닿았으면 흐림 허용치 안에서 단위를 넓힌다
+        if unit_value * 2.0 > max_unit:
+            return unit_value, grid_size
+
+        unit_value *= 2.0
 
 
 def compute_distributions(
     success_rates: tuple[float, ...],
-    weight_units: tuple[int, ...],
+    weight_units: tuple[float, ...],
     unit_value: float,
     start_step: int,
     target_steps: tuple[int, ...],
@@ -444,44 +649,117 @@ def compute_distributions(
 
     # 소모량이 없는 전략은 0에 확률이 몰린 분포로 즉시 반환
     max_target: int = max(target_steps)
-    if all(unit == 0 for unit in weight_units[start_step:max_target]):
-        zero_pmf: np.ndarray = np.zeros(1, dtype=np.float64)
-        zero_pmf[0] = 1.0
+    if _is_zero_weight_range(weight_units, start_step, max_target):
         return {
-            target: RefinementDistribution(pmf=zero_pmf, unit_value=unit_value)
-            for target in target_steps
+            target: _zero_distribution(unit_value) for target in target_steps
         }
 
-    # 최대 목표 단계 기대값 기준으로 격자 크기 결정
-    float_weights: tuple[float, ...] = tuple(float(unit) for unit in weight_units)
-    expected_units: float = expected_weight_total(
+    resolved_unit, grid_size = resolve_grid(
         success_rates,
-        float_weights,
+        weight_units,
+        unit_value,
         start_step,
         max_target,
     )
-
-    grid_size: int = _select_grid_size(expected_units)
-    while True:
-        pmfs: dict[int, np.ndarray] = _build_pmfs(
+    return dict(
+        _iter_target_distributions(
             success_rates,
             weight_units,
+            resolved_unit,
             start_step,
             target_steps,
             grid_size,
         )
+    )
 
-        # 격자 끝부분에 남은 질량이 크면 접힘 오차가 커지므로 확장
-        tail_mass: float = float(pmfs[max_target][grid_size * 3 // 4 :].sum())
-        if tail_mass <= _GRID_TAIL_TOLERANCE or grid_size >= _MAX_GRID_SIZE:
-            break
 
-        grid_size <<= 1
+@dataclass(frozen=True, slots=True)
+class DistributionSummary:
+    """분포에서 화면 표시에 필요한 값만 추린 결과
 
-    return {
-        target: RefinementDistribution(pmf=pmf, unit_value=unit_value)
-        for target, pmf in pmfs.items()
-    }
+    목표 단계마다 전체 분포 배열을 들고 있으면 메모리 사용량이 크게 늘어
+    그래프로 그리는 한 단계만 분포를 남기고 나머지는 이 요약만 보관한다.
+    """
+
+    # 기준값 이하로 끝날 확률 (기준값이 없으면 0)
+    reach_probability: float
+    # PREPARATION_PROBABILITIES 순서에 대응하는 분위수
+    quantiles: tuple[float, ...]
+
+
+def _summarize(
+    distribution: "RefinementDistribution",
+    reach_threshold: float | None,
+) -> DistributionSummary:
+    """분포에서 도달 확률과 분위수 추출"""
+
+    return DistributionSummary(
+        reach_probability=(
+            0.0
+            if reach_threshold is None
+            else distribution.probability_at_most(reach_threshold)
+        ),
+        quantiles=tuple(
+            distribution.quantile(probability)
+            for probability in PREPARATION_PROBABILITIES
+        ),
+    )
+
+
+def compute_distribution_series(
+    success_rates: tuple[float, ...],
+    weights: tuple[float, ...],
+    base_unit: float,
+    start_step: int,
+    target_steps: tuple[int, ...],
+    reach_threshold: float | None = None,
+    detail_target: int | None = None,
+    progress_callback: Callable[[int], None] | None = None,
+    cancel_checker: Callable[[], None] | None = None,
+) -> tuple[dict[int, DistributionSummary], RefinementDistribution | None]:
+    """목표 단계별 분포 요약과 지정 단계의 전체 분포 계산
+
+    목표 단계별 분포를 하나씩 복원해 요약만 남기고 즉시 버린다.
+    """
+
+    max_target: int = max(target_steps)
+
+    # 소모량이 없는 전략은 0에 확률이 몰린 분포로 즉시 반환
+    if _is_zero_weight_range(weights, start_step, max_target):
+        zero: RefinementDistribution = _zero_distribution(base_unit)
+        summary: DistributionSummary = _summarize(zero, reach_threshold)
+        return (
+            {target: summary for target in target_steps},
+            None if detail_target is None else zero,
+        )
+
+    resolved_unit, grid_size = resolve_grid(
+        success_rates,
+        weights,
+        base_unit,
+        start_step,
+        max_target,
+        cancel_checker,
+    )
+    summaries: dict[int, DistributionSummary] = {}
+    detail: RefinementDistribution | None = None
+    for target, distribution in _iter_target_distributions(
+        success_rates,
+        weights,
+        resolved_unit,
+        start_step,
+        target_steps,
+        grid_size,
+        progress_callback,
+        cancel_checker,
+    ):
+        summaries[target] = _summarize(distribution, reach_threshold)
+
+        # 그래프로 그리는 단계만 분포를 남기고 나머지는 곧바로 버린다
+        if target == detail_target:
+            detail = distribution
+
+    return summaries, detail
 
 
 def compute_economic_cost_distribution(
@@ -492,45 +770,25 @@ def compute_economic_cost_distribution(
 ) -> RefinementDistribution:
     """재련비와 강화포인트 환산액을 합친 총 비용 분포 계산"""
 
-    attempt_costs: tuple[float, ...] = tuple(
-        cost + points * point_price
-        for cost, points in zip(plan.costs, plan.assist_points)
-    )
-    expected_cost: float = expected_weight_total(
-        plan.success_rates,
-        attempt_costs,
-        start_step,
-        target_step,
-    )
-
-    # 재련비와 포인트 환산액을 모두 정확히 표현하는 최대 금액 단위 계산
-    scaled_attempt_costs: tuple[int, ...] = tuple(
-        int(round(cost * POINT_BUNDLE_SIZE))
-        for cost in attempt_costs[:target_step]
-    )
-    common_unit: float = float(gcd(*scaled_attempt_costs)) / POINT_BUNDLE_SIZE
-
-    # 기존 재련비 분포보다 촘촘해지지 않도록 하고,
-    # 공약수가 지나치게 작을 때는 최대 FFT 격자 범위에 맞춰 단위 확대
-    grid_limited_unit: float = (
-        expected_cost * float(_GRID_MEAN_FACTOR) / float(_MAX_GRID_SIZE)
-    )
-    unit_value: float = max(
-        plan.cost_unit_value,
-        common_unit,
-        grid_limited_unit,
-    )
-    weight_units: tuple[int, ...] = tuple(
-        max(1, int(round(cost / unit_value))) for cost in attempt_costs
-    )
-
     return compute_distributions(
         plan.success_rates,
-        weight_units,
-        unit_value,
+        economic_attempt_costs(plan, point_price),
+        plan.cost_unit_value,
         start_step,
         (target_step,),
     )[target_step]
+
+
+def economic_attempt_costs(
+    plan: RefinementPlan,
+    point_price: float,
+) -> tuple[float, ...]:
+    """시도 1회당 재련비와 강화포인트 환산액을 합친 소모량 반환"""
+
+    return tuple(
+        cost + points * point_price
+        for cost, points in zip(plan.costs, plan.assist_points)
+    )
 
 
 def choose_auto_strategy(
@@ -763,44 +1021,69 @@ def build_refinement_report(
         range(start_step + 1, MAX_REFINE_STEP + 1)
     )
 
+    def report_stage(message: str, base: int, span: int) -> Callable[[int], None]:
+        """분포 계산 진행률을 전체 진행률 구간으로 환산하는 콜백 구성"""
+
+        def on_progress(ratio: int) -> None:
+            if progress_callback is not None:
+                progress_callback(message, base + span * ratio // 100)
+
+        return on_progress
+
     if progress_callback is not None:
-        progress_callback("비용 분포 계산 중...", 10)
+        progress_callback("재련비 분포 계산 중...", 5)
 
     if cancel_checker is not None:
         cancel_checker()
 
-    # 재련비 분포 계산
-    cost_distributions: dict[int, RefinementDistribution] = compute_distributions(
+    # 재련비 분포 계산 (그래프에 쓰는 목표 단계만 전체 분포 유지)
+    cost_summaries: dict[int, DistributionSummary]
+    cost_distribution: RefinementDistribution | None
+    cost_summaries, cost_distribution = compute_distribution_series(
         plan.success_rates,
-        plan.cost_units,
+        plan.costs,
         plan.cost_unit_value,
         start_step,
         target_steps,
+        reach_threshold=refinement.budget,
+        detail_target=refinement.target_step,
+        progress_callback=report_stage("재련비 분포 계산 중...", 5, 30),
+        cancel_checker=cancel_checker,
     )
 
     if progress_callback is not None:
-        progress_callback("강화포인트 분포 계산 중...", 45)
+        progress_callback("강화포인트 분포 계산 중...", 35)
 
-    if cancel_checker is not None:
-        cancel_checker()
-
-    # 강화포인트 분포 계산
-    point_distributions: dict[int, RefinementDistribution] = compute_distributions(
+    # 강화포인트 분포 계산 (표에 분위수만 쓰므로 요약만 유지)
+    point_summaries: dict[int, DistributionSummary]
+    point_summaries, _ = compute_distribution_series(
         plan.success_rates,
-        plan.assist_points,
+        tuple(float(points) for points in plan.assist_points),
         1.0,
         start_step,
         target_steps,
+        progress_callback=report_stage("강화포인트 분포 계산 중...", 35, 20),
+        cancel_checker=cancel_checker,
     )
 
-    economic_cost_distribution: RefinementDistribution = (
-        compute_economic_cost_distribution(
-            plan,
-            point_price,
-            start_step,
-            refinement.target_step,
-        )
+    if progress_callback is not None:
+        progress_callback("총 비용 분포 계산 중...", 55)
+
+    # 총 비용 분포 계산 (그래프에 쓰는 선택 목표 단계만 필요)
+    economic_distribution: RefinementDistribution | None
+    _, economic_distribution = compute_distribution_series(
+        plan.success_rates,
+        economic_attempt_costs(plan, point_price),
+        plan.cost_unit_value,
+        start_step,
+        (refinement.target_step,),
+        detail_target=refinement.target_step,
+        progress_callback=report_stage("총 비용 분포 계산 중...", 55, 15),
+        cancel_checker=cancel_checker,
     )
+
+    if cost_distribution is None or economic_distribution is None:
+        raise RefinementInputError("비용 분포를 계산하지 못했습니다.")
 
     if progress_callback is not None:
         progress_callback("전투력 변화 계산 중...", 75)
@@ -929,8 +1212,8 @@ def build_refinement_report(
             target_step,
             point_price,
         )
-        cost_distribution: RefinementDistribution = cost_distributions[target_step]
-        point_distribution: RefinementDistribution = point_distributions[target_step]
+        cost_summary: DistributionSummary = cost_summaries[target_step]
+        point_summary: DistributionSummary = point_summaries[target_step]
 
         stat_delta: dict[StatKey, float] = refinement_stat_delta(
             refinement.equipment,
@@ -949,18 +1232,10 @@ def build_refinement_report(
         rows.append(
             RefinementTargetRow(
                 target_step=target_step,
-                reach_probability=cost_distribution.probability_at_most(
-                    refinement.budget
-                ),
+                reach_probability=cost_summary.reach_probability,
                 expected=expected,
-                cost_quantiles=tuple(
-                    cost_distribution.quantile(probability)
-                    for probability in PREPARATION_PROBABILITIES
-                ),
-                point_quantiles=tuple(
-                    point_distribution.quantile(probability)
-                    for probability in PREPARATION_PROBABILITIES
-                ),
+                cost_quantiles=cost_summary.quantiles,
+                point_quantiles=point_summary.quantiles,
                 stat_delta=stat_delta,
                 power_delta=power_delta,
                 efficiency=efficiency,
@@ -982,8 +1257,8 @@ def build_refinement_report(
         rows=tuple(rows),
         efficiency_rows=tuple(efficiency_rows),
         reachable_steps=_build_reachable_steps(tuple(rows), start_step),
-        cost_distribution=cost_distributions[refinement.target_step],
-        economic_cost_distribution=economic_cost_distribution,
+        cost_distribution=cost_distribution,
+        economic_cost_distribution=economic_distribution,
         baseline_power=baseline_power,
         power_error=power_error,
         formula_label=formula_label,
