@@ -1740,7 +1740,9 @@ class GuideManager:
                     ),
                     GuideStep(
                         "장비 탭",
-                        "장비에서는 장착 장비와 보유 장비를 관리합니다.",
+                        "장비에서는 장착 장비와 보유 장비를 관리합니다. "
+                        "재련 단계를 고르면 고정 수치가 표시되고, 수치를 수정하면 "
+                        "직접 입력으로 전환됩니다.",
                         "character.tab.equipment",
                         lambda: self._sim_character_page(1, True, False),
                     ),
@@ -1752,7 +1754,9 @@ class GuideManager:
                     ),
                     GuideStep(
                         "진열대 탭",
-                        "진열대에서는 진열대에 올린 항목의 스탯을 입력합니다.",
+                        "진열대에서는 각 칸의 재련 단계를 입력합니다. 직접 입력을 켜면 "
+                        "수치를 직접 입력할 수 있고 두 입력값은 각각 보존됩니다. "
+                        "자동 세트효과는 네 장비 중 가장 낮은 단계로 계산됩니다.",
                         "character.tab.display_stand",
                         lambda: self._sim_character_page(3, True, False),
                     ),

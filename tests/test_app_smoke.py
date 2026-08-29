@@ -9,7 +9,8 @@ from collections.abc import Iterator
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
+from PySide6.QtGui import QInputMethodEvent, QKeyEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QTabBar
 
@@ -63,6 +64,139 @@ def qapplication() -> Iterator[QApplication]:
 
     if owns_application:
         application.quit()
+
+
+def test_display_stand_stage_cell_editing_contract(
+    qapplication: QApplication,
+) -> None:
+    """진열 단계 셀의 단위 표시, 확정, 자리 삭제 규칙 검증"""
+
+    from app.scripts.character_models import CharacterProfile, DisplayStandColumn
+    from app.scripts.ui.character_ui.change_handler import CharacterChangeHandler
+    from app.scripts.ui.character_ui.tabs.display_stand_tab import (
+        DisplayStandTab,
+        _StageEditor,
+    )
+
+    tab = DisplayStandTab(
+        None,
+        CharacterChangeHandler(
+            lambda: None,
+            lambda: None,
+            lambda: None,
+            lambda: None,
+        ),
+        CharacterProfile(),
+    )
+    tab.resize(800, 600)
+    tab.show()
+    qapplication.processEvents()
+
+    item = tab._table.item(0, 0)
+    assert item.text() == ""
+    assert item.background().style() != Qt.BrushStyle.NoBrush
+    tab._table.editItem(item)
+    qapplication.processEvents()
+    editor = tab._table.findChild(_StageEditor)
+    assert editor is not None
+
+    editor.keyPressEvent(
+        QKeyEvent(
+            QEvent.Type.KeyPress,
+            Qt.Key.Key_Left,
+            Qt.KeyboardModifier.NoModifier,
+        )
+    )
+    assert editor.stage() is None
+    assert editor.text() == ""
+    assert not editor.acceptDrops()
+    assert editor.contextMenuPolicy() == Qt.ContextMenuPolicy.NoContextMenu
+
+    clipboard = QApplication.clipboard()
+    previous_clipboard_text: str = clipboard.text()
+    clipboard.setText("15")
+    try:
+        editor.paste()
+        QTest.keyClick(
+            editor,
+            Qt.Key.Key_V,
+            Qt.KeyboardModifier.ControlModifier,
+        )
+    finally:
+        clipboard.setText(previous_clipboard_text)
+    assert editor.stage() is None
+    assert editor.text() == ""
+
+    input_method_event = QInputMethodEvent()
+    input_method_event.setCommitString("15")
+    editor.inputMethodEvent(input_method_event)
+    assert editor.stage() is None
+    assert editor.text() == ""
+
+    QTest.keyClicks(editor, "12")
+    assert editor.stage() == 12
+    assert editor.text() == "12강"
+    QTest.keyClick(editor, Qt.Key.Key_Return)
+    qapplication.processEvents()
+    assert tab._step_at(0, 0) == 12
+    assert item.text() == "12강 +2.6%"
+    assert item.background().style() == Qt.BrushStyle.NoBrush
+
+    tab._table.editItem(item)
+    qapplication.processEvents()
+    editor = tab._table.findChild(_StageEditor)
+    assert editor is not None
+    QTest.keyClick(editor, Qt.Key.Key_Backspace)
+    assert editor.stage() == 1
+    assert editor.text() == "1강"
+
+    QTest.keyClick(editor, Qt.Key.Key_Delete)
+    assert editor.stage() == 1
+    assert editor.text() == "1강"
+
+    QTest.keyClick(editor, Qt.Key.Key_Return)
+    qapplication.processEvents()
+    first_stand_name = next(iter(tab._profile.display_stand.step_entries))
+    assert tab._profile.display_stand.step_entries[first_stand_name] == {
+        DisplayStandColumn.HELMET: 1
+    }
+    assert item.text() == "1강 +0.4%"
+
+    tab._table.editItem(item)
+    qapplication.processEvents()
+    editor = tab._table.findChild(_StageEditor)
+    assert editor is not None
+    QTest.keyClick(editor, Qt.Key.Key_Backspace)
+    assert editor.stage() is None
+    assert editor.text() == ""
+    QTest.keyClick(editor, Qt.Key.Key_Return)
+    qapplication.processEvents()
+    assert item.text() == ""
+    assert item.background().style() != Qt.BrushStyle.NoBrush
+
+    tab._commit_step(0, 0, 10)
+    tab._commit_step(0, 1, 10)
+    tab._commit_step(0, 2, 10)
+    tab._commit_step(0, 3, 8)
+
+    set_item = tab._table.item(0, 4)
+    assert not set_item.flags() & Qt.ItemFlag.ItemIsEditable
+    assert tab._table.item(0, 0).text() == "10강 +2.2%"
+    assert tab._table.item(0, 1).text() == "10강 +11"
+    assert set_item.text() == "8강 +1.6%"
+    assert tab._profile.display_stand.step_entries[first_stand_name] == {
+        DisplayStandColumn.HELMET: 10,
+        DisplayStandColumn.ARMOR: 10,
+        DisplayStandColumn.BELT: 10,
+        DisplayStandColumn.SHOES: 8,
+    }
+
+    tab._commit_step(0, 0, None)
+    assert set_item.text() == ""
+    assert set_item.background().style() != Qt.BrushStyle.NoBrush
+
+    tab.close()
+    qapplication.processEvents()
 
 
 def test_main_window_and_lazy_pages_construct_offscreen(

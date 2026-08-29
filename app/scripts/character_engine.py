@@ -25,6 +25,7 @@ from app.scripts.character_data import (
     ARMOR_EQUIPMENT_SLOTS,
     ARMOR_SLOT_STAT_KEYS,
     DISPLAY_STAND_COLUMN_STAT_KEYS,
+    DISPLAY_STAND_EQUIPMENT_COLUMNS,
     DISPLAY_STAND_SPECS,
     ELIXIR_SPECS,
     EQUIPMENT_ITEM_SPECS,
@@ -36,8 +37,11 @@ from app.scripts.character_data import (
     PILL_SPECS,
     POTENTIAL_EQUIPMENT_SLOTS,
     POTENTIAL_OPTION_SPECS,
+    REFORGE_EQUIPMENT_BY_SLOT,
     EquipmentItemSpec,
     OptionSpec,
+    display_stand_set_step,
+    display_stand_step_value,
 )
 from app.scripts.character_models import (
     CHARACTER_DATA_VERSION,
@@ -45,7 +49,6 @@ from app.scripts.character_models import (
     EQUIPMENT_OPTION_SLOT_COUNT,
     MAX_ELIXIR_COUNT,
     MAX_EQUIPPED_TALISMAN_COUNT,
-    MAX_REFORGE_STEP,
     MAX_TALISMAN_LEVEL,
     TALISMAN_SPECS,
     AdditionalLine,
@@ -55,15 +58,19 @@ from app.scripts.character_models import (
     CharacterTalisman,
     CharacterTitle,
     DanjeonDistribution,
+    DisplayStandColumn,
+    DisplayStandInputMode,
     EquipmentGrade,
     EquipmentKind,
     EquipmentSlot,
     OwnedEquipment,
     PotentialLine,
+    ReforgeInputMode,
     ScrollTier,
     StatDistribution,
     TalismanSpec,
 )
+from app.scripts.refinement_data import MAX_REFINE_STEP, refinement_cumulative_stats
 
 CHARACTER_BASE_HP: float = 50.0
 CHARACTER_HP_PER_LEVEL: float = 5.0
@@ -419,9 +426,27 @@ def _allowed_reforge_stat_keys(
 def _validate_equipment_reforge(slot: EquipmentSlot, equipment: OwnedEquipment) -> None:
     """장비 재련 입력값 검증"""
 
-    _validate_non_negative_int(equipment.reforge_step, "reforge step")
-    if equipment.reforge_step > MAX_REFORGE_STEP:
-        raise ValueError("reforge step exceeds maximum")
+    if equipment.reforge_mode == ReforgeInputMode.STEP:
+        if slot not in REFORGE_EQUIPMENT_BY_SLOT:
+            raise ValueError("step reforge is not supported for this equipment")
+
+        if equipment.reforge_step is None:
+            raise ValueError("step reforge requires a step")
+
+        _validate_non_negative_int(equipment.reforge_step, "reforge step")
+        if equipment.reforge_step > MAX_REFINE_STEP:
+            raise ValueError("reforge step exceeds maximum")
+
+        if equipment.reforge_stats:
+            raise ValueError("step reforge cannot store manual stats")
+
+        return
+
+    if equipment.reforge_mode != ReforgeInputMode.MANUAL:
+        raise ValueError("reforge input mode is not supported")
+
+    if equipment.reforge_step is not None:
+        raise ValueError("manual reforge cannot store a step")
 
     allowed_stat_keys: tuple[StatKey, ...] = _allowed_reforge_stat_keys(slot, equipment)
     for stat_key, value in equipment.reforge_stats.items():
@@ -529,6 +554,12 @@ def _validate_equipment_state(profile: CharacterProfile) -> None:
 def _validate_display_stand(profile: CharacterProfile) -> None:
     """진열대 입력값 검증"""
 
+    if profile.display_stand.input_mode not in (
+        DisplayStandInputMode.STEP,
+        DisplayStandInputMode.MANUAL,
+    ):
+        raise ValueError("display stand input mode is not supported")
+
     display_stand_names: set[str] = {spec.name for spec in DISPLAY_STAND_SPECS}
     for stand_name, entry in profile.display_stand.entries.items():
         if stand_name not in display_stand_names:
@@ -539,6 +570,18 @@ def _validate_display_stand(profile: CharacterProfile) -> None:
                 raise ValueError("display stand column is not supported")
 
             _validate_non_negative_float(value, "display stand value")
+
+    for stand_name, entry in profile.display_stand.step_entries.items():
+        if stand_name not in display_stand_names:
+            raise ValueError("display stand name is not supported")
+
+        for column, step in entry.items():
+            if column not in DISPLAY_STAND_EQUIPMENT_COLUMNS:
+                raise ValueError("display stand auto column is not editable")
+
+            _validate_non_negative_int(step, "display stand step")
+            if step > MAX_REFINE_STEP:
+                raise ValueError("display stand step exceeds maximum")
 
 
 def _validate_consumables(profile: CharacterProfile) -> None:
@@ -826,11 +869,25 @@ def _add_equipment_base_stats(
 
 def _add_equipment_reforge(
     accumulated: dict[StatKey, float],
+    slot: EquipmentSlot,
     equipment: OwnedEquipment,
 ) -> None:
     """장비 재련 스탯 기여 누적"""
 
-    _merge_stats(accumulated, equipment.reforge_stats)
+    if equipment.reforge_mode == ReforgeInputMode.MANUAL:
+        _merge_stats(accumulated, equipment.reforge_stats)
+        return
+
+    if equipment.reforge_step is None:
+        raise ValueError("step reforge requires a step")
+
+    _merge_stats(
+        accumulated,
+        refinement_cumulative_stats(
+            REFORGE_EQUIPMENT_BY_SLOT[slot],
+            equipment.reforge_step,
+        ),
+    )
 
 
 def _add_equipment_scrolls(
@@ -885,7 +942,7 @@ def _add_equipment(
 
         equipment: OwnedEquipment = equipment_by_name[equipment_name]
         _add_equipment_base_stats(accumulated, slot, equipment)
-        _add_equipment_reforge(accumulated, equipment)
+        _add_equipment_reforge(accumulated, slot, equipment)
         _add_equipment_scrolls(accumulated, slot, equipment)
         _add_equipment_options(accumulated, equipment)
 
@@ -896,10 +953,33 @@ def _add_display_stand(
 ) -> None:
     """진열대 기여 누적"""
 
-    for entry in profile.display_stand.entries.values():
-        for column, value in entry.items():
+    if profile.display_stand.input_mode == DisplayStandInputMode.MANUAL:
+        for entry in profile.display_stand.entries.values():
+            for column, value in entry.items():
+                for stat_key in DISPLAY_STAND_COLUMN_STAT_KEYS[column]:
+                    _add_stat(accumulated, stat_key, value)
+        return
+
+    for entry in profile.display_stand.step_entries.values():
+        for column in DISPLAY_STAND_EQUIPMENT_COLUMNS:
+            if column not in entry:
+                continue
+
+            step: int = entry[column]
+            value: float = display_stand_step_value(column, step)
             for stat_key in DISPLAY_STAND_COLUMN_STAT_KEYS[column]:
                 _add_stat(accumulated, stat_key, value)
+
+        set_step: int | None = display_stand_set_step(entry)
+        if set_step is None:
+            continue
+
+        set_value: float = display_stand_step_value(
+            DisplayStandColumn.SET,
+            set_step,
+        )
+        for stat_key in DISPLAY_STAND_COLUMN_STAT_KEYS[DisplayStandColumn.SET]:
+            _add_stat(accumulated, stat_key, set_value)
 
 
 def _add_elixirs(
