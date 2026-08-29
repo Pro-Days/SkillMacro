@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QGraphicsDropShadowEffect,
     QHBoxLayout,
     QLabel,
+    QLayout,
     QLineEdit,
     QPushButton,
     QSizePolicy,
@@ -212,11 +213,28 @@ class KVComboInput(QFrame):
         # 콤보박스
         self.combobox = CustomComboBox(self, items, connected_function)
 
-        # 가장 긴 항목 문자열 기준 최소 폭 계산
+        # 항목 문자열 기준 최소 폭 반영
+        self.sync_width_to_items()
+
+        layout.addWidget(self.label)
+        layout.addWidget(self.combobox)
+        self.setLayout(layout)
+
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+
+    def sync_width_to_items(self) -> None:
+        """현재 항목 중 가장 긴 문자열에 맞춰 최소 폭 재계산
+
+        항목을 교체한 뒤에도 텍스트가 잘리지 않도록 다시 호출한다.
+        """
+
+        # 가장 긴 항목 문자열 폭 조회
         content_metrics: QFontMetrics = QFontMetrics(self.combobox.font())
         longest_item_width: int = 0
-        for item_text in items:
-            item_width: int = content_metrics.horizontalAdvance(item_text)
+        for item_index in range(self.combobox.count()):
+            item_width: int = content_metrics.horizontalAdvance(
+                self.combobox.itemText(item_index)
+            )
             if item_width > longest_item_width:
                 longest_item_width = item_width
 
@@ -224,12 +242,7 @@ class KVComboInput(QFrame):
         minimum_combobox_width: int = longest_item_width + 44
         self.combobox.setMinimumWidth(minimum_combobox_width)
         self.setMinimumWidth(minimum_combobox_width)
-
-        layout.addWidget(self.label)
-        layout.addWidget(self.combobox)
-        self.setLayout(layout)
-
-        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        self.updateGeometry()
 
 
 class Separator(QFrame):
@@ -308,16 +321,20 @@ class SectionCard(QFrame):
         accent_bar.setFixedSize(4, 16)
 
         # 제목 레이블
-        title_label = QLabel(title, header)
-        title_label.setObjectName("sectionCardTitle")
-        title_label.setFont(CustomFont(12, bold=True))
+        self._title_label = QLabel(title, header)
+        self._title_label.setObjectName("sectionCardTitle")
+        self._title_label.setFont(CustomFont(12, bold=True))
 
         self._header_layout.addWidget(accent_bar)
-        self._header_layout.addWidget(title_label)
+        self._header_layout.addWidget(self._title_label)
         self._header_layout.addStretch(1)
         header.setLayout(self._header_layout)
 
         return header
+
+    def set_title(self, title: str) -> None:
+        """카드 제목 변경"""
+        self._title_label.setText(title)
 
     def add_header_widget(self, widget: QWidget) -> None:
         """헤더 오른쪽 영역에 추가 위젯 배치"""
@@ -329,7 +346,7 @@ class SectionCard(QFrame):
         """콘텐츠 영역에 위젯 추가"""
         self._content_layout.addWidget(widget)
 
-    def add_layout(self, layout: QHBoxLayout | QVBoxLayout) -> None:
+    def add_layout(self, layout: QLayout) -> None:
         """콘텐츠 영역에 레이아웃 추가"""
         self._content_layout.addLayout(layout)
 

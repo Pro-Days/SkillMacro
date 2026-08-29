@@ -34,6 +34,7 @@ from app.scripts.data_manager import save_characters
 from app.scripts.ui.character_ui.change_handler import CharacterChangeHandler
 from app.scripts.ui.character_ui.panels.character_list import CharacterListPanel
 from app.scripts.ui.character_ui.panels.live_stats import LiveStatsPanel
+from app.scripts.ui.character_ui.tabs.additional_stats_tab import AdditionalStatsTab
 from app.scripts.ui.character_ui.tabs.base import CharacterTab
 from app.scripts.ui.character_ui.tabs.display_stand_tab import DisplayStandTab
 from app.scripts.ui.character_ui.tabs.distribution_tab import DistributionTab
@@ -56,6 +57,7 @@ _CHARACTER_TABS: tuple[tuple[str, type[CharacterTab]], ...] = (
     ("부적", TalismanTab),
     ("영단", ElixirTab),
     ("환", PillEffectTab),
+    ("추가 스탯", AdditionalStatsTab),
 )
 
 

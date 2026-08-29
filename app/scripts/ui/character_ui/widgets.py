@@ -26,7 +26,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.scripts.character_models import MAX_CHARACTER_INPUT_VALUE
 from app.scripts.custom_classes import CustomFont, StyledButton
+
+
+CHARACTER_FIELD_HEIGHT: int = 34
 
 
 class CharComboBox(QComboBox):
@@ -61,7 +65,7 @@ class NormalizingLineEdit(QLineEdit):
         parent: QWidget | None = None,
         *,
         min_value: float = 0.0,
-        max_value: float = 100.0,
+        max_value: float = MAX_CHARACTER_INPUT_VALUE,
         integer: bool = False,
     ) -> None:
         super().__init__(text, parent)
@@ -70,7 +74,9 @@ class NormalizingLineEdit(QLineEdit):
         if integer:
             self.setValidator(QIntValidator(int(min_value), int(max_value), self))
         else:
-            self.setValidator(QDoubleValidator(min_value, max_value, 2, self))
+            validator = QDoubleValidator(min_value, max_value, 2, self)
+            validator.setNotation(QDoubleValidator.Notation.StandardNotation)
+            self.setValidator(validator)
 
         self.editingFinished.connect(self._commit_value)
 
@@ -149,7 +155,7 @@ class StepperField(QFrame):
         unit: str = "",
         max_width: int = 0,
         min_value: float = 0.0,
-        max_value: float = 100.0,
+        max_value: float = MAX_CHARACTER_INPUT_VALUE,
         integer: bool = False,
     ) -> None:
         super().__init__(parent)
@@ -192,7 +198,7 @@ class StepperField(QFrame):
             )
             layout.addWidget(unit_label)
 
-        self.setFixedHeight(34)
+        self.setFixedHeight(CHARACTER_FIELD_HEIGHT)
         self.setMaximumWidth(max_width if max_width else 132)
 
     def number(self) -> float:
@@ -247,7 +253,7 @@ class StaticValueField(QFrame):
             )
             layout.addWidget(unit_label)
 
-        self.setFixedHeight(34)
+        self.setFixedHeight(CHARACTER_FIELD_HEIGHT)
         self.setMaximumWidth(132)
 
     def set_number(self, value: float) -> None:
@@ -317,6 +323,7 @@ class ChoiceListPanels:
         add_clicked: Callable[[], None],
         # selector 아래쪽 제목
         option_title: str,
+        wrap_group: bool,
         selector_min_width: int = 0,
         list_min_width: int = 0,
         selector_scroll_min_height: int = 150,
@@ -336,9 +343,13 @@ class ChoiceListPanels:
         )
 
         self.group_container: QFrame = QFrame(self.selector_panel)
-        self.group_layout = QHBoxLayout(self.group_container)
-        self.group_layout.setContentsMargins(0, 0, 0, 0)
-        self.group_layout.setSpacing(6)
+        self.group_layout: QLayout
+        if wrap_group:
+            self.group_layout = FlowLayout(self.group_container, spacing=6)
+        else:
+            self.group_layout = QHBoxLayout(self.group_container)
+            self.group_layout.setContentsMargins(0, 0, 0, 0)
+            self.group_layout.setSpacing(6)
         selector_layout.addWidget(self.group_container)
 
         selector_layout.addWidget(
@@ -386,6 +397,12 @@ class ChoiceListPanels:
         )
 
         list_panel_layout.addWidget(self.list_scroll_area, 1)
+
+    def add_group_stretch(self) -> None:
+        """고정 행 레이아웃의 선택 버튼을 왼쪽 정렬"""
+
+        if isinstance(self.group_layout, QBoxLayout):
+            self.group_layout.addStretch(1)
 
     def make_choice_button(
         self,

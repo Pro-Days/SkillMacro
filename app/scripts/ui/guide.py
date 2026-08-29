@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.scripts.app_state import app_state
+from app.scripts.app_state import SidebarPage, app_state
 from app.scripts.calculator_engine import build_internal_base_stats
 from app.scripts.calculator_models import (
     BaseStats,
@@ -47,6 +47,7 @@ from app.scripts.calculator_models import (
 from app.scripts.custom_classes import CustomFont
 from app.scripts.data_manager import save_data
 from app.scripts.macro_models import SkillUsageSetting
+from app.scripts.run_macro import is_input_sequence_active
 from app.scripts.ui.main_ui.sidebar import SkillSettingCardWidgets
 from app.scripts.ui.themes import theme_manager
 
@@ -433,9 +434,27 @@ class GuideSelectionOverlay(QFrame):
         body_label.setFont(CustomFont(11))
         layout.addWidget(body_label)
 
+        # 가이드 목록 스크롤 영역 구성
+        self._list_scroll: QScrollArea = QScrollArea(self._card)
+        self._list_scroll.setObjectName("guideSelectionScroll")
+        self._list_scroll.setWidgetResizable(True)
+        self._list_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._list_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self._list_scroll.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+
+        self._list_content: QWidget = QWidget(self._list_scroll)
+        self._list_content.setObjectName("guideSelectionList")
+        list_layout: QVBoxLayout = QVBoxLayout(self._list_content)
+        list_layout.setContentsMargins(0, 0, 0, 0)
+        list_layout.setSpacing(8)
+
         # 가이드 목록 버튼 구성
         for definition in definitions:
-            button: QPushButton = QPushButton(definition.title, self._card)
+            button: QPushButton = QPushButton(definition.title, self._list_content)
             button.setObjectName(
                 "guideRecommendedListButton"
                 if definition.recommended
@@ -446,7 +465,10 @@ class GuideSelectionOverlay(QFrame):
                 button.setIcon(_guide_recommended_icon())
                 button.setIconSize(QSize(10, 10))
             button.clicked.connect(lambda _, item=definition: on_selected(item))
-            layout.addWidget(button)
+            list_layout.addWidget(button)
+
+        self._list_scroll.setWidget(self._list_content)
+        layout.addWidget(self._list_scroll)
 
         close_button: QPushButton = QPushButton("닫기", self._card)
         close_button.setObjectName("guideSecondaryButton")
@@ -493,9 +515,19 @@ class GuideSelectionOverlay(QFrame):
         """가이드 선택 카드 중앙 배치"""
 
         card_width: int = min(460, max(320, self.width() - 40))
+        max_card_height: int = max(0, self.height() - 40)
+        natural_list_height: int = self._list_content.sizeHint().height()
+        self._list_scroll.setFixedHeight(natural_list_height)
         self._card.setFixedWidth(card_width)
         self._card.adjustSize()
-        card_height: int = self._card.sizeHint().height()
+        natural_card_height: int = self._card.sizeHint().height()
+
+        if natural_card_height > max_card_height:
+            overflow: int = natural_card_height - max_card_height
+            self._list_scroll.setFixedHeight(max(100, natural_list_height - overflow))
+            self._card.adjustSize()
+
+        card_height: int = min(self._card.sizeHint().height(), max_card_height)
         x: int = max(20, (self.width() - card_width) // 2)
         y: int = max(20, (self.height() - card_height) // 2)
         self._card.setGeometry(x, y, card_width, card_height)
@@ -643,6 +675,13 @@ class GuideOverlay(QFrame):
         # 카드 기본 크기 계산
         card_width: int = min(420, max(320, self.width() - 40))
         self._card.setFixedWidth(card_width)
+        content_width: int = card_width - 36
+        title_height: int = self._title_label.heightForWidth(content_width)
+        body_height: int = self._body_label.heightForWidth(content_width)
+        if title_height >= 0:
+            self._title_label.setMinimumHeight(title_height)
+        if body_height >= 0:
+            self._body_label.setMinimumHeight(body_height)
         self._card.adjustSize()
         card_height: int = self._card.sizeHint().height()
 
@@ -897,13 +936,16 @@ class GuideManager:
     def _can_start_guide(self) -> bool:
         """가이드 시작 가능 여부 확인"""
 
-        # 매크로 실행 중 설정 화면 이동 차단
-        if app_state.macro.is_running:
+        # 입력 시퀀스 실행 중 설정 화면 이동 차단
+        if is_input_sequence_active():
             self._show_blocked_dialog("매크로 실행 중에는 가이드를 시작할 수 없습니다.")
             return False
 
         # 사용자가 편집 중인 연계스킬 보호
-        if self.master.sidebar.page_navigator.currentIndex() == 3:
+        if (
+            self.master.sidebar.page_navigator.currentIndex()
+            == SidebarPage.LINK_SKILL_EDITOR
+        ):
             self._show_blocked_dialog(
                 "연계스킬 편집을 마친 뒤 가이드를 시작할 수 있습니다."
             )
@@ -984,19 +1026,30 @@ class GuideManager:
         self.master.popup_manager.close_popup()
         self.master.change_layout(0)
 
-    def _sidebar_page(self, index: int) -> None:
+    def _sidebar_page(self, page: SidebarPage) -> None:
         """사이드바 페이지 진입"""
 
         self._main_page()
-        self.master.sidebar.change_page(index)  # type: ignore
+        self.master.sidebar.change_page(page)
+
+    def _sidebar_detail_settings(self) -> None:
+        """일반 설정의 세부 설정 영역 표시"""
+
+        self._sidebar_page(SidebarPage.GENERAL)
+        self.master.sidebar.general_settings.show_detail_settings()
 
     def _link_editor_page(self) -> None:
         """임시 연계스킬 편집 페이지 진입"""
 
-        self._sidebar_page(2)
-        if self.master.sidebar.page_navigator.currentIndex() == 3:
+        # 이미 편집 페이지에 있으면 초안을 새로 만들지 않고 현재 편집 상태 유지
+        if (
+            self.master.sidebar.page_navigator.currentIndex()
+            == SidebarPage.LINK_SKILL_EDITOR
+        ):
+            self._main_page()
             return
 
+        self._sidebar_page(SidebarPage.LINK_SKILL)
         self.master.sidebar.link_skill_settings.create_new()
         self._opened_link_editor = True
 
@@ -1009,13 +1062,13 @@ class GuideManager:
         )
         if (
             self.master.page_navigator.currentIndex() == 0
-            and self.master.sidebar.page_navigator.currentIndex() == 1
+            and self.master.sidebar.page_navigator.currentIndex() == SidebarPage.SKILL
             and add_button is not None
         ):
             return
 
         # 무공비급 사용 설정 화면 진입
-        self._sidebar_page(1)
+        self._sidebar_page(SidebarPage.SKILL)
 
         # 선택 무공비급 영역 기준 팝업 표시
         self.master.sidebar.skill_settings.on_scroll_select_clicked()
@@ -1029,7 +1082,7 @@ class GuideManager:
             self._opened_link_editor = False
             return
 
-        self._sidebar_page(2)
+        self._sidebar_page(SidebarPage.LINK_SKILL)
 
     def _ensure_calculator_layout(self) -> None:
         """메인 화면을 계산기로 전환
@@ -1391,7 +1444,7 @@ class GuideManager:
     def _build_definitions(self) -> tuple[GuideDefinition, ...]:
         """1차 제공 가이드 정의 구성"""
 
-        return (
+        definitions: tuple[GuideDefinition, ...] = (
             GuideDefinition(
                 guide_id="macro",
                 title="매크로 사용",
@@ -1401,43 +1454,43 @@ class GuideManager:
                         "현재 화면 구조 확인",
                         "이 프로그램은 프리셋 단위로 설정을 저장하고 사용합니다. 프리셋마다 서버, 무공비급, 스킬 배치, 계산기 입력이 따로 저장됩니다.",
                         "main.preset_tabs",
-                        lambda: self._sidebar_page(0),
+                        lambda: self._sidebar_page(SidebarPage.GENERAL),
                     ),
                     GuideStep(
                         "서버와 직업 확인",
                         "먼저 현재 프리셋에서 사용할 서버와 직업을 확인합니다.",
                         "sidebar.general.server",
-                        lambda: self._sidebar_page(0),
+                        lambda: self._sidebar_page(SidebarPage.GENERAL),
                     ),
                     GuideStep(
                         "딜레이 확인",
                         "딜레이는 스킬 사이 입력 간격입니다. 너무 낮으면 스킬이 누락될 수 있고, 너무 높으면 사용이 느려집니다.",
                         "sidebar.general.delay",
-                        lambda: self._sidebar_page(0),
+                        lambda: self._sidebar_page(SidebarPage.GENERAL),
                     ),
                     GuideStep(
                         "스킬속도 확인",
                         "캐릭터의 스킬속도(%) 스탯을 입력하면 쿨타임 계산에 반영됩니다.",
                         "sidebar.general.cooltime",
-                        lambda: self._sidebar_page(0),
+                        lambda: self._sidebar_page(SidebarPage.GENERAL),
                     ),
                     GuideStep(
                         "시작키 확인",
-                        "시작키는 매크로를 시작하고 중지하는 키입니다.",
+                        "짧게 누르면 매크로를 시작하거나 중지합니다. 계속 누르고 있으면 놓을 때까지 매크로를 실행합니다.",
                         "sidebar.general.start_key",
-                        lambda: self._sidebar_page(0),
+                        lambda: self._sidebar_page(SidebarPage.GENERAL),
                     ),
                     GuideStep(
                         "스왑 키 확인",
                         "스왑 키는 1줄과 2줄을 바꿀 때 사용됩니다. 실제 게임 키 설정과 일치해야 합니다.",
                         "sidebar.general.swap_key",
-                        lambda: self._sidebar_page(0),
+                        lambda: self._sidebar_page(SidebarPage.GENERAL),
                     ),
                     GuideStep(
                         "마우스 클릭 설정 확인",
                         "평타 입력을 함께 사용할지 정합니다. 스킬만 사용할 때는 끄고, 평타를 섞어야 하면 켭니다.",
                         "sidebar.general.click",
-                        lambda: self._sidebar_page(0),
+                        self._sidebar_detail_settings,
                     ),
                     GuideStep(
                         "무공비급 슬롯 확인",
@@ -1496,6 +1549,46 @@ class GuideManager:
                 ),
             ),
             GuideDefinition(
+                guide_id="tips",
+                title="실전 사용 팁",
+                recommended=True,
+                steps=(
+                    GuideStep(
+                        "사냥과 보스에서 사용하는 방법",
+                        "사냥에서는 사용할 스킬을 자동 OFF 연계스킬에 모두 넣고 "
+                        "시작키를 짧게 눌러 한 사이클씩 사용하세요.\n"
+                        "보스에서는 시작키를 누르는 동안 실행하고 키를 떼면 중지하는 방법이 편합니다.",
+                        None,
+                    ),
+                    GuideStep(
+                        "편한 시작키 설정",
+                        "자주 사용하는 시작키나 연계스킬 키는 마우스 사이드 버튼으로 "
+                        "설정하면 편합니다.",
+                        None,
+                    ),
+                    GuideStep(
+                        "채팅 중 오작동 방지",
+                        "키 입력 유지 시간을 약 0.2초로 설정하면 채팅 중 "
+                        "오작동을 막을 수 있습니다. 실행할 때는 설정한 시간 이상 "
+                        "키를 눌러야 합니다.",
+                        None,
+                    ),
+                    GuideStep(
+                        "스킬이 누락될 때",
+                        "스킬이 자주 누락되면 딜레이나 추가 대기 시간을 조금씩 올려 "
+                        "안정적으로 실행되는 값을 사용하세요.",
+                        None,
+                    ),
+                    GuideStep(
+                        "진열대 빠르게 입력하기",
+                        "진열대에서는 드래그, Shift 클릭, Ctrl 클릭, Ctrl+A로 여러 "
+                        "칸을 선택하고 선택 칸에 적용으로 한 번에 "
+                        "입력할 수 있습니다.",
+                        None,
+                    ),
+                ),
+            ),
+            GuideDefinition(
                 guide_id="custom_scroll",
                 title="커스텀 무공비급 추가",
                 steps=(
@@ -1503,13 +1596,13 @@ class GuideManager:
                         "커스텀 무공비급 진입 위치",
                         "커스텀 무공비급은 스킬 사용설정의 무공비급 목록에서 추가할 수 있습니다.",
                         "sidebar.skill.selected_scroll",
-                        lambda: self._sidebar_page(1),
+                        lambda: self._sidebar_page(SidebarPage.SKILL),
                     ),
                     GuideStep(
                         "무공비급 선택 팝업 열기",
                         "무공비급 선택 영역을 누르면 현재 서버에서 사용할 수 있는 무공비급 목록이 열립니다.",
                         "sidebar.skill.selected_scroll",
-                        lambda: self._sidebar_page(1),
+                        lambda: self._sidebar_page(SidebarPage.SKILL),
                     ),
                     GuideStep(
                         "새 스킬 추가 위치",
@@ -1527,7 +1620,7 @@ class GuideManager:
                         "마무리",
                         "추가된 무공비급은 기존 무공비급처럼 선택하고 배치할 수 있습니다.",
                         "sidebar.skill.selected_scroll",
-                        lambda: self._sidebar_page(1),
+                        lambda: self._sidebar_page(SidebarPage.SKILL),
                     ),
                 ),
             ),
@@ -1539,13 +1632,13 @@ class GuideManager:
                         "연계스킬 위치 확인",
                         "연계스킬은 여러 스킬을 하나의 스킬처럼 묶어서 사용하는 기능입니다.",
                         "sidebar.nav.link",
-                        lambda: self._sidebar_page(2),
+                        lambda: self._sidebar_page(SidebarPage.LINK_SKILL),
                     ),
                     GuideStep(
                         "새 연계스킬 만들기",
                         "이 버튼을 눌러 새 연계스킬을 만들 수 있습니다.",
                         "sidebar.link.create",
-                        lambda: self._sidebar_page(2),
+                        lambda: self._sidebar_page(SidebarPage.LINK_SKILL),
                     ),
                     GuideStep(
                         "자동 사용",
@@ -1555,7 +1648,7 @@ class GuideManager:
                     ),
                     GuideStep(
                         "시작키 설정",
-                        "연계스킬을 수동으로 사용하기 위해 누를 시작키를 설정합니다.",
+                        "짧게 누르면 1회만 사용하고 실행 중 다시 누르면 중지합니다. 계속 누르고 있으면 스킬을 반복해서 사용합니다.",
                         "sidebar.link.editor.key",
                         self._link_editor_page,
                     ),
@@ -1725,7 +1818,9 @@ class GuideManager:
                     ),
                     GuideStep(
                         "장비 탭",
-                        "장비에서는 장착 장비와 보유 장비를 관리합니다.",
+                        "장비에서는 장착 장비와 보유 장비를 관리합니다. "
+                        "재련 단계를 고르면 고정 수치가 표시되고, 수치를 수정하면 "
+                        "직접 입력으로 전환됩니다.",
                         "character.tab.equipment",
                         lambda: self._sim_character_page(1, True, False),
                     ),
@@ -1737,7 +1832,9 @@ class GuideManager:
                     ),
                     GuideStep(
                         "진열대 탭",
-                        "진열대에서는 진열대에 올린 항목의 스탯을 입력합니다.",
+                        "진열대에서는 각 칸의 재련 단계를 입력합니다. 직접 입력을 켜면 "
+                        "수치를 직접 입력할 수 있고 두 입력값은 각각 보존됩니다. "
+                        "자동 세트효과는 네 장비 중 가장 낮은 단계로 계산됩니다.",
                         "character.tab.display_stand",
                         lambda: self._sim_character_page(3, True, False),
                     ),
@@ -1787,37 +1884,37 @@ class GuideManager:
                         "스킬 사용설정 위치",
                         "스킬 사용설정은 장착한 무공비급의 스킬별 동작 방식을 정하는 곳입니다.",
                         "sidebar.nav.skill",
-                        lambda: self._sidebar_page(1),
+                        lambda: self._sidebar_page(SidebarPage.SKILL),
                     ),
                     GuideStep(
                         "설정할 무공비급 선택",
                         "현재 선택한 무공비급의 스킬이 아래 카드에 표시됩니다. 다른 무공비급을 설정하려면 이 영역에서 선택합니다.",
                         "sidebar.skill.selected_scroll",
-                        lambda: self._sidebar_page(1),
+                        lambda: self._sidebar_page(SidebarPage.SKILL),
                     ),
                     GuideStep(
                         "스킬 카드 목록",
                         "선택된 무공비급의 스킬의 설정을 변경할 수 있습니다.",
                         "sidebar.skill.cards",
-                        lambda: self._sidebar_page(1),
+                        lambda: self._sidebar_page(SidebarPage.SKILL),
                     ),
                     GuideStep(
                         "사용 여부",
                         "사용 여부를 끄면 매크로가 해당 스킬을 자동으로 사용하지 않습니다.",
                         "sidebar.skill.usage",
-                        lambda: self._sidebar_page(1),
+                        lambda: self._sidebar_page(SidebarPage.SKILL),
                     ),
                     GuideStep(
                         "단독 사용",
                         "단독 사용은 자동 연계스킬에 포함된 스킬이 다른 스킬들을 기다리지 않고 이 스킬을 우선적으로 사용할지 정하는 설정입니다.",
                         "sidebar.skill.sole",
-                        lambda: self._sidebar_page(1),
+                        lambda: self._sidebar_page(SidebarPage.SKILL),
                     ),
                     GuideStep(
                         "우선순위",
                         "여러 스킬이 동시에 준비되면 우선순위 번호가 낮은 스킬을 먼저 사용합니다.",
                         "sidebar.skill.priority",
-                        lambda: self._sidebar_page(1),
+                        lambda: self._sidebar_page(SidebarPage.SKILL),
                     ),
                     GuideStep(
                         "마무리",
@@ -1827,4 +1924,19 @@ class GuideManager:
                     ),
                 ),
             ),
+        )
+        guide_priority: dict[str, int] = {
+            "tips": 0,
+            "macro": 1,
+            "calculator": 2,
+            "character": 3,
+        }
+        return tuple(
+            sorted(
+                definitions,
+                key=lambda definition: guide_priority.get(
+                    definition.guide_id,
+                    len(guide_priority),
+                ),
+            )
         )

@@ -1,9 +1,9 @@
-"""장비 탭 (좌: 장비창 9슬롯 / 우: 선택 장비 상세 · 장비 교체 화면)
+"""장비 탭 (좌: 장비창 10슬롯 / 우: 선택 장비 상세 · 장비 교체 화면)
 
 콘텐츠 규칙은 계획 파일을 따른다:
 - 슬롯마다 보유 장비 여러 개를 두고, 장비 교체로 선택해 장착한다
-- 재련 = 단계가 아닌 부위별 허용 스탯 입력
-- 반지/귀걸이 = 자유 기본 스탯 라인
+- 재련 = 단계별 고정 수치 또는 부위별 직접 입력
+- 반지/귀걸이/완갑 = 자유 기본 스탯 라인
 - 잠재/추가능력 = 투구·갑옷·허리띠·신발만
 - 등급(기본/찬란한) = 무기·방어구만
 """
@@ -39,6 +39,7 @@ from app.scripts.character_data import (
     NECKLACE_REFORGE_STAT_KEYS,
     POTENTIAL_EQUIPMENT_SLOTS,
     POTENTIAL_OPTION_SPECS,
+    REFORGE_EQUIPMENT_BY_SLOT,
     EquipmentItemSpec,
     OptionSpec,
     ValueRange,
@@ -55,7 +56,6 @@ from app.scripts.character_engine import (
 from app.scripts.character_models import (
     EQUIPMENT_OPTION_SLOT_COUNT,
     EQUIPMENT_SLOT_KIND,
-    MAX_REFORGE_STEP,
     AdditionalLine,
     AdditionalOption,
     CharacterProfile,
@@ -67,8 +67,10 @@ from app.scripts.character_models import (
     OwnedEquipment,
     PotentialLine,
     PotentialOption,
+    ReforgeInputMode,
     ScrollTier,
 )
+from app.scripts.refinement_data import MAX_REFINE_STEP, refinement_cumulative_stats
 from app.scripts.custom_classes import CustomFont, StyledButton
 from app.scripts.ui.character_ui.change_handler import CharacterChangeHandler
 from app.scripts.ui.character_ui.constants import (
@@ -80,6 +82,7 @@ from app.scripts.ui.character_ui.constants import (
 )
 from app.scripts.ui.character_ui.tabs.base import CharacterTab
 from app.scripts.ui.character_ui.widgets import (
+    CHARACTER_FIELD_HEIGHT,
     CharComboBox,
     ChoiceListPanels,
     FlowLayout,
@@ -119,6 +122,10 @@ _REFORGE_EQUIPMENT_SLOTS: tuple[EquipmentSlot, ...] = tuple(
 _SCROLL_TIER_LABELS: dict[ScrollTier, str] = {
     tier: f"{tier.value}%" for tier in ScrollTier
 }
+_REFORGE_STEP_OPTIONS: tuple[str, ...] = (
+    "직접 입력",
+    *(f"{step}강" for step in range(MAX_REFINE_STEP + 1)),
+)
 
 
 def _reforge_stat_keys(
@@ -133,6 +140,24 @@ def _reforge_stat_keys(
         return NECKLACE_REFORGE_STAT_KEYS[necklace_type]
 
     return EQUIPMENT_REFORGE_STAT_KEYS[slot]
+
+
+def _active_reforge_stats(
+    slot: EquipmentSlot,
+    item: OwnedEquipment,
+) -> dict[StatKey, float]:
+    """현재 입력 방식에 따라 장비 재련 스탯 반환"""
+
+    if item.reforge_mode == ReforgeInputMode.MANUAL:
+        return dict(item.reforge_stats)
+
+    if item.reforge_step is None:
+        raise ValueError("step reforge requires a step")
+
+    return refinement_cumulative_stats(
+        REFORGE_EQUIPMENT_BY_SLOT[slot],
+        item.reforge_step,
+    )
 
 
 def _option_label(spec: OptionSpec) -> str:
@@ -271,7 +296,7 @@ def _equipment_scroll_limit(
 def _has_grade(item_spec: EquipmentItemSpec | None) -> bool:
     """장비 스펙 기준 등급 선택 가능 여부"""
 
-    # 반지·귀걸이처럼 카탈로그 스펙이 없는 장비 제외
+    # 반지·귀걸이·완갑처럼 카탈로그 스펙이 없는 장비 제외
     if item_spec is None:
         return False
 
@@ -305,7 +330,7 @@ def _equipment_name(equipment: OwnedEquipment, slot: EquipmentSlot) -> str:
     if item_spec is not None:
         return item_spec.name + _ARMOR_SLOT_NAME_SUFFIX.get(slot, "")
 
-    # 반지·귀걸이 사용자 지정 이름 표시
+    # 반지·귀걸이·완갑 사용자 지정 이름 표시
     return equipment.name
 
 
@@ -314,7 +339,7 @@ def _equipment_base_rows(
 ) -> list[tuple[str, float]]:
     """장비 스펙 기반 기본 스탯 표시 행 구성"""
 
-    # 반지·귀걸이 자유 입력 장비 제외
+    # 반지·귀걸이·완갑 자유 입력 장비 제외
     item_spec: EquipmentItemSpec | None = equipment_item_spec(equipment)
     if item_spec is None:
         return []
@@ -599,30 +624,56 @@ class _ScrollSection:
 
 
 @dataclass(slots=True)
+class _ReforgeStatField:
+    """재련 스탯 입력 묶음"""
+
+    container: QWidget
+    field: StepperField
+
+
+@dataclass(slots=True)
 class _ReforgeSection:
     """재련 섹션과 종류별 스탯 입력칸"""
 
     widget: QFrame
     flow: FlowLayout
-    stat_fields: dict[StatKey, QWidget]
-    make_stat_field: Callable[[StatKey, float], QWidget]
+    step_combo: CharComboBox
+    stat_fields: dict[StatKey, _ReforgeStatField]
+    make_stat_field: Callable[[StatKey, float], _ReforgeStatField]
 
     def update_stat_fields(self, slot: EquipmentSlot, item: OwnedEquipment) -> None:
         """장비 종류에 맞는 재련 스탯 입력칸 동기화"""
 
-        for container in self.stat_fields.values():
-            self.flow.removeWidget(container)
-            container.deleteLater()
+        for stat_field in self.stat_fields.values():
+            self.flow.removeWidget(stat_field.container)
+            stat_field.container.deleteLater()
         self.stat_fields.clear()
 
+        active_stats: dict[StatKey, float] = _active_reforge_stats(slot, item)
         for stat_key in _reforge_stat_keys(slot, item.item_name):
-            container: QWidget = self.make_stat_field(
+            stat_field: _ReforgeStatField = self.make_stat_field(
                 stat_key,
-                item.reforge_stats.get(stat_key, 0.0),
+                active_stats.get(stat_key, 0.0),
             )
-            self.stat_fields[stat_key] = container
-            self.flow.addWidget(container)
+            self.stat_fields[stat_key] = stat_field
+            self.flow.addWidget(stat_field.container)
         self.widget.updateGeometry()
+
+    def update_values(self, slot: EquipmentSlot, item: OwnedEquipment) -> None:
+        """현재 재련 입력 방식에 맞춰 단계와 스탯 표시 갱신"""
+
+        active_stats: dict[StatKey, float] = _active_reforge_stats(slot, item)
+        if item.reforge_mode == ReforgeInputMode.MANUAL:
+            combo_index: int = 0
+        else:
+            if item.reforge_step is None:
+                raise ValueError("step reforge requires a step")
+            combo_index = item.reforge_step + 1
+        with QSignalBlocker(self.step_combo):
+            self.step_combo.setCurrentIndex(combo_index)
+
+        for stat_key, stat_field in self.stat_fields.items():
+            stat_field.field.set_number(active_stats.get(stat_key, 0.0))
 
 
 @dataclass(slots=True)
@@ -848,7 +899,11 @@ class _EquipPickCard(QFrame):
             _equipment_display_name(item, slot.slot, has_grade)
         )
         self._reforge_label.setVisible(slot.slot in _REFORGE_EQUIPMENT_SLOTS)
-        self._reforge_label.setText(f"+{item.reforge_step}")
+        self._reforge_label.setText(
+            "직접 입력"
+            if item.reforge_mode == ReforgeInputMode.MANUAL
+            else f"+{item.reforge_step}"
+        )
 
         while self._info_box.count():
             layout_item = self._info_box.takeAt(0)
@@ -1160,10 +1215,7 @@ class EquipmentTab(CharacterTab):
         item_spec: EquipmentItemSpec | None = equipment_item_spec(item)
         has_grade: bool = _has_grade(item_spec)
         has_potential: bool = slot.slot in POTENTIAL_EQUIPMENT_SLOTS
-        is_free_stat: bool = item.kind in (
-            EquipmentKind.RING,
-            EquipmentKind.EARRING,
-        )
+        is_free_stat: bool = slot.slot in FREE_BASE_STAT_EQUIPMENT_SLOTS
 
         head, display_name_label = self._build_detail_head(slot, item, has_grade)
         layout.addWidget(head)
@@ -1578,11 +1630,11 @@ class EquipmentTab(CharacterTab):
         slot: _EquipSlotData,
         item: OwnedEquipment,
     ) -> _BaseSection:
-        """기본 스탯 섹션 (방어구/무기 자동 표시 vs 반지/귀걸이 자유 입력)"""
+        """기본 스탯 섹션 (카탈로그 장비 자동 표시 vs 자유 스탯 입력)"""
 
         section, box = self._section("기본 스탯")
 
-        # 반지/귀걸이: 자유 스탯 라인
+        # 반지·귀걸이·완갑 자유 스탯 라인
         if slot.slot in FREE_BASE_STAT_EQUIPMENT_SLOTS:
             free_rows = QVBoxLayout()
             free_rows.setSpacing(8)
@@ -1639,7 +1691,7 @@ class EquipmentTab(CharacterTab):
         stat: str,
         value: str,
     ) -> QHBoxLayout:
-        """반지/귀걸이 자유 스탯 한 줄 (콤보 + 값)"""
+        """자유 기본 스탯 한 줄 (콤보 + 값)"""
 
         row = QHBoxLayout()
         row.setSpacing(10)
@@ -1721,45 +1773,55 @@ class EquipmentTab(CharacterTab):
     def _build_reforge_section(
         self, slot: _EquipSlotData, item: OwnedEquipment
     ) -> _ReforgeSection:
-        """재련 섹션 (부위/목걸이 종류별 허용 스탯 입력)"""
+        """재련 섹션 (단계별 고정 수치 또는 직접 입력)"""
 
         section, box = self._section("재련")
 
         flow: FlowLayout = FlowLayout(spacing=14)
-        # 맨 처음에 재련 단계(0~20강) 입력칸
-        flow.addWidget(self._build_step_field(item))
-        stat_fields: dict[StatKey, QWidget] = {}
+        step_container, step_combo = self._build_step_field(slot.slot, item)
+        flow.addWidget(step_container)
+        stat_fields: dict[StatKey, _ReforgeStatField] = {}
 
-        def make_stat_field(stat_key: StatKey, value: float) -> QWidget:
+        def make_stat_field(stat_key: StatKey, value: float) -> _ReforgeStatField:
             label: str = STAT_SPECS[stat_key]
-            container, _field = self._build_labeled_field(
+            container, field = self._build_labeled_field(
                 label,
                 f"{value:g}",
-                on_changed=lambda field, key=stat_key, target=item: self._set_reforge_stat(
-                    target,
-                    key,
-                    field.number(),
+                on_changed=(
+                    lambda field, key=stat_key, target=item: self._set_reforge_stat(
+                        target,
+                        key,
+                        field.number(),
+                    )
                 ),
             )
-            return container
+            if not isinstance(field, StepperField):
+                raise ValueError("reforge stat must be editable")
+            return _ReforgeStatField(container=container, field=field)
 
+        active_stats: dict[StatKey, float] = _active_reforge_stats(slot.slot, item)
         for stat_key in _reforge_stat_keys(slot.slot, item.item_name):
-            container: QWidget = make_stat_field(
+            stat_field: _ReforgeStatField = make_stat_field(
                 stat_key,
-                item.reforge_stats.get(stat_key, 0.0),
+                active_stats.get(stat_key, 0.0),
             )
-            stat_fields[stat_key] = container
-            flow.addWidget(container)
+            stat_fields[stat_key] = stat_field
+            flow.addWidget(stat_field.container)
         box.addLayout(flow)
         return _ReforgeSection(
             widget=section,
             flow=flow,
+            step_combo=step_combo,
             stat_fields=stat_fields,
             make_stat_field=make_stat_field,
         )
 
-    def _build_step_field(self, item: OwnedEquipment) -> QWidget:
-        """재련 단계(0~20강) 입력 묶음"""
+    def _build_step_field(
+        self,
+        slot: EquipmentSlot,
+        item: OwnedEquipment,
+    ) -> tuple[QWidget, CharComboBox]:
+        """재련 입력 방식과 단계 선택 묶음"""
 
         container: QFrame = QFrame(self)
         box = QVBoxLayout(container)
@@ -1768,32 +1830,72 @@ class EquipmentTab(CharacterTab):
 
         box.addWidget(_field_caption(container, "단계"))
 
-        field: StepperField = StepperField(
-            container,
-            str(item.reforge_step),
-            unit="강",
-            integer=True,
+        options: tuple[str, ...] = (
+            ("직접 입력",)
+            if slot == EquipmentSlot.NECKLACE
+            else _REFORGE_STEP_OPTIONS
         )
-        field.setFixedWidth(84)
-        field.value_changed.connect(
-            lambda target=item, value_field=field: self._set_reforge_step(
+        combo: CharComboBox = CharComboBox(
+            container,
+            list(options),
+            point_size=9,
+        )
+        if item.reforge_mode == ReforgeInputMode.MANUAL:
+            combo_index: int = 0
+        else:
+            if item.reforge_step is None:
+                raise ValueError("step reforge requires a step")
+            combo_index = item.reforge_step + 1
+        combo.setCurrentIndex(combo_index)
+        combo.setFixedWidth(104)
+        combo.setFixedHeight(CHARACTER_FIELD_HEIGHT)
+        combo.currentIndexChanged.connect(
+            lambda index, target=item, equipment_slot=slot: self._set_reforge_step(
+                equipment_slot,
                 target,
-                value_field,
+                index,
             )
         )
-        box.addWidget(field)
-        return container
+        box.addWidget(combo)
+        return container, combo
 
-    def _set_reforge_step(self, item: OwnedEquipment, field: StepperField) -> None:
-        """재련 단계 모델 반영"""
+    def _set_reforge_step(
+        self,
+        slot: EquipmentSlot,
+        item: OwnedEquipment,
+        index: int,
+    ) -> None:
+        """재련 입력 방식과 단계 모델 반영"""
 
-        step: int = max(0, min(MAX_REFORGE_STEP, int(field.number())))
-        field.set_number(float(step))
-        if item.reforge_step == step:
-            return
+        if index == 0:
+            if item.reforge_mode == ReforgeInputMode.MANUAL:
+                return
 
-        item.reforge_step = step
-        self._changes.stats_changed()
+            active_stats: dict[StatKey, float] = _active_reforge_stats(slot, item)
+            item.reforge_mode = ReforgeInputMode.MANUAL
+            item.reforge_step = None
+            item.reforge_stats = {
+                stat_key: value
+                for stat_key, value in active_stats.items()
+                if value > 0.0
+            }
+        else:
+            step: int = index - 1
+            if (
+                item.reforge_mode == ReforgeInputMode.STEP
+                and item.reforge_step == step
+            ):
+                return
+
+            item.reforge_mode = ReforgeInputMode.STEP
+            item.reforge_step = step
+            item.reforge_stats = {}
+
+        view: _EquipmentDetailView = self._require_equipped_view(item)
+        if view.reforge_section is None:
+            raise ValueError("reforge section is not available")
+        view.reforge_section.update_values(view.slot, item)
+        self._commit_active_item()
 
     def _build_scroll_section(self, slot: _EquipSlotData) -> _ScrollSection:
         """주문서 섹션 (좌: 선택 / 우: 적용 목록)"""
@@ -2038,6 +2140,7 @@ class EquipmentTab(CharacterTab):
             add_text=self._scroll_add_button_text(slot.slot, item),
             add_clicked=lambda: self._add_selected_scroll(slot.slot, item),
             option_title="확률",
+            wrap_group=True,
             selector_scroll_min_height=150,
             list_scroll_min_height=150,
         )
@@ -2059,7 +2162,7 @@ class EquipmentTab(CharacterTab):
             stat_buttons[stat_key] = stat_button
             panels.group_layout.addWidget(stat_button)
 
-        panels.group_layout.addStretch(1)
+        panels.add_group_stretch()
         tier_buttons: dict[ScrollTier, QPushButton] = {}
         for tier, effects in tier_effects.items():
             tier_button: QPushButton = self._build_scroll_tier_button(
@@ -2298,14 +2401,13 @@ class EquipmentTab(CharacterTab):
         box.setContentsMargins(0, 0, 0, 0)
         box.setSpacing(5)
 
-        unit: str = "%" if "%" in label else ""
         box.addWidget(_field_caption(container, label))
 
         # %스탯과 일반 스탯 모두 동일한 칸 폭으로 통일
         field: QWidget = (
-            StaticValueField(container, value, unit=unit)
+            StaticValueField(container, value)
             if readonly
-            else StepperField(container, value, unit=unit)
+            else StepperField(container, value)
         )
         if isinstance(field, StepperField) and on_changed is not None:
             field.value_changed.connect(lambda target=field: on_changed(target))
@@ -2322,12 +2424,30 @@ class EquipmentTab(CharacterTab):
     ) -> None:
         """재련 스탯 모델 반영"""
 
+        view: _EquipmentDetailView = self._require_equipped_view(item)
+        if item.reforge_mode == ReforgeInputMode.STEP:
+            active_stats: dict[StatKey, float] = _active_reforge_stats(
+                view.slot,
+                item,
+            )
+            item.reforge_mode = ReforgeInputMode.MANUAL
+            item.reforge_step = None
+            item.reforge_stats = {
+                key: stat_value
+                for key, stat_value in active_stats.items()
+                if stat_value > 0.0
+            }
+            if view.reforge_section is None:
+                raise ValueError("reforge section is not available")
+            with QSignalBlocker(view.reforge_section.step_combo):
+                view.reforge_section.step_combo.setCurrentIndex(0)
+
         if value <= 0.0:
             item.reforge_stats.pop(stat_key, None)
         else:
             item.reforge_stats[stat_key] = value
 
-        self._changes.stats_changed()
+        self._commit_active_item()
 
     def _scroll_effect_text(self, effects: dict[StatKey, float]) -> str:
         """주문서 효과 표시 문자열"""
@@ -2874,12 +2994,36 @@ class EquipmentTab(CharacterTab):
             return OwnedEquipment(
                 name=self._unique_equipment_name(slot),
                 kind=EquipmentKind.RING,
+                reforge_mode=ReforgeInputMode.MANUAL,
+                reforge_step=None,
             )
 
         if slot == EquipmentSlot.EARRING:
             return OwnedEquipment(
                 name=self._unique_equipment_name(slot),
                 kind=EquipmentKind.EARRING,
+                reforge_mode=ReforgeInputMode.MANUAL,
+                reforge_step=None,
+            )
+
+        if slot == EquipmentSlot.VAMBRACE:
+            return OwnedEquipment(
+                name=self._unique_equipment_name(slot),
+                kind=EquipmentKind.VAMBRACE,
+                reforge_mode=ReforgeInputMode.MANUAL,
+                reforge_step=None,
+                base_stat_lines=[
+                    EquipmentFreeStatLine(stat_key=StatKey.STR_PERCENT, value=0.0),
+                    EquipmentFreeStatLine(
+                        stat_key=StatKey.DEXTERITY_PERCENT,
+                        value=0.0,
+                    ),
+                    EquipmentFreeStatLine(stat_key=StatKey.LUCK_PERCENT, value=0.0),
+                    EquipmentFreeStatLine(
+                        stat_key=StatKey.BOSS_ATTACK_PERCENT,
+                        value=0.0,
+                    ),
+                ],
             )
 
         item_spec: EquipmentItemSpec = next(
@@ -2896,6 +3040,12 @@ class EquipmentTab(CharacterTab):
                 if EquipmentGrade.BASIC in item_spec.grade_stats
                 else None
             ),
+            reforge_mode=(
+                ReforgeInputMode.MANUAL
+                if slot == EquipmentSlot.NECKLACE
+                else ReforgeInputMode.STEP
+            ),
+            reforge_step=None if slot == EquipmentSlot.NECKLACE else 0,
         )
 
     def _unique_equipment_name(self, slot: EquipmentSlot) -> str:

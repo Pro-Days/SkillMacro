@@ -60,9 +60,17 @@ from app.scripts.calculator_models import (
     TargetDanjeonState,
     TargetDistributionState,
 )
-from app.scripts.macro_models import EquippedSkillRef, LinkUseType
+from app.scripts.macro_models import EquippedSkillRef
+from app.scripts.macro_scheduler import (
+    BASIC_ATTACK_AFTER_SKILL_MILLISECONDS,
+    BASIC_ATTACK_BEFORE_SKILL_MILLISECONDS,
+    BASIC_ATTACK_INTERVAL_MILLISECONDS,
+    build_auto_link_skill_groups,
+    build_priority_skill_sequence,
+    build_skill_cooltimes_ms,
+    take_next_task,
+)
 from app.scripts.registry.skill_registry import get_builtin_skill_id
-from app.scripts.run_macro import get_prepared_link_skill_indices
 
 if TYPE_CHECKING:
     from app.scripts.macro_models import MacroPreset, SkillUsageSetting
@@ -114,8 +122,6 @@ POWER_METRIC_LABELS: dict[PowerMetric, str] = {
 # 타임라인 길이 상수
 TIMELINE_SECONDS: float = 60.0
 TIMELINE_MILLISECONDS: int = 60000
-BASIC_ATTACK_INTERVAL_MILLISECONDS: int = 625
-BASIC_ATTACK_PAUSE_BUFFER_MILLISECONDS: int = 50
 
 
 # 역산 시 음수 허용 범위
@@ -1924,49 +1930,16 @@ def _normalize_inverse_stat_map(
     return normalized_values
 
 
-def _build_skill_sequence(
-    server_spec: "ServerSpec",
-    preset: "MacroPreset",
-    skills_info: dict[str, "SkillUsageSetting"],
-) -> tuple[EquippedSkillRef, ...]:
-    """우선순위 기준 스킬 순서 구성"""
-
-    # 현재 배치된 스킬만 우선순위 후보로 제한
-    placed_refs: list[EquippedSkillRef] = preset.skills.get_placed_skill_refs(
-        server_spec
-    )
-    skill_sequence: list[EquippedSkillRef] = []
-
-    # 우선순위 숫자 기준 1차 정렬 구성
-    for target_priority in range(1, len(placed_refs) + 1):
-        for skill_ref in placed_refs:
-            skill_id: str = preset.skills.get_placed_skill_id(skill_ref)
-            setting: "SkillUsageSetting" = skills_info[skill_id]
-            if setting.priority != target_priority:
-                continue
-
-            skill_sequence.append(skill_ref)
-
-    # 우선순위 미지정 스킬은 기존 배치 순서 유지
-    for skill_ref in placed_refs:
-        if skill_ref in skill_sequence:
-            continue
-
-        skill_sequence.append(skill_ref)
-
-    return tuple(skill_sequence)
-
-
 def _update_prepared_skills(
     placed_refs: list[EquippedSkillRef],
     skill_cooltime_timers_ms: dict[EquippedSkillRef, int],
-    skill_cooltimes_ms: dict[EquippedSkillRef, int],
+    skill_ready_delays_ms: dict[EquippedSkillRef, int],
     elapsed_time_ms: int,
     prepared_skills: set[EquippedSkillRef],
 ) -> None:
-    """쿨타임 종료 스킬 준비 상태 반영"""
+    """쿨타임과 추가 대기 종료 스킬 준비 상태 반영"""
 
-    # 현재 시점까지 쿨타임이 끝난 스킬만 준비 상태로 복귀
+    # 현재 시점까지 쿨타임과 추가 대기가 끝난 스킬만 준비 상태로 복귀
     for skill_ref in placed_refs:
         if skill_ref in prepared_skills:
             continue
@@ -1974,63 +1947,10 @@ def _update_prepared_skills(
         elapsed_from_last_use: int = (
             elapsed_time_ms - skill_cooltime_timers_ms[skill_ref]
         )
-        if elapsed_from_last_use < skill_cooltimes_ms[skill_ref]:
+        if elapsed_from_last_use < skill_ready_delays_ms[skill_ref]:
             continue
 
         prepared_skills.add(skill_ref)
-
-
-def _build_next_task_list(
-    preset: "MacroPreset",
-    skills_info: dict[str, "SkillUsageSetting"],
-    prepared_skills: set[EquippedSkillRef],
-    link_skill_requirements: list[list[EquippedSkillRef]],
-    auto_link_skills: list[list[EquippedSkillRef]],
-    skill_sequence: tuple[EquippedSkillRef, ...],
-) -> list[EquippedSkillRef]:
-    """현재 시점 기준 실행 가능한 다음 작업 목록 구성"""
-
-    # 자동 연계 완성 여부를 먼저 확인
-    prepared_link_indices: list[int] = get_prepared_link_skill_indices(
-        prepared_skills=prepared_skills,
-        link_skills_requirements=link_skill_requirements,
-    )
-    if prepared_link_indices:
-        target_link_skills: list[EquippedSkillRef] = auto_link_skills[
-            prepared_link_indices[0]
-        ]
-        task_list: list[EquippedSkillRef] = []
-        for skill_ref in target_link_skills:
-            prepared_skills.discard(skill_ref)
-            task_list.append(skill_ref)
-
-        return task_list
-
-    # 자동 연계에 속한 스킬 참조 집합 구성
-    linked_skill_refs: set[EquippedSkillRef] = {
-        skill_ref
-        for requirement_group in link_skill_requirements
-        for skill_ref in requirement_group
-    }
-
-    # 우선순위 순서대로 사용 가능한 첫 스킬 선택
-    for skill_ref in skill_sequence:
-        if skill_ref not in prepared_skills:
-            continue
-
-        skill_id: str = preset.skills.get_placed_skill_id(skill_ref)
-        setting: "SkillUsageSetting" = skills_info[skill_id]
-        in_link: bool = skill_ref in linked_skill_refs
-        can_use: bool = (in_link and setting.use_alone) or (
-            not in_link and setting.use_skill
-        )
-        if not can_use:
-            continue
-
-        prepared_skills.discard(skill_ref)
-        return [skill_ref]
-
-    return []
 
 
 def build_skill_use_sequence(
@@ -2049,40 +1969,30 @@ def build_skill_use_sequence(
     if not placed_refs:
         return ()
 
-    # 자동 연계 계산에 필요한 배치/설정 맵 구성
+    # 60초 계산은 모든 장착 스킬이 준비된 상태에서 시작
     prepared_skills: set[EquippedSkillRef] = set(placed_refs)
-    skill_ref_map: dict[str, EquippedSkillRef] = preset.skills.get_placed_skill_ref_map(
-        server_spec
+    auto_link_skill_groups: tuple[tuple[EquippedSkillRef, ...], ...] = (
+        build_auto_link_skill_groups(server_spec=server_spec, preset=preset)
     )
-    auto_link_skills: list[list[EquippedSkillRef]] = [
-        [skill_ref_map[skill_id] for skill_id in link_skill.skills]
-        for link_skill in preset.link_skills
-        if link_skill.use_type == LinkUseType.AUTO
-        and all(skill_id in skill_ref_map for skill_id in link_skill.skills)
-    ]
-    link_skill_requirements: list[list[EquippedSkillRef]] = [
-        [skill_ref for skill_ref in link_skill_group]
-        for link_skill_group in auto_link_skills
-    ]
-    skill_sequence: tuple[EquippedSkillRef, ...] = _build_skill_sequence(
+    skill_sequence: tuple[EquippedSkillRef, ...] = build_priority_skill_sequence(
         server_spec=server_spec,
         preset=preset,
         skills_info=skills_info,
     )
 
-    # 쿨타임 감소를 반영한 스킬별 재사용 대기시간 계산
+    # 쿨타임 감소와 추가 대기를 반영한 스킬별 재사용 가능 시간 계산
     skill_cooltime_timers_ms: dict[EquippedSkillRef, int] = {
         skill_ref: 0 for skill_ref in placed_refs
     }
-    skill_cooltimes_ms: dict[EquippedSkillRef, int] = {
-        skill_ref: int(
-            server_spec.skill_registry.get(
-                preset.skills.get_placed_skill_id(skill_ref)
-            ).cooltime
-            * (100 - cooltime_reduction)
-            * 10
-        )
-        for skill_ref in placed_refs
+    skill_cooltimes_ms: dict[EquippedSkillRef, int] = build_skill_cooltimes_ms(
+        server_spec=server_spec,
+        preset=preset,
+        cooltime_reduction=cooltime_reduction,
+    )
+    extra_wait_ms: int = preset.settings.effective_cooltime_extra_wait
+    skill_ready_delays_ms: dict[EquippedSkillRef, int] = {
+        skill_ref: cooltime_ms + extra_wait_ms
+        for skill_ref, cooltime_ms in skill_cooltimes_ms.items()
     }
 
     # 60초 범위 내 실제 스킬 사용 시점 기록
@@ -2094,17 +2004,18 @@ def build_skill_use_sequence(
             _update_prepared_skills(
                 placed_refs=placed_refs,
                 skill_cooltime_timers_ms=skill_cooltime_timers_ms,
-                skill_cooltimes_ms=skill_cooltimes_ms,
+                skill_ready_delays_ms=skill_ready_delays_ms,
                 elapsed_time_ms=elapsed_time_ms,
                 prepared_skills=prepared_skills,
             )
-            task_list = _build_next_task_list(
-                preset=preset,
-                skills_info=skills_info,
-                prepared_skills=prepared_skills,
-                link_skill_requirements=link_skill_requirements,
-                auto_link_skills=auto_link_skills,
-                skill_sequence=skill_sequence,
+            task_list = list(
+                take_next_task(
+                    preset=preset,
+                    skills_info=skills_info,
+                    prepared_skills=prepared_skills,
+                    auto_link_skill_groups=auto_link_skill_groups,
+                    skill_sequence=skill_sequence,
+                )
             )
 
         if task_list:
@@ -2113,7 +2024,7 @@ def build_skill_use_sequence(
             used_skills.append(
                 SkillUseEvent(
                     skill_id=skill_id,
-                    time=round(elapsed_time_ms * 0.001, 2),
+                    time=round(elapsed_time_ms * 0.001, 3),
                 )
             )
             skill_cooltime_timers_ms[skill_ref] = elapsed_time_ms
@@ -2128,13 +2039,69 @@ def build_skill_use_sequence(
             break
 
         next_cooltime_ms: int = min(
-            skill_cooltimes_ms[skill_ref]
+            skill_ready_delays_ms[skill_ref]
             - (elapsed_time_ms - skill_cooltime_timers_ms[skill_ref])
             for skill_ref in waiting_refs
         )
         elapsed_time_ms += next_cooltime_ms
 
     return tuple(used_skills)
+
+
+def _build_basic_attack_times_ms(
+    skill_uses: tuple[SkillUseEvent, ...],
+) -> tuple[int, ...]:
+    """스킬 보호 구간과 평타 재사용 간격 기준 평타 시각 구성"""
+
+    blocked_ranges: list[tuple[int, int]] = []
+    for skill_use in skill_uses:
+        skill_time_ms: int = int(round(skill_use.time * 1000))
+        blocked_ranges.append(
+            (
+                max(
+                    0,
+                    skill_time_ms - BASIC_ATTACK_BEFORE_SKILL_MILLISECONDS,
+                ),
+                min(
+                    TIMELINE_MILLISECONDS,
+                    skill_time_ms + BASIC_ATTACK_AFTER_SKILL_MILLISECONDS,
+                ),
+            )
+        )
+
+    # 인접 스킬의 중첩 보호 구간 병합
+    merged_ranges: list[tuple[int, int]] = []
+    for start_ms, end_ms in sorted(blocked_ranges):
+        if not merged_ranges or start_ms > merged_ranges[-1][1]:
+            merged_ranges.append((start_ms, end_ms))
+            continue
+
+        previous_start_ms, previous_end_ms = merged_ranges[-1]
+        merged_ranges[-1] = (
+            previous_start_ms,
+            max(previous_end_ms, end_ms),
+        )
+
+    basic_attack_times_ms: list[int] = []
+    next_attack_ready_ms: int = 0
+    blocked_range_index: int = 0
+    while next_attack_ready_ms < TIMELINE_MILLISECONDS:
+        while (
+            blocked_range_index < len(merged_ranges)
+            and merged_ranges[blocked_range_index][1] <= next_attack_ready_ms
+        ):
+            blocked_range_index += 1
+
+        if blocked_range_index < len(merged_ranges):
+            blocked_start_ms, blocked_end_ms = merged_ranges[blocked_range_index]
+            if blocked_start_ms <= next_attack_ready_ms < blocked_end_ms:
+                next_attack_ready_ms = blocked_end_ms
+                continue
+
+        basic_attack_times_ms.append(next_attack_ready_ms)
+        next_attack_ready_ms += BASIC_ATTACK_INTERVAL_MILLISECONDS
+
+    return tuple(basic_attack_times_ms)
 
 
 def build_simulation_events(
@@ -2156,54 +2123,37 @@ def build_simulation_events(
 
     hit_events: list[HitEvent] = []
     if preset.settings.use_default_attack:
-        basic_attack_pause_ms: int = delay_ms + BASIC_ATTACK_PAUSE_BUFFER_MILLISECONDS
-        basic_attack_pause_ranges: list[tuple[int, int]] = []
-        for skill_use in skill_uses:
-            skill_time_ms: int = int(round(skill_use.time * 1000))
-            basic_attack_pause_ranges.append(
-                (
-                    max(0, skill_time_ms - basic_attack_pause_ms),
-                    min(TIMELINE_MILLISECONDS, skill_time_ms + basic_attack_pause_ms),
-                )
-            )
-
-        # 평타 간격 기준으로 스킬 입력 구간 밖의 평타 이벤트만 확장
+        # 보호 구간 밖에서 준비되는 즉시 평타 이벤트 생성
         basic_attack_skill_id: str = get_builtin_skill_id(server_spec.id, "평타")
-        for current_time_ms in range(
-            0,
-            TIMELINE_MILLISECONDS,
-            BASIC_ATTACK_INTERVAL_MILLISECONDS,
-        ):
-            if any(
-                start_ms <= current_time_ms < end_ms
-                for start_ms, end_ms in basic_attack_pause_ranges
-            ):
-                continue
-
+        for current_time_ms in _build_basic_attack_times_ms(skill_uses):
             hit_events.append(
                 HitEvent(
                     skill_id=basic_attack_skill_id,
-                    time=round(current_time_ms * 0.001, 2),
+                    time=round(current_time_ms * 0.001, 3),
                     multiplier=1.0,
                 )
             )
 
-    # 사용 시점과 현재 레벨 스킬 계수를 조합해 최종 이벤트 생성
+    # 입력 시점과 스킬별 타격 오프셋을 조합해 60초 내 피해 이벤트 생성
     for skill_use in skill_uses:
         skill_level: int = preset.info.get_skill_level(
             server_spec,
             skill_use.skill_id,
         )
-        skill_damage: float = float(
-            server_spec.skill_registry.get(skill_use.skill_id).levels[skill_level]
-        )
-        hit_events.append(
-            HitEvent(
-                skill_id=skill_use.skill_id,
-                time=skill_use.time,
-                multiplier=skill_damage,
+        skill_def: "SkillDef" = server_spec.skill_registry.get(skill_use.skill_id)
+        skill_use_time_ms: int = int(round(skill_use.time * 1000))
+        for skill_hit in skill_def.hits_by_level[skill_level]:
+            hit_time_ms: int = skill_use_time_ms + skill_hit.offset_ms
+            if hit_time_ms >= TIMELINE_MILLISECONDS:
+                continue
+
+            hit_events.append(
+                HitEvent(
+                    skill_id=skill_use.skill_id,
+                    time=round(hit_time_ms * 0.001, 3),
+                    multiplier=skill_hit.multiplier,
+                )
             )
-        )
 
     # 시각화/평가 일관성을 위한 시간순 정렬
     ordered_hit_events: tuple[HitEvent, ...] = tuple(

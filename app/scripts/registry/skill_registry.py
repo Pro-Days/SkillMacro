@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from math import fsum, isfinite
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from app.scripts.custom_skill_models import CustomSkillDefinition
 
 BUILTIN_SKILL_PREFIX = "builtin"
 CUSTOM_SKILL_PREFIX = "custom"
@@ -44,6 +48,14 @@ def parse_skill_id(skill_id: str) -> tuple[str, str]:
 
 
 @dataclass(frozen=True, slots=True)
+class SkillHitDef:
+    """스킬 단일 타격 데이터"""
+
+    offset_ms: int
+    multiplier: float
+
+
+@dataclass(frozen=True, slots=True)
 class SkillDef:
     """스킬 데이터"""
 
@@ -52,26 +64,123 @@ class SkillDef:
     name: str
     cooltime: float
     target_count: int
-    levels: dict[int, float]
+    hits_by_level: dict[int, tuple[SkillHitDef, ...]]
 
-    @staticmethod
-    def from_detail_dict(
-        skill_id: str, server_id: str, detail: dict[str, Any]
-    ) -> "SkillDef":
-        """detail dict에서 SkillDef 생성"""
+    @property
+    def levels(self) -> dict[int, float]:
+        """호버와 계산식용 레벨별 총 데미지 계수 반환"""
 
-        levels: dict[int, float] = {
-            int(level_str): float(level_detail)
-            for level_str, level_detail in detail["levels"].items()
+        return {
+            level: fsum(hit.multiplier for hit in hits)
+            for level, hits in self.hits_by_level.items()
         }
 
-        return SkillDef(
+    @classmethod
+    def from_immediate_levels(
+        cls,
+        skill_id: str,
+        server_id: str,
+        name: str,
+        cooltime: float,
+        target_count: int,
+        levels: dict[int, float],
+    ) -> "SkillDef":
+        """레벨별 총 계수를 사용 즉시 발생하는 단일 타격으로 변환"""
+
+        hits_by_level: dict[int, tuple[SkillHitDef, ...]] = {
+            level: (SkillHitDef(offset_ms=0, multiplier=damage),)
+            for level, damage in levels.items()
+        }
+        return cls(
+            id=skill_id,
+            server_id=server_id,
+            name=name,
+            cooltime=cooltime,
+            target_count=target_count,
+            hits_by_level=hits_by_level,
+        )
+
+    @classmethod
+    def from_custom_definition(
+        cls,
+        server_id: str,
+        definition: "CustomSkillDefinition",
+    ) -> "SkillDef":
+        """검증된 커스텀 스킬 정의를 단일 타격 SkillDef로 변환"""
+
+        return cls.from_immediate_levels(
+            skill_id=definition.skill_id,
+            server_id=server_id,
+            name=definition.name,
+            cooltime=definition.cooltime,
+            target_count=definition.target_count,
+            levels=definition.levels,
+        )
+
+    @classmethod
+    def from_builtin_detail_dict(
+        cls, skill_id: str, server_id: str, detail: dict[str, Any]
+    ) -> "SkillDef":
+        """빌트인 스킬 타격 데이터를 SkillDef로 변환"""
+
+        raw_damage_events: Any = detail["damage_events"]
+        if not isinstance(raw_damage_events, list):
+            raise TypeError("skill damage_events must be a list")
+
+        if not raw_damage_events:
+            raise ValueError("skill damage_events must contain at least one event")
+
+        mutable_hits_by_level: dict[int, list[SkillHitDef]] = {}
+        previous_offset_ms: int = -1
+        for raw_damage_event in raw_damage_events:
+            if not isinstance(raw_damage_event, dict):
+                raise TypeError("skill damage event must be a dict")
+
+            offset_ms: Any = raw_damage_event["offset_ms"]
+            if type(offset_ms) is not int:
+                raise TypeError("skill hit offset_ms must be an integer")
+
+            if offset_ms < 0:
+                raise ValueError(
+                    "skill hit offset_ms must be greater than or equal to 0"
+                )
+
+            if offset_ms < previous_offset_ms:
+                raise ValueError("skill damage_events must be ordered by offset_ms")
+
+            previous_offset_ms = offset_ms
+            raw_event_levels: Any = raw_damage_event["levels"]
+            if not isinstance(raw_event_levels, dict):
+                raise TypeError("skill damage event levels must be a dict")
+
+            if not raw_event_levels:
+                raise ValueError("skill damage event levels must not be empty")
+
+            for level_str, multiplier_value in raw_event_levels.items():
+                level: int = int(level_str)
+                multiplier: float = float(multiplier_value)
+                if not isfinite(multiplier) or multiplier <= 0.0:
+                    raise ValueError(
+                        "skill damage event multiplier must be a positive finite number"
+                    )
+
+                hit: SkillHitDef = SkillHitDef(
+                    offset_ms=offset_ms,
+                    multiplier=multiplier,
+                )
+                mutable_hits_by_level.setdefault(level, []).append(hit)
+
+        hits_by_level: dict[int, tuple[SkillHitDef, ...]] = {
+            level: tuple(hits) for level, hits in mutable_hits_by_level.items()
+        }
+
+        return cls(
             id=skill_id,
             server_id=server_id,
             name=detail["name"],
             cooltime=float(detail["cooltime"]),
             target_count=int(detail["target_count"]),
-            levels=levels,
+            hits_by_level=hits_by_level,
         )
 
 
@@ -163,7 +272,7 @@ class SkillRegistry:
         for skill_id in skill_ids:
             detail: dict[str, Any] = details[skill_id]
 
-            skill_def: SkillDef = SkillDef.from_detail_dict(
+            skill_def: SkillDef = SkillDef.from_builtin_detail_dict(
                 skill_id=skill_id, server_id=server_id, detail=detail
             )
             skills[skill_id] = skill_def

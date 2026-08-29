@@ -83,6 +83,7 @@ class GraphPalette:
     dpm_center_bar: str
     dpm_hover_bar: str
     dpm_normal_bar: str
+    efficiency_high_bar: str
     ratio_series: tuple[str, ...]
     damage_max_line: str
     damage_mean_line: str
@@ -107,6 +108,7 @@ LIGHT_GRAPH_PALETTE: GraphPalette = GraphPalette(
     dpm_center_bar="#75A2FC",
     dpm_hover_bar="#BAD0FD",
     dpm_normal_bar="#F38181",
+    efficiency_high_bar="#A5D6A7",
     ratio_series=(
         "#EF9A9A",
         "#90CAF9",
@@ -527,6 +529,21 @@ QPushButton#generalSettingBtn[active=true]  {{ color: #000000; }}
 QPushButton#generalSettingBtn[active=false] {{ color: #999999; }}
 
 QLabel#generalSettingTitle {{ border: 0px solid black; border-radius: 10px; }}
+
+QPushButton#detailSettingsBtn {{
+    background-color: transparent;
+    color: #666666;
+    border: none;
+    border-radius: 6px;
+    padding: 0px 8px;
+}}
+QPushButton#detailSettingsBtn:hover {{
+    background-color: #F1F1F4;
+    color: #222222;
+}}
+QPushButton#detailSettingsBtn:pressed {{
+    background-color: #E6E6EB;
+}}
 
 QPushButton#infoBtn {{
     background-color: #E5E7EB;
@@ -1184,6 +1201,96 @@ QLabel#resultsSubTitle {{
     color: #555555;
 }}
 
+
+/* ── 재련 시뮬레이터 ── */
+
+QFrame#refinementTabBar {{
+    background: transparent;
+    border: none;
+}}
+
+/* 핵심 지표 카드 */
+QFrame#refinementKpiCard {{
+    background-color: #FAFAFA;
+    border: 1px solid #E0E0E0;
+    border-left: 3px solid #4A90E2;
+    border-radius: 6px;
+}}
+QFrame#refinementKpiCard[tone="good"] {{ border-left-color: #27AE60; }}
+QLabel#refinementKpiKey {{ color: #555555; background: transparent; border: 0px; }}
+QLabel#refinementKpiValue {{ color: #111111; background: transparent; border: 0px; }}
+QLabel#refinementKpiUnit {{ color: #555555; background: transparent; border: 0px; }}
+
+/* 요약 큰 숫자 블록 */
+QFrame#refinementHeroBox {{
+    background-color: #EBF5FB;
+    border: 1px solid #E0E0E0;
+    border-radius: 6px;
+}}
+QLabel#refinementHeroKey {{ color: #555555; background: transparent; border: 0px; }}
+QLabel#refinementHeroValue {{ color: #111111; background: transparent; border: 0px; }}
+QLabel#refinementHeroUnit {{ color: #555555; background: transparent; border: 0px; }}
+QLabel#refinementHeroSub {{ color: #555555; background: transparent; border: 0px; }}
+
+/* 전략·스탯 태그 */
+QLabel#refinementTag {{
+    background-color: #FFFFFF;
+    border: 1px solid #E0E0E0;
+    border-radius: 4px;
+    color: #2C3E50;
+    padding: 2px 8px;
+}}
+QLabel#refinementTag[primary=true] {{
+    background-color: #4A90E2;
+    border-color: #4A90E2;
+    color: #FFFFFF;
+}}
+
+/* 표 안 상태 칩 */
+QLabel#refinementChip {{
+    background-color: transparent;
+    border: 1px solid #27AE60;
+    border-radius: 11px;
+    color: #27AE60;
+    padding: 1px 8px;
+}}
+QLabel#refinementChip[tone="bad"] {{
+    border-color: #D94F4F;
+    color: #D94F4F;
+}}
+QLabel#refinementChip[tone="neutral"] {{
+    border-color: #7A8795;
+    color: #555555;
+}}
+
+/* 표 줄무늬와 선택 행 강조 */
+QFrame#refinementTableRow[row="odd"] {{
+    background-color: #EDEDED;
+    border: 0px;
+    border-radius: 3px;
+}}
+QFrame#refinementTableRow[row="even"] {{
+    background-color: transparent;
+    border: 0px;
+}}
+QFrame#refinementTableRow[row="hi"] {{
+    background-color: #EBF5FB;
+    border: 0px;
+    border-radius: 3px;
+}}
+QLabel#refinementTableHeader {{
+    background: transparent;
+    border: 0px;
+    color: #555555;
+    padding: 4px 5px 7px;
+}}
+QLabel#refinementCell {{
+    background: transparent;
+    border: 0px;
+    color: #2C3E50;
+    padding: 6px 5px;
+}}
+
 /* OverallStatsGrid */
 QFrame#statsGridCell {{
     background-color: #F5F5F5;
@@ -1392,6 +1499,12 @@ QFrame#guideSelectionCard {{
     border: 1px solid #D6DCE8;
     border-radius: 8px;
 }}
+QScrollArea#guideSelectionScroll,
+QScrollArea#guideSelectionScroll QWidget#qt_scrollarea_viewport,
+QWidget#guideSelectionList {{
+    background-color: transparent;
+    border: 0px;
+}}
 QPushButton#guidePrimaryButton {{
     background-color: #4A90D9;
     color: #FFFFFF;
@@ -1585,8 +1698,8 @@ QFrame#charStatCellEmpty {{ background: transparent; }}
 QLabel#charStatLabel {{ color: #787671; background: transparent; }}
 QLabel#charStatValue {{ color: #1A1A1A; background: transparent; }}
 
-/* 칭호 */
-QFrame#charTitleItem {{
+/* 칭호와 추가 스탯 그룹 */
+QFrame#charTitleItem, QFrame#charStatGroupItem {{
     background-color: #FFFFFF; border: 1px solid #E5E3DF; border-radius: 12px;
 }}
 QFrame#charTitleItem[equipped=true] {{ background-color: #EFECFD; border-color: #9180F7; }}
@@ -1756,6 +1869,7 @@ DARK_GRAPH_PALETTE: GraphPalette = GraphPalette(
     dpm_center_bar="#8AB0FF",
     dpm_hover_bar="#B0C8FF",
     dpm_normal_bar="#F08080",
+    efficiency_high_bar="#81C784",
     ratio_series=(
         "#EF9A9A",
         "#90CAF9",
@@ -2164,6 +2278,21 @@ QPushButton#generalSettingBtn[active=true]  {{ color: #E8E8F0; }}
 QPushButton#generalSettingBtn[active=false] {{ color: #555570; }}
 
 QLabel#generalSettingTitle {{ border: 0px solid black; border-radius: 10px; }}
+
+QPushButton#detailSettingsBtn {{
+    background-color: transparent;
+    color: #A9A6C0;
+    border: none;
+    border-radius: 6px;
+    padding: 0px 8px;
+}}
+QPushButton#detailSettingsBtn:hover {{
+    background-color: #2E2E45;
+    color: #F0EFF8;
+}}
+QPushButton#detailSettingsBtn:pressed {{
+    background-color: #363650;
+}}
 
 QPushButton#infoBtn {{
     background-color: #2A2A3F;
@@ -2789,6 +2918,96 @@ QLabel#resultsSubTitle {{
     color: #7878A0;
 }}
 
+
+/* ── 재련 시뮬레이터 ── */
+
+QFrame#refinementTabBar {{
+    background: transparent;
+    border: none;
+}}
+
+/* 핵심 지표 카드 */
+QFrame#refinementKpiCard {{
+    background-color: #1E1E2E;
+    border: 1px solid #363650;
+    border-left: 3px solid #5B78D9;
+    border-radius: 6px;
+}}
+QFrame#refinementKpiCard[tone="good"] {{ border-left-color: #4ECB71; }}
+QLabel#refinementKpiKey {{ color: #A0A0C0; background: transparent; border: 0px; }}
+QLabel#refinementKpiValue {{ color: #E8E8F0; background: transparent; border: 0px; }}
+QLabel#refinementKpiUnit {{ color: #A0A0C0; background: transparent; border: 0px; }}
+
+/* 요약 큰 숫자 블록 */
+QFrame#refinementHeroBox {{
+    background-color: #232338;
+    border: 1px solid #363650;
+    border-radius: 6px;
+}}
+QLabel#refinementHeroKey {{ color: #A0A0C0; background: transparent; border: 0px; }}
+QLabel#refinementHeroValue {{ color: #E8E8F0; background: transparent; border: 0px; }}
+QLabel#refinementHeroUnit {{ color: #A0A0C0; background: transparent; border: 0px; }}
+QLabel#refinementHeroSub {{ color: #A0A0C0; background: transparent; border: 0px; }}
+
+/* 전략·스탯 태그 */
+QLabel#refinementTag {{
+    background-color: #242434;
+    border: 1px solid #363650;
+    border-radius: 4px;
+    color: #C8C8E8;
+    padding: 2px 8px;
+}}
+QLabel#refinementTag[primary=true] {{
+    background-color: #5B78D9;
+    border-color: #5B78D9;
+    color: #FFFFFF;
+}}
+
+/* 표 안 상태 칩 */
+QLabel#refinementChip {{
+    background-color: transparent;
+    border: 1px solid #4ECB71;
+    border-radius: 11px;
+    color: #4ECB71;
+    padding: 1px 8px;
+}}
+QLabel#refinementChip[tone="bad"] {{
+    border-color: #E06060;
+    color: #E06060;
+}}
+QLabel#refinementChip[tone="neutral"] {{
+    border-color: #7878A0;
+    color: #A0A0C0;
+}}
+
+/* 표 줄무늬와 선택 행 강조 */
+QFrame#refinementTableRow[row="odd"] {{
+    background-color: #2E2E45;
+    border: 0px;
+    border-radius: 3px;
+}}
+QFrame#refinementTableRow[row="even"] {{
+    background-color: transparent;
+    border: 0px;
+}}
+QFrame#refinementTableRow[row="hi"] {{
+    background-color: #232338;
+    border: 0px;
+    border-radius: 3px;
+}}
+QLabel#refinementTableHeader {{
+    background: transparent;
+    border: 0px;
+    color: #A0A0C0;
+    padding: 4px 5px 7px;
+}}
+QLabel#refinementCell {{
+    background: transparent;
+    border: 0px;
+    color: #C8C8E0;
+    padding: 6px 5px;
+}}
+
 /* OverallStatsGrid */
 QFrame#statsGridCell {{
     background-color: #222234;
@@ -2997,6 +3216,12 @@ QFrame#guideSelectionCard {{
     border: 1px solid #3A3A52;
     border-radius: 8px;
 }}
+QScrollArea#guideSelectionScroll,
+QScrollArea#guideSelectionScroll QWidget#qt_scrollarea_viewport,
+QWidget#guideSelectionList {{
+    background-color: transparent;
+    border: 0px;
+}}
 QPushButton#guidePrimaryButton {{
     background-color: #5B78D9;
     color: #FFFFFF;
@@ -3181,8 +3406,8 @@ QFrame#charStatCellEmpty {{ background: transparent; }}
 QLabel#charStatLabel {{ color: #A0A0C0; background: transparent; }}
 QLabel#charStatValue {{ color: #E8E8F0; background: transparent; }}
 
-/* 칭호 */
-QFrame#charTitleItem {{
+/* 칭호와 추가 스탯 그룹 */
+QFrame#charTitleItem, QFrame#charStatGroupItem {{
     background-color: #1E1E2E; border: 1px solid #363650; border-radius: 12px;
 }}
 QFrame#charTitleItem[equipped=true] {{ background-color: #2E2A4A; border-color: #9180F7; }}

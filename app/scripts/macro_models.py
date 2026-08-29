@@ -6,7 +6,11 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, ClassVar, cast
 
-from app.scripts.calculator_models import CalculatorPresetInput, CustomPowerFormula
+from app.scripts.calculator_models import (
+    CalculatorPresetInput,
+    CustomPowerFormula,
+    RefinementStrategy,
+)
 from app.scripts.config import config
 
 if TYPE_CHECKING:
@@ -15,7 +19,7 @@ if TYPE_CHECKING:
     from app.scripts.registry.skill_registry import ScrollDef
 
 
-DATA_VERSION: int = 7
+DATA_VERSION: int = 9
 
 
 class ThemeMode(str, Enum):
@@ -179,6 +183,10 @@ class MacroSettings:
     custom_cooltime_reduction: float = config.specs.COOLTIME_REDUCTION.default
     use_custom_cooltime_reduction: bool = False
 
+    # 쿨타임 종료 후 추가 대기 시간(ms)
+    custom_cooltime_extra_wait: int = config.specs.COOLTIME_EXTRA_WAIT.default
+    use_custom_cooltime_extra_wait: bool = False
+
     # 시작키
     custom_start_key: str = config.specs.DEFAULT_START_KEY.key_id
     use_custom_start_key: bool = False
@@ -198,6 +206,14 @@ class MacroSettings:
     # 스킬 사용 후 항상 1번 줄로 복귀
     always_return_to_first_line: bool = False
 
+    @property
+    def effective_cooltime_extra_wait(self) -> int:
+        """실제로 사용되는 쿨타임 추가 대기 시간 반환"""
+
+        if self.use_custom_cooltime_extra_wait:
+            return self.custom_cooltime_extra_wait
+        return config.specs.COOLTIME_EXTRA_WAIT.default
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "MacroSettings":
         """딕셔너리로부터 MacroSettings 생성"""
@@ -208,6 +224,8 @@ class MacroSettings:
             use_custom_delay=data["use_custom_delay"],
             custom_cooltime_reduction=data["custom_cooltime_reduction"],
             use_custom_cooltime_reduction=data["use_custom_cooltime_reduction"],
+            custom_cooltime_extra_wait=data["custom_cooltime_extra_wait"],
+            use_custom_cooltime_extra_wait=data["use_custom_cooltime_extra_wait"],
             custom_start_key=data["custom_start_key"],
             use_custom_start_key=data["use_custom_start_key"],
             custom_key_hold_seconds=data["custom_key_hold_seconds"],
@@ -228,6 +246,8 @@ class MacroSettings:
             "use_custom_delay": self.use_custom_delay,
             "custom_cooltime_reduction": self.custom_cooltime_reduction,
             "use_custom_cooltime_reduction": self.use_custom_cooltime_reduction,
+            "custom_cooltime_extra_wait": self.custom_cooltime_extra_wait,
+            "use_custom_cooltime_extra_wait": self.use_custom_cooltime_extra_wait,
             "custom_start_key": self.custom_start_key,
             "use_custom_start_key": self.use_custom_start_key,
             "custom_key_hold_seconds": self.custom_key_hold_seconds,
@@ -363,6 +383,30 @@ class LinkSkill:
         self.remember_state = remember
 
 
+@dataclass(frozen=True)
+class LinkSkillReconcileResult:
+    """연계스킬 정리 결과"""
+
+    # 사용 가능한 스킬이 없어 삭제된 연계 수
+    removed: int = 0
+    # 스킬이 일부 제거되어 구성이 바뀐 연계 수
+    truncated: int = 0
+    # 자동에서 수동으로 전환된 연계 수
+    disabled: int = 0
+
+    @property
+    def has_composition_change(self) -> bool:
+        """연계 삭제 또는 구성 변경 발생 여부"""
+
+        return bool(self.removed or self.truncated)
+
+    @property
+    def changed(self) -> bool:
+        """정리로 인한 변경 발생 여부"""
+
+        return bool(self.removed or self.truncated or self.disabled)
+
+
 @dataclass(slots=True)
 class PresetInfo:
     """프리셋 정보 데이터 모델"""
@@ -470,6 +514,64 @@ class MacroPreset:
             "info": self.info.to_dict(),
         }
 
+    def reconcile_link_skills(
+        self,
+        allowed_skill_ids: set[str],
+    ) -> LinkSkillReconcileResult:
+        """허용 스킬과 하단 배치의 최종 상태 기준 연계스킬 정리"""
+
+        reconciled_link_skills: list[LinkSkill] = []
+        removed: int = 0
+        truncated: int = 0
+
+        for link_skill in self.link_skills:
+            filtered_skill_ids: list[str] = [
+                skill_id
+                for skill_id in link_skill.skills
+                if skill_id in allowed_skill_ids
+            ]
+
+            # 사용 가능한 스킬이 없는 연계 제거
+            if not filtered_skill_ids:
+                removed += 1
+                continue
+
+            if filtered_skill_ids != link_skill.skills:
+                # 남은 순서와 단축키, 자동 사용 설정은 그대로 유지
+                link_skill.skills = filtered_skill_ids
+                truncated += 1
+
+            reconciled_link_skills.append(link_skill)
+
+        self.link_skills = reconciled_link_skills
+
+        # 절삭 결과까지 반영한 최종 배치 기준으로만 자동 사용 해제 판정
+        disabled: int = self.disable_unrunnable_auto_link_skills()
+
+        return LinkSkillReconcileResult(
+            removed=removed,
+            truncated=truncated,
+            disabled=disabled,
+        )
+
+    def disable_unrunnable_auto_link_skills(self) -> int:
+        """하단 배치되지 않은 자동 연계를 수동으로 전환하고 전환 수 반환"""
+
+        placed_skill_ids: set[str] = set(self.skills.get_placed_skill_ids())
+        disabled: int = 0
+
+        for link_skill in self.link_skills:
+            if link_skill.use_type != LinkUseType.AUTO:
+                continue
+
+            if all(skill_id in placed_skill_ids for skill_id in link_skill.skills):
+                continue
+
+            link_skill.set_manual()
+            disabled += 1
+
+        return disabled
+
     @classmethod
     def create_default(
         cls,
@@ -497,6 +599,8 @@ class MacroPreset:
                 use_custom_delay=False,
                 custom_cooltime_reduction=default_cooltime_reduction,
                 use_custom_cooltime_reduction=False,
+                custom_cooltime_extra_wait=config.specs.COOLTIME_EXTRA_WAIT.default,
+                use_custom_cooltime_extra_wait=False,
                 custom_start_key=default_start_key_id,
                 use_custom_start_key=False,
                 custom_key_hold_seconds=config.specs.KEY_HOLD_SECONDS.default,
@@ -534,6 +638,7 @@ class MacroPresetFile:
     last_app_version: str = ""
     recent_preset: int = 0
     custom_power_formulas: list[CustomPowerFormula] = field(default_factory=list)
+    refinement_strategies: list[RefinementStrategy] = field(default_factory=list)
     preset: list[MacroPreset] = field(default_factory=list)
 
     @classmethod
@@ -550,6 +655,10 @@ class MacroPresetFile:
                 CustomPowerFormula.from_dict(raw_formula)
                 for raw_formula in data["custom_power_formulas"]
             ],
+            refinement_strategies=[
+                RefinementStrategy.from_dict(raw_strategy)
+                for raw_strategy in data["refinement_strategies"]
+            ],
             preset=[MacroPreset.from_dict(p) for p in data["preset"]],
         )
 
@@ -565,6 +674,9 @@ class MacroPresetFile:
             "custom_power_formulas": [
                 custom_formula.to_dict()
                 for custom_formula in self.custom_power_formulas
+            ],
+            "refinement_strategies": [
+                strategy.to_dict() for strategy in self.refinement_strategies
             ],
             "preset": [p.to_dict() for p in self.preset],
         }

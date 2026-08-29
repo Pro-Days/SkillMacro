@@ -9,7 +9,7 @@ from uuid import uuid4
 from app.scripts.calculator_models import RealmTier, StatKey
 from app.scripts.registry.resource_registry import convert_resource_path
 
-CHARACTER_DATA_VERSION: int = 1
+CHARACTER_DATA_VERSION: int = 4
 DEFAULT_CHARACTER_NAME: str = "새 캐릭터"
 TITLE_STAT_SLOT_COUNT: int = 3
 EQUIPMENT_OPTION_SLOT_COUNT: int = 3
@@ -17,7 +17,7 @@ MAX_EQUIPPED_TALISMAN_COUNT: int = 3
 MAX_CHARACTER_LEVEL: int = 200
 MAX_TALISMAN_LEVEL: int = 14
 MAX_ELIXIR_COUNT: int = 10
-MAX_REFORGE_STEP: int = 20
+MAX_CHARACTER_INPUT_VALUE: float = 999.99
 
 
 class EquipmentSlot(str, Enum):
@@ -32,6 +32,7 @@ class EquipmentSlot(str, Enum):
     RING2 = "ring2"
     NECKLACE = "necklace"
     EARRING = "earring"
+    VAMBRACE = "vambrace"
 
 
 class EquipmentKind(str, Enum):
@@ -45,6 +46,7 @@ class EquipmentKind(str, Enum):
     RING = "ring"
     NECKLACE = "necklace"
     EARRING = "earring"
+    VAMBRACE = "vambrace"
 
 
 class EquipmentGrade(str, Enum):
@@ -74,6 +76,7 @@ EQUIPMENT_KIND_SLOTS: dict[EquipmentKind, tuple[EquipmentSlot, ...]] = {
     EquipmentKind.RING: (EquipmentSlot.RING1, EquipmentSlot.RING2),
     EquipmentKind.NECKLACE: (EquipmentSlot.NECKLACE,),
     EquipmentKind.EARRING: (EquipmentSlot.EARRING,),
+    EquipmentKind.VAMBRACE: (EquipmentSlot.VAMBRACE,),
 }
 
 EQUIPMENT_SLOT_KIND: dict[EquipmentSlot, EquipmentKind] = {
@@ -116,6 +119,20 @@ class DisplayStandColumn(str, Enum):
     BELT = "belt"
     SHOES = "shoes"
     SET = "set"
+
+
+class ReforgeInputMode(str, Enum):
+    """장비 재련 수치 입력 방식"""
+
+    STEP = "step"
+    MANUAL = "manual"
+
+
+class DisplayStandInputMode(str, Enum):
+    """진열대 수치 입력 방식"""
+
+    STEP = "step"
+    MANUAL = "manual"
 
 
 def _new_id() -> str:
@@ -488,7 +505,8 @@ class OwnedEquipment:
     tier: int = 1
     grade: EquipmentGrade | None = None
     base_stat_lines: list[EquipmentFreeStatLine] = field(default_factory=list)
-    reforge_step: int = 0
+    reforge_mode: ReforgeInputMode = ReforgeInputMode.MANUAL
+    reforge_step: int | None = None
     reforge_stats: dict[StatKey, float] = field(default_factory=dict)
     scrolls: list[EquipmentScrollLine] = field(default_factory=list)
     potentials: tuple[PotentialLine | None, ...] = field(
@@ -509,6 +527,17 @@ class OwnedEquipment:
         grade: EquipmentGrade | None = None
         if raw_grade is not None:
             grade = EquipmentGrade(str(raw_grade))
+
+        raw_reforge_mode: Any = data.get("reforge_mode")
+        if raw_reforge_mode is None:
+            reforge_mode = ReforgeInputMode.MANUAL
+            reforge_step: int | None = None
+        else:
+            reforge_mode = ReforgeInputMode(str(raw_reforge_mode))
+            raw_reforge_step: Any = data.get("reforge_step")
+            reforge_step = (
+                None if raw_reforge_step is None else int(raw_reforge_step)
+            )
 
         scrolls: list[EquipmentScrollLine] = []
         for raw_scroll in _read_list(data, "scrolls"):
@@ -552,7 +581,8 @@ class OwnedEquipment:
                 EquipmentFreeStatLine.from_dict(item)
                 for item in _read_list(data, "base_stat_lines")
             ],
-            reforge_step=int(data["reforge_step"]),
+            reforge_mode=reforge_mode,
+            reforge_step=reforge_step,
             reforge_stats=_stat_float_map_from_dict(_read_dict(data, "reforge_stats")),
             scrolls=scrolls,
             potentials=potentials,
@@ -570,6 +600,7 @@ class OwnedEquipment:
             "tier": self.tier,
             "grade": self.grade.value if self.grade is not None else None,
             "base_stat_lines": [line.to_dict() for line in self.base_stat_lines],
+            "reforge_mode": self.reforge_mode.value,
             "reforge_step": self.reforge_step,
             "reforge_stats": _stat_float_map_to_dict(self.reforge_stats),
             "scrolls": [line.to_dict() for line in self.scrolls],
@@ -626,30 +657,77 @@ class EquipmentState:
 class DisplayStandState:
     """진열대 입력 상태"""
 
+    input_mode: DisplayStandInputMode = DisplayStandInputMode.STEP
     entries: dict[str, dict[DisplayStandColumn, float]] = field(default_factory=dict)
+    step_entries: dict[str, dict[DisplayStandColumn, int]] = field(
+        default_factory=dict
+    )
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "DisplayStandState":
         """저장 데이터로부터 진열대 상태 복원"""
 
-        return cls(
-            entries={
-                str(key): {
-                    DisplayStandColumn(str(column)): float(column_value)
-                    for column, column_value in value.items()
-                }
-                for key, value in data["entries"].items()
+        raw_input_mode: Any = data.get("input_mode")
+        input_mode = (
+            DisplayStandInputMode.MANUAL
+            if raw_input_mode is None
+            else DisplayStandInputMode(str(raw_input_mode))
+        )
+        raw_step_entries: Any = data.get("step_entries", {})
+        if not isinstance(raw_step_entries, dict):
+            raise TypeError("step_entries must be a dict")
+
+        step_entries: dict[str, dict[DisplayStandColumn, int]] = {}
+        for key, value in raw_step_entries.items():
+            if not isinstance(value, dict):
+                raise TypeError("display stand step entry must be a dict")
+
+            entry: dict[DisplayStandColumn, int] = {}
+            for column, column_value in value.items():
+                parsed_column = DisplayStandColumn(str(column))
+                # 자동 세트 단계는 네 장비 단계에서 파생되므로 저장하지 않는다.
+                if parsed_column == DisplayStandColumn.SET:
+                    continue
+
+                entry[parsed_column] = int(column_value)
+
+            if entry:
+                step_entries[str(key)] = entry
+
+        entries: dict[str, dict[DisplayStandColumn, float]] = {}
+        for key, value in _read_dict(data, "entries").items():
+            if not isinstance(value, dict):
+                raise TypeError("display stand entry must be a dict")
+
+            entries[str(key)] = {
+                DisplayStandColumn(str(column)): float(column_value)
+                for column, column_value in value.items()
             }
+
+        return cls(
+            input_mode=input_mode,
+            entries=entries,
+            step_entries=step_entries,
         )
 
-    def to_dict(self) -> dict[str, dict[str, dict[str, float]]]:
+    def to_dict(self) -> dict[str, Any]:
         """진열대 상태 직렬화"""
 
         return {
+            "input_mode": self.input_mode.value,
             "entries": {
                 stand: {column.value: float(value) for column, value in entry.items()}
                 for stand, entry in self.entries.items()
-            }
+            },
+            "step_entries": {
+                stand: {
+                    column.value: int(value)
+                    for column, value in entry.items()
+                    if column != DisplayStandColumn.SET
+                }
+                for stand, entry in self.step_entries.items()
+                if any(column != DisplayStandColumn.SET for column in entry)
+            },
         }
 
 
@@ -692,6 +770,58 @@ class PillState:
 
 
 @dataclass(slots=True)
+class AdditionalStatLine:
+    """추가 스탯 입력 라인"""
+
+    stat_key: StatKey
+    value: float
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AdditionalStatLine":
+        """저장 데이터로부터 추가 스탯 라인 복원"""
+
+        return cls(
+            stat_key=StatKey(str(data["stat_key"])),
+            value=float(data["value"]),
+        )
+
+    def to_dict(self) -> dict[str, str | float]:
+        """추가 스탯 라인 직렬화"""
+
+        return {
+            "stat_key": self.stat_key.value,
+            "value": float(self.value),
+        }
+
+
+@dataclass(slots=True)
+class AdditionalStatGroup:
+    """추가 스탯 그룹"""
+
+    name: str = ""
+    stats: list[AdditionalStatLine] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AdditionalStatGroup":
+        """저장 데이터로부터 추가 스탯 그룹 복원"""
+
+        return cls(
+            name=str(data["name"]),
+            stats=[
+                AdditionalStatLine.from_dict(item) for item in _read_list(data, "stats")
+            ],
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """추가 스탯 그룹 직렬화"""
+
+        return {
+            "name": self.name,
+            "stats": [stat.to_dict() for stat in self.stats],
+        }
+
+
+@dataclass(slots=True)
 class CharacterProfile:
     """전역 캐릭터 프로필"""
 
@@ -709,6 +839,7 @@ class CharacterProfile:
     display_stand: DisplayStandState = field(default_factory=DisplayStandState)
     elixir: ElixirState = field(default_factory=ElixirState)
     pill: PillState = field(default_factory=PillState)
+    additional_stat_groups: list[AdditionalStatGroup] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "CharacterProfile":
@@ -736,6 +867,10 @@ class CharacterProfile:
             ),
             elixir=ElixirState.from_dict(_read_dict(data, "elixir")),
             pill=PillState.from_dict(_read_dict(data, "pill")),
+            additional_stat_groups=[
+                AdditionalStatGroup.from_dict(item)
+                for item in _read_list(data, "additional_stat_groups")
+            ],
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -756,6 +891,9 @@ class CharacterProfile:
             "display_stand": self.display_stand.to_dict(),
             "elixir": self.elixir.to_dict(),
             "pill": self.pill.to_dict(),
+            "additional_stat_groups": [
+                group.to_dict() for group in self.additional_stat_groups
+            ],
         }
 
 
@@ -815,6 +953,8 @@ class TalismanGrade(str, Enum):
     HEROIC = "영웅"
     # 전설 등급
     LEGENDARY = "전설"
+    # 신화 등급
+    MYTHIC = "신화"
 
 
 @dataclass(frozen=True, slots=True)

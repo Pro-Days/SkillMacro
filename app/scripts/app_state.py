@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import IntEnum
 from typing import ClassVar
 
-from app.scripts.calculator_models import CustomPowerFormula
+from app.scripts.calculator_models import CustomPowerFormula, RefinementStrategy
 from app.scripts.character_models import CharacterStore
 from app.scripts.config import config
 from app.scripts.macro_models import (
     EquippedSkillRef,
     LinkKeyType,
-    LinkSkill,
     MacroPreset,
     ThemeMode,
 )
@@ -17,6 +17,15 @@ from app.scripts.registry.key_registry import KeyRegistry, KeySpec
 from app.scripts.registry.server_registry import ServerSpec, server_registry
 
 # todo: preset에 종속된 인스턴스들 모두 옮기기
+
+
+class SidebarPage(IntEnum):
+    """사이드바 페이지"""
+
+    GENERAL = 0
+    SKILL = 1
+    LINK_SKILL = 2
+    LINK_SKILL_EDITOR = 3
 
 
 @dataclass
@@ -32,6 +41,9 @@ class MacroState:
 
     # 전역 사용자 정의 전투력 공식 목록
     custom_power_formulas: list[CustomPowerFormula] = field(default_factory=list)
+
+    # 전역 사용자 재련 전략 목록
+    refinement_strategies: list[RefinementStrategy] = field(default_factory=list)
 
     @property
     def current_preset(self) -> MacroPreset:
@@ -56,6 +68,11 @@ class MacroState:
         if self.current_preset.settings.use_custom_cooltime_reduction:
             return self.current_preset.settings.custom_cooltime_reduction
         return config.specs.COOLTIME_REDUCTION.default
+
+    @property
+    def current_cooltime_extra_wait(self) -> int:
+        """실제로 사용되는 쿨타임 추가 대기 시간을 반환"""
+        return self.current_preset.settings.effective_cooltime_extra_wait
 
     @property
     def current_start_key(self) -> KeySpec:
@@ -97,9 +114,6 @@ class MacroState:
     task_list: list[EquippedSkillRef] = field(default_factory=list)
     prepared_skills: set[EquippedSkillRef] = field(default_factory=set)
 
-    # 연계스킬 수행에 필요한 스킬 정보 리스트
-    link_skills_requirements: list[list[EquippedSkillRef]] = field(default_factory=list)
-
     # 매크로 작동 중 사용하는 연계스킬 리스트
     using_link_skills: list[list[EquippedSkillRef]] = field(default_factory=list)
 
@@ -112,11 +126,15 @@ class MacroState:
     # 잠수 방지 종료 알림 대기 여부
     has_pending_afk_notice: bool = False
 
+    # 실행 불가 연계 단축키 알림 대기 여부
+    has_pending_link_skill_unavailable_notice: bool = False
+
     # 스킬 쿨타임 타이머
     skill_cooltime_timers: dict[EquippedSkillRef, float] = field(default_factory=dict)
 
-    # 스킬 선입력 보호를 위한 평타 중지 종료 시각
-    attack_pause_until: float = 0.0
+    # 평타 보호 구간 계산용 직전·다음 스킬 시각
+    last_skill_input_at: float | None = None
+    next_skill_input_at: float | None = None
 
     def clear_cooltime_state(self) -> None:
         """쿨타임 런타임 상태 초기화"""
@@ -151,7 +169,7 @@ class UiState:
     backup_notice_logs: list[str] = field(default_factory=list)
 
     # 현재 활성화된 사이드바 페이지 인덱스
-    current_sidebar_page: int = 0
+    current_sidebar_page: SidebarPage = SidebarPage.GENERAL
 
     # 시작키 설정 중인지
     # todo: SessionState로 이동 고려

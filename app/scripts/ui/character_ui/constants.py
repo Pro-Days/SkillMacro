@@ -39,6 +39,7 @@ GRADE_COLORS: dict[str, str] = {
     "희귀": "#0075de",
     "영웅": "#dd5b00",
     "전설": "#7b3ff2",
+    "신화": "#c62828",
 }
 
 EQUIPMENT_SLOT_LABELS: dict[EquipmentSlot, str] = {
@@ -51,6 +52,7 @@ EQUIPMENT_SLOT_LABELS: dict[EquipmentSlot, str] = {
     EquipmentSlot.RING2: "반지",
     EquipmentSlot.NECKLACE: "목걸이",
     EquipmentSlot.EARRING: "귀걸이",
+    EquipmentSlot.VAMBRACE: "완갑",
 }
 
 # 장비 슬롯 표시 순서
@@ -66,4 +68,5 @@ EQUIPMENT_COL_RIGHT: tuple[EquipmentSlot, ...] = (
     EquipmentSlot.RING2,
     EquipmentSlot.NECKLACE,
     EquipmentSlot.EARRING,
+    EquipmentSlot.VAMBRACE,
 )

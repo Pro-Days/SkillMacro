@@ -80,6 +80,7 @@ class _ElixirCard(QFrame):
         self._count_field: StepperField = StepperField(
             self,
             "0",
+            max_value=MAX_ELIXIR_COUNT,
             integer=True,
         )
         self._count_field.value_changed.connect(self._on_count)

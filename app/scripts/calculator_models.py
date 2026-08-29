@@ -95,6 +95,35 @@ class RealmTier(str, Enum):
     LIFE_AND_DEATH = "life_and_death"
 
 
+class RefinementEquipment(str, Enum):
+    """재련 시뮬레이터 대상 장비 종류"""
+
+    WEAPON = "weapon"
+    HELMET = "helmet"
+    ARMOR = "armor"
+    BELT = "belt"
+    SHOES = "shoes"
+
+
+class RefinementAssist(str, Enum):
+    """재련 보조 사용 종류"""
+
+    NONE = "none"
+    POINT3 = "point3"
+    POINT7 = "point7"
+
+
+class RefinementStrategyMode(str, Enum):
+    """재련 전략 선택 방식"""
+
+    # 보조를 사용하지 않음
+    NONE = "none"
+    # 기대 경제적 총비용이 가장 낮은 전략 자동 선택
+    AUTO = "auto"
+    # 저장한 사용자 전략 사용
+    USER = "user"
+
+
 @dataclass(frozen=True, slots=True)
 class RealmSpec:
     """경지별 요구 레벨과 단전 포인트"""
@@ -614,6 +643,122 @@ class CustomPowerFormula:
 
 
 @dataclass(slots=True)
+class RefinementStrategy:
+    """사용자 재련 전략
+
+    `assist3_step` 단계 이상부터 3pt, `assist7_step` 단계 이상부터 7pt를 사용한다.
+    """
+
+    id: str = field(default_factory=lambda: str(uuid4()))
+    name: str = ""
+    assist3_step: int = 0
+    assist7_step: int = 1
+
+    @classmethod
+    def from_dict(cls, data: dict[str, object]) -> "RefinementStrategy":
+        """저장 데이터로부터 사용자 재련 전략 복원"""
+
+        # 전략 식별자와 표시명, 보조 시작 단계 복원
+        return cls(
+            id=str(data["id"]),
+            name=str(data["name"]),
+            assist3_step=int(data["assist3_step"]),  # type: ignore[arg-type]
+            assist7_step=int(data["assist7_step"]),  # type: ignore[arg-type]
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        """사용자 재련 전략 직렬화"""
+
+        # 현재 전략 상태를 저장 가능한 원시 딕셔너리로 변환
+        data: dict[str, object] = {
+            "id": self.id,
+            "name": self.name,
+            "assist3_step": int(self.assist3_step),
+            "assist7_step": int(self.assist7_step),
+        }
+        return data
+
+
+@dataclass(slots=True)
+class RefinementInput:
+    """재련 시뮬레이터 입력 데이터 묶음"""
+
+    # 재련 대상 장비
+    equipment: RefinementEquipment = RefinementEquipment.WEAPON
+    level_cap: int = 180
+    start_step: int = 0
+    target_step: int = 20
+
+    # 보유 재화와 할인 적용 상태
+    budget: float = 0.0
+    use_refine_pet: bool = False
+    use_vip: bool = False
+
+    # 강화주머니(강화포인트 +5) 가격
+    point_bundle_price: float = 0.0
+
+    # 재련 화면 전용 전투력 공식 선택
+    selected_formula_id: str = PowerMetric.SKILL_SPEED_BOSS_DAMAGE_CHECK.value
+
+    # 전략 선택 상태
+    strategy_mode: RefinementStrategyMode = RefinementStrategyMode.AUTO
+    selected_strategy_id: str = ""
+
+    # 운빨 분석 실제 결과 입력
+    actual_cost: float = 0.0
+
+    @classmethod
+    def create_default(cls) -> "RefinementInput":
+        """기본 재련 입력 상태 생성"""
+
+        return cls()
+
+    @classmethod
+    def from_dict(cls, data: dict[str, object]) -> "RefinementInput":
+        """저장 데이터로부터 재련 입력 상태 복원"""
+
+        # 장비 종류와 전략 방식은 enum으로 복원
+        equipment: RefinementEquipment = RefinementEquipment(str(data["equipment"]))
+        strategy_mode: RefinementStrategyMode = RefinementStrategyMode(
+            str(data["strategy_mode"])
+        )
+
+        return cls(
+            equipment=equipment,
+            level_cap=int(data["level_cap"]),  # type: ignore[arg-type]
+            start_step=int(data["start_step"]),  # type: ignore[arg-type]
+            target_step=int(data["target_step"]),  # type: ignore[arg-type]
+            budget=float(data["budget"]),  # type: ignore[arg-type]
+            use_refine_pet=bool(data["use_refine_pet"]),
+            use_vip=bool(data["use_vip"]),
+            point_bundle_price=float(data["point_bundle_price"]),  # type: ignore[arg-type]
+            selected_formula_id=str(data["selected_formula_id"]),
+            strategy_mode=strategy_mode,
+            selected_strategy_id=str(data["selected_strategy_id"]),
+            actual_cost=float(data["actual_cost"]),  # type: ignore[arg-type]
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        """재련 입력 상태 직렬화"""
+
+        data: dict[str, object] = {
+            "equipment": self.equipment.value,
+            "level_cap": int(self.level_cap),
+            "start_step": int(self.start_step),
+            "target_step": int(self.target_step),
+            "budget": float(self.budget),
+            "use_refine_pet": self.use_refine_pet,
+            "use_vip": self.use_vip,
+            "point_bundle_price": float(self.point_bundle_price),
+            "selected_formula_id": self.selected_formula_id,
+            "strategy_mode": self.strategy_mode.value,
+            "selected_strategy_id": self.selected_strategy_id,
+            "actual_cost": float(self.actual_cost),
+        }
+        return data
+
+
+@dataclass(slots=True)
 class CalculatorPresetInput:
     """계산기 입력 데이터 묶음"""
 
@@ -635,6 +780,9 @@ class CalculatorPresetInput:
     candidate_groups: list[OptimizationCandidateGroup] = field(default_factory=list)
     custom_stat_changes: dict[str, float] = field(default_factory=dict)
 
+    # 재련 시뮬레이터 입력 저장
+    refinement: RefinementInput = field(default_factory=RefinementInput.create_default)
+
     @classmethod
     def create_default(cls) -> "CalculatorPresetInput":
         """기본 계산기 입력 상태 생성"""
@@ -646,6 +794,7 @@ class CalculatorPresetInput:
             base_stats=BaseStats.create_default(),
             custom_stat_changes=custom_stat_changes,
             selected_formula_id=PowerMetric.SKILL_SPEED_BOSS_DAMAGE_CHECK.value,
+            refinement=RefinementInput.create_default(),
         )
 
     @classmethod
@@ -715,6 +864,13 @@ class CalculatorPresetInput:
 
         level: int = int(data["level"])  # type: ignore
 
+        # 재련 입력 구조 복원
+        refinement_data: object = data["refinement"]
+        if not isinstance(refinement_data, dict):
+            raise TypeError("refinement must be a dict")
+
+        refinement: RefinementInput = RefinementInput.from_dict(refinement_data)
+
         return cls(
             base_stats=base_stats,
             level=level,
@@ -726,6 +882,7 @@ class CalculatorPresetInput:
             target_danjeon=target_danjeon,
             candidate_groups=candidate_groups,
             custom_stat_changes=custom_stat_changes,
+            refinement=refinement,
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -744,6 +901,7 @@ class CalculatorPresetInput:
             "custom_stat_changes": {
                 key: float(value) for key, value in self.custom_stat_changes.items()
             },
+            "refinement": self.refinement.to_dict(),
         }
         return data
 

@@ -7,7 +7,7 @@ from functools import partial
 from typing import TYPE_CHECKING, Literal
 
 from PySide6.QtCore import QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QIcon, QPixmap
+from PySide6.QtGui import QColor, QIcon, QPixmap, QTransform
 from PySide6.QtWidgets import (
     QFrame,
     QGraphicsDropShadowEffect,
@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.scripts.app_state import app_state
+from app.scripts.app_state import SidebarPage, app_state
 from app.scripts.config import config
 from app.scripts.custom_classes import CustomFont, SkillImage
 from app.scripts.custom_skill_models import CustomScrollDefinition, CustomSkillImport
@@ -231,6 +231,9 @@ class Sidebar(QFrame):
         # 스킬 사용설정 무공비급 변경 시 사이드바 높이 동기화
         self.skill_settings.contentResized.connect(self.adjust_stack_height)
 
+        # 일반 설정 세부 영역 접기/펼치기 시 사이드바 높이 동기화
+        self.general_settings.contentResized.connect(self.adjust_stack_height)
+
         # 커스텀 무공비급 삭제 시 메인 UI 갱신 시그널 전파
         self.skill_settings.scrollDeleted.connect(self.scrollDeleted.emit)
 
@@ -250,9 +253,7 @@ class Sidebar(QFrame):
         self.page_navigator.setFixedWidth(300)
 
         # 초기 페이지 설정
-        self.page_navigator.setCurrentIndex(0)
-        self.nav_button.set_active_button(0)
-        self.adjust_stack_height()
+        self.change_page(SidebarPage.GENERAL)
 
         # 무공비급바
         self.scroll_area: QScrollArea = QScrollArea()
@@ -286,14 +287,14 @@ class Sidebar(QFrame):
         """연계스킬 편집 요청 처리: 편집기 로드 후 편집 페이지로 이동."""
 
         self.link_skill_editor.load(data, int(index))
-        self.change_page(3)
+        self.change_page(SidebarPage.LINK_SKILL_EDITOR)
 
     def _on_link_skill_editor_closed(self) -> None:
         """연계스킬 편집 페이지 종료(취소/저장 이후) 시 목록 페이지로 복귀."""
 
         # 목록 UI를 최신 상태로 갱신
         self.link_skill_settings.update_from_preset(self.preset)
-        self.change_page(2)
+        self.change_page(SidebarPage.LINK_SKILL)
 
     def _on_link_skill_editor_saved(self) -> None:
         """연계스킬 저장 완료 후 사이드바 전체 갱신."""
@@ -308,12 +309,12 @@ class Sidebar(QFrame):
         self.preset = preset
         self.preset_index = int(preset_index)
 
-        if self.page_navigator.currentIndex() == 3:
+        if self.page_navigator.currentIndex() == SidebarPage.LINK_SKILL_EDITOR:
             self.link_skill_editor.cancel()
 
         self.update_from_preset()
 
-        self.change_page(0)
+        self.change_page(SidebarPage.GENERAL)
 
     def update_from_preset(self) -> None:
         """프리셋을 사이드바 페이지들에 적용"""
@@ -341,15 +342,16 @@ class Sidebar(QFrame):
 
         self.adjust_stack_height()
 
-    def change_page(self, index: Literal[0, 1, 2, 3]) -> None:
+    def change_page(self, page: SidebarPage) -> None:
         """페이지 변경"""
 
-        self.page_navigator.setCurrentIndex(index)
+        self.page_navigator.setCurrentIndex(page)
+        app_state.ui.current_sidebar_page = page
 
-        # 인덱스 3은 연계스킬 편집 페이지,
-        # 버튼 3은 계산기 페이지이므로 활성화하지 않음
-        if index != 3:
-            self.nav_button.set_active_button(index)
+        # 연계스킬 편집 페이지는 대응하는 네비게이션 버튼이 없음
+        # (같은 자리의 버튼은 계산기 전환용이므로 활성화하지 않음)
+        if page != SidebarPage.LINK_SKILL_EDITOR:
+            self.nav_button.set_active_button(page)
 
         self.adjust_stack_height()
 
@@ -370,6 +372,8 @@ class Sidebar(QFrame):
 
 class GeneralSettings(QFrame):
     """사이드바 타입 1 - 일반 설정"""
+
+    contentResized = Signal()
 
     def __init__(
         self,
@@ -434,7 +438,10 @@ class GeneralSettings(QFrame):
         self.start_key_setting = self.SettingItem(
             popup_manager=self.popup_manager,
             title="시작키 설정",
-            tooltip=("매크로를 시작하기 위한 키입니다."),
+            tooltip=(
+                "짧게 누르면 매크로를 시작하거나 중지합니다.\n"
+                "계속 누르고 있으면 놓을 때까지 매크로를 실행합니다."
+            ),
             btn0_text=f"기본: {config.specs.DEFAULT_START_KEY.display}",
             btn0_enabled=True,
             btn1_text="",
@@ -457,6 +464,25 @@ class GeneralSettings(QFrame):
             btn1_enabled=False,
             func0=self.on_default_swap_key_clicked,
             func1=self.on_user_swap_key_clicked,
+        )
+
+        # 쿨타임 추가 대기
+        self.cooltime_extra_wait_setting = self.SettingItem(
+            popup_manager=self.popup_manager,
+            title=config.specs.COOLTIME_EXTRA_WAIT.label,
+            tooltip=(
+                "스킬 쿨타임이 끝난 뒤 추가로 기다리는 시간입니다.\n"
+                "스킬 입력이 누락되면 값을 늘려주세요.\n"
+                "단위는 밀리초(millisecond, 0.001초)를 사용합니다.\n"
+                f"입력 가능한 범위는 {config.specs.COOLTIME_EXTRA_WAIT.min}~"
+                f"{config.specs.COOLTIME_EXTRA_WAIT.max}입니다."
+            ),
+            btn0_text=f"기본: {config.specs.COOLTIME_EXTRA_WAIT.default}",
+            btn0_enabled=True,
+            btn1_text="",
+            btn1_enabled=False,
+            func0=self.on_default_cooltime_extra_wait_clicked,
+            func1=self.on_user_cooltime_extra_wait_clicked,
         )
 
         # 마우스 클릭
@@ -524,6 +550,39 @@ class GeneralSettings(QFrame):
             func1=self.on_always_return_first_line_on_clicked,
         )
 
+        self.detail_settings_button: QPushButton = QPushButton("세부 설정")
+        self.detail_settings_button.setObjectName("detailSettingsBtn")
+        self.detail_settings_button.setFont(CustomFont(11))
+        self.detail_settings_button.setIconSize(QSize(10, 10))
+        self.detail_settings_button.setCheckable(True)
+        self.detail_settings_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.detail_settings_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.detail_settings_button.setFixedSize(140, 34)
+        self.detail_settings_button.toggled.connect(self._on_detail_settings_toggled)
+
+        self._update_detail_settings_arrow(
+            expanded=False,
+            dark=theme_manager.is_dark,
+        )
+        theme_manager.theme_changed.connect(
+            lambda dark: self._update_detail_settings_arrow(
+                expanded=self.detail_settings_button.isChecked(),
+                dark=dark,
+            )
+        )
+
+        self.detail_settings_container: QFrame = QFrame()
+        detail_settings_layout = QVBoxLayout()
+        detail_settings_layout.addWidget(self.cooltime_extra_wait_setting)
+        detail_settings_layout.addWidget(self.click_setting)
+        detail_settings_layout.addWidget(self.key_hold_setting)
+        detail_settings_layout.addWidget(self.remember_state_setting)
+        detail_settings_layout.addWidget(self.always_return_first_line_setting)
+        detail_settings_layout.setContentsMargins(0, 0, 0, 0)
+        detail_settings_layout.setSpacing(30)
+        self.detail_settings_container.setLayout(detail_settings_layout)
+        self.detail_settings_container.setVisible(False)
+
         layout = QVBoxLayout()
 
         layout.addWidget(self.title)
@@ -532,10 +591,11 @@ class GeneralSettings(QFrame):
         layout.addWidget(self.cooltime_setting)
         layout.addWidget(self.start_key_setting)
         layout.addWidget(self.swap_key_setting)
-        layout.addWidget(self.click_setting)
-        layout.addWidget(self.key_hold_setting)
-        layout.addWidget(self.remember_state_setting)
-        layout.addWidget(self.always_return_first_line_setting)
+        layout.addWidget(
+            self.detail_settings_button,
+            alignment=Qt.AlignmentFlag.AlignHCenter,
+        )
+        layout.addWidget(self.detail_settings_container)
 
         layout.setContentsMargins(10, 20, 10, 10)
         layout.setSpacing(30)
@@ -544,6 +604,30 @@ class GeneralSettings(QFrame):
         self.setLayout(layout)
 
         self.update_from_preset(app_state.macro.current_preset)
+
+    def _on_detail_settings_toggled(self, expanded: bool) -> None:
+        """세부 설정 표시 상태와 사이드바 높이 동기화"""
+
+        self.detail_settings_container.setVisible(expanded)
+        self._update_detail_settings_arrow(expanded, theme_manager.is_dark)
+        QTimer.singleShot(0, self.contentResized.emit)
+
+    def _update_detail_settings_arrow(self, expanded: bool, dark: bool) -> None:
+        """테마와 펼침 상태에 맞는 세부 설정 화살표 표시"""
+
+        arrow_pixmap = QPixmap(get_theme_image_path("down_arrow.png", dark))
+        if not expanded:
+            arrow_pixmap = arrow_pixmap.transformed(
+                QTransform().rotate(-90),
+                Qt.TransformationMode.SmoothTransformation,
+            )
+
+        self.detail_settings_button.setIcon(QIcon(arrow_pixmap))
+
+    def show_detail_settings(self) -> None:
+        """가이드 대상 표시를 위한 세부 설정 펼침"""
+
+        self.detail_settings_button.setChecked(True)
 
     def update_from_preset(self, preset: MacroPreset) -> None:
         """프리셋으로부터 위젯 상태를 업데이트"""
@@ -585,6 +669,19 @@ class GeneralSettings(QFrame):
         )
         self.swap_key_setting.set_buttons_enabled(
             not use_custom_swap_key, use_custom_swap_key
+        )
+
+        # 쿨타임 추가 대기
+        custom_cooltime_extra_wait: int = preset.settings.custom_cooltime_extra_wait
+        use_custom_cooltime_extra_wait: bool = (
+            preset.settings.use_custom_cooltime_extra_wait
+        )
+        self.cooltime_extra_wait_setting.set_right_button_text(
+            str(custom_cooltime_extra_wait)
+        )
+        self.cooltime_extra_wait_setting.set_buttons_enabled(
+            not use_custom_cooltime_extra_wait,
+            use_custom_cooltime_extra_wait,
         )
 
         # 마우스 클릭
@@ -640,9 +737,8 @@ class GeneralSettings(QFrame):
 
         self.popup_manager.close_popup()
 
-        # 매크로 실행 중일 때는 무시
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        # 입력 시퀀스 실행 중일 때는 무시
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         # 이미 기본 딜레이라면 무시
@@ -676,9 +772,8 @@ class GeneralSettings(QFrame):
 
         self.popup_manager.close_popup()
 
-        # 매크로 실행 중일 때는 무시
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        # 입력 시퀀스 실행 중일 때는 무시
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         # 이미 유저 딜레이라면 딜레이 입력 팝업 열기
@@ -696,9 +791,8 @@ class GeneralSettings(QFrame):
 
         self.popup_manager.close_popup()
 
-        # 매크로 실행 중일 때는 무시
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        # 입력 시퀀스 실행 중일 때는 무시
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         # 이미 기본 쿨타임 감소라면 무시
@@ -735,9 +829,8 @@ class GeneralSettings(QFrame):
 
         self.popup_manager.close_popup()
 
-        # 매크로 실행 중일 때는 무시
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        # 입력 시퀀스 실행 중일 때는 무시
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         # 이미 유저 쿨타임 감소라면 쿨타임 감소 입력 팝업 열기
@@ -752,11 +845,63 @@ class GeneralSettings(QFrame):
         self.update_from_preset(app_state.macro.current_preset)
         self._on_data_changed()
 
+    def on_default_cooltime_extra_wait_clicked(self) -> None:
+        """기본 쿨타임 추가 대기 클릭시 실행"""
+
+        self.popup_manager.close_popup()
+
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
+
+        settings = app_state.macro.current_preset.settings
+        if not settings.use_custom_cooltime_extra_wait:
+            return
+
+        settings.use_custom_cooltime_extra_wait = False
+        app_state.macro.clear_cooltime_state()
+        self.update_from_preset(app_state.macro.current_preset)
+        self._on_data_changed()
+
+    def on_user_cooltime_extra_wait_clicked(self) -> None:
+        """사용자 쿨타임 추가 대기 클릭시 실행"""
+
+        def apply(extra_wait_ms: int) -> None:
+            settings = app_state.macro.current_preset.settings
+            if extra_wait_ms == settings.custom_cooltime_extra_wait:
+                return
+
+            settings.custom_cooltime_extra_wait = extra_wait_ms
+            settings.use_custom_cooltime_extra_wait = True
+            app_state.macro.clear_cooltime_state()
+            self.update_from_preset(app_state.macro.current_preset)
+            self._on_data_changed()
+
+        if self.popup_manager.is_popup_active(PopupKind.COOLTIME_EXTRA_WAIT):
+            self.popup_manager.close_popup()
+            return
+
+        self.popup_manager.close_popup()
+
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
+
+        settings = app_state.macro.current_preset.settings
+        if settings.use_custom_cooltime_extra_wait:
+            self.popup_manager.make_cooltime_extra_wait_popup(
+                self.cooltime_extra_wait_setting.right_button,
+                apply,
+            )
+            return
+
+        settings.use_custom_cooltime_extra_wait = True
+        app_state.macro.clear_cooltime_state()
+        self.update_from_preset(app_state.macro.current_preset)
+        self._on_data_changed()
+
     def on_forget_previous_state_clicked(self) -> None:
         self.popup_manager.close_popup()
 
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         if not app_state.macro.current_preset.settings.remember_previous_state:
@@ -771,8 +916,7 @@ class GeneralSettings(QFrame):
     def on_remember_previous_state_clicked(self) -> None:
         self.popup_manager.close_popup()
 
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         if app_state.macro.current_preset.settings.remember_previous_state:
@@ -789,9 +933,8 @@ class GeneralSettings(QFrame):
 
         self.popup_manager.close_popup()
 
-        # 매크로 실행 중일 때는 무시
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        # 입력 시퀀스 실행 중일 때는 무시
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         # 이미 기본 시작키라면 무시
@@ -838,9 +981,8 @@ class GeneralSettings(QFrame):
 
         self.popup_manager.close_popup()
 
-        # 매크로 실행 중일 때는 무시
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        # 입력 시퀀스 실행 중일 때는 무시
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         # 이미 유저 시작키라면 시작키 입력 팝업 열기
@@ -872,9 +1014,8 @@ class GeneralSettings(QFrame):
 
         self.popup_manager.close_popup()
 
-        # 매크로 실행 중일 때는 무시
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        # 입력 시퀀스 실행 중일 때는 무시
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         # 이미 기본 키 입력 유지라면 무시
@@ -913,9 +1054,8 @@ class GeneralSettings(QFrame):
 
         self.popup_manager.close_popup()
 
-        # 매크로 실행 중일 때는 무시
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        # 입력 시퀀스 실행 중일 때는 무시
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         # 이미 유저 키 입력 유지라면 키 입력 유지 입력 팝업 열기
@@ -935,9 +1075,8 @@ class GeneralSettings(QFrame):
 
         self.popup_manager.close_popup()
 
-        # 매크로 실행 중일 때는 무시
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        # 입력 시퀀스 실행 중일 때는 무시
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         # 이미 False 라면 무시
@@ -953,8 +1092,7 @@ class GeneralSettings(QFrame):
 
         self.popup_manager.close_popup()
 
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         if not app_state.macro.current_preset.settings.use_custom_swap_key:
@@ -994,8 +1132,7 @@ class GeneralSettings(QFrame):
 
         self.popup_manager.close_popup()
 
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         if app_state.macro.current_preset.settings.use_custom_swap_key:
@@ -1025,8 +1162,7 @@ class GeneralSettings(QFrame):
 
         self.popup_manager.close_popup()
 
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         if not app_state.macro.current_preset.settings.always_return_to_first_line:
@@ -1041,8 +1177,7 @@ class GeneralSettings(QFrame):
 
         self.popup_manager.close_popup()
 
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         if app_state.macro.current_preset.settings.always_return_to_first_line:
@@ -1057,9 +1192,8 @@ class GeneralSettings(QFrame):
 
         self.popup_manager.close_popup()
 
-        # 매크로 실행 중일 때는 무시
-        if app_state.macro.is_running:
-            self.popup_manager.show_notice(NoticeKind.MACRO_IS_RUNNING)
+        # 입력 시퀀스 실행 중일 때는 무시
+        if self.popup_manager.reject_if_input_sequence_active():
             return
 
         # 이미 타입1 이라면 무시
@@ -1680,6 +1814,9 @@ class SkillSettings(QFrame):
     def _on_edit_custom_scroll(self) -> None:
         """커스텀 무공비급 수정 다이얼로그 열기"""
 
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
+
         server_spec = app_state.macro.current_server
         scroll_def: ScrollDef = server_spec.skill_registry.get_scroll(
             self._selected_scroll_id
@@ -1708,11 +1845,17 @@ class SkillSettings(QFrame):
         )
 
         def _on_edited(skill_import: CustomSkillImport) -> None:
+            if self.popup_manager.reject_if_input_sequence_active():
+                return
+
             # 현재 세션 레지스트리 반영
             for sid in skill_import.skills:
                 detail = skill_import.skill_details[sid]
                 server_spec.skill_registry.add_skill_def(
-                    SkillDef.from_detail_dict(sid, server_spec.id, detail.to_dict())
+                    SkillDef.from_custom_definition(
+                        server_spec.id,
+                        detail,
+                    )
                 )
 
             for scroll in skill_import.scrolls:
@@ -1754,6 +1897,9 @@ class SkillSettings(QFrame):
     def _on_delete_custom_scroll(self) -> None:
         """커스텀 무공비급 삭제"""
 
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
+
         scroll_id: str = self._selected_scroll_id
         server_spec = app_state.macro.current_server
         scroll_def = server_spec.skill_registry.get_scroll(scroll_id)
@@ -1761,8 +1907,14 @@ class SkillSettings(QFrame):
 
         remove_custom_scroll(server_spec.id, scroll_id)
 
-        # 모든 프리셋에서 삭제된 무공비급/스킬 관련 데이터 정리
+        # 삭제가 반영된 레지스트리 기준 유효 스킬 목록
+        valid_skill_ids: set[str] = set(server_spec.skill_registry.get_all_skill_ids())
+
+        # 같은 서버의 모든 프리셋에서 삭제된 무공비급/스킬 관련 데이터 정리
         for preset in app_state.macro.presets:
+            if preset.settings.server_id != server_spec.id:
+                continue
+
             # 장착 무공비급 슬롯에서 제거
             for i, sid in enumerate(preset.skills.equipped_scrolls):
                 if sid == scroll_id:
@@ -1780,12 +1932,8 @@ class SkillSettings(QFrame):
             # 무공비급 레벨 저장값 제거
             preset.info.scroll_levels.pop(scroll_id, None)
 
-            # 해당 스킬을 포함하는 연계스킬 제거
-            preset.link_skills = [
-                ls
-                for ls in preset.link_skills
-                if not deleted_skill_ids.intersection(ls.skills)
-            ]
+            # 삭제된 스킬만 제외하고 남은 연계 순서와 단축키 유지
+            preset.reconcile_link_skills(valid_skill_ids)
 
         self._selected_scroll_id = ""
         self.update_from_preset(self._get_preset())
@@ -1795,6 +1943,9 @@ class SkillSettings(QFrame):
 
     def change_skill_usage(self, skill_idx: int) -> None:
         """사용 여부 변경"""
+
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
 
         # 현재 선택된 스킬의 사용 여부 토글
         preset: MacroPreset = self._get_preset()
@@ -1809,6 +1960,9 @@ class SkillSettings(QFrame):
     def change_use_sole(self, skill_idx: int) -> None:
         """단독 사용 변경"""
 
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
+
         # 현재 선택된 스킬의 단독 사용 여부 토글
         preset: MacroPreset = self._get_preset()
         skill_id: str = self._skill_ids[skill_idx]
@@ -1821,6 +1975,9 @@ class SkillSettings(QFrame):
 
     def change_priority(self, skill_idx: int) -> None:
         """스킬 우선순위 변경"""
+
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
 
         # 현재 선택된 스킬과 배치 상태 조회
         preset: MacroPreset = self._get_preset()
@@ -1965,6 +2122,9 @@ class LinkSkillSettings(QFrame):
         """연계스킬 제거"""
 
         self.popup_manager.close_popup()
+
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
 
         preset: MacroPreset = self._get_preset()
         del preset.link_skills[num]
@@ -2178,7 +2338,9 @@ class LinkSkillEditor(QFrame):
             popup_manager=self.popup_manager,
             title="단축키",
             tooltip=(
-                "매크로가 실행 중이지 않을 때 해당 연계스킬을 작동시킬 단축키입니다."
+                "매크로가 실행 중이지 않을 때 해당 연계스킬을 작동시킬 단축키입니다.\n"
+                "짧게 누르면 연계를 1회 사용하고, 실행 중 다시 누르면 중지합니다.\n"
+                "계속 누르고 있으면 연계스킬을 반복해서 사용합니다."
             ),
             btn0_text="설정안함",
             btn1_text="",
@@ -2193,7 +2355,7 @@ class LinkSkillEditor(QFrame):
             popup_manager=self.popup_manager,
             title="쿨타임 동기화",
             tooltip=(
-                "단축키로 연계스킬을 작동시킬 때 쿨타임이 준비된 스킬만 사용하고, 사용한 스킬의 쿨타임을 기록합니다.\n"
+                "켜면 쿨타임이 준비된 스킬만 사용하고 사용한 스킬의 쿨타임을 기록합니다.\n"
                 "쿨타임은 연계스킬마다 별도로 기록됩니다."
             ),
             btn0_text="끄기",
@@ -2354,6 +2516,9 @@ class LinkSkillEditor(QFrame):
 
         self.popup_manager.close_popup()
 
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
+
         # 이미 자동이면 무시
         if self.data.use_type == LinkUseType.AUTO:
             return
@@ -2397,6 +2562,9 @@ class LinkSkillEditor(QFrame):
 
         self.popup_manager.close_popup()
 
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
+
         # 이미 수동이면 무시
         if self.data.use_type == LinkUseType.MANUAL:
             return
@@ -2410,6 +2578,9 @@ class LinkSkillEditor(QFrame):
 
         self.popup_manager.close_popup()
 
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
+
         self.data.clear_key()
         self._after_data_changed(update_skills=False)
 
@@ -2417,6 +2588,9 @@ class LinkSkillEditor(QFrame):
         """쿨타임 동기화 켜기"""
 
         self.popup_manager.close_popup()
+
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
 
         if self.data.remember_state:
             return
@@ -2428,6 +2602,9 @@ class LinkSkillEditor(QFrame):
         """쿨타임 동기화 끄기"""
 
         self.popup_manager.close_popup()
+
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
 
         if not self.data.remember_state:
             return
@@ -2483,6 +2660,9 @@ class LinkSkillEditor(QFrame):
 
         self.popup_manager.close_popup()
 
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
+
         # 스킬 제거
         self.data.skills.pop(i)
 
@@ -2495,6 +2675,9 @@ class LinkSkillEditor(QFrame):
         """i번째 스킬을 direction 방향으로 이동"""
 
         self.popup_manager.close_popup()
+
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
 
         # 이동 대상 인덱스 계산
         target_index: int = i + direction
@@ -2513,6 +2696,9 @@ class LinkSkillEditor(QFrame):
         """스킬 추가"""
 
         self.popup_manager.close_popup()
+
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
 
         all_skills: list[str] = self._get_all_skill_ids()
         if not all_skills:
@@ -2562,6 +2748,9 @@ class LinkSkillEditor(QFrame):
 
         self.popup_manager.close_popup()
 
+        if self.popup_manager.reject_if_input_sequence_active():
+            return
+
         allowed_skill_ids: set[str] = set(self._get_all_skill_ids())
         self.data.skills = [
             skill_id for skill_id in self.data.skills if skill_id in allowed_skill_ids
@@ -2586,6 +2775,10 @@ class LinkSkillEditor(QFrame):
         else:
             preset.link_skills[index] = self.data
             self._editing_index = index
+
+        # 저장 시점의 하단 배치 기준 자동 연계 상태 보정
+        if preset.disable_unrunnable_auto_link_skills():
+            self.popup_manager.show_notice(NoticeKind.LINK_SKILL_AUTO_DISABLED)
 
         self._on_data_changed()
 
@@ -2786,16 +2979,19 @@ class LinkSkillEditor(QFrame):
 
 
 class NavigationButtons(QFrame):
+    # 사이드바 페이지가 아닌 계산기 화면으로 이동하는 버튼 위치
+    _CALCULATOR_BUTTON_INDEX: int = 3
+
     def __init__(
         self,
-        change_page: Callable[[Literal[0, 1, 2, 3]], None],
+        change_page: Callable[[SidebarPage], None],
         change_layout: Callable[[int], None],
         guide_requested: Callable[[], None],
     ) -> None:
         super().__init__()
 
         self.setObjectName("navButtonsFrame")
-        self.change_page: Callable[[Literal[0, 1, 2, 3]], None] = change_page
+        self.change_page: Callable[[SidebarPage], None] = change_page
         self.change_layout: Callable[[int], None] = change_layout
         self.guide_requested: Callable[[], None] = guide_requested
 
@@ -2826,8 +3022,11 @@ class NavigationButtons(QFrame):
         for idx, button in enumerate(self.buttons):
             layout.addWidget(button)
 
-            if idx != 3:
-                button.clicked.connect(partial(lambda x: self.change_page(x), idx))
+            # 마지막 버튼만 사이드바 페이지가 아닌 계산기 화면 전환용
+            if idx != self._CALCULATOR_BUTTON_INDEX:
+                button.clicked.connect(
+                    partial(lambda page: self.change_page(page), SidebarPage(idx))
+                )
             else:
                 button.clicked.connect(lambda: self.change_layout(1))
 

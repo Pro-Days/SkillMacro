@@ -7,13 +7,13 @@ from datetime import datetime
 from typing import Any
 
 from app.scripts.app_state import app_state
+from app.scripts.calculator_models import RefinementInput
 from app.scripts.character_engine import validate_character_store
 from app.scripts.character_models import CHARACTER_DATA_VERSION, CharacterStore
 from app.scripts.config import config
 from app.scripts.custom_skill_models import CustomSkillImport
 from app.scripts.macro_models import (
     DATA_VERSION,
-    LinkSkill,
     MacroPreset,
     MacroPresetFile,
     MacroPresetRepository,
@@ -272,8 +272,36 @@ def migrate_macro_data_file(file_path: str) -> None:
                 raw_calculator.pop("equipped_state", None)
                 raw_calculator["candidate_groups"] = []
 
-            raw["version"] = DATA_VERSION
-            stored_version_obj = DATA_VERSION
+            raw["version"] = 7
+            stored_version_obj = 7
+            migrated = True
+
+        # v7 -> v8: 프리셋별 쿨타임 추가 대기 설정 주입
+        if stored_version_obj == 7:
+            raw_preset: dict[str, Any]
+            for raw_preset in raw["preset"]:
+                raw_settings: dict[str, Any] = raw_preset["settings"]
+                raw_settings["custom_cooltime_extra_wait"] = (
+                    config.specs.COOLTIME_EXTRA_WAIT.default
+                )
+                raw_settings["use_custom_cooltime_extra_wait"] = False
+
+            raw["version"] = 8
+            stored_version_obj = 8
+            migrated = True
+
+        # v8 -> v9: 재련 시뮬레이터 입력과 전역 재련 전략 저장소 주입
+        if stored_version_obj == 8:
+            raw["refinement_strategies"] = []
+
+            raw_preset: dict[str, Any]
+            for raw_preset in raw["preset"]:
+                raw_info: dict[str, Any] = raw_preset["info"]
+                raw_calculator: dict[str, Any] = raw_info["calculator"]
+                raw_calculator["refinement"] = RefinementInput.create_default().to_dict()
+
+            raw["version"] = 9
+            stored_version_obj = 9
             migrated = True
 
         # v3 이상 저장 데이터의 목표 분배 필드 누락 보정
@@ -351,12 +379,106 @@ def create_default_characters_data() -> None:
         json.dump(default_store.to_dict(), f, ensure_ascii=False, indent=4)
 
 
+def migrate_character_data_file(file_path: str) -> None:
+    """characters.json 저장 구조를 현재 버전으로 마이그레이션"""
+
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            raw_obj: object = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return
+
+    if not isinstance(raw_obj, dict):
+        return
+
+    try:
+        raw: dict[str, Any] = raw_obj
+        if raw.get("version") not in (1, 2, 3):
+            return
+
+        raw_characters: object = raw["characters"]
+        if not isinstance(raw_characters, list):
+            return
+
+        if raw["version"] == 1:
+            for raw_character in raw_characters:
+                if not isinstance(raw_character, dict):
+                    return
+
+                raw_character["additional_stat_groups"] = []
+
+            raw["version"] = 2
+
+        if raw["version"] == 2:
+            for raw_character in raw_characters:
+                if not isinstance(raw_character, dict):
+                    return
+
+                raw_equipment: object = raw_character["equipment"]
+                if not isinstance(raw_equipment, dict):
+                    return
+
+                raw_equipped: object = raw_equipment["equipped"]
+                if not isinstance(raw_equipped, dict):
+                    return
+
+                raw_equipped["vambrace"] = None
+
+            raw["version"] = 3
+
+        if raw["version"] == 3:
+            for raw_character in raw_characters:
+                if not isinstance(raw_character, dict):
+                    return
+
+                raw_equipment = raw_character["equipment"]
+                if not isinstance(raw_equipment, dict):
+                    return
+
+                raw_owned: object = raw_equipment["owned"]
+                if not isinstance(raw_owned, list):
+                    return
+
+                for raw_item in raw_owned:
+                    if not isinstance(raw_item, dict):
+                        return
+
+                    raw_item["reforge_mode"] = "manual"
+                    raw_item["reforge_step"] = None
+
+                raw_display_stand: object = raw_character["display_stand"]
+                if not isinstance(raw_display_stand, dict):
+                    return
+
+                raw_display_stand["input_mode"] = "manual"
+                raw_display_stand["step_entries"] = {}
+
+            raw["version"] = 4
+
+    except (KeyError, TypeError, ValueError):
+        return
+
+    try:
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(raw, f, ensure_ascii=False, indent=4)
+    except OSError as error:
+        log_text: str = _format_data_failure_log(
+            file_path,
+            "characters.json 마이그레이션 저장",
+            error,
+            None,
+        )
+        raise DataRecoveryStartupError(log_text) from error
+
+
 def load_characters() -> CharacterStore:
     """characters.json 로드 후 전역 캐릭터 상태에 반영"""
 
     # 최초 실행 시 빈 캐릭터 저장소 파일 생성
     if not os.path.isfile(characters_file_dir):
         create_default_characters_data()
+
+    migrate_character_data_file(characters_file_dir)
 
     try:
         # 캐릭터 저장 루트 로드
@@ -777,9 +899,9 @@ def load_custom_skills() -> None:
         skill_import: CustomSkillImport = parsed[1]
 
         for skill_id in skill_import.skills:
-            skill_def_data: dict = skill_import.skill_details[skill_id].to_dict()
-            skill_def: SkillDef = SkillDef.from_detail_dict(
-                skill_id, server_id, skill_def_data
+            skill_def: SkillDef = SkillDef.from_custom_definition(
+                server_id,
+                skill_import.skill_details[skill_id],
             )
             server_spec.skill_registry.add_skill_def(skill_def)
 
@@ -882,29 +1004,9 @@ def sanitize_preset_registry_references(preset: MacroPreset) -> bool:
         preset.usage_settings.pop(stale_skill_id, None)
         changed = True
 
-    # 존재하지 않는 스킬이 포함된 연계스킬 정리
-    filtered_link_skills: list[LinkSkill] = []
-    link_skill: LinkSkill
-    for link_skill in preset.link_skills:
-        filtered_skill_ids: list[str] = [
-            skill_id for skill_id in link_skill.skills if skill_id in valid_skill_ids
-        ]
-
-        if not filtered_skill_ids:
-            changed = True
-            continue
-
-        if filtered_skill_ids != link_skill.skills:
-            link_skill.skills = filtered_skill_ids
-            link_skill.set_manual()
-            link_skill.clear_key()
-            changed = True
-
-        filtered_link_skills.append(link_skill)
-
-    # 정리된 연계스킬 목록 반영
-    if filtered_link_skills != preset.link_skills:
-        preset.link_skills = filtered_link_skills
+    # 존재하지 않는 스킬 제거 후 최종 배치 기준 자동 연계 상태 정리
+    if preset.reconcile_link_skills(valid_skill_ids).changed:
+        changed = True
 
     return changed
 
@@ -1027,9 +1129,10 @@ def load_data(num: int = -1) -> None:
         )
         target_index = 0
 
-    # 프리셋/전역 공식 메모리 반영
+    # 프리셋/전역 공식·전략 메모리 반영
     app_state.macro.presets = preset_file.preset
     app_state.macro.custom_power_formulas = preset_file.custom_power_formulas
+    app_state.macro.refinement_strategies = preset_file.refinement_strategies
     app_state.macro.current_preset_index = target_index
     app_state.ui.theme_mode = preset_file.theme_mode
     app_state.ui.guide_prompt_handled = preset_file.guide_prompt_handled
@@ -1069,6 +1172,7 @@ def create_default_data() -> None:
         last_app_version=app_state.ui.last_app_version,
         recent_preset=0,
         custom_power_formulas=[],
+        refinement_strategies=[],
         preset=[get_default_preset()],
     )
     repo.save(preset_file)
@@ -1092,6 +1196,7 @@ def save_data() -> None:
         last_app_version=app_state.ui.last_app_version,
         recent_preset=app_state.macro.current_preset_index,
         custom_power_formulas=app_state.macro.custom_power_formulas.copy(),
+        refinement_strategies=app_state.macro.refinement_strategies.copy(),
         preset=app_state.macro.presets.copy(),
     )
 
