@@ -8,7 +8,14 @@ from typing import Any
 
 import pytest
 
-from app.scripts.calculator_models import CalculatorPresetInput, RealmTier, StatKey
+from app.scripts.calculator_models import (
+    CalculatorPresetInput,
+    RealmTier,
+    RefinementEquipment,
+    RefinementInput,
+    RefinementStrategyMode,
+    StatKey,
+)
 from app.scripts.data_manager import migrate_macro_data_file
 from app.scripts.macro_models import (
     DATA_VERSION,
@@ -216,6 +223,33 @@ def test_migration_preserves_user_content(
     else:
         assert calculator.target_danjeon.upper == 0
         assert calculator.target_danjeon.is_minimum is False
+
+    # 재련 입력 보존/주입 확인 (v9부터 저장)
+    refinement: RefinementInput = calculator.refinement
+    if version >= 9:
+        assert refinement.equipment == RefinementEquipment.HELMET
+        assert refinement.level_cap == 110
+        assert refinement.start_step == 5
+        assert refinement.target_step == 16
+        assert refinement.budget == 12000000.0
+        assert refinement.use_refine_pet is True
+        assert refinement.use_vip is True
+        assert refinement.point_bundle_price == 250000.0
+        assert refinement.strategy_mode == RefinementStrategyMode.USER
+        assert refinement.selected_strategy_id == "sample-strategy-1"
+        assert refinement.actual_cost == 8500000.0
+
+        assert len(preset_file.refinement_strategies) == 1
+        assert preset_file.refinement_strategies[0].name == "안전 재련"
+        assert preset_file.refinement_strategies[0].assist3_step == 4
+        assert preset_file.refinement_strategies[0].assist7_step == 12
+    else:
+        assert refinement.equipment == RefinementEquipment.WEAPON
+        assert refinement.level_cap == 180
+        assert refinement.start_step == 0
+        assert refinement.target_step == 20
+        assert refinement.strategy_mode == RefinementStrategyMode.AUTO
+        assert preset_file.refinement_strategies == []
 
     # 후보 그룹 보존/주입 확인 (v7부터 저장, v6 이하 칭호/부적 입력은 빈 그룹으로 대체)
     if version >= 7:

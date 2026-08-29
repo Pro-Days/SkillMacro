@@ -74,6 +74,7 @@ def test_main_window_and_lazy_pages_construct_offscreen(
 
     from app.scripts.ui.character_ui import CharacterPage
     from app.scripts.ui.main_window import MainWindow
+    from app.scripts.ui.sim_ui.refinement_ui import RefinementPage
     from app.scripts.ui.sim_ui.simul_ui import GraphPage, ResultsPage, SimUI
 
     def skip_background_threads(self: MainWindow) -> None:
@@ -102,6 +103,7 @@ def test_main_window_and_lazy_pages_construct_offscreen(
     character_page: CharacterPage = simulator.character_page
     graph_page: GraphPage = simulator.graph_page
     results_page: ResultsPage = simulator.results_page
+    refinement_page: RefinementPage = simulator.refinement_page
 
     assert os.path.isfile(isolated_data_paths["file_dir"])
     assert os.path.isfile(isolated_data_paths["characters_file_dir"])
@@ -111,14 +113,17 @@ def test_main_window_and_lazy_pages_construct_offscreen(
     assert isinstance(character_page, CharacterPage)
     assert isinstance(graph_page, GraphPage)
     assert isinstance(results_page, ResultsPage)
+    assert isinstance(refinement_page, RefinementPage)
 
     # 지연 페이지의 스택 연결과 재접근 시 동일 객체 재사용 확인
     assert simulator.stacked_layout.widget(1) is graph_page
     assert simulator.stacked_layout.widget(2) is results_page
     assert simulator.stacked_layout.widget(3) is character_page
+    assert simulator.stacked_layout.widget(4) is refinement_page
     assert simulator.graph_page is graph_page
     assert simulator.results_page is results_page
     assert simulator.character_page is character_page
+    assert simulator.refinement_page is refinement_page
 
     # 연계 편집 중 스킬·무공비급 변경 차단과 저장 시 자동 상태 보정
     preset = app_state.macro.current_preset

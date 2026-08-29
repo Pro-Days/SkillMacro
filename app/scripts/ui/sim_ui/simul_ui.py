@@ -53,8 +53,6 @@ from PySide6.QtWidgets import (
 from app.scripts.app_state import app_state
 from app.scripts.calculator_engine import (
     CALCULATOR_SKILL_SPEED_LIMIT_PERCENT,
-    DISPLAY_POWER_METRICS,
-    POWER_METRIC_LABELS,
     TIMELINE_DAMAGE_INPUT_ERROR_MESSAGE,
     build_calculator_context,
     build_calculator_timeline,
@@ -107,6 +105,10 @@ from app.scripts.registry.resource_registry import (
 )
 from app.scripts.simulate_macro import simulate_random_from_calculator
 from app.scripts.ui.sim_ui.candidate_group_inputs import CandidateGroupInputs
+from app.scripts.ui.sim_ui.formula_options import (
+    build_formula_label_map,
+    build_formula_options,
+)
 from app.scripts.ui.popup import (
     CustomPowerFormulaManageDialog,
     NoticeKind,
@@ -118,6 +120,7 @@ if TYPE_CHECKING:
     from PIL import Image
 
     from app.scripts.ui.character_ui import CharacterPage
+    from app.scripts.ui.sim_ui.refinement_ui import RefinementPage
     from app.scripts.calculator_engine import (
         EvaluationContext,
         FinalStats,
@@ -139,38 +142,6 @@ if TYPE_CHECKING:
     from app.scripts.registry.skill_registry import ScrollDef, SkillDef, SkillHitDef
     from app.scripts.ui.main_window import MainWindow
     from app.scripts.ui.popup import HoverCardData
-
-
-def _build_formula_label_map(
-    custom_formulas: list[CustomPowerFormula],
-) -> dict[str, str]:
-    """전역 공식 목록 기준 빌트인/커스텀 공식 ID → 표시명 맵 구성"""
-
-    # 빌트인 공식 표시명을 먼저 고정 순서로 등록
-    formula_labels: dict[str, str] = {
-        power_metric.value: POWER_METRIC_LABELS[power_metric]
-        for power_metric in DISPLAY_POWER_METRICS
-    }
-
-    # 전역 저장된 커스텀 공식 표시명을 뒤에 추가
-    custom_formula: CustomPowerFormula
-    for custom_formula in custom_formulas:
-        formula_labels[custom_formula.id] = custom_formula.name
-
-    return formula_labels
-
-
-def _build_formula_options(
-    custom_formulas: list[CustomPowerFormula],
-) -> list[str]:
-    """전역 공식 목록 기준 공식 드롭다운 순서 목록 구성"""
-
-    # 빌트인 공식 뒤에 커스텀 공식을 저장 순서대로 연결
-    formula_ids: list[str] = [
-        power_metric.value for power_metric in DISPLAY_POWER_METRICS
-    ]
-    formula_ids.extend(custom_formula.id for custom_formula in custom_formulas)
-    return formula_ids
 
 
 @dataclass(frozen=True, slots=True)
@@ -250,11 +221,12 @@ class SimUI:
         self._graph_page: GraphPage | None = None
         self._results_page: ResultsPage | None = None
         self._character_page: CharacterPage | None = None
+        self._refinement_page: RefinementPage | None = None
         self.stacked_layout.addWidget(self._input_page)
 
         # 네비게이션 인덱스 보존용 지연 페이지 자리 구성
         self._page_placeholders: dict[int, QWidget] = {}
-        for page_index in (1, 2, 3):
+        for page_index in (1, 2, 3, 4):
             placeholder: QWidget = QWidget(self.main_frame)
             self._page_placeholders[page_index] = placeholder
             self.stacked_layout.addWidget(placeholder)
@@ -280,6 +252,9 @@ class SimUI:
                 show_summary=False,
             )
         )
+        # 재련 계산 오버레이는 재련 페이지와 함께 생성
+        self._refinement_overlay: _CalculationOverlay | None = None
+
         self._pending_character_fill: CalculatorInputFill | None = None
         self._calc_thread: _CalculatorThread | None = None
         self._results_cache_key: _CalculatorResultsCacheKey | None = None
@@ -336,6 +311,37 @@ class SimUI:
             self._replace_lazy_page(3, self._character_page)
 
         return self._character_page
+
+    @property
+    def refinement_page(self) -> "RefinementPage":
+        """재련 페이지를 최초 접근 시 생성하고 이후 재사용"""
+
+        # 재련 탭 최초 진입 시 재련 모듈 로드 및 페이지 생성
+        if self._refinement_page is None:
+            from app.scripts.ui.sim_ui.refinement_ui import RefinementPage
+
+            self._refinement_overlay = _CalculationOverlay(
+                self.parent,
+                self._cancel_refinement_calculation,
+            )
+            self._refinement_page = RefinementPage(
+                self.main_frame,
+                self.popup_manager,
+                self._refinement_overlay,
+                self.adjust_main_frame_height,
+            )
+            self._replace_lazy_page(4, self._refinement_page)
+
+        return self._refinement_page
+
+    def _cancel_refinement_calculation(self) -> None:
+        """재련 계산 취소 요청 전달"""
+
+        # 오버레이 취소 버튼은 페이지 생성 이후에만 노출됨
+        if self._refinement_page is None:
+            return
+
+        self._refinement_page.cancel_calculation()
 
     def _replace_lazy_page(self, page_index: int, page: QWidget) -> None:
         """지연 페이지 자리 위젯을 실제 페이지로 교체"""
@@ -406,6 +412,18 @@ class SimUI:
             character_page: CharacterPage = self.character_page
             self.update_nav(3)
             self.stacked_layout.setCurrentWidget(character_page)
+            self.adjust_main_frame_height()
+            return
+
+        # 재련 탭도 검증/계산 없이 즉시 전환
+        if index == 4:
+            if index == self.stacked_layout.currentIndex():
+                return
+
+            refinement_page: RefinementPage = self.refinement_page
+            refinement_page.on_enter()
+            self.update_nav(4)
+            self.stacked_layout.setCurrentWidget(refinement_page)
             self.adjust_main_frame_height()
             return
 
@@ -502,7 +520,7 @@ class SimUI:
         내비게이션 버튼 색 업데이트
         """
 
-        for i in range(4):
+        for i in range(5):
             btn = self.nav.buttons[i]
             btn.setProperty("active", i == index)
             btn.style().unpolish(btn)
@@ -730,6 +748,10 @@ class SimUI:
 
     def cancel_results_calculation_for_shutdown(self) -> None:
         """프로그램 종료 중 진행 계산 취소 및 스레드 정리"""
+
+        # 재련 계산 스레드도 함께 정리
+        if self._refinement_page is not None:
+            self._refinement_page.cancel_calculation_for_shutdown()
 
         # 종료 시 진행 중인 계산이 없으면 즉시 반환
         if self._calc_thread is None or not self._calc_thread.isRunning():
@@ -1967,7 +1989,7 @@ class ResultsPage(QFrame):
         cancel_checker()
 
         # 현재 전투력 출력 행 구성
-        formula_labels: dict[str, str] = _build_formula_label_map(
+        formula_labels: dict[str, str] = build_formula_label_map(
             app_state.macro.custom_power_formulas
         )
         current_power_row: tuple[str, str] = (
@@ -2162,7 +2184,7 @@ class ResultsPage(QFrame):
             )
 
             # 목표 단전 기준 전투력 변화량 행 구성
-            formula_labels: dict[str, str] = _build_formula_label_map(
+            formula_labels: dict[str, str] = build_formula_label_map(
                 app_state.macro.custom_power_formulas
             )
             target_danjeon_delta: float = evaluate_arbitrary_stat_delta(
@@ -2316,7 +2338,7 @@ class ResultsPage(QFrame):
         """사용자 지정 변화량 결과 행 공용 구성"""
 
         # 사용자 지정 변화량 기준 선택 공식 전투력 변화량 계산
-        formula_labels: dict[str, str] = _build_formula_label_map(
+        formula_labels: dict[str, str] = build_formula_label_map(
             app_state.macro.custom_power_formulas
         )
         custom_delta: float = evaluate_arbitrary_stat_delta(
@@ -2362,7 +2384,7 @@ class ResultsPage(QFrame):
     ) -> tuple[str, str]:
         """목표 분배 결과를 선택된 전투력 공식 기준 단일 행으로 구성"""
 
-        formula_labels: dict[str, str] = _build_formula_label_map(
+        formula_labels: dict[str, str] = build_formula_label_map(
             app_state.macro.custom_power_formulas
         )
         target_delta: float = evaluate_arbitrary_stat_delta(
@@ -2455,10 +2477,10 @@ class ResultsPage(QFrame):
 
             # 전투력 선택지와 경지 선택지 순서 구성
             calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
-            formula_labels: dict[str, str] = _build_formula_label_map(
+            formula_labels: dict[str, str] = build_formula_label_map(
                 app_state.macro.custom_power_formulas
             )
-            self.metric_options: list[str] = _build_formula_options(
+            self.metric_options: list[str] = build_formula_options(
                 app_state.macro.custom_power_formulas
             )
             self.realm_options: list[RealmTier] = list(REALM_TIER_SPECS.keys())
@@ -3201,10 +3223,10 @@ class ResultsPage(QFrame):
 
             # 전역 공식 목록과 표시명 맵을 다시 구성하는
             calculator_input: CalculatorPresetInput = self._get_preset().info.calculator
-            formula_labels: dict[str, str] = _build_formula_label_map(
+            formula_labels: dict[str, str] = build_formula_label_map(
                 app_state.macro.custom_power_formulas
             )
-            self.metric_options = _build_formula_options(
+            self.metric_options = build_formula_options(
                 app_state.macro.custom_power_formulas
             )
 
@@ -4973,7 +4995,13 @@ class Navigation(QFrame):
         layout = QHBoxLayout(self)
 
         # 네비게이션바 텍스트
-        nav_texts: list[str] = ["정보 입력", "시뮬레이터", "스탯 계산기", "캐릭터"]
+        nav_texts: list[str] = [
+            "정보 입력",
+            "시뮬레이터",
+            "스탯 계산기",
+            "캐릭터",
+            "재련",
+        ]
 
         # 네비게이션바 버튼들
         # 첫 번째 버튼만 활성화 상태로 시작
