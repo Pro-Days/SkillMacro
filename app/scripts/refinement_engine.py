@@ -1031,7 +1031,7 @@ def build_refinement_report(
         return on_progress
 
     if progress_callback is not None:
-        progress_callback("재련비 분포 계산 중...", 5)
+        progress_callback("재련비 분포 계산 중...", 0)
 
     if cancel_checker is not None:
         cancel_checker()
@@ -1047,12 +1047,12 @@ def build_refinement_report(
         target_steps,
         reach_threshold=refinement.budget,
         detail_target=refinement.target_step,
-        progress_callback=report_stage("재련비 분포 계산 중...", 5, 30),
+        progress_callback=report_stage("재련비 분포 계산 중...", 0, 45),
         cancel_checker=cancel_checker,
     )
 
     if progress_callback is not None:
-        progress_callback("강화포인트 분포 계산 중...", 35)
+        progress_callback("강화포인트 분포 계산 중...", 45)
 
     # 강화포인트 분포 계산 (표에 분위수만 쓰므로 요약만 유지)
     point_summaries: dict[int, DistributionSummary]
@@ -1062,12 +1062,12 @@ def build_refinement_report(
         1.0,
         start_step,
         target_steps,
-        progress_callback=report_stage("강화포인트 분포 계산 중...", 35, 20),
+        progress_callback=report_stage("강화포인트 분포 계산 중...", 45, 45),
         cancel_checker=cancel_checker,
     )
 
     if progress_callback is not None:
-        progress_callback("총 비용 분포 계산 중...", 55)
+        progress_callback("총 비용 분포 계산 중...", 90)
 
     # 총 비용 분포 계산 (그래프에 쓰는 선택 목표 단계만 필요)
     economic_distribution: RefinementDistribution | None
@@ -1078,7 +1078,7 @@ def build_refinement_report(
         start_step,
         (refinement.target_step,),
         detail_target=refinement.target_step,
-        progress_callback=report_stage("총 비용 분포 계산 중...", 55, 15),
+        progress_callback=report_stage("총 비용 분포 계산 중...", 90, 9),
         cancel_checker=cancel_checker,
     )
 
@@ -1086,7 +1086,7 @@ def build_refinement_report(
         raise RefinementInputError("비용 분포를 계산하지 못했습니다.")
 
     if progress_callback is not None:
-        progress_callback("전투력 변화 계산 중...", 75)
+        progress_callback("전투력 변화 계산 중...", 99)
 
     if cancel_checker is not None:
         cancel_checker()
@@ -1243,7 +1243,7 @@ def build_refinement_report(
         )
 
     if progress_callback is not None:
-        progress_callback("결과 정리 중...", 95)
+        progress_callback("결과 정리 중...", 99)
 
     return RefinementReport(
         equipment=refinement.equipment,
