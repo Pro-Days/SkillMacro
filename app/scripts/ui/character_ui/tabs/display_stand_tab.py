@@ -1,7 +1,14 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QAbstractItemModel, QModelIndex, QSignalBlocker, Qt
-from PySide6.QtGui import QBrush, QColor, QKeyEvent, QPainter
+from PySide6.QtGui import (
+    QBrush,
+    QColor,
+    QInputMethodEvent,
+    QKeyEvent,
+    QKeySequence,
+    QPainter,
+)
 from PySide6.QtWidgets import (
     QAbstractButton,
     QAbstractItemView,
@@ -79,12 +86,14 @@ def _column_is_percent(column: DisplayStandColumn) -> bool:
 
 
 class _StageEditor(QLineEdit):
-    """진열 단계와 단위를 입력 중에도 함께 표시하는 셀 편집기"""
+    """키보드 숫자로 진열 단계와 단위를 입력하는 셀 편집기"""
 
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
         self._stage: int | None = None
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setAcceptDrops(False)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
         self._update_text()
 
     def set_stage(self, stage: int | None) -> None:
@@ -102,6 +111,10 @@ class _StageEditor(QLineEdit):
     def keyPressEvent(self, event: QKeyEvent) -> None:  # type: ignore[override]
         """숫자는 단계로 입력하고 Backspace는 마지막 자리만 제거"""
 
+        if event.matches(QKeySequence.StandardKey.Paste):
+            event.accept()
+            return
+
         if event.key() == Qt.Key.Key_Backspace:
             if self._stage is not None:
                 digits: str = str(self._stage)
@@ -115,7 +128,7 @@ class _StageEditor(QLineEdit):
             return
 
         digit: str = event.text()
-        if digit in "0123456789":
+        if digit and digit in "0123456789":
             if self.hasSelectedText() or self._stage is None:
                 candidate_text: str = digit
             else:
@@ -133,6 +146,19 @@ class _StageEditor(QLineEdit):
             return
 
         super().keyPressEvent(event)
+
+    def paste(self) -> None:
+        """클립보드 붙여넣기 무시"""
+
+        return
+
+    def inputMethodEvent(  # type: ignore[override]
+        self,
+        event: QInputMethodEvent,
+    ) -> None:
+        """입력기를 통한 텍스트 입력 무시"""
+
+        event.accept()
 
     def _update_text(self) -> None:
         """현재 단계의 편집 문자열 갱신"""

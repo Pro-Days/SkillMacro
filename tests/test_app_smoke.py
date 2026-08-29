@@ -9,7 +9,8 @@ from collections.abc import Iterator
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
+from PySide6.QtGui import QInputMethodEvent, QKeyEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QTabBar
 
@@ -98,6 +99,39 @@ def test_display_stand_stage_cell_editing_contract(
     qapplication.processEvents()
     editor = tab._table.findChild(_StageEditor)
     assert editor is not None
+
+    editor.keyPressEvent(
+        QKeyEvent(
+            QEvent.Type.KeyPress,
+            Qt.Key.Key_Left,
+            Qt.KeyboardModifier.NoModifier,
+        )
+    )
+    assert editor.stage() is None
+    assert editor.text() == ""
+    assert not editor.acceptDrops()
+    assert editor.contextMenuPolicy() == Qt.ContextMenuPolicy.NoContextMenu
+
+    clipboard = QApplication.clipboard()
+    previous_clipboard_text: str = clipboard.text()
+    clipboard.setText("15")
+    try:
+        editor.paste()
+        QTest.keyClick(
+            editor,
+            Qt.Key.Key_V,
+            Qt.KeyboardModifier.ControlModifier,
+        )
+    finally:
+        clipboard.setText(previous_clipboard_text)
+    assert editor.stage() is None
+    assert editor.text() == ""
+
+    input_method_event = QInputMethodEvent()
+    input_method_event.setCommitString("15")
+    editor.inputMethodEvent(input_method_event)
+    assert editor.stage() is None
+    assert editor.text() == ""
 
     QTest.keyClicks(editor, "12")
     assert editor.stage() == 12
