@@ -1096,6 +1096,55 @@ def test_runtime_exposes_attack_window_between_queued_skills(
     )
 
 
+def test_runtime_allows_basic_attack_while_every_skill_is_on_cooltime(
+    synthetic_server: ServerSpec,
+    macro_state_with_preset: MacroPreset,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """전체 스킬 쿨타임 상태로 시작한 런타임의 평타 허용 검증"""
+
+    placed_refs: list[EquippedSkillRef] = (
+        macro_state_with_preset.skills.get_placed_skill_refs(synthetic_server)
+    )
+    macro_state_with_preset.settings.remember_previous_state = True
+    macro_state_with_preset.settings.use_default_attack = False
+
+    # 전체 스킬을 방금 사용한 상태로 복원해 첫 반복에서 사용 가능한 스킬이 없게 구성
+    app_state.macro.skill_cooltime_timers = {
+        skill_ref: 100.0 for skill_ref in placed_refs
+    }
+    app_state.macro.prepared_skills = set()
+    app_state.macro.is_running = True
+    app_state.macro.run_id = 1
+
+    def stop_after_wait(_end_at: float) -> None:
+        app_state.macro.is_running = False
+
+    monkeypatch.setattr(run_macro.time, "perf_counter", lambda: 100.0)
+    monkeypatch.setattr(
+        run_macro,
+        "_wait_until_while_macro_running",
+        stop_after_wait,
+    )
+    monkeypatch.setattr(run_macro.keyboard, "Controller", lambda: None)
+    monkeypatch.setattr(run_macro.mouse, "Controller", lambda: None)
+
+    run_macro.running_macro_thread(run_id=1)
+
+    # 가장 빨리 준비되는 스킬의 쿨타임 4.0초와 추가 대기 0.2초 이후가 다음 입력 시각
+    assert app_state.macro.next_skill_input_at == pytest.approx(104.2)
+    assert can_use_basic_attack(
+        current_time=101.0,
+        last_skill_input_at=app_state.macro.last_skill_input_at,
+        next_skill_input_at=app_state.macro.next_skill_input_at,
+    )
+    assert not can_use_basic_attack(
+        current_time=104.1,
+        last_skill_input_at=app_state.macro.last_skill_input_at,
+        next_skill_input_at=app_state.macro.next_skill_input_at,
+    )
+
+
 def _record_runtime_skill_events(
     macro_state_with_preset: MacroPreset,
     monkeypatch: pytest.MonkeyPatch,

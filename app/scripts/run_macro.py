@@ -600,6 +600,11 @@ def running_macro_thread(run_id: int) -> None:
             if not app_state.macro.task_list:
                 wait_seconds = build_task_list(show_info=DEBUG_PRINT_INFO)
 
+                # 대기 중에도 평타 보호 구간이 실제 다음 스킬 시각을 따르도록 갱신
+                app_state.macro.next_skill_input_at = _get_next_runnable_skill_at(
+                    time.perf_counter()
+                )
+
             # 스킬 준비 시점 직전의 재평가 구간 확보
             if not app_state.macro.task_list and wait_seconds > 0.0:
                 wait_milliseconds: int = round(wait_seconds * 1000)
@@ -615,10 +620,6 @@ def running_macro_thread(run_id: int) -> None:
                         * config.macro.SLEEP_COEFFICIENT_UNIT
                     )
                     continue
-
-            # 실행 가능한 스킬이 없으면 평타 제한용 다음 시각 해제
-            if not app_state.macro.task_list and wait_seconds <= 0.0:
-                app_state.macro.next_skill_input_at = None
 
             # 스킬 사용하고 사용 여부 리턴
             is_used_skill, current_line_index = use_skill(
