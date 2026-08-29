@@ -31,6 +31,7 @@ from app.scripts.character_data import (
     EQUIPMENT_REFORGE_STAT_KEYS,
     EQUIPMENT_SCROLL_EFFECTS,
     EQUIPMENT_SCROLL_LIMITS,
+    FREE_BASE_STAT_EQUIPMENT_SLOTS,
     NECKLACE_REFORGE_STAT_KEYS,
     PILL_SPECS,
     POTENTIAL_EQUIPMENT_SLOTS,
@@ -181,7 +182,7 @@ def _equipment_primary_slot(equipment: OwnedEquipment) -> EquipmentSlot:
 def equipment_item_spec(equipment: OwnedEquipment) -> EquipmentItemSpec | None:
     """장비 입력값 기준 정적 아이템 스펙 조회"""
 
-    if equipment.kind in (EquipmentKind.RING, EquipmentKind.EARRING):
+    if _equipment_primary_slot(equipment) in FREE_BASE_STAT_EQUIPMENT_SLOTS:
         return None
 
     for item_spec in EQUIPMENT_ITEM_SPECS:
@@ -319,7 +320,7 @@ def _validate_equipment_item_identity(
     if not equipment.name.strip():
         raise ValueError("equipment name is required")
 
-    if equipment.kind in (EquipmentKind.RING, EquipmentKind.EARRING):
+    if _equipment_primary_slot(equipment) in FREE_BASE_STAT_EQUIPMENT_SLOTS:
         if equipment.item_name is not None:
             raise ValueError("free base stat equipment cannot reference item catalog")
 
@@ -482,10 +483,11 @@ def _validate_equipment(equipment: OwnedEquipment) -> None:
     _validate_equipment_item_identity(equipment, item_spec)
 
     if (
-        equipment.kind not in (EquipmentKind.RING, EquipmentKind.EARRING)
-        and equipment.base_stat_lines
+        slot not in FREE_BASE_STAT_EQUIPMENT_SLOTS and equipment.base_stat_lines
     ):
-        raise ValueError("base stat lines are allowed only for ring or earring")
+        raise ValueError(
+            "base stat lines are allowed only for ring, earring, or vambrace"
+        )
 
     for line in equipment.base_stat_lines:
         _validate_non_negative_float(line.value, "equipment base stat value")

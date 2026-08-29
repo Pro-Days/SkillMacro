@@ -67,6 +67,7 @@ FREE_BASE_STAT_EQUIPMENT_SLOTS: tuple[EquipmentSlot, ...] = (
     EquipmentSlot.RING1,
     EquipmentSlot.RING2,
     EquipmentSlot.EARRING,
+    EquipmentSlot.VAMBRACE,
 )
 
 
@@ -108,6 +109,7 @@ EQUIPMENT_REFORGE_STAT_KEYS: dict[EquipmentSlot, tuple[StatKey, ...]] = {
     EquipmentSlot.RING2: (),
     EquipmentSlot.NECKLACE: (),
     EquipmentSlot.EARRING: (),
+    EquipmentSlot.VAMBRACE: (),
 }
 
 
@@ -1130,6 +1132,7 @@ EQUIPMENT_SCROLL_EFFECTS: dict[
     EquipmentSlot.RING2: RING_SCROLL_EFFECTS,
     EquipmentSlot.NECKLACE: {},
     EquipmentSlot.EARRING: {},
+    EquipmentSlot.VAMBRACE: {},
 }
 
 
@@ -1143,6 +1146,7 @@ EQUIPMENT_SCROLL_LIMITS: dict[EquipmentSlot, dict[int, int] | None] = {
     EquipmentSlot.RING2: None,
     EquipmentSlot.NECKLACE: {},
     EquipmentSlot.EARRING: {},
+    EquipmentSlot.VAMBRACE: {},
 }
 
 
