@@ -59,7 +59,8 @@
             "ring1": null,
             "ring2": null,
             "necklace": null,
-            "earring": null
+            "earring": null,
+            "vambrace": null
           }
         },
         "display_stand": {
@@ -607,7 +608,8 @@
             "ring1": "반지1",
             "ring2": "반지2",
             "necklace": "청옥목걸이",
-            "earring": "금귀걸이"
+            "earring": "금귀걸이",
+            "vambrace": null
           }
         },
         "display_stand": {

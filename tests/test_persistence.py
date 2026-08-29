@@ -16,6 +16,7 @@ from app.scripts.character_models import (
     AdditionalStatLine,
     CharacterProfile,
     CharacterStore,
+    EquipmentSlot,
 )
 from app.scripts.calculator_models import (
     CalculatorPresetInput,
@@ -254,6 +255,7 @@ def test_load_characters_migrates_v1_additional_stat_groups(
     raw_character["name"] = "마이그레이션 대상"
     raw_character["level"] = 120
     raw_character.pop("additional_stat_groups")
+    raw_character["equipment"]["equipped"].pop("vambrace")
     _write_text(
         isolated_data_paths["characters_file_dir"],
         json.dumps(store_payload, ensure_ascii=False),
@@ -271,6 +273,53 @@ def test_load_characters_migrates_v1_additional_stat_groups(
         migrated_payload: dict[str, Any] = json.load(f)
     assert migrated_payload["version"] == CHARACTER_DATA_VERSION
     assert migrated_payload["characters"][0]["additional_stat_groups"] == []
+    assert (
+        migrated_payload["characters"][0]["equipment"]["equipped"]["vambrace"]
+        is None
+    )
+
+
+def test_load_characters_migrates_v2_vambrace_slot(
+    isolated_data_paths: dict[str, str],
+) -> None:
+    """v2 캐릭터 장착값 보존과 빈 완갑 슬롯 주입 검증"""
+
+    store_payload: dict[str, Any] = CharacterStore.create_default().to_dict()
+    store_payload["version"] = 2
+    raw_character: dict[str, Any] = store_payload["characters"][0]
+    raw_equipped: dict[str, Any] = raw_character["equipment"]["equipped"]
+    raw_equipped["earring"] = "기존 귀걸이"
+    raw_equipped.pop("vambrace")
+    raw_character["equipment"]["owned"].append(
+        {
+            "name": "기존 귀걸이",
+            "kind": "earring",
+            "item_name": None,
+            "level": 0,
+            "tier": 1,
+            "grade": None,
+            "base_stat_lines": [],
+            "reforge_step": 0,
+            "reforge_stats": {},
+            "scrolls": [],
+            "potentials": [None, None, None],
+            "additionals": [None, None, None],
+        }
+    )
+    _write_text(
+        isolated_data_paths["characters_file_dir"],
+        json.dumps(store_payload, ensure_ascii=False),
+    )
+
+    loaded: CharacterStore = data_manager.load_characters()
+
+    assert loaded.version == CHARACTER_DATA_VERSION
+    assert (
+        loaded.characters[0].equipment.equipped[EquipmentSlot.EARRING]
+        == "기존 귀걸이"
+    )
+    assert loaded.characters[0].equipment.equipped[EquipmentSlot.VAMBRACE] is None
+    assert _list_backups(isolated_data_paths["data_path"], "characters") == []
 
 
 def test_save_then_load_characters_preserves_state(

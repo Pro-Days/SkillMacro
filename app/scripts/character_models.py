@@ -9,7 +9,7 @@ from uuid import uuid4
 from app.scripts.calculator_models import RealmTier, StatKey
 from app.scripts.registry.resource_registry import convert_resource_path
 
-CHARACTER_DATA_VERSION: int = 2
+CHARACTER_DATA_VERSION: int = 3
 DEFAULT_CHARACTER_NAME: str = "새 캐릭터"
 TITLE_STAT_SLOT_COUNT: int = 3
 EQUIPMENT_OPTION_SLOT_COUNT: int = 3
@@ -33,6 +33,7 @@ class EquipmentSlot(str, Enum):
     RING2 = "ring2"
     NECKLACE = "necklace"
     EARRING = "earring"
+    VAMBRACE = "vambrace"
 
 
 class EquipmentKind(str, Enum):
@@ -46,6 +47,7 @@ class EquipmentKind(str, Enum):
     RING = "ring"
     NECKLACE = "necklace"
     EARRING = "earring"
+    VAMBRACE = "vambrace"
 
 
 class EquipmentGrade(str, Enum):
@@ -75,6 +77,7 @@ EQUIPMENT_KIND_SLOTS: dict[EquipmentKind, tuple[EquipmentSlot, ...]] = {
     EquipmentKind.RING: (EquipmentSlot.RING1, EquipmentSlot.RING2),
     EquipmentKind.NECKLACE: (EquipmentSlot.NECKLACE,),
     EquipmentKind.EARRING: (EquipmentSlot.EARRING,),
+    EquipmentKind.VAMBRACE: (EquipmentSlot.VAMBRACE,),
 }
 
 EQUIPMENT_SLOT_KIND: dict[EquipmentSlot, EquipmentKind] = {

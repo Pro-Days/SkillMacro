@@ -1,9 +1,9 @@
-"""장비 탭 (좌: 장비창 9슬롯 / 우: 선택 장비 상세 · 장비 교체 화면)
+"""장비 탭 (좌: 장비창 10슬롯 / 우: 선택 장비 상세 · 장비 교체 화면)
 
 콘텐츠 규칙은 계획 파일을 따른다:
 - 슬롯마다 보유 장비 여러 개를 두고, 장비 교체로 선택해 장착한다
 - 재련 = 단계가 아닌 부위별 허용 스탯 입력
-- 반지/귀걸이 = 자유 기본 스탯 라인
+- 반지/귀걸이/완갑 = 자유 기본 스탯 라인
 - 잠재/추가능력 = 투구·갑옷·허리띠·신발만
 - 등급(기본/찬란한) = 무기·방어구만
 """
@@ -271,7 +271,7 @@ def _equipment_scroll_limit(
 def _has_grade(item_spec: EquipmentItemSpec | None) -> bool:
     """장비 스펙 기준 등급 선택 가능 여부"""
 
-    # 반지·귀걸이처럼 카탈로그 스펙이 없는 장비 제외
+    # 반지·귀걸이·완갑처럼 카탈로그 스펙이 없는 장비 제외
     if item_spec is None:
         return False
 
@@ -305,7 +305,7 @@ def _equipment_name(equipment: OwnedEquipment, slot: EquipmentSlot) -> str:
     if item_spec is not None:
         return item_spec.name + _ARMOR_SLOT_NAME_SUFFIX.get(slot, "")
 
-    # 반지·귀걸이 사용자 지정 이름 표시
+    # 반지·귀걸이·완갑 사용자 지정 이름 표시
     return equipment.name
 
 
@@ -314,7 +314,7 @@ def _equipment_base_rows(
 ) -> list[tuple[str, float]]:
     """장비 스펙 기반 기본 스탯 표시 행 구성"""
 
-    # 반지·귀걸이 자유 입력 장비 제외
+    # 반지·귀걸이·완갑 자유 입력 장비 제외
     item_spec: EquipmentItemSpec | None = equipment_item_spec(equipment)
     if item_spec is None:
         return []
@@ -1160,10 +1160,7 @@ class EquipmentTab(CharacterTab):
         item_spec: EquipmentItemSpec | None = equipment_item_spec(item)
         has_grade: bool = _has_grade(item_spec)
         has_potential: bool = slot.slot in POTENTIAL_EQUIPMENT_SLOTS
-        is_free_stat: bool = item.kind in (
-            EquipmentKind.RING,
-            EquipmentKind.EARRING,
-        )
+        is_free_stat: bool = slot.slot in FREE_BASE_STAT_EQUIPMENT_SLOTS
 
         head, display_name_label = self._build_detail_head(slot, item, has_grade)
         layout.addWidget(head)
@@ -1578,11 +1575,11 @@ class EquipmentTab(CharacterTab):
         slot: _EquipSlotData,
         item: OwnedEquipment,
     ) -> _BaseSection:
-        """기본 스탯 섹션 (방어구/무기 자동 표시 vs 반지/귀걸이 자유 입력)"""
+        """기본 스탯 섹션 (카탈로그 장비 자동 표시 vs 자유 스탯 입력)"""
 
         section, box = self._section("기본 스탯")
 
-        # 반지/귀걸이: 자유 스탯 라인
+        # 반지·귀걸이·완갑 자유 스탯 라인
         if slot.slot in FREE_BASE_STAT_EQUIPMENT_SLOTS:
             free_rows = QVBoxLayout()
             free_rows.setSpacing(8)
@@ -1639,7 +1636,7 @@ class EquipmentTab(CharacterTab):
         stat: str,
         value: str,
     ) -> QHBoxLayout:
-        """반지/귀걸이 자유 스탯 한 줄 (콤보 + 값)"""
+        """자유 기본 스탯 한 줄 (콤보 + 값)"""
 
         row = QHBoxLayout()
         row.setSpacing(10)
@@ -2881,6 +2878,24 @@ class EquipmentTab(CharacterTab):
             return OwnedEquipment(
                 name=self._unique_equipment_name(slot),
                 kind=EquipmentKind.EARRING,
+            )
+
+        if slot == EquipmentSlot.VAMBRACE:
+            return OwnedEquipment(
+                name=self._unique_equipment_name(slot),
+                kind=EquipmentKind.VAMBRACE,
+                base_stat_lines=[
+                    EquipmentFreeStatLine(stat_key=StatKey.STR_PERCENT, value=0.0),
+                    EquipmentFreeStatLine(
+                        stat_key=StatKey.DEXTERITY_PERCENT,
+                        value=0.0,
+                    ),
+                    EquipmentFreeStatLine(stat_key=StatKey.LUCK_PERCENT, value=0.0),
+                    EquipmentFreeStatLine(
+                        stat_key=StatKey.BOSS_ATTACK_PERCENT,
+                        value=0.0,
+                    ),
+                ],
             )
 
         item_spec: EquipmentItemSpec = next(

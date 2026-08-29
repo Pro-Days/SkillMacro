@@ -393,20 +393,38 @@ def migrate_character_data_file(file_path: str) -> None:
 
     try:
         raw: dict[str, Any] = raw_obj
-        if raw.get("version") != 1:
+        if raw.get("version") not in (1, 2):
             return
 
         raw_characters: object = raw["characters"]
         if not isinstance(raw_characters, list):
             return
 
-        for raw_character in raw_characters:
-            if not isinstance(raw_character, dict):
-                return
+        if raw["version"] == 1:
+            for raw_character in raw_characters:
+                if not isinstance(raw_character, dict):
+                    return
 
-            raw_character["additional_stat_groups"] = []
+                raw_character["additional_stat_groups"] = []
 
-        raw["version"] = 2
+            raw["version"] = 2
+
+        if raw["version"] == 2:
+            for raw_character in raw_characters:
+                if not isinstance(raw_character, dict):
+                    return
+
+                raw_equipment: object = raw_character["equipment"]
+                if not isinstance(raw_equipment, dict):
+                    return
+
+                raw_equipped: object = raw_equipment["equipped"]
+                if not isinstance(raw_equipped, dict):
+                    return
+
+                raw_equipped["vambrace"] = None
+
+            raw["version"] = 3
 
     except (KeyError, TypeError, ValueError):
         return
