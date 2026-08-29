@@ -434,9 +434,27 @@ class GuideSelectionOverlay(QFrame):
         body_label.setFont(CustomFont(11))
         layout.addWidget(body_label)
 
+        # 가이드 목록 스크롤 영역 구성
+        self._list_scroll: QScrollArea = QScrollArea(self._card)
+        self._list_scroll.setObjectName("guideSelectionScroll")
+        self._list_scroll.setWidgetResizable(True)
+        self._list_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._list_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        self._list_scroll.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+
+        self._list_content: QWidget = QWidget(self._list_scroll)
+        self._list_content.setObjectName("guideSelectionList")
+        list_layout: QVBoxLayout = QVBoxLayout(self._list_content)
+        list_layout.setContentsMargins(0, 0, 0, 0)
+        list_layout.setSpacing(8)
+
         # 가이드 목록 버튼 구성
         for definition in definitions:
-            button: QPushButton = QPushButton(definition.title, self._card)
+            button: QPushButton = QPushButton(definition.title, self._list_content)
             button.setObjectName(
                 "guideRecommendedListButton"
                 if definition.recommended
@@ -447,7 +465,10 @@ class GuideSelectionOverlay(QFrame):
                 button.setIcon(_guide_recommended_icon())
                 button.setIconSize(QSize(10, 10))
             button.clicked.connect(lambda _, item=definition: on_selected(item))
-            layout.addWidget(button)
+            list_layout.addWidget(button)
+
+        self._list_scroll.setWidget(self._list_content)
+        layout.addWidget(self._list_scroll)
 
         close_button: QPushButton = QPushButton("닫기", self._card)
         close_button.setObjectName("guideSecondaryButton")
@@ -494,9 +515,19 @@ class GuideSelectionOverlay(QFrame):
         """가이드 선택 카드 중앙 배치"""
 
         card_width: int = min(460, max(320, self.width() - 40))
+        max_card_height: int = max(0, self.height() - 40)
+        natural_list_height: int = self._list_content.sizeHint().height()
+        self._list_scroll.setFixedHeight(natural_list_height)
         self._card.setFixedWidth(card_width)
         self._card.adjustSize()
-        card_height: int = self._card.sizeHint().height()
+        natural_card_height: int = self._card.sizeHint().height()
+
+        if natural_card_height > max_card_height:
+            overflow: int = natural_card_height - max_card_height
+            self._list_scroll.setFixedHeight(max(100, natural_list_height - overflow))
+            self._card.adjustSize()
+
+        card_height: int = min(self._card.sizeHint().height(), max_card_height)
         x: int = max(20, (self.width() - card_width) // 2)
         y: int = max(20, (self.height() - card_height) // 2)
         self._card.setGeometry(x, y, card_width, card_height)
@@ -644,6 +675,13 @@ class GuideOverlay(QFrame):
         # 카드 기본 크기 계산
         card_width: int = min(420, max(320, self.width() - 40))
         self._card.setFixedWidth(card_width)
+        content_width: int = card_width - 36
+        title_height: int = self._title_label.heightForWidth(content_width)
+        body_height: int = self._body_label.heightForWidth(content_width)
+        if title_height >= 0:
+            self._title_label.setMinimumHeight(title_height)
+        if body_height >= 0:
+            self._body_label.setMinimumHeight(body_height)
         self._card.adjustSize()
         card_height: int = self._card.sizeHint().height()
 
@@ -1406,7 +1444,7 @@ class GuideManager:
     def _build_definitions(self) -> tuple[GuideDefinition, ...]:
         """1차 제공 가이드 정의 구성"""
 
-        return (
+        definitions: tuple[GuideDefinition, ...] = (
             GuideDefinition(
                 guide_id="macro",
                 title="매크로 사용",
@@ -1507,6 +1545,46 @@ class GuideManager:
                         "기본 설정, 무공비급 장착, 스킬 배치를 완료하면 매크로를 실행할 준비가 끝납니다.",
                         "main.preview",
                         self._main_page,
+                    ),
+                ),
+            ),
+            GuideDefinition(
+                guide_id="tips",
+                title="실전 사용 팁",
+                recommended=True,
+                steps=(
+                    GuideStep(
+                        "사냥과 보스에서 사용하는 방법",
+                        "사냥에서는 사용할 스킬을 자동 OFF 연계스킬에 모두 넣고 "
+                        "시작키를 짧게 눌러 한 사이클씩 사용하세요.\n"
+                        "보스에서는 시작키를 누르는 동안 실행하고 키를 떼면 중지하는 방법이 편합니다.",
+                        None,
+                    ),
+                    GuideStep(
+                        "편한 시작키 설정",
+                        "자주 사용하는 시작키나 연계스킬 키는 마우스 사이드 버튼으로 "
+                        "설정하면 편합니다.",
+                        None,
+                    ),
+                    GuideStep(
+                        "채팅 중 오작동 방지",
+                        "키 입력 유지 시간을 약 0.2초로 설정하면 채팅 중 "
+                        "오작동을 막을 수 있습니다. 실행할 때는 설정한 시간 이상 "
+                        "키를 눌러야 합니다.",
+                        None,
+                    ),
+                    GuideStep(
+                        "스킬이 누락될 때",
+                        "스킬이 자주 누락되면 딜레이나 추가 대기 시간을 조금씩 올려 "
+                        "안정적으로 실행되는 값을 사용하세요.",
+                        None,
+                    ),
+                    GuideStep(
+                        "진열대 빠르게 입력하기",
+                        "진열대에서는 드래그, Shift 클릭, Ctrl 클릭, Ctrl+A로 여러 "
+                        "칸을 선택하고 선택 칸에 적용으로 한 번에 "
+                        "입력할 수 있습니다.",
+                        None,
                     ),
                 ),
             ),
@@ -1846,4 +1924,19 @@ class GuideManager:
                     ),
                 ),
             ),
+        )
+        guide_priority: dict[str, int] = {
+            "tips": 0,
+            "macro": 1,
+            "calculator": 2,
+            "character": 3,
+        }
+        return tuple(
+            sorted(
+                definitions,
+                key=lambda definition: guide_priority.get(
+                    definition.guide_id,
+                    len(guide_priority),
+                ),
+            )
         )

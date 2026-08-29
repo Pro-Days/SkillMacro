@@ -1499,6 +1499,12 @@ QFrame#guideSelectionCard {{
     border: 1px solid #D6DCE8;
     border-radius: 8px;
 }}
+QScrollArea#guideSelectionScroll,
+QScrollArea#guideSelectionScroll QWidget#qt_scrollarea_viewport,
+QWidget#guideSelectionList {{
+    background-color: transparent;
+    border: 0px;
+}}
 QPushButton#guidePrimaryButton {{
     background-color: #4A90D9;
     color: #FFFFFF;
@@ -3209,6 +3215,12 @@ QFrame#guideSelectionCard {{
     background-color: #1F1F30;
     border: 1px solid #3A3A52;
     border-radius: 8px;
+}}
+QScrollArea#guideSelectionScroll,
+QScrollArea#guideSelectionScroll QWidget#qt_scrollarea_viewport,
+QWidget#guideSelectionList {{
+    background-color: transparent;
+    border: 0px;
 }}
 QPushButton#guidePrimaryButton {{
     background-color: #5B78D9;
